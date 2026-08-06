@@ -1,0 +1,146 @@
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║         🎯 CHECKLIST: LOGO PERSONALIZADO EN CODEC POS           ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────┐
+│  📋 ANTES DE COMPILAR - Verifica esto:                          │
+└──────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 1. ARCHIVO DEL LOGO                                         │
+  └─────────────────────────────────────────────────────────────┘
+
+    [ ] ✓ El archivo se llama exactamente: logo.png
+    [ ] ✓ Está en la carpeta: public/
+    [ ] ✓ Formato: PNG
+    [ ] ✓ Tamaño: Mínimo 512x512 píxeles
+    [ ] ✓ Fondo: Transparente
+    [ ] ✓ Se ve bien en tamaños pequeños (48x48) y grandes (512x512)
+
+    💡 Comando para verificar:
+       ls -lh public/logo.png
+
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 2. CONFIGURACIÓN DE CÓDIGO                                  │
+  └─────────────────────────────────────────────────────────────┘
+
+    [ ] ✓ Todos los archivos usan: import logoImage from '/logo.png'
+    [ ] ✓ No hay referencias a: src="/logo.png"
+    [ ] ✓ CodecLogos.tsx usa import correcto
+
+    💡 Comando para verificar:
+       ./verificar-logo.sh
+
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 3. PRUEBA EN DESARROLLO                                     │
+  └─────────────────────────────────────────────────────────────┘
+
+    [ ] ✓ npm run dev ejecutado sin errores
+    [ ] ✓ Logo visible en pantalla de login
+    [ ] ✓ Logo visible en bienvenida
+    [ ] ✓ Logo visible en sidebar (menú lateral)
+    [ ] ✓ Logo visible en dashboard
+    [ ] ✓ Logo visible en footer de configuración
+    [ ] ✓ Logo visible en tirilla de venta (hacer venta de prueba)
+
+    💡 Comando:
+       npm run dev
+
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 4. COMPILACIÓN                                              │
+  └─────────────────────────────────────────────────────────────┘
+
+    [ ] ✓ Logo está en public/ ANTES de compilar
+    [ ] ✓ npm run build ejecutado sin errores
+    [ ] ✓ npm run electron:build ejecutado sin errores
+    [ ] ✓ .exe generado en carpeta dist/
+
+    💡 Comandos:
+       npm run build
+       npm run electron:build
+
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 5. PRUEBA POST-COMPILACIÓN                                  │
+  └─────────────────────────────────────────────────────────────┘
+
+    [ ] ✓ Instalé el .exe en una máquina de prueba
+    [ ] ✓ Logo aparece en login
+    [ ] ✓ Logo aparece en todas las secciones
+    [ ] ✓ NO aparece el logo SVG de fallback "CP"
+    [ ] ✓ Tirilla impresa muestra mi logo
+
+
+┌──────────────────────────────────────────────────────────────────┐
+│  🎯 RESULTADO ESPERADO                                           │
+└──────────────────────────────────────────────────────────────────┘
+
+   Si todos los checkboxes están marcados:
+
+   ✅ Tu logo personalizado aparecerá en TODO el sistema
+   ✅ Tanto en desarrollo como en el .exe compilado
+   ✅ El logo SVG "CP" NUNCA aparecerá
+   ✅ El sistema está listo para producción
+
+
+┌──────────────────────────────────────────────────────────────────┐
+│  🔧 ARCHIVOS CLAVE YA CONFIGURADOS                               │
+└──────────────────────────────────────────────────────────────────┘
+
+   ✓ src/app/components/shared/CodecLogos.tsx
+   ✓ src/app/components/pos/POSLayoutSidebar.tsx
+   ✓ src/app/components/pos/TicketReceipt.tsx
+   ✓ src/app/components/pos/ConfiguracionPage.tsx
+   ✓ src/app/components/auth/LoginPage.tsx
+   ✓ src/app/components/auth/WelcomePage.tsx
+   ✓ src/app/pages/SetupWizard.tsx
+   ✓ src/app/components/pos/DashboardPOSPage.tsx
+
+   🎉 NO NECESITAS MODIFICAR CÓDIGO
+
+   Solo asegúrate de que public/logo.png existe y cumple
+   con los requisitos.
+
+
+┌──────────────────────────────────────────────────────────────────┐
+│  🆘 SI ALGO SALE MAL                                             │
+└──────────────────────────────────────────────────────────────────┘
+
+   Problema: Veo "CP" en lugar de mi logo
+   └─→ Verifica: ls -lh public/logo.png
+
+   Problema: Logo borroso
+   └─→ Usa logo más grande (mínimo 512x512px)
+
+   Problema: Logo con fondo blanco
+   └─→ Convierte a PNG transparente
+
+   Problema: No aparece en .exe compilado
+   └─→ Asegúrate de que logo.png está en public/ ANTES de compilar
+
+
+┌──────────────────────────────────────────────────────────────────┐
+│  📚 DOCUMENTACIÓN ADICIONAL                                      │
+└──────────────────────────────────────────────────────────────────┘
+
+   📄 LOGO-RESUMEN-RAPIDO.md          → Resumen de pasos
+   📄 INSTRUCCIONES_LOGO_PERSONALIZADO.md → Guía completa detallada
+   🔧 verificar-logo.sh                → Script de verificación
+
+
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║  🎨 Una vez que todos los checkboxes estén marcados:            ║
+║                                                                  ║
+║     TU LOGO PERSONALIZADO ESTARÁ EN TODO EL SISTEMA ✨          ║
+║                                                                  ║
+║                  🌐 Codec Studio                                 ║
+║            https://www.codecstudio.online/                       ║
+║              📱 +57 323 864 6844                                 ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝

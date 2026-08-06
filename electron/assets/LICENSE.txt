@@ -1,0 +1,232 @@
+═══════════════════════════════════════════════════════════════════════════════
+                         CODEC POS v2.0 - TÉRMINOS Y CONDICIONES
+                              Copyright © 2026 Codec Studio
+                            https://codecstudio.online/
+═══════════════════════════════════════════════════════════════════════════════
+
+ACUERDO DE LICENCIA DE SOFTWARE
+
+Por favor, lea cuidadosamente este Acuerdo de Licencia antes de instalar y usar
+CODEC POS v2.0 ("el Software"). Al instalar o usar el Software, usted acepta
+estar legalmente vinculado por los términos de este acuerdo.
+
+1. CONCESIÓN DE LICENCIA
+
+Codec Studio le concede una licencia no exclusiva, intransferible y limitada
+para instalar y usar CODEC POS v2.0 en un único equipo por licencia adquirida.
+El Software está protegido por las leyes de propiedad intelectual y derechos
+de autor de Colombia y tratados internacionales.
+
+2. RESTRICCIONES DE USO
+
+Usted NO puede:
+   • Copiar, modificar, adaptar o crear trabajos derivados del Software
+   • Realizar ingeniería inversa, descompilar o desensamblar el Software
+   • Redistribuir, sublicenciar, alquilar o prestar el Software a terceros
+   • Usar el Software en más equipos que los autorizados por su licencia
+   • Eliminar o alterar avisos de derechos de autor o marcas registradas
+
+3. TIPOS DE LICENCIA
+
+CODEC POS v2.0 ofrece dos planes de licenciamiento:
+
+   A) PLAN BÁSICO
+      - Gestión de inventario hasta el límite configurado
+      - Punto de venta básico
+      - Reportes estándar
+      - Gestión de usuarios limitada
+      - Sin acceso a funcionalidades Premium
+
+   B) PLAN PREMIUM
+      - Inventario ilimitado
+      - Dashboard ejecutivo avanzado
+      - Reportes avanzados con análisis predictivo
+      - Sistema CODEC Verify para pagos Nequi
+      - Integraciones con Zapier y n8n
+      - Sistema multi-tienda
+      - Todas las funcionalidades del sistema
+
+Ambos planes están disponibles en modalidad:
+   • Licencia Anual (1 año de uso)
+   • Licencia Vitalicia (uso permanente)
+
+4. ACTIVACIÓN Y VINCULACIÓN DE EQUIPO
+
+El Software requiere activación mediante una clave de licencia única vinculada
+al hardware del equipo donde se instala (Machine ID). Una vez activado:
+   • La licencia queda vinculada permanentemente a ese equipo
+   • No puede transferirse a otro equipo sin autorización de Codec Studio
+   • Cambios mayores de hardware pueden requerir reactivación
+
+5. FUNCIONAMIENTO OFFLINE
+
+CODEC POS v2.0 funciona 100% offline sin requerir conexión a Internet para
+operar. Los datos se almacenan localmente usando:
+   • LocalStorage para configuraciones rápidas
+   • IndexedDB para base de datos completa
+
+IMPORTANTE: El usuario es responsable de realizar respaldos periódicos de sus
+datos usando la función de backup integrada del sistema.
+
+6. PROTECCIÓN DE DATOS Y PRIVACIDAD
+
+El Software NO recopila, transmite ni almacena datos del usuario en servidores
+externos. Todos los datos permanecen localmente en el equipo del usuario.
+
+Codec Studio NO se hace responsable por:
+   • Pérdida de datos por falta de respaldos
+   • Uso indebido del sistema para recopilar información personal sensible
+   • Violaciones de la Ley de Protección de Datos Personales (Ley 1581 de 2012)
+
+ADVERTENCIA: CODEC POS NO está diseñado para almacenar información personal
+sensible (datos bancarios, números de cédula, información médica, etc.).
+
+7. INTEGRACIÓN CON DIAN Y FACTURACIÓN ELECTRÓNICA
+
+El Software incluye herramientas de facturación compatibles con los estándares
+de la DIAN (Dirección de Impuestos y Aduanas Nacionales de Colombia). Sin
+embargo, el usuario es responsable de:
+   • Configurar correctamente los datos fiscales de su empresa
+   • Garantizar el cumplimiento de las normativas tributarias vigentes
+   • Mantener registros contables adecuados
+
+Codec Studio NO proporciona servicios de proveedor tecnológico autorizado por
+DIAN. La facturación electrónica requiere contratación adicional con un PAC
+(Proveedor Autorizado de Certificación).
+
+8. CODEC VERIFY - PAGOS NEQUI (SOLO PLAN PREMIUM)
+
+El sistema CODEC Verify para verificación de pagos Nequi:
+   • NO procesa ni almacena transacciones financieras
+   • NO reemplaza los sistemas oficiales de Nequi
+   • Es una herramienta auxiliar de verificación manual
+   • Requiere que el usuario ingrese manualmente códigos de verificación
+
+Codec Studio NO se hace responsable por:
+   • Fraudes o suplantaciones en procesos de pago
+   • Errores en la verificación manual de códigos Nequi
+   • Pérdidas financieras derivadas del uso del sistema
+
+9. INTEGRACIÓN CON HARDWARE (IMPRESORAS TÉRMICAS, LECTORES)
+
+El Software soporta integración con dispositivos de hardware estándar:
+   • Impresoras térmicas (ESC/POS)
+   • Lectores de códigos de barras
+   • Cajones de dinero con apertura electrónica
+
+Codec Studio NO garantiza compatibilidad con todos los modelos del mercado.
+Es responsabilidad del usuario verificar la compatibilidad antes de adquirir
+hardware adicional.
+
+10. ACTUALIZACIONES Y SOPORTE TÉCNICO
+
+LICENCIAS ANUALES:
+   • Derecho a actualizaciones durante 1 año desde la fecha de activación
+   • Soporte técnico básico vía WhatsApp/Email durante el período de licencia
+   • Renovación anual requerida para mantener acceso a actualizaciones
+
+LICENCIAS VITALICIAS:
+   • Derecho a actualizaciones de forma permanente
+   • Soporte técnico permanente
+   • Sin costos recurrentes
+
+Las actualizaciones son opcionales. El Software continuará funcionando sin
+necesidad de actualizarse, pero no recibirá nuevas funcionalidades ni parches
+de seguridad después del período de soporte.
+
+11. LIMITACIÓN DE RESPONSABILIDAD
+
+EN LA MEDIDA MÁXIMA PERMITIDA POR LA LEY, CODEC STUDIO NO SERÁ RESPONSABLE POR:
+
+   a) Daños directos, indirectos, incidentales o consecuentes derivados del uso
+      o imposibilidad de uso del Software
+   b) Pérdida de datos, ganancias, ingresos o ahorros anticipados
+   c) Interrupción del negocio o daños comerciales
+   d) Errores de configuración realizados por el usuario
+   e) Incompatibilidad con hardware o software de terceros
+   f) Pérdida de información por falta de respaldos
+
+EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍAS DE NINGÚN TIPO, EXPRESAS
+O IMPLÍCITAS, INCLUYENDO PERO NO LIMITADO A GARANTÍAS DE COMERCIABILIDAD,
+IDONEIDAD PARA UN PROPÓSITO PARTICULAR Y NO INFRACCIÓN.
+
+12. COMPATIBILIDAD CON SISTEMAS OPERATIVOS
+
+CODEC POS v2.0 es compatible con:
+   • Windows 7 (64 bits) o superior
+   • Windows 8 / 8.1 (64 bits)
+   • Windows 10 (64 bits)
+   • Windows 11 (64 bits)
+
+REQUISITOS MÍNIMOS RECOMENDADOS:
+   • Procesador: Intel Core i3 o equivalente
+   • RAM: 4 GB mínimo (8 GB recomendado para óptimo rendimiento)
+   • Disco: 2 GB de espacio disponible
+   • Resolución de pantalla: 1366x768 píxeles mínimo
+
+13. DESINSTALACIÓN Y ELIMINACIÓN DE DATOS
+
+Al desinstalar el Software mediante el desinstalador incluido:
+   • Los archivos del programa se eliminan del sistema
+   • Los datos del usuario (base de datos, configuraciones) permanecen intactos
+     en la carpeta de datos de la aplicación para evitar pérdida accidental
+
+Para eliminar COMPLETAMENTE todos los datos:
+   1. Realizar backup de datos importantes
+   2. Ejecutar el desinstalador desde Panel de Control > Programas
+   3. Eliminar manualmente la carpeta: 
+      C:\Users\[Usuario]\AppData\Roaming\codecpos
+
+14. PROHIBICIÓN DE USO ILEGAL
+
+El usuario acepta NO utilizar el Software para:
+   • Actividades ilegales o fraudulentas
+   • Evasión fiscal o manipulación de registros contables
+   • Violación de derechos de terceros
+   • Comercialización de productos prohibidos por la ley colombiana
+
+Codec Studio se reserva el derecho de revocar licencias en caso de detectar
+uso indebido del Software.
+
+15. PROPIEDAD INTELECTUAL
+
+CODEC POS v2.0, su código fuente, diseño, documentación y materiales asociados
+son propiedad exclusiva de Codec Studio y están protegidos por leyes de derechos
+de autor y propiedad intelectual.
+
+Todas las marcas, logotipos y nombres comerciales son propiedad de Codec Studio
+o sus respectivos dueños.
+
+16. JURISDICCIÓN Y LEY APLICABLE
+
+Este acuerdo se regirá e interpretará de acuerdo con las leyes de la República
+de Colombia. Cualquier disputa derivada de este acuerdo será sometida a los
+tribunales competentes de Colombia.
+
+17. MODIFICACIONES AL ACUERDO
+
+Codec Studio se reserva el derecho de modificar estos términos en cualquier
+momento. Los cambios entrarán en vigencia con nuevas versiones del Software.
+Los usuarios serán notificados de cambios significativos mediante avisos en el
+sistema o en el sitio web oficial.
+
+18. CONTACTO Y SOPORTE
+
+Para soporte técnico, consultas de licenciamiento o reportar problemas:
+
+   🌐 Web:      https://codecstudio.online/
+   📧 Email:    contacto@codecstudio.com
+   📱 WhatsApp: +57 323 864 6844
+   🏢 Empresa:  Codec Studio - Colombia
+
+═══════════════════════════════════════════════════════════════════════════════
+
+AL HACER CLIC EN "ACEPTO" O AL INSTALAR EL SOFTWARE, USTED RECONOCE QUE HA
+LEÍDO ESTE ACUERDO, LO COMPRENDE Y ACEPTA ESTAR LEGALMENTE VINCULADO POR
+SUS TÉRMINOS Y CONDICIONES.
+
+SI NO ESTÁ DE ACUERDO CON ESTOS TÉRMINOS, NO INSTALE NI USE EL SOFTWARE.
+
+═══════════════════════════════════════════════════════════════════════════════
+                    Copyright © 2026 Codec Studio - Todos los derechos reservados
+═══════════════════════════════════════════════════════════════════════════════

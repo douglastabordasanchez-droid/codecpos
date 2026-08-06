@@ -1,0 +1,11 @@
+Código;Nombre;Stock;Costo;Precio;Categoría;MinStock;FechaVencimiento
+7702001001;Arroz Diana x 500g;150;2500;3500;Granos;30;2025-12-31
+7702002002;Leche Alquería x 1L;120;3800;5200;Lácteos;35;2024-04-10
+7702003003;Aceite Premier x 900ml;80;8500;12000;Aceites;20;2025-06-30
+7702004004;Azúcar Manuelita x 1kg;200;2200;3200;Granos;40;2026-01-15
+7702005005;Café Águila Roja x 250g;90;7500;12500;Bebidas;25;2025-09-20
+7702006006;Sal Refisal x 1kg;180;800;1500;Condimentos;50;2027-03-10
+7702007007;Pasta Doria x 500g;140;1800;3000;Pastas;35;2025-11-25
+7702008008;Atún Van Camps x 170g;110;4200;7000;Enlatados;30;2026-06-15
+7702009009;Jabón Rey x 3 unidades;95;6500;11000;Aseo;20;2025-12-31
+7702010010;Papel Higiénico Familia x 4 rollos;130;5800;9500;Aseo;25;2025-12-31

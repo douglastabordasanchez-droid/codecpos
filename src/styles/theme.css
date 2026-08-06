@@ -1,0 +1,598 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* ========================================
+     CODEC POS v2.0 - PALETA MODO CLARO PREMIUM
+     Diseñado para transmitir: Confianza, Seguridad, Profesionalismo
+     ======================================== */
+  
+  /* Colores Base de Marca */
+  --estimate-blue: #2563EB;           /* Azul Confianza (Primary) */
+  --estimate-blue-light: #60A5FA;     /* Azul Cielo */
+  --estimate-blue-dark: #1E40AF;      /* Azul Profundo */
+  --estimate-orange: #F97316;         /* Naranja Vibrante (CTA) */
+  --estimate-orange-light: #FB923C;   /* Naranja Claro */
+  --estimate-gold: #F59E0B;           /* Amarillo Ámbar */
+  
+  /* Nuevos colores de seguridad */
+  --codec-emerald: #10B981;           /* Verde Esmeralda (Dinero/Éxito) */
+  --codec-emerald-light: #34D399;     /* Verde Claro */
+  --codec-emerald-dark: #059669;      /* Verde Oscuro */
+  --codec-cyan: #06B6D4;              /* Cyan Brillante (Info) */
+  --codec-success: #22C55E;           /* Verde Éxito */
+  --codec-danger: #EF4444;            /* Rojo Coral */
+  --codec-warning: #F59E0B;           /* Ámbar */
+  
+  /* Sistema de Color - Modo Claro */
+  --font-size: 16px;
+  --background: #FAFBFF;              /* Blanco con tinte azul */
+  --foreground: #0F172A;              /* Azul Oscuro Casi Negro */
+  
+  --card: #FFFFFF;                    /* Blanco Puro */
+  --card-foreground: #0F172A;         /* Azul Oscuro */
+  
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  
+  --primary: #2563EB;                 /* Azul Confianza */
+  --primary-foreground: #FFFFFF;
+  
+  --secondary: #F0F7FF;               /* Azul Cielo Muy Claro */
+  --secondary-foreground: #1E40AF;    /* Azul Profundo */
+  
+  --muted: #E0F2FE;                   /* Azul Muy Claro */
+  --muted-foreground: #475569;        /* Slate 600 */
+  
+  --accent: #F97316;                  /* Naranja Vibrante */
+  --accent-foreground: #FFFFFF;
+  
+  --destructive: #EF4444;             /* Rojo Coral */
+  --destructive-foreground: #FFFFFF;
+  
+  --success: #22C55E;                 /* Verde Éxito */
+  --success-foreground: #FFFFFF;
+  
+  --warning: #F59E0B;                 /* Ámbar */
+  --warning-foreground: #FFFFFF;
+  
+  --info: #06B6D4;                    /* Cyan */
+  --info-foreground: #FFFFFF;
+  
+  --border: rgba(37, 99, 235, 0.15);  /* Borde azul sutil */
+  --input: transparent;
+  --input-background: #F8FAFC;        /* Blanco Grisáceo */
+  --switch-background: #CBD5E1;       /* Slate 300 */
+  
+  --font-weight-medium: 600;
+  --font-weight-normal: 400;
+  --ring: #2563EB;                    /* Azul Confianza */
+  
+  /* Charts - Colores vibrantes */
+  --chart-1: #2563EB;                 /* Azul */
+  --chart-2: #10B981;                 /* Verde Esmeralda */
+  --chart-3: #F97316;                 /* Naranja */
+  --chart-4: #06B6D4;                 /* Cyan */
+  --chart-5: #8B5CF6;                 /* Violeta */
+  
+  --radius: 0.5rem;
+  
+  /* Sidebar - Modo Claro Premium */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0F172A;
+  --sidebar-primary: #2563EB;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F0F7FF;
+  --sidebar-accent-foreground: #1E40AF;
+  --sidebar-border: rgba(37, 99, 235, 0.12);
+  --sidebar-ring: #2563EB;
+  
+  /* Colores para estados */
+  --color-pos-active: #10B981;        /* Verde para POS activo */
+  --color-pos-inactive: #94A3B8;      /* Slate para inactivo */
+  --color-revenue: #2563EB;           /* Azul para ingresos */
+  --color-expense: #EF4444;           /* Rojo para gastos */
+  --color-profit: #22C55E;            /* Verde para ganancias */
+
+  /* Taller Cards - Modo Claro */
+  --taller-card-bg: #ffffff;
+  --taller-card-border: #e2e8f0;
+  --taller-card-title: #0f172a;
+  --taller-card-detail: #64748b;
+  --taller-card-shadow: 0 12px 30px -20px rgba(15, 23, 42, 0.32);
+  --taller-card-accent: #3b82f6;
+}
+
+.dark {
+  /* ========================================
+     CODEC POS v2.0 - MODO OSCURO PREMIUM
+     Profundidad glassmorphism + gradiente radial
+     ======================================== */
+
+  --background: #111827;
+  --foreground: oklch(0.985 0 0);
+  --card: rgba(15, 23, 42, 0.70);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: rgba(10, 17, 32, 0.97);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: rgba(255, 255, 255, 0.07);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: rgba(10, 15, 28, 0.94);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: rgba(255, 255, 255, 0.05);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-ring: oklch(0.439 0 0);
+
+  /* Taller Cards - Modo Oscuro */
+  --taller-card-bg: rgba(15, 23, 42, 0.70);
+  --taller-card-border: rgba(255, 255, 255, 0.07);
+  --taller-card-title: #ffffff;
+  --taller-card-detail: #cbd5e1;
+  --taller-card-shadow: 0 16px 30px -18px rgba(0, 0, 0, 0.75);
+  --taller-card-accent: #22d3ee;
+}
+
+/* Utilidades de glassmorphism para modo oscuro */
+.dark .dark-glass {
+  background: rgba(15, 23, 42, 0.68);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.45), 0 2px 8px -2px rgba(0, 0, 0, 0.25);
+}
+
+.dark .dark-glass-strong {
+  background: rgba(10, 17, 32, 0.87);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.65), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Fondo modo claro */
+  html:not(.dark) body,
+  body:not(.dark) {
+    @apply bg-background;
+    color: #0b1220;
+    font-weight: 450;
+    letter-spacing: 0.005em;
+  }
+
+  html:not(.dark) body h1,
+  html:not(.dark) body h2,
+  html:not(.dark) body h3,
+  html:not(.dark) body h4,
+  body:not(.dark) h1,
+  body:not(.dark) h2,
+  body:not(.dark) h3,
+  body:not(.dark) h4 {
+    color: #0f172a;
+    letter-spacing: -0.012em;
+  }
+
+  html:not(.dark) body p,
+  html:not(.dark) body span,
+  html:not(.dark) body label,
+  html:not(.dark) body li,
+  html:not(.dark) body td,
+  html:not(.dark) body th,
+  html:not(.dark) body input,
+  html:not(.dark) body textarea,
+  html:not(.dark) body select,
+  html:not(.dark) body button,
+  body:not(.dark) p,
+  body:not(.dark) span,
+  body:not(.dark) label,
+  body:not(.dark) li,
+  body:not(.dark) td,
+  body:not(.dark) th,
+  body:not(.dark) input,
+  body:not(.dark) textarea,
+  body:not(.dark) select,
+  body:not(.dark) button {
+    color: #1e293b;
+  }
+
+  /* Fondo modo oscuro con gradiente radial premium */
+  .dark body,
+  body.dark {
+    background: radial-gradient(ellipse at top, #243447 0%, #1a2332 50%, #0f1620 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    color: #ffffff;
+    font-weight: 450;
+    letter-spacing: 0.005em;
+  }
+
+  .dark body h1,
+  .dark body h2,
+  .dark body h3,
+  .dark body h4,
+  .dark body h5,
+  .dark body h6,
+  body.dark h1,
+  body.dark h2,
+  body.dark h3,
+  body.dark h4,
+  body.dark h5,
+  body.dark h6 {
+    color: #ffffff;
+    letter-spacing: -0.01em;
+  }
+
+  .dark body p,
+  .dark body span,
+  .dark body label,
+  .dark body li,
+  .dark body td,
+  .dark body th,
+  .dark body input,
+  .dark body textarea,
+  .dark body select,
+  .dark body button,
+  body.dark p,
+  body.dark span,
+  body.dark label,
+  body.dark li,
+  body.dark td,
+  body.dark th,
+  body.dark input,
+  body.dark textarea,
+  body.dark select,
+  body.dark button {
+    color: #e5e7eb;
+  }
+
+  /**
+  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
+  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
+  */
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  label {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
+  }
+
+  /* Custom Scrollbars - Estilo Premium para CODEC POS */
+  
+  /* Scrollbar principal para toda la aplicación - siempre a la derecha */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(16, 185, 129, 0.5) rgba(30, 41, 59, 0.2);
+  }
+
+  *::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgba(30, 41, 59, 0.15);
+    border-radius: 10px;
+    margin: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.6), rgba(5, 150, 105, 0.8));
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.9), rgba(5, 150, 105, 1));
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  
+  /* Scrollbar General - Modo Claro */
+  :root .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(37, 99, 235, 0.4) rgba(226, 232, 240, 0.5);
+  }
+
+  :root .scrollbar-thin::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  :root .scrollbar-thin::-webkit-scrollbar-track {
+    background: rgba(226, 232, 240, 0.3);
+    border-radius: 10px;
+  }
+
+  :root .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(37, 99, 235, 0.5), rgba(30, 64, 175, 0.7));
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+  }
+
+  :root .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(37, 99, 235, 0.8), rgba(30, 64, 175, 1));
+  }
+  
+  /* Scrollbar Modo Oscuro */
+  .dark .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.5) rgba(30, 41, 59, 0.3);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-track {
+    background: rgba(30, 41, 59, 0.3);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.6), rgba(139, 92, 246, 0.8));
+    border: 2px solid rgba(30, 41, 59, 0.3);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.8), rgba(139, 92, 246, 1));
+  }
+
+  /* Scrollbar para Dashboard (Verde Esmeralda) - Modo Claro */
+  :root .scrollbar-thumb-emerald-500::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.5), rgba(5, 150, 105, 0.7));
+    border: 2px solid rgba(255, 255, 255, 0.5);
+  }
+
+  :root .scrollbar-thumb-emerald-500::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 1));
+  }
+  
+  /* Scrollbar Dashboard - Modo Oscuro */
+  .dark .scrollbar-thumb-emerald-500::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.6), rgba(5, 150, 105, 0.8));
+  }
+
+  .dark .scrollbar-thumb-emerald-500::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 1));
+  }
+
+  /* Scrollbar para Ventas (Azul) - Modo Claro */
+  :root .scrollbar-thumb-purple-500::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(37, 99, 235, 0.5), rgba(30, 64, 175, 0.7));
+    border: 2px solid rgba(255, 255, 255, 0.5);
+  }
+
+  :root .scrollbar-thumb-purple-500::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(37, 99, 235, 0.8), rgba(30, 64, 175, 1));
+  }
+  
+  /* Scrollbar Ventas - Modo Oscuro */
+  .dark .scrollbar-thumb-purple-500::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.6), rgba(139, 92, 246, 0.8));
+  }
+
+  .dark .scrollbar-thumb-purple-500::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.8), rgba(139, 92, 246, 1));
+  }
+
+  /* Scrollbar para Devoluciones (Naranja) - Modo Claro */
+  :root .scrollbar-thumb-orange-500::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(249, 115, 22, 0.5), rgba(234, 88, 12, 0.7));
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+  }
+
+  :root .scrollbar-thumb-orange-500::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(249, 115, 22, 0.8), rgba(234, 88, 12, 1));
+  }
+  
+  /* Scrollbar Devoluciones - Modo Oscuro */
+  .dark .scrollbar-thumb-orange-500::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(249, 115, 22, 0.6), rgba(234, 88, 12, 0.8));
+    border-radius: 10px;
+    border: 2px solid rgba(30, 41, 59, 0.3);
+  }
+
+  .dark .scrollbar-thumb-orange-500::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(249, 115, 22, 0.8), rgba(234, 88, 12, 1));
+  }
+
+  .dark .scrollbar-track-slate-800::-webkit-scrollbar-track {
+    background: rgba(30, 41, 59, 0.3);
+    border-radius: 10px;
+  }
+
+  /* ========================================
+     ESTILOS PARA SLIDER DE MARGEN DE GANANCIA
+     ======================================== */
+  
+  /* Estilos base del slider */
+  input[type="range"].slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 12px;
+    border-radius: 8px;
+    outline: none;
+    transition: all 0.3s ease;
+  }
+
+  /* Thumb (bolita) del slider - Modo Claro */
+  input[type="range"].slider-thumb::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+    border: 3px solid #ffffff;
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"].slider-thumb::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.6);
+  }
+
+  input[type="range"].slider-thumb::-webkit-slider-thumb:active {
+    transform: scale(1.1);
+    box-shadow: 0 2px 6px rgba(245, 158, 11, 0.8);
+  }
+
+  /* Thumb para Firefox - Modo Claro */
+  input[type="range"].slider-thumb::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+    border: 3px solid #ffffff;
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"].slider-thumb::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.6);
+  }
+
+  /* Thumb del slider - Modo Oscuro */
+  .dark input[type="range"].slider-thumb::-webkit-slider-thumb {
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+    box-shadow: 0 2px 8px rgba(251, 191, 36, 0.5);
+    border: 3px solid #1e293b;
+  }
+
+  .dark input[type="range"].slider-thumb::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.7);
+  }
+
+  .dark input[type="range"].slider-thumb::-moz-range-thumb {
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+    box-shadow: 0 2px 8px rgba(251, 191, 36, 0.5);
+    border: 3px solid #1e293b;
+  }
+
+  .dark input[type="range"].slider-thumb::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.7);
+  }
+}

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CODEC POS - Cargando...</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-app-region: drag;
+    }
+
+    .splash-container {
+      text-align: center;
+      padding: 40px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      animation: fadeIn 0.5s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .logo {
+      width: 120px;
+      height: 120px;
+      margin: 0 auto 24px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border-radius: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 20px 40px -12px rgba(16, 185, 129, 0.5);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.05);
+      }
+    }
+
+    .logo-icon {
+      font-size: 64px;
+      color: white;
+    }
+
+    h1 {
+      color: white;
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-bottom: 32px;
+      font-weight: 500;
+    }
+
+    .loader {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .loader-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #059669, #10b981);
+      background-size: 200% 100%;
+      border-radius: 4px;
+      animation: loading 2s ease-in-out infinite;
+    }
+
+    @keyframes loading {
+      0% {
+        width: 0%;
+        background-position: 0% 50%;
+      }
+      50% {
+        width: 100%;
+        background-position: 100% 50%;
+      }
+      100% {
+        width: 100%;
+        background-position: 200% 50%;
+      }
+    }
+
+    .status {
+      margin-top: 16px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .version {
+      margin-top: 24px;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Partículas de fondo */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .particle {
+      position: absolute;
+      background: rgba(16, 185, 129, 0.3);
+      border-radius: 50%;
+      animation: float 10s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(0) translateX(0);
+      }
+      50% {
+        transform: translateY(-100px) translateX(50px);
+      }
+    }
+
+    .particle:nth-child(1) { width: 80px; height: 80px; top: 10%; left: 10%; animation-delay: 0s; }
+    .particle:nth-child(2) { width: 60px; height: 60px; top: 60%; left: 80%; animation-delay: 2s; }
+    .particle:nth-child(3) { width: 40px; height: 40px; top: 80%; left: 20%; animation-delay: 4s; }
+  </style>
+</head>
+<body>
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <div class="splash-container">
+    <div class="logo">
+      <div class="logo-icon">🏪</div>
+    </div>
+    
+    <h1>CODEC POS</h1>
+    <p class="subtitle">Sistema de Punto de Venta Profesional</p>
+    
+    <div class="loader">
+      <div class="loader-bar"></div>
+    </div>
+    
+    <p class="status">Iniciando sistema...</p>
+    <p class="version">v2.0.0 • Codec Studio</p>
+  </div>
+
+  <script>
+    // Simular progreso de carga
+    const statuses = [
+      'Inicializando sistema...',
+      'Cargando componentes...',
+      'Conectando hardware...',
+      'Preparando interfaz...',
+      '¡Listo!'
+    ];
+
+    let currentStatus = 0;
+    const statusElement = document.querySelector('.status');
+
+    setInterval(() => {
+      if (currentStatus < statuses.length - 1) {
+        currentStatus++;
+        statusElement.textContent = statuses[currentStatus];
+      }
+    }, 600);
+  </script>
+</body>
+</html>

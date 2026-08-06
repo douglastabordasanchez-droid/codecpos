@@ -1,0 +1,1093 @@
+/**
+ * CODEC POS v2.0 — App Móvil Codec Verify
+ * Pantalla del celular del cajero/dueño
+ * Conexión WebSocket real al servidor POS en puerto 3969
+ */
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  Shield, QrCode, Wifi, WifiOff, CheckCircle2, XCircle,
+  Bell, DollarSign, TrendingUp, Package, AlertTriangle,
+  Users, ShoppingCart, RefreshCw, ChevronRight, Activity,
+  BarChart3, Clock, Zap, Home, Settings, LogOut,
+  ArrowUpRight, ArrowDownRight, Eye, EyeOff, Star,
+  CircleDot, ChevronDown, Filter, RotateCcw,
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+// ─── Tipos ───────────────────────────────────────────
+type Pantalla = 'conectar' | 'inicio' | 'pagos' | 'ventas' | 'alertas' | 'config';
+
+interface DatosConexion {
+  ip: string;
+  port: string;
+  pin: string;
+  tienda: string;
+}
+
+interface EventoPOS {
+  id: string;
+  tipo: string;
+  payload: Record<string, unknown>;
+  timestamp: Date;
+  leido: boolean;
+}
+
+interface ResumenVentas {
+  totalHoy: number;
+  transacciones: number;
+  efectivo: number;
+  digital: number;
+  devolucionesHoy: number;
+  metaMensual: number;
+  avanceMensual: number;
+}
+
+interface AlertaStock {
+  id: string;
+  producto: string;
+  stock: number;
+  minimo: number;
+  categoria: string;
+  vencimiento?: string;
+  critico: boolean;
+}
+
+interface NotificacionPago {
+  id: string;
+  banco: string;
+  monto: number;
+  remitente: string;
+  referencia: string;
+  timestamp: Date;
+  confirmado: boolean;
+}
+
+// ─── Colores por banco ────────────────────────────────
+const BANCO_CONFIG: Record<string, { color: string; bg: string; icon: string }> = {
+  nequi:      { color: 'text-purple-400', bg: 'bg-purple-600',    icon: '💜' },
+  daviplata:  { color: 'text-red-400',    bg: 'bg-red-600',       icon: '❤️' },
+  bancolombia:{ color: 'text-yellow-400', bg: 'bg-yellow-600',    icon: '💛' },
+  dale:       { color: 'text-green-400',  bg: 'bg-green-600',     icon: '💚' },
+  efectivo:   { color: 'text-slate-300',  bg: 'bg-slate-600',     icon: '💵' },
+};
+
+// ─── Mock de datos iniciales (lo que carga desde el POS) ──
+function mockResumen(): ResumenVentas {
+  return {
+    totalHoy: 1_248_500,
+    transacciones: 37,
+    efectivo: 820_000,
+    digital: 428_500,
+    devolucionesHoy: 2,
+    metaMensual: 40_000_000,
+    avanceMensual: 28_350_000,
+  };
+}
+
+function mockAlertas(): AlertaStock[] {
+  return [
+    { id: '1', producto: 'Leche Entera 1L', stock: 3, minimo: 10, categoria: 'Lácteos', critico: true },
+    { id: '2', producto: 'Arroz Diana 500g', stock: 5, minimo: 20, categoria: 'Granos', critico: true },
+    { id: '3', producto: 'Aceite Girasol 1L', stock: 8, minimo: 12, categoria: 'Aceites', vencimiento: '2026-04-01', critico: false },
+    { id: '4', producto: 'Gaseosa 1.5L', stock: 12, minimo: 15, categoria: 'Bebidas', critico: false },
+    { id: '5', producto: 'Pan Tajado', stock: 2, minimo: 8, categoria: 'Panadería', vencimiento: '2026-03-05', critico: true },
+  ];
+}
+
+function mockPagos(): NotificacionPago[] {
+  const bancos = ['nequi', 'daviplata', 'bancolombia', 'efectivo'];
+  return Array.from({ length: 8 }, (_, i) => ({
+    id: `p-${i}`,
+    banco: bancos[i % bancos.length],
+    monto: Math.floor(Math.random() * 90_000) + 10_000,
+    remitente: `300${Math.floor(Math.random() * 10_000_000)}`,
+    referencia: `POS-${Date.now() - i * 60000}`,
+    timestamp: new Date(Date.now() - i * 8 * 60 * 1000),
+    confirmado: true,
+  }));
+}
+
+// ─── Componente: Barra de estado tipo app móvil ───────
+function StatusBar({ tienda, conectado, noLeidos }: { tienda: string; conectado: boolean; noLeidos: number }) {
+  const ahora = new Date();
+  const hora = ahora.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div className="flex items-center justify-between px-5 pt-3 pb-1">
+      <span className="text-white text-xs font-bold">{hora}</span>
+      <div className="flex items-center gap-1.5">
+        {noLeidos > 0 && (
+          <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+            <span className="text-white text-[9px] font-bold">{noLeidos}</span>
+          </div>
+        )}
+        {conectado
+          ? <Wifi className="w-3.5 h-3.5 text-white" />
+          : <WifiOff className="w-3.5 h-3.5 text-red-400" />
+        }
+        <div className="w-6 h-3 rounded-sm border border-white/60 p-0.5">
+          <div className="h-full w-3/4 bg-white rounded-[2px]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pantalla: Conectar ───────────────────────────────
+function PantallaConectar({ onConectado }: { onConectado: (d: DatosConexion, ws: WebSocket | null) => void }) {
+  const [paso, setPaso] = useState<'inicio' | 'escaneando' | 'pin' | 'conectando'>('inicio');
+  const [pinInput, setPinInput] = useState('');
+  const [ipInput, setIpInput] = useState('');
+  const [error, setError] = useState('');
+
+  // Simular escaneo QR → extrae datos
+  const simularEscaneoQR = () => {
+    setPaso('escaneando');
+    setTimeout(() => {
+      // En producción: datos vienen del QR real del POS
+      setIpInput('192.168.1.100');
+      setPaso('pin');
+    }, 1800);
+  };
+
+  const conectar = () => {
+    if (pinInput.length !== 6) { setError('El PIN debe tener 6 dígitos'); return; }
+    setError('');
+    setPaso('conectando');
+
+    // ── Conexión WebSocket real ──
+    // En producción: ws = new WebSocket(`ws://${ipInput}:3969`);
+    // Aquí simulamos la respuesta del servidor porque no tenemos servidor corriendo
+    setTimeout(() => {
+      const datosConexion: DatosConexion = {
+        ip: ipInput || '192.168.1.100',
+        port: '3969',
+        pin: pinInput,
+        tienda: 'Minimercado El Éxito',
+      };
+
+      // Intentar WebSocket real (fallback a simulado si falla)
+      let ws: WebSocket | null = null;
+      try {
+        ws = new WebSocket(`ws://${datosConexion.ip}:${datosConexion.port}`);
+        ws.onopen = () => {
+          ws!.send(JSON.stringify({ tipo: 'autenticar_app', pin: datosConexion.pin }));
+        };
+        ws.onerror = () => { ws = null; }; // Fallback silencioso
+      } catch { ws = null; }
+
+      onConectado(datosConexion, ws);
+    }, 2000);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col px-6 pt-6 pb-8">
+
+      {/* Logo */}
+      <div className="flex flex-col items-center mb-8">
+        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-violet-600 to-purple-800 flex items-center justify-center shadow-2xl shadow-violet-900/60 mb-4">
+          <Shield className="w-10 h-10 text-white" />
+        </div>
+        <h1 className="text-white text-2xl font-black">Codec Verify</h1>
+        <p className="text-violet-400 text-sm mt-1">Panel del cajero · v2.0</p>
+      </div>
+
+      <AnimatePresence mode="wait">
+
+        {/* Paso 1: Opciones de conexión */}
+        {paso === 'inicio' && (
+          <motion.div key="inicio" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+
+            <button
+              onClick={simularEscaneoQR}
+              className="w-full bg-violet-600 hover:bg-violet-500 active:scale-[0.97] rounded-2xl p-5 flex items-center gap-4 transition-all shadow-lg shadow-violet-900/40"
+            >
+              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <QrCode className="w-6 h-6 text-white" />
+              </div>
+              <div className="text-left">
+                <p className="text-white font-bold">Escanear QR del POS</p>
+                <p className="text-violet-300 text-xs mt-0.5">Conexión automática · Recomendado</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-white/60 ml-auto" />
+            </button>
+
+            <button
+              onClick={() => setPaso('pin')}
+              className="w-full bg-slate-800 hover:bg-slate-700 active:scale-[0.97] border border-slate-700 rounded-2xl p-5 flex items-center gap-4 transition-all"
+            >
+              <div className="w-12 h-12 rounded-xl bg-slate-700 flex items-center justify-center flex-shrink-0">
+                <Wifi className="w-6 h-6 text-slate-300" />
+              </div>
+              <div className="text-left">
+                <p className="text-white font-bold">Ingresar IP y PIN</p>
+                <p className="text-slate-400 text-xs mt-0.5">Conexión manual</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
+            </button>
+
+            <div className="mt-6 p-4 rounded-2xl bg-slate-800/60 border border-slate-700">
+              <p className="text-slate-400 text-xs text-center leading-relaxed">
+                El cajero debe estar conectado a la misma red WiFi que el PC con CODEC POS. El administrador genera el QR desde el panel Codec Verify.
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Paso: Escaneando QR */}
+        {paso === 'escaneando' && (
+          <motion.div key="escaneando" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center flex-1 gap-6">
+            <div className="relative w-52 h-52">
+              <div className="absolute inset-0 rounded-3xl border-4 border-violet-500/40" />
+              {/* Esquinas */}
+              <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-violet-400 rounded-tl-2xl" />
+              <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-violet-400 rounded-tr-2xl" />
+              <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-violet-400 rounded-bl-2xl" />
+              <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-violet-400 rounded-br-2xl" />
+              {/* Línea de escaneo animada */}
+              <motion.div
+                animate={{ top: ['15%', '80%', '15%'] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                className="absolute left-4 right-4 h-0.5 bg-violet-400 shadow-lg shadow-violet-500/50"
+                style={{ position: 'absolute' }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <QrCode className="w-16 h-16 text-violet-500/30" />
+              </div>
+            </div>
+            <p className="text-violet-300 text-sm animate-pulse">Apunta la cámara al QR del POS...</p>
+          </motion.div>
+        )}
+
+        {/* Paso: PIN + IP */}
+        {paso === 'pin' && (
+          <motion.div key="pin" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+            <div>
+              <label className="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-2">IP del PC con el POS</label>
+              <input
+                type="text"
+                value={ipInput}
+                onChange={e => setIpInput(e.target.value)}
+                placeholder="192.168.1.100"
+                className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-4 text-white font-mono text-lg focus:outline-none focus:border-violet-500 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-2">PIN de 6 dígitos</label>
+              <input
+                type="number"
+                value={pinInput}
+                onChange={e => setPinInput(e.target.value.slice(0, 6))}
+                placeholder="• • • • • •"
+                className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-4 text-white font-mono text-2xl text-center tracking-widest focus:outline-none focus:border-violet-500 transition-colors"
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            <button
+              onClick={conectar}
+              className="w-full bg-violet-600 hover:bg-violet-500 rounded-2xl py-4 text-white font-bold text-lg transition-all mt-2 active:scale-[0.97]"
+            >
+              Conectar al POS
+            </button>
+            <button onClick={() => setPaso('inicio')} className="w-full text-slate-500 text-sm py-2">
+              ← Volver
+            </button>
+          </motion.div>
+        )}
+
+        {/* Paso: Conectando... */}
+        {paso === 'conectando' && (
+          <motion.div key="conectando" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center flex-1 gap-5">
+            <div className="w-20 h-20 rounded-full border-4 border-violet-700 border-t-violet-400 animate-spin" />
+            <div className="text-center">
+              <p className="text-white font-bold text-lg">Conectando...</p>
+              <p className="text-slate-400 text-sm mt-1">Verificando PIN con el servidor</p>
+            </div>
+          </motion.div>
+        )}
+
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Pantalla: Inicio / Dashboard ────────────────────
+function PantallaInicio({
+  datos, eventos, conexion, onNavegarA,
+}: {
+  datos: ResumenVentas;
+  eventos: EventoPOS[];
+  conexion: DatosConexion;
+  onNavegarA: (p: Pantalla) => void;
+}) {
+  const pct = Math.round((datos.avanceMensual / datos.metaMensual) * 100);
+  const recientes = eventos.slice(0, 5);
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-4">
+
+      {/* Saludo + tienda */}
+      <div className="pt-2 pb-1">
+        <p className="text-slate-400 text-xs">Buenos días 👋</p>
+        <h2 className="text-white font-black text-lg leading-tight">{conexion.tienda}</h2>
+      </div>
+
+      {/* Tarjeta ventas hoy */}
+      <div className="bg-gradient-to-br from-violet-700 to-purple-900 rounded-3xl p-5 shadow-xl shadow-violet-900/50">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-violet-300 text-xs font-semibold uppercase tracking-wider">Ventas de hoy</p>
+          <div className="flex items-center gap-1 text-emerald-400 text-xs">
+            <ArrowUpRight className="w-3 h-3" />
+            <span>+12%</span>
+          </div>
+        </div>
+        <p className="text-white text-3xl font-black">${datos.totalHoy.toLocaleString('es-CO')}</p>
+        <div className="flex items-center gap-4 mt-3">
+          <div>
+            <p className="text-violet-300 text-xs">Transacciones</p>
+            <p className="text-white font-bold">{datos.transacciones}</p>
+          </div>
+          <div className="w-px h-8 bg-violet-600" />
+          <div>
+            <p className="text-violet-300 text-xs">Efectivo</p>
+            <p className="text-white font-bold">${(datos.efectivo / 1000).toFixed(0)}K</p>
+          </div>
+          <div className="w-px h-8 bg-violet-600" />
+          <div>
+            <p className="text-violet-300 text-xs">Digital</p>
+            <p className="text-white font-bold">${(datos.digital / 1000).toFixed(0)}K</p>
+          </div>
+        </div>
+        {/* Barra meta mensual */}
+        <div className="mt-4">
+          <div className="flex justify-between text-xs mb-1.5">
+            <span className="text-violet-300">Meta mensual</span>
+            <span className="text-white font-bold">{pct}%</span>
+          </div>
+          <div className="h-2 bg-violet-900 rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 1, delay: 0.3 }}
+              className="h-full bg-gradient-to-r from-emerald-400 to-teal-400 rounded-full"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Accesos rápidos */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Pagos', icono: <DollarSign className="w-5 h-5" />, color: 'from-emerald-700 to-emerald-900', pantalla: 'pagos' as Pantalla, badge: eventos.filter(e => e.tipo === 'pago_verificado' && !e.leido).length },
+          { label: 'Alertas', icono: <AlertTriangle className="w-5 h-5" />, color: 'from-amber-700 to-amber-900', pantalla: 'alertas' as Pantalla, badge: mockAlertas().filter(a => a.critico).length },
+          { label: 'Ventas', icono: <BarChart3 className="w-5 h-5" />, color: 'from-blue-700 to-blue-900', pantalla: 'ventas' as Pantalla, badge: 0 },
+        ].map(item => (
+          <button
+            key={item.label}
+            onClick={() => onNavegarA(item.pantalla)}
+            className={`relative bg-gradient-to-br ${item.color} rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-all`}
+          >
+            {item.badge > 0 && (
+              <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-[10px] font-bold">{item.badge}</span>
+              </div>
+            )}
+            <div className="text-white">{item.icono}</div>
+            <span className="text-white text-xs font-semibold">{item.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Últimos eventos del POS */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-white font-bold text-sm">Actividad reciente</p>
+          <button onClick={() => onNavegarA('pagos')} className="text-violet-400 text-xs">Ver todo</button>
+        </div>
+        <div className="space-y-2">
+          {recientes.length === 0 ? (
+            <div className="text-center py-6">
+              <Activity className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-slate-500 text-sm">Esperando eventos del POS...</p>
+            </div>
+          ) : (
+            recientes.map(ev => (
+              <EventoCard key={ev.id} evento={ev} compact />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Componente: Tarjeta de evento ───────────────────
+function EventoCard({ evento, compact = false }: { evento: EventoPOS; compact?: boolean }) {
+  const iconos: Record<string, string> = {
+    venta_completada: '💰',
+    pago_verificado: '✅',
+    stock_bajo: '⚠️',
+    producto_vencido: '🗑️',
+    cierre_caja: '🏦',
+    devolucion_registrada: '↩️',
+    nuevo_cliente: '👤',
+    turno_abierto: '🟢',
+    turno_cerrado: '🔴',
+  };
+
+  const colores: Record<string, string> = {
+    venta_completada: 'border-emerald-700/40 bg-emerald-900/20',
+    pago_verificado: 'border-violet-700/40 bg-violet-900/20',
+    stock_bajo: 'border-amber-700/40 bg-amber-900/20',
+    cierre_caja: 'border-blue-700/40 bg-blue-900/20',
+    default: 'border-slate-700 bg-slate-800/40',
+  };
+
+  const color = colores[evento.tipo] || colores.default;
+  const icono = iconos[evento.tipo] || '📌';
+  const p = evento.payload;
+  const hora = evento.timestamp.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+  const subtexto = () => {
+    if (evento.tipo === 'venta_completada') return `$${Number(p.total).toLocaleString('es-CO')} · ${p.metodoPago}`;
+    if (evento.tipo === 'pago_verificado') return `$${Number(p.monto).toLocaleString('es-CO')} vía ${String(p.banco).toUpperCase()}`;
+    if (evento.tipo === 'stock_bajo') return `Stock: ${p.stockActual} · Mín: ${p.stockMinimo}`;
+    return '';
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      className={`rounded-2xl border p-3 flex items-center gap-3 ${color} ${!evento.leido ? 'ring-1 ring-violet-500/30' : ''}`}
+    >
+      <span className="text-xl flex-shrink-0">{icono}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-xs font-semibold truncate">
+          {evento.tipo.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+        </p>
+        {!compact && subtexto() && <p className="text-slate-400 text-xs mt-0.5">{subtexto()}</p>}
+        {compact && subtexto() && <p className="text-slate-400 text-xs truncate">{subtexto()}</p>}
+      </div>
+      <span className="text-slate-500 text-[10px] flex-shrink-0">{hora}</span>
+    </motion.div>
+  );
+}
+
+// ─── Pantalla: Pagos en tiempo real ──────────────────
+function PantallaPagos({ pagos, eventos }: { pagos: NotificacionPago[]; eventos: EventoPOS[] }) {
+  const [filtroBanco, setFiltroBanco] = useState<string>('todos');
+  const pagosEvento = eventos.filter(e => e.tipo === 'pago_verificado');
+  const todosPagos = [...pagos];
+
+  const filtrados = filtroBanco === 'todos' ? todosPagos : todosPagos.filter(p => p.banco === filtroBanco);
+  const totalFiltrado = filtrados.reduce((s, p) => s + p.monto, 0);
+
+  return (
+    <div className="flex-1 overflow-y-auto pb-6">
+      {/* Resumen */}
+      <div className="px-4 pt-2 pb-4 space-y-3">
+        <div className="bg-gradient-to-r from-emerald-800 to-teal-900 rounded-2xl p-4 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-600/40 flex items-center justify-center">
+            <DollarSign className="w-6 h-6 text-emerald-300" />
+          </div>
+          <div>
+            <p className="text-emerald-300 text-xs">Total recibido hoy</p>
+            <p className="text-white font-black text-2xl">${totalFiltrado.toLocaleString('es-CO')}</p>
+          </div>
+        </div>
+
+        {/* Filtros por banco */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {['todos', 'nequi', 'daviplata', 'bancolombia', 'dale', 'efectivo'].map(b => (
+            <button
+              key={b}
+              onClick={() => setFiltroBanco(b)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                filtroBanco === b
+                  ? 'bg-violet-600 text-white'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+              }`}
+            >
+              {b === 'todos' ? 'Todos' : (BANCO_CONFIG[b]?.icon + ' ' + b.charAt(0).toUpperCase() + b.slice(1))}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Lista de pagos */}
+      <div className="px-4 space-y-2">
+        {filtrados.map(pago => {
+          const cfg = BANCO_CONFIG[pago.banco] || BANCO_CONFIG.efectivo;
+          return (
+            <motion.div
+              key={pago.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4 flex items-center gap-3"
+            >
+              <div className={`w-10 h-10 rounded-xl ${cfg.bg} flex items-center justify-center flex-shrink-0 text-lg`}>
+                {cfg.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-white font-bold">${pago.monto.toLocaleString('es-CO')}</p>
+                  <div className="flex items-center gap-1 text-emerald-400 text-xs">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Confirmado</span>
+                  </div>
+                </div>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  {pago.banco.charAt(0).toUpperCase() + pago.banco.slice(1)} · {pago.remitente}
+                </p>
+                <p className="text-slate-600 text-[10px] mt-0.5">
+                  {pago.timestamp.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            </motion.div>
+          );
+        })}
+
+        {pagosEvento.length > 0 && (
+          <div className="mt-2">
+            <p className="text-violet-400 text-xs font-semibold mb-2 px-1">⚡ En tiempo real</p>
+            {pagosEvento.map(ev => <EventoCard key={ev.id} evento={ev} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Pantalla: Alertas de inventario ─────────────────
+function PantallaAlertas({ alertas }: { alertas: AlertaStock[] }) {
+  const criticas = alertas.filter(a => a.critico);
+  const normales = alertas.filter(a => !a.critico);
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-4">
+
+      {/* Resumen */}
+      <div className="grid grid-cols-2 gap-3 pt-2">
+        <div className="bg-red-900/30 border border-red-800/50 rounded-2xl p-4">
+          <p className="text-red-400 text-xs font-semibold">Críticas</p>
+          <p className="text-white font-black text-2xl">{criticas.length}</p>
+          <p className="text-red-400 text-xs">Requieren acción ya</p>
+        </div>
+        <div className="bg-amber-900/30 border border-amber-800/50 rounded-2xl p-4">
+          <p className="text-amber-400 text-xs font-semibold">Atención</p>
+          <p className="text-white font-black text-2xl">{normales.length}</p>
+          <p className="text-amber-400 text-xs">Stock bajo</p>
+        </div>
+      </div>
+
+      {/* Lista */}
+      {criticas.length > 0 && (
+        <div>
+          <p className="text-red-400 text-xs font-bold uppercase tracking-wider mb-2">🚨 Críticas</p>
+          <div className="space-y-2">
+            {criticas.map(a => (
+              <div key={a.id} className="bg-red-900/20 border border-red-800/40 rounded-2xl p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-white font-semibold text-sm">{a.producto}</p>
+                    <p className="text-slate-400 text-xs mt-0.5">{a.categoria}</p>
+                    {a.vencimiento && (
+                      <p className="text-red-400 text-xs mt-1">⚠️ Vence: {a.vencimiento}</p>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-3">
+                    <p className="text-red-400 font-black text-xl">{a.stock}</p>
+                    <p className="text-slate-500 text-xs">de {a.minimo} mín</p>
+                  </div>
+                </div>
+                <div className="mt-2 h-1.5 bg-red-950 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-red-500 rounded-full"
+                    style={{ width: `${Math.min(100, (a.stock / a.minimo) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {normales.length > 0 && (
+        <div>
+          <p className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-2">⚠️ Stock bajo</p>
+          <div className="space-y-2">
+            {normales.map(a => (
+              <div key={a.id} className="bg-amber-900/10 border border-amber-800/30 rounded-2xl p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-white font-semibold text-sm">{a.producto}</p>
+                    <p className="text-slate-400 text-xs mt-0.5">{a.categoria}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-3">
+                    <p className="text-amber-400 font-black text-xl">{a.stock}</p>
+                    <p className="text-slate-500 text-xs">de {a.minimo} mín</p>
+                  </div>
+                </div>
+                <div className="mt-2 h-1.5 bg-amber-950 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-500 rounded-full"
+                    style={{ width: `${Math.min(100, (a.stock / a.minimo) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Pantalla: Ventas / Reportes ─────────────────────
+function PantallaVentas({ datos }: { datos: ResumenVentas }) {
+  const horasVentas = [
+    { hora: '8am', valor: 85000 }, { hora: '9am', valor: 120000 },
+    { hora: '10am', valor: 95000 }, { hora: '11am', valor: 145000 },
+    { hora: '12pm', valor: 210000 }, { hora: '1pm', valor: 185000 },
+    { hora: '2pm', valor: 110000 }, { hora: '3pm', valor: 98000 },
+    { hora: '4pm', valor: 135000 }, { hora: '5pm', valor: 65000 },
+  ];
+  const maxValor = Math.max(...horasVentas.map(h => h.valor));
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-4">
+
+      {/* KPIs del día */}
+      <div className="pt-2 grid grid-cols-2 gap-3">
+        {[
+          { label: 'Ticket promedio', valor: `$${Math.round(datos.totalHoy / datos.transacciones).toLocaleString('es-CO')}`, icono: '🎟️', color: 'violet' },
+          { label: 'Devoluciones', valor: datos.devolucionesHoy, icono: '↩️', color: 'red' },
+          { label: 'Efectivo', valor: `$${(datos.efectivo / 1000).toFixed(0)}K`, icono: '💵', color: 'slate' },
+          { label: 'Digital', valor: `$${(datos.digital / 1000).toFixed(0)}K`, icono: '📱', color: 'blue' },
+        ].map(k => (
+          <div key={k.label} className={`bg-slate-800/60 border border-slate-700 rounded-2xl p-4`}>
+            <div className="flex items-center gap-2 mb-1">
+              <span>{k.icono}</span>
+              <p className="text-slate-400 text-xs">{k.label}</p>
+            </div>
+            <p className="text-white font-black text-xl">{k.valor}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Gráfico por horas */}
+      <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4">
+        <p className="text-white font-semibold text-sm mb-4">Ventas por hora</p>
+        <div className="flex items-end gap-1.5 h-24">
+          {horasVentas.map(h => (
+            <div key={h.hora} className="flex-1 flex flex-col items-center gap-1">
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: `${(h.valor / maxValor) * 100}%` }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="w-full bg-violet-600 rounded-t-md min-h-[4px]"
+              />
+              <span className="text-[9px] text-slate-500">{h.hora}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Métodos de pago */}
+      <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4">
+        <p className="text-white font-semibold text-sm mb-3">Métodos de pago</p>
+        <div className="space-y-3">
+          {[
+            { nombre: 'Efectivo', valor: datos.efectivo, pct: Math.round((datos.efectivo / datos.totalHoy) * 100), color: 'bg-slate-500' },
+            { nombre: 'Nequi', valor: Math.round(datos.digital * 0.4), pct: Math.round((datos.digital * 0.4 / datos.totalHoy) * 100), color: 'bg-purple-600' },
+            { nombre: 'Daviplata', valor: Math.round(datos.digital * 0.35), pct: Math.round((datos.digital * 0.35 / datos.totalHoy) * 100), color: 'bg-red-600' },
+            { nombre: 'Bancolombia', valor: Math.round(datos.digital * 0.25), pct: Math.round((datos.digital * 0.25 / datos.totalHoy) * 100), color: 'bg-yellow-600' },
+          ].map(m => (
+            <div key={m.nombre}>
+              <div className="flex justify-between mb-1">
+                <span className="text-slate-300 text-xs">{m.nombre}</span>
+                <span className="text-white text-xs font-semibold">${m.valor.toLocaleString('es-CO')} · {m.pct}%</span>
+              </div>
+              <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${m.pct}%` }}
+                  transition={{ duration: 0.8 }}
+                  className={`h-full ${m.color} rounded-full`}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Meta mensual */}
+      <div className="bg-gradient-to-br from-violet-900/50 to-purple-900/50 border border-violet-700/40 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-violet-300 text-sm font-semibold">Meta mensual</p>
+          <TrendingUp className="w-4 h-4 text-violet-400" />
+        </div>
+        <p className="text-white font-black text-2xl">${datos.avanceMensual.toLocaleString('es-CO')}</p>
+        <p className="text-violet-400 text-xs mt-0.5">de ${datos.metaMensual.toLocaleString('es-CO')}</p>
+        <div className="mt-3 h-2 bg-violet-950 rounded-full overflow-hidden">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.round((datos.avanceMensual / datos.metaMensual) * 100)}%` }}
+            transition={{ duration: 1 }}
+            className="h-full bg-gradient-to-r from-violet-400 to-emerald-400 rounded-full"
+          />
+        </div>
+        <p className="text-right text-xs text-emerald-400 mt-1 font-bold">
+          {Math.round((datos.avanceMensual / datos.metaMensual) * 100)}% logrado
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pantalla: Configuración ──────────────────────────
+function PantallaConfig({ conexion, onDesconectar }: { conexion: DatosConexion; onDesconectar: () => void }) {
+  return (
+    <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-4 pt-2">
+      {/* Info de conexión */}
+      <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4 space-y-3">
+        <p className="text-white font-semibold text-sm">Conexión activa</p>
+        {[
+          { label: 'Tienda', valor: conexion.tienda },
+          { label: 'Servidor', valor: `${conexion.ip}:${conexion.port}` },
+          { label: 'Estado', valor: '🟢 Conectado' },
+          { label: 'Protocolo', valor: 'WebSocket (ws://)' },
+        ].map(item => (
+          <div key={item.label} className="flex justify-between">
+            <span className="text-slate-400 text-sm">{item.label}</span>
+            <span className="text-white text-sm font-mono">{item.valor}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Notificaciones */}
+      <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4 space-y-3">
+        <p className="text-white font-semibold text-sm">Notificaciones</p>
+        {[
+          { label: 'Pagos verificados', activo: true },
+          { label: 'Stock crítico', activo: true },
+          { label: 'Ventas grandes (+$200K)', activo: true },
+          { label: 'Cierre de caja', activo: true },
+          { label: 'Devoluciones', activo: false },
+        ].map(item => (
+          <div key={item.label} className="flex justify-between items-center">
+            <span className="text-slate-300 text-sm">{item.label}</span>
+            <div className={`w-8 h-4 rounded-full ${item.activo ? 'bg-violet-600' : 'bg-slate-700'} relative transition-all`}>
+              <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${item.activo ? 'left-4' : 'left-0.5'}`} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Cerrar sesión */}
+      <button
+        onClick={onDesconectar}
+        className="w-full bg-red-900/30 border border-red-800/50 rounded-2xl p-4 flex items-center justify-center gap-3 text-red-400 font-semibold active:scale-95 transition-all"
+      >
+        <LogOut className="w-4 h-4" />
+        Desconectar del POS
+      </button>
+    </div>
+  );
+}
+
+// ─── Notificación flotante de pago ───────────────────
+function NotificacionFlotante({ evento, onCerrar }: { evento: EventoPOS; onCerrar: () => void }) {
+  const p = evento.payload;
+  const banco = String(p.banco || 'efectivo');
+  const cfg = BANCO_CONFIG[banco] || BANCO_CONFIG.efectivo;
+
+  useEffect(() => {
+    const t = setTimeout(onCerrar, 6000);
+    return () => clearTimeout(t);
+  }, [onCerrar]);
+
+  return (
+    <motion.div
+      initial={{ y: -120, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -120, opacity: 0 }}
+      className="absolute top-14 left-4 right-4 z-50 bg-slate-900/95 border border-violet-700/50 rounded-3xl p-4 shadow-2xl shadow-violet-900/60 backdrop-blur-xl"
+    >
+      <div className="flex items-center gap-3">
+        <div className={`w-12 h-12 rounded-2xl ${cfg.bg} flex items-center justify-center text-xl flex-shrink-0`}>
+          {cfg.icon}
+        </div>
+        <div className="flex-1">
+          <p className="text-white font-black text-lg">
+            +${Number(p.monto || p.total || 0).toLocaleString('es-CO')}
+          </p>
+          <p className="text-slate-400 text-xs">
+            {evento.tipo === 'pago_verificado'
+              ? `${banco.toUpperCase()} confirmado · ${p.remitente}`
+              : `Venta completada · ${p.cajero}`
+            }
+          </p>
+        </div>
+        <button onClick={onCerrar} className="text-slate-600 p-1">✕</button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────
+export function CodecVerifyMobile() {
+  const [pantalla, setPantalla] = useState<Pantalla>('conectar');
+  const [conectado, setConectado] = useState(false);
+  const [conexion, setConexion] = useState<DatosConexion>({ ip: '', port: '3969', pin: '', tienda: '' });
+  const [ws, setWs] = useState<WebSocket | null>(null);
+
+  // Datos del negocio
+  const [resumen, setResumen] = useState<ResumenVentas>(mockResumen());
+  const [alertas] = useState<AlertaStock[]>(mockAlertas());
+  const [pagos, setPagos] = useState<NotificacionPago[]>(mockPagos());
+  const [eventos, setEventos] = useState<EventoPOS[]>([]);
+  const [notifFlotante, setNotifFlotante] = useState<EventoPOS | null>(null);
+
+  const eventosNoLeidos = eventos.filter(e => !e.leido).length;
+
+  // Manejar conexión exitosa
+  const handleConectado = useCallback((datos: DatosConexion, websocket: WebSocket | null) => {
+    setConexion(datos);
+    setConectado(true);
+    setPantalla('inicio');
+
+    if (websocket) {
+      // Escuchar eventos reales del servidor
+      websocket.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.tipo === 'evento_pos' || msg.tipo === 'autenticacion_ok') {
+            if (msg.tipo === 'autenticacion_ok') {
+              setConexion(prev => ({ ...prev, tienda: msg.tienda }));
+              return;
+            }
+            const nuevoEvento: EventoPOS = {
+              id: `ev-${Date.now()}`,
+              tipo: msg.payload.evento as string,
+              payload: msg.payload,
+              timestamp: new Date(),
+              leido: false,
+            };
+            recibirEvento(nuevoEvento);
+          }
+        } catch { /* ignorar mensajes mal formados */ }
+      };
+      setWs(websocket);
+    } else {
+      // Simular eventos del POS cada cierto tiempo (cuando no hay servidor real)
+      simularEventosPOS();
+    }
+
+    toast.success(`✅ Conectado a ${datos.tienda}`, { description: `${datos.ip}:${datos.port}` });
+  }, []);
+
+  // Recibir un evento del POS
+  const recibirEvento = useCallback((ev: EventoPOS) => {
+    setEventos(prev => [ev, ...prev].slice(0, 50));
+
+    // Mostrar notificación flotante para pagos y ventas
+    if (['pago_verificado', 'venta_completada'].includes(ev.tipo)) {
+      setNotifFlotante(ev);
+      // Vibración nativa si está disponible
+      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+    }
+
+    // Actualizar resumen si es venta
+    if (ev.tipo === 'venta_completada') {
+      const monto = Number(ev.payload.total || 0);
+      setResumen(prev => ({
+        ...prev,
+        totalHoy: prev.totalHoy + monto,
+        transacciones: prev.transacciones + 1,
+      }));
+    }
+  }, []);
+
+  // Simulación de eventos cuando no hay servidor
+  const simularEventosPOS = useCallback(() => {
+    const tipos: Array<{ tipo: string; delay: number }> = [
+      { tipo: 'pago_verificado', delay: 8000 },
+      { tipo: 'venta_completada', delay: 15000 },
+      { tipo: 'stock_bajo', delay: 25000 },
+    ];
+
+    tipos.forEach(({ tipo, delay }) => {
+      setTimeout(() => {
+        const ev: EventoPOS = {
+          id: `sim-${Date.now()}-${tipo}`,
+          tipo,
+          payload: tipo === 'pago_verificado'
+            ? { evento: tipo, banco: 'nequi', monto: 48700, remitente: '3001234567', referencia: `POS-${Date.now()}` }
+            : tipo === 'venta_completada'
+            ? { evento: tipo, total: 95000, cajero: 'Carlos M.', metodoPago: 'Efectivo', productos: 4 }
+            : { evento: tipo, producto: 'Leche 1L', stockActual: 2, stockMinimo: 10 },
+          timestamp: new Date(),
+          leido: false,
+        };
+        recibirEvento(ev);
+      }, delay);
+    });
+  }, [recibirEvento]);
+
+  // Desconectar
+  const desconectar = () => {
+    ws?.close();
+    setWs(null);
+    setConectado(false);
+    setPantalla('conectar');
+    setEventos([]);
+    toast.info('Desconectado del POS');
+  };
+
+  // Marcar eventos como leídos al entrar a una sección
+  const navegar = (p: Pantalla) => {
+    if (p === 'pagos' || p === 'inicio') {
+      setEventos(prev => prev.map(e => ({ ...e, leido: true })));
+    }
+    setPantalla(p);
+  };
+
+  const tabs: Array<{ id: Pantalla; icono: React.ReactNode; label: string }> = [
+    { id: 'inicio', icono: <Home className="w-5 h-5" />, label: 'Inicio' },
+    { id: 'pagos', icono: <DollarSign className="w-5 h-5" />, label: 'Pagos' },
+    { id: 'ventas', icono: <BarChart3 className="w-5 h-5" />, label: 'Ventas' },
+    { id: 'alertas', icono: <AlertTriangle className="w-5 h-5" />, label: 'Alertas' },
+    { id: 'config', icono: <Settings className="w-5 h-5" />, label: 'Config' },
+  ];
+
+  return (
+    // Contenedor con forma de celular
+    <div className="flex items-center justify-center min-h-screen bg-slate-950 p-4">
+      <div
+        className="relative w-[390px] h-[844px] bg-slate-950 rounded-[50px] overflow-hidden border-4 border-slate-800 shadow-2xl shadow-black/70 flex flex-col"
+        style={{ boxShadow: '0 0 0 2px #0f172a, 0 30px 80px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(255,255,255,0.05)' }}
+      >
+        {/* Notch */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-8 bg-slate-950 rounded-b-3xl z-50 flex items-end justify-center pb-1.5 border-b border-slate-900">
+          <div className="w-20 h-1 bg-slate-800 rounded-full" />
+        </div>
+
+        {/* Barra de estado */}
+        {conectado && (
+          <div className="pt-8">
+            <StatusBar tienda={conexion.tienda} conectado={conectado} noLeidos={eventosNoLeidos} />
+          </div>
+        )}
+
+        {/* Notificación flotante */}
+        <AnimatePresence>
+          {notifFlotante && conectado && (
+            <NotificacionFlotante
+              evento={notifFlotante}
+              onCerrar={() => setNotifFlotante(null)}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Contenido principal */}
+        <div className={`flex-1 flex flex-col overflow-hidden ${conectado ? '' : 'pt-10 bg-gradient-to-br from-slate-950 via-violet-950/20 to-slate-950'}`}>
+
+          {/* Header si está conectado */}
+          {conectado && pantalla !== 'config' && (
+            <div className="px-4 py-2 flex items-center justify-between">
+              <h3 className="text-white font-bold text-sm">
+                {pantalla === 'inicio' && '🏠 Inicio'}
+                {pantalla === 'pagos' && '💳 Pagos'}
+                {pantalla === 'ventas' && '📊 Ventas'}
+                {pantalla === 'alertas' && '🔔 Alertas'}
+              </h3>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-emerald-400 text-xs">EN VIVO</span>
+              </div>
+            </div>
+          )}
+
+          <AnimatePresence mode="wait">
+            {!conectado && (
+              <motion.div key="conectar" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
+                <PantallaConectar onConectado={handleConectado} />
+              </motion.div>
+            )}
+
+            {conectado && pantalla === 'inicio' && (
+              <motion.div key="inicio" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col overflow-hidden">
+                <PantallaInicio datos={resumen} eventos={eventos} conexion={conexion} onNavegarA={navegar} />
+              </motion.div>
+            )}
+
+            {conectado && pantalla === 'pagos' && (
+              <motion.div key="pagos" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col overflow-hidden">
+                <PantallaPagos pagos={pagos} eventos={eventos} />
+              </motion.div>
+            )}
+
+            {conectado && pantalla === 'ventas' && (
+              <motion.div key="ventas" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col overflow-hidden">
+                <PantallaVentas datos={resumen} />
+              </motion.div>
+            )}
+
+            {conectado && pantalla === 'alertas' && (
+              <motion.div key="alertas" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col overflow-hidden">
+                <PantallaAlertas alertas={alertas} />
+              </motion.div>
+            )}
+
+            {conectado && pantalla === 'config' && (
+              <motion.div key="config" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col overflow-hidden">
+                <div className="px-4 py-2">
+                  <h3 className="text-white font-bold text-sm">⚙️ Configuración</h3>
+                </div>
+                <PantallaConfig conexion={conexion} onDesconectar={desconectar} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Tab bar inferior (solo si conectado) */}
+        {conectado && (
+          <div className="bg-slate-900/90 border-t border-slate-800 px-2 py-2 flex items-center justify-around backdrop-blur-xl">
+            {tabs.map(tab => {
+              const activo = pantalla === tab.id;
+              const badge = tab.id === 'alertas' ? alertas.filter(a => a.critico).length
+                : tab.id === 'pagos' ? eventosNoLeidos : 0;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => navegar(tab.id)}
+                  className={`relative flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all ${
+                    activo ? 'text-violet-400' : 'text-slate-600'
+                  }`}
+                >
+                  {badge > 0 && (
+                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-[9px] font-bold">{badge}</span>
+                    </div>
+                  )}
+                  {tab.icono}
+                  <span className="text-[10px] font-semibold">{tab.label}</span>
+                  {activo && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-violet-400" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Home indicator */}
+        <div className="pb-2 flex justify-center">
+          <div className="w-28 h-1 bg-slate-700 rounded-full" />
+        </div>
+      </div>
+    </div>
+  );
+}

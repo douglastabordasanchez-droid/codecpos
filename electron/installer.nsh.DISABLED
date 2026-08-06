@@ -1,0 +1,269 @@
+; ═══════════════════════════════════════════════════════════════════════════════
+; CODEC POS v2.0 - NSIS Custom Installer Script
+; Script personalizado para instalador profesional Windows
+; 
+; ⚠️ ARCHIVO DESACTIVADO TEMPORALMENTE
+; 
+; RAZÓN: Este script usa sintaxis avanzada de NSIS que electron-builder NO soporta.
+; electron-builder tiene un subset limitado de comandos NSIS.
+; 
+; CARACTERÍSTICAS NO SOPORTADAS:
+; - !system (línea 10)
+; - ${If} ${AtLeastWin7} (línea 52)
+; - ${RunningX64} (línea 60)
+; - ${GetRoot}, ${DriveSpace} (líneas 68-69)
+; - Macros complejas con lógica
+; 
+; ALTERNATIVA: electron-builder genera un instalador NSIS estándar que incluye:
+; ✅ Pantalla de bienvenida
+; ✅ Pantalla de licencia (LICENSE.txt)
+; ✅ Selección de directorio de instalación
+; ✅ Barra de progreso
+; ✅ Accesos directos (Escritorio + Menú Inicio)
+; ✅ Desinstalador automático
+; ✅ Registro en Windows
+; ✅ Opción de ejecutar al finalizar
+; 
+; PARA ACTIVAR EN EL FUTURO:
+; 1. Reescribir este archivo usando SOLO comandos soportados por electron-builder
+; 2. Ver: https://www.electron.build/configuration/nsis#custom-nsis-script
+; 3. Renombrar de .DISABLED a .nsh
+; 4. Descomentar línea en builder-config.js
+; 
+; ═══════════════════════════════════════════════════════════════════════════════
+
+; ── CONTENIDO ORIGINAL (PRESERVADO PARA REFERENCIA) ───────────────────────────
+
+; MACROS PERSONALIZADAS
+
+; Macro ejecutada ANTES de la instalación
+!macro customHeader
+  !system "echo CODEC POS v2.0 - Generando instalador profesional..."
+!macroend
+
+; Macro para la página de bienvenida personalizada
+!macro customWelcomePage
+  !define MUI_WELCOMEPAGE_TITLE "¡Bienvenido a CODEC POS v2.0!"
+  !define MUI_WELCOMEPAGE_TEXT "Este asistente le guiará en la instalación de CODEC POS v2.0, el sistema de punto de venta profesional más completo para minimercados en Colombia.$\r$\n$\r$\nCODEC POS incluye:$\r$\n• Gestión completa de inventario$\r$\n• Punto de venta con métodos de pago locales$\r$\n• Facturación electrónica compatible con DIAN$\r$\n• Control de vencimientos y alertas anti-mermas$\r$\n• Sistema 100% offline sin costos recurrentes$\r$\n$\r$\nHaga clic en 'Siguiente' para continuar."
+!macroend
+
+; Macro para página de licencia personalizada
+!macro customLicensePage
+  !define MUI_LICENSEPAGE_TEXT_TOP "Por favor, lea cuidadosamente los siguientes términos y condiciones antes de instalar CODEC POS v2.0."
+  !define MUI_LICENSEPAGE_TEXT_BOTTOM "Si acepta los términos del acuerdo, haga clic en 'Acepto' para continuar. Debe aceptar el acuerdo para instalar CODEC POS."
+  !define MUI_LICENSEPAGE_BUTTON "Acepto"
+!macroend
+
+; Macro para directorio de instalación personalizado
+!macro customDirectoryPage
+  !define MUI_DIRECTORYPAGE_TEXT_TOP "El instalador instalará CODEC POS v2.0 en la siguiente carpeta.$\r$\n$\r$\nPara instalar en una carpeta diferente, haga clic en 'Examinar' y seleccione otra ubicación."
+  !define MUI_DIRECTORYPAGE_TEXT_DESTINATION "Carpeta de destino"
+!macroend
+
+; Macro para página de componentes (si se usa en el futuro)
+!macro customComponentsPage
+  !define MUI_COMPONENTSPAGE_TEXT_TOP "Seleccione los componentes que desea instalar y deseleccione los que no desea instalar."
+!macroend
+
+; ── CALLBACKS DE INSTALACIÓN ───────────────────────────────────────────────────
+
+; Callback ejecutado AL INICIO de la instalación
+!macro customInstall
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint "Iniciando instalación de CODEC POS v2.0..."
+  DetailPrint "Copyright © 2026 Codec Studio"
+  DetailPrint "https://codecstudio.online/"
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint ""
+  
+  ; Verificar requisitos del sistema
+  DetailPrint "→ Verificando requisitos del sistema..."
+  
+  ; Verificar Windows 7 o superior
+  ${If} ${AtLeastWin7}
+    DetailPrint "  ✓ Sistema operativo: Windows compatible detectado"
+  ${Else}
+    MessageBox MB_ICONSTOP "CODEC POS v2.0 requiere Windows 7 o superior.$\r$\n$\r$\nLa instalación no puede continuar."
+    Abort
+  ${EndIf}
+  
+  ; Verificar arquitectura 64 bits
+  ${If} ${RunningX64}
+    DetailPrint "  ✓ Arquitectura: Windows 64 bits"
+  ${Else}
+    MessageBox MB_ICONEXCLAMATION "ADVERTENCIA: CODEC POS v2.0 está optimizado para sistemas de 64 bits.$\r$\n$\r$\nPuede experimentar limitaciones en sistemas de 32 bits."
+  ${EndIf}
+  
+  ; Verificar espacio en disco (mínimo 2GB)
+  DetailPrint "→ Verificando espacio en disco..."
+  ${GetRoot} "$INSTDIR" $R0
+  ${DriveSpace} "$R0\" "/D=F /S=M" $R1
+  ${If} $R1 < 2048
+    MessageBox MB_ICONEXCLAMATION "ADVERTENCIA: Espacio en disco insuficiente.$\r$\n$\r$\nSe recomienda al menos 2 GB de espacio libre."
+  ${Else}
+    DetailPrint "  ✓ Espacio en disco: Suficiente ($R1 MB disponibles)"
+  ${EndIf}
+  
+  DetailPrint ""
+  DetailPrint "→ Instalando archivos de CODEC POS v2.0..."
+!macroend
+
+; Callback ejecutado DESPUÉS de instalar archivos
+!macro customInstallMode
+  ; Crear carpeta de datos de usuario
+  DetailPrint ""
+  DetailPrint "→ Configurando estructura de datos..."
+  
+  SetOutPath "$APPDATA\codecpos"
+  CreateDirectory "$APPDATA\codecpos"
+  CreateDirectory "$APPDATA\codecpos\backups"
+  CreateDirectory "$APPDATA\codecpos\logs"
+  
+  DetailPrint "  ✓ Carpeta de datos creada: $APPDATA\codecpos"
+  
+  ; Registrar aplicación en Windows
+  DetailPrint ""
+  DetailPrint "→ Registrando aplicación en el sistema..."
+  
+  WriteRegStr HKLM "Software\Codec Studio\CODEC POS" "InstallPath" "$INSTDIR"
+  WriteRegStr HKLM "Software\Codec Studio\CODEC POS" "Version" "2.0.0"
+  WriteRegStr HKLM "Software\Codec Studio\CODEC POS" "InstallDate" "$YYYY-$MM-$DD"
+  
+  DetailPrint "  ✓ Registro en sistema completado"
+  
+  ; Crear accesos directos adicionales
+  DetailPrint ""
+  DetailPrint "→ Creando accesos directos..."
+  
+  ; Acceso directo en Escritorio (si el usuario lo marcó)
+  ${If} $CreateDesktopShortcut == 1
+    CreateShortcut "$DESKTOP\CODEC POS.lnk" "$INSTDIR\CODECPOS.exe" "" "$INSTDIR\CODECPOS.exe" 0 SW_SHOWNORMAL "" "CODEC POS v2.0 - Sistema Punto de Venta"
+    DetailPrint "  ✓ Acceso directo creado en Escritorio"
+  ${EndIf}
+  
+  ; Acceso directo en Menú Inicio
+  CreateDirectory "$SMPROGRAMS\CODEC Studio"
+  CreateShortcut "$SMPROGRAMS\CODEC Studio\CODEC POS.lnk" "$INSTDIR\CODECPOS.exe" "" "$INSTDIR\CODECPOS.exe" 0 SW_SHOWNORMAL "" "CODEC POS v2.0 - Sistema Punto de Venta"
+  CreateShortcut "$SMPROGRAMS\CODEC Studio\Desinstalar CODEC POS.lnk" "$INSTDIR\Uninstall CODECPOS.exe" "" "$INSTDIR\Uninstall CODECPOS.exe" 0 SW_SHOWNORMAL "" "Desinstalar CODEC POS v2.0"
+  
+  DetailPrint "  ✓ Accesos directos creados en Menú Inicio"
+  
+  ; Información adicional
+  DetailPrint ""
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint "INSTALACIÓN COMPLETADA EXITOSAMENTE"
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint ""
+  DetailPrint "CODEC POS v2.0 se ha instalado correctamente en:"
+  DetailPrint "$INSTDIR"
+  DetailPrint ""
+  DetailPrint "Datos del usuario se almacenarán en:"
+  DetailPrint "$APPDATA\codecpos"
+  DetailPrint ""
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint "INFORMACIÓN IMPORTANTE:"
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint "• El sistema funciona 100% offline (sin Internet)"
+  DetailPrint "• Requiere activación con clave de licencia única"
+  DetailPrint "• Realice backups periódicos desde Configuración > Backup"
+  DetailPrint "• Soporte: https://codecstudio.online/ - WhatsApp +57 323 864 6844"
+  DetailPrint "═══════════════════════════════════════════════════════════"
+!macroend
+
+; ── CALLBACKS DE DESINSTALACIÓN ────────────────────────────────────────────────
+
+; Callback ejecutado ANTES de desinstalar
+!macro customUnInstall
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint "Desinstalando CODEC POS v2.0..."
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint ""
+  
+  ; Confirmar desinstalación completa
+  MessageBox MB_ICONQUESTION|MB_YESNO "¿Desea conservar los datos y configuraciones de CODEC POS?$\r$\n$\r$\nSi selecciona 'No', se eliminarán TODOS los datos (base de datos, backups, configuraciones).$\r$\n$\r$\n⚠️ ADVERTENCIA: Esta acción NO se puede deshacer." IDYES KeepData
+  
+  ; Usuario eligió eliminar datos
+  DetailPrint "→ Eliminando datos del usuario..."
+  RMDir /r "$APPDATA\codecpos"
+  DetailPrint "  ✓ Datos eliminados de: $APPDATA\codecpos"
+  Goto EndDataCleanup
+  
+  KeepData:
+    DetailPrint "→ Conservando datos del usuario en: $APPDATA\codecpos"
+    DetailPrint "  ℹ Los datos se pueden eliminar manualmente más adelante"
+  
+  EndDataCleanup:
+  
+  ; Eliminar accesos directos
+  DetailPrint ""
+  DetailPrint "→ Eliminando accesos directos..."
+  Delete "$DESKTOP\CODEC POS.lnk"
+  Delete "$SMPROGRAMS\CODEC Studio\CODEC POS.lnk"
+  Delete "$SMPROGRAMS\CODEC Studio\Desinstalar CODEC POS.lnk"
+  RMDir "$SMPROGRAMS\CODEC Studio"
+  DetailPrint "  ✓ Accesos directos eliminados"
+  
+  ; Eliminar registro del sistema
+  DetailPrint ""
+  DetailPrint "→ Eliminando registros del sistema..."
+  DeleteRegKey HKLM "Software\Codec Studio\CODEC POS"
+  DetailPrint "  ✓ Registros eliminados"
+  
+  DetailPrint ""
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint "DESINSTALACIÓN COMPLETADA"
+  DetailPrint "═══════════════════════════════════════════════════════════"
+  DetailPrint ""
+  DetailPrint "Gracias por usar CODEC POS v2.0"
+  DetailPrint "Codec Studio - https://codecstudio.online/"
+  DetailPrint "═══════════════════════════════════════════════════════════"
+!macroend
+
+; ── PÁGINA DE FINALIZACIÓN PERSONALIZADA ───────────────────────────────────────
+
+!macro customFinishPage
+  !define MUI_FINISHPAGE_TITLE "¡Instalación Completada!"
+  !define MUI_FINISHPAGE_TEXT "CODEC POS v2.0 se ha instalado correctamente en su equipo.$\r$\n$\r$\n🎉 ¡Felicidades! Ya puede comenzar a usar el sistema más completo para punto de venta.$\r$\n$\r$\nPRIMEROS PASOS:$\r$\n1. Active su licencia usando su clave de activación$\r$\n2. Configure los datos de su negocio$\r$\n3. Agregue sus productos al inventario$\r$\n4. ¡Comience a vender!$\r$\n$\r$\nPara soporte técnico, visite: https://codecstudio.online/$\r$\nWhatsApp: +57 323 864 6844"
+  
+  !define MUI_FINISHPAGE_RUN "$INSTDIR\CODECPOS.exe"
+  !define MUI_FINISHPAGE_RUN_TEXT "Ejecutar CODEC POS ahora"
+  !define MUI_FINISHPAGE_RUN_NOTCHECKED
+  
+  !define MUI_FINISHPAGE_LINK "Visitar sitio web de Codec Studio"
+  !define MUI_FINISHPAGE_LINK_LOCATION "https://codecstudio.online/"
+!macroend
+
+; ── MENSAJES PERSONALIZADOS DEL INSTALADOR ─────────────────────────────────────
+
+!macro customInit
+  ; Verificar si ya está instalado
+  ReadRegStr $R0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CODECPOS" "UninstallString"
+  StrCmp $R0 "" done
+  
+  MessageBox MB_ICONINFORMATION|MB_YESNO "CODEC POS v2.0 ya está instalado en este equipo.$\r$\n$\r$\n¿Desea desinstalar la versión actual antes de continuar?" IDYES uninst
+  Abort
+  
+  uninst:
+    ClearErrors
+    ExecWait '$R0 _?=$INSTDIR'
+    IfErrors no_remove_uninstaller
+    no_remove_uninstaller:
+  
+  done:
+!macroend
+
+; ── INFORMACIÓN ADICIONAL DEL INSTALADOR ───────────────────────────────────────
+
+; Información de versión del instalador
+!define PRODUCT_VERSION "2.0.0"
+!define PRODUCT_PUBLISHER "Codec Studio"
+!define PRODUCT_WEB_SITE "https://codecstudio.online/"
+!define PRODUCT_SUPPORT_URL "https://codecstudio.online/soporte"
+
+; Descripción del producto
+!define PRODUCT_NAME "CODEC POS"
+!define PRODUCT_DESCRIPTION "Sistema de Punto de Venta Profesional para Minimercados"
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; FIN DEL SCRIPT PERSONALIZADO NSIS
+; ═══════════════════════════════════════════════════════════════════════════════

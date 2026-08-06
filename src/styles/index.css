@@ -1,0 +1,21 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+@import './cropper.css';
+
+/*
+ * 🛡️ FIX FLUIDEZ EN EQUIPOS SIN GPU REAL: backdrop-filter (backdrop-blur-*)
+ * es, de lejos, el efecto visual más caro de rasterizar por software — se
+ * usa en decenas de tarjetas/modales de toda la app (Gastos, Empleados,
+ * Monitoreo, etc.). En un equipo sin aceleración por hardware real (ver
+ * electron/main.js — detección de gpu_compositing), esto satura la CPU y
+ * se siente como "no me deja escribir", igual que pasaba antes en el login.
+ * En vez de tocar cada uno de esos archivos, se apaga el blur globalmente
+ * SOLO cuando el proceso principal ya detectó que este equipo no tiene
+ * compositing por hardware (clase añadida en src/index.tsx). Un PC con GPU
+ * capaz nunca recibe esta clase y conserva el efecto de vidrio esmerilado.
+ */
+html.gpu-software [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

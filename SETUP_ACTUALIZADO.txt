@@ -1,0 +1,272 @@
+════════════════════════════════════════════════════════════════════════
+  CODEC POS v2.0 - CONFIGURACIÓN INICIAL ACTUALIZADA
+  Fecha: Marzo 9, 2026
+════════════════════════════════════════════════════════════════════════
+
+
+✅ CAMBIO IMPORTANTE
+════════════════════════════════════════════════════════════════════════
+
+SE ELIMINÓ EL WIZARD DE CONFIGURACIÓN INICIAL
+
+Antes:
+──────
+❌ Pedía 6 pasos de configuración:
+   1. Bienvenida
+   2. Datos del Negocio (nombre, NIT, dirección)
+   3. Datos de Contacto (teléfono, email)
+   4. Facturación DIAN (resolución, prefijos)
+   5. Activación (licencia o prueba)
+   6. Finalización
+
+Ahora:
+──────
+✅ Solo muestra:
+   • Bienvenida al MEJOR sistema POS
+   • Bendición de Dios para el negocio
+   • Características del sistema
+   • Botón "Comenzar ahora"
+
+
+═══════════════════════════════════════════════════════════════════════
+  QUÉ SE MODIFICÓ
+═══════════════════════════════════════════════════════════════════════
+
+Archivo: /src/app/pages/SetupWizard.tsx
+
+ANTES (680 líneas):
+──────────────────
+• 6 pasos con formularios
+• Validaciones de datos
+• Campos obligatorios
+• Configuración compleja
+• 15-20 minutos para configurar
+
+
+AHORA (300 líneas):
+──────────────────
+• 1 sola pantalla
+• Sin formularios
+• Sin datos obligatorios
+• Configuración automática
+• 5 segundos para comenzar
+
+
+═══════════════════════════════════════════════════════════════════════
+  CÓMO FUNCIONA AHORA
+═══════════════════════════════════════════════════════════════════════
+
+1. PRIMERA VEZ:
+   ────────────
+   ✅ Muestra pantalla de bienvenida
+   ✅ Bendición de Dios
+   ✅ Botón "Comenzar ahora"
+
+
+2. AL HACER CLICK EN "COMENZAR AHORA":
+   ────────────────────────────────────
+   ✅ Se crea configuración con datos de ejemplo:
+      • nombreNegocio: "Mi Negocio"
+      • nit: "000000000-0"
+      • direccion: "Configurar en Configuración"
+      • telefono: "0000000000"
+      • email: "configurar@email.com"
+
+   ✅ Se activa licencia de prueba gratis:
+      • Plan: PROFESIONAL
+      • Duración: 10 días
+      • Usuario: admin
+      • Contraseña: admin
+
+
+3. DESPUÉS DE COMENZAR:
+   ───────────────────
+   ✅ El sistema inicia normalmente
+   ✅ Usuario puede ir a Configuración
+   ✅ Ahí configura sus datos reales
+
+
+═══════════════════════════════════════════════════════════════════════
+  CONTENIDO DE LA PANTALLA DE BIENVENIDA
+═══════════════════════════════════════════════════════════════════════
+
+1. LOGO:
+   ─────
+   ✅ Muestra /public/logo.png
+   ✅ Tamaño: 128px
+   ✅ Con efecto glow animado
+
+
+2. BIENVENIDA:
+   ───────────
+   ✅ "¡Bienvenido a CODEC POS!"
+   ✅ "El Mejor Sistema POS del Mercado"
+   ✅ "Sistema de Punto de Venta Profesional v2.0"
+
+
+3. BENDICIÓN DE DIOS:
+   ──────────────────
+   ✅ Mensaje completo de bendición
+   ✅ Versículo: 1 Corintios 10:13
+
+
+4. CARACTERÍSTICAS:
+   ────────────────
+   ✅ Control Total de Ventas
+   ✅ Seguridad Garantizada
+   ✅ Rendimiento Ultra Rápido
+   ✅ Facturación Electrónica
+   ✅ 6 Métodos de Pago Locales
+   ✅ Sistema Multi-Tienda
+   ✅ Control Anti-Mermas
+   ✅ 100% Offline
+   ✅ Sin Costos Recurrentes
+   ✅ Compatible DIAN
+
+
+5. BOTÓN DE INICIO:
+   ────────────────
+   ✅ "¡Comenzar ahora!"
+   ✅ Animación de carga
+   ✅ Mensaje: "Los datos se configuran en Configuración"
+
+
+6. FOOTER:
+   ────────
+   ✅ Versículo: 2 Corintios 9:8
+   ✅ "Que Dios bendiga abundantemente tu negocio"
+   ✅ "¡Prosperidad y éxito en el nombre de Jesús!"
+
+
+═══════════════════════════════════════════════════════════════════════
+  CÓMO CONFIGURAR LOS DATOS REALES
+═══════════════════════════════════════════════════════════════════════
+
+DESPUÉS de hacer click en "Comenzar ahora":
+
+1. El sistema inicia normalmente
+2. Usuario hace login (admin/admin)
+3. Va a: Configuración → Datos de la Empresa
+4. Ahí configura:
+   • Nombre del negocio
+   • NIT
+   • Dirección
+   • Teléfono
+   • Email
+   • Ciudad/Municipio
+   • Departamento
+   • Tipo de negocio
+   • Resolución DIAN
+   • Prefijo de factura
+   • Rango de facturación
+
+
+═══════════════════════════════════════════════════════════════════════
+  VENTAJAS DEL NUEVO SISTEMA
+═══════════════════════════════════════════════════════════════════════
+
+✅ Inicio rápido (5 segundos vs 15-20 minutos)
+✅ Sin frustración del usuario
+✅ Bendición de Dios desde el inicio
+✅ Logo visible desde el principio
+✅ Configuración profesional en su lugar
+✅ Datos de ejemplo funcionales
+✅ Licencia de prueba automática
+✅ Usuario puede empezar a explorar inmediatamente
+
+
+═══════════════════════════════════════════════════════════════════════
+  CREDENCIALES PREDETERMINADAS
+═══════════════════════════════════════════════════════════════════════
+
+Usuario:     admin
+Contraseña:  admin
+
+IMPORTANTE:
+• Estas se pueden cambiar en Configuración
+• Son solo temporales para comenzar
+• El usuario DEBE cambiarlas después
+
+
+═══════════════════════════════════════════════════════════════════════
+  FLUJO DE USUARIO
+═══════════════════════════════════════════════════════════════════════
+
+1. PRIMERA VEZ:
+   ────────────
+   Usuario abre CODEC POS
+      ↓
+   Ve pantalla de bienvenida con bendición
+      ↓
+   Click en "Comenzar ahora"
+      ↓
+   Sistema inicia (5 segundos)
+      ↓
+   Pantalla de login
+
+
+2. LOGIN:
+   ──────
+   Usuario: admin
+   Contraseña: admin
+      ↓
+   Dashboard principal
+
+
+3. CONFIGURACIÓN:
+   ──────────────
+   Ve a Configuración
+      ↓
+   Edita datos de la empresa
+      ↓
+   Guarda
+      ↓
+   ¡Listo para usar!
+
+
+═══════════════════════════════════════════════════════════════════════
+  COMPARACIÓN
+═══════════════════════════════════════════════════════════════════════
+
+                    ANTES               AHORA
+                    ─────               ─────
+Tiempo inicio:      15-20 min           5 seg
+Pasos:              6                   1
+Formularios:        Muchos              0
+Datos obligatorios: Sí                  No
+Configuración:      Al inicio           Después
+Bendición:          No                  Sí
+Logo:               No visible          Visible
+Frustración:        Alta                Ninguna
+
+
+═══════════════════════════════════════════════════════════════════════
+  RESULTADO FINAL
+═══════════════════════════════════════════════════════════════════════
+
+✅ Configuración inicial ELIMINADA
+✅ Solo pantalla de bienvenida con bendición
+✅ Usuario hace click y empieza en 5 segundos
+✅ Datos se configuran después en Configuración
+✅ Logo visible desde el inicio
+✅ Scrollbar verde
+✅ Diseño profesional
+✅ Bendiciones de Dios incluidas
+
+
+═══════════════════════════════════════════════════════════════════════
+  PRÓXIMOS PASOS PARA EL USUARIO
+═══════════════════════════════════════════════════════════════════════
+
+1. Abrir CODEC POS
+2. Ver bienvenida
+3. Click "Comenzar ahora"
+4. Login (admin/admin)
+5. Ir a Configuración
+6. Editar datos reales
+7. ¡Empezar a vender!
+
+
+════════════════════════════════════════════════════════════════════════
+  ¡Ahora el sistema es MUCHO más fácil de usar! 🎉
+════════════════════════════════════════════════════════════════════════

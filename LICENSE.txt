@@ -1,0 +1,253 @@
+===============================================================================
+  CODEC POS v2.0 - TÉRMINOS Y CONDICIONES DE USO
+  © 2026 Codec Studio - Un Regalo de Dios para Servir
+===============================================================================
+
+
+RECONOCIMIENTO A DIOS
+
+Este software es un regalo de Dios. Reconocemos que toda sabiduría, conocimiento y 
+capacidad proviene de Él. Dios es el primero, el creador de todo, y sin Él nada de 
+esto sería posible.
+
+"Porque de Él, y por Él, y para Él, son todas las cosas. A Él sea la gloria por 
+los siglos. Amén." - Romanos 11:36
+
+Codec Studio existe para servir y bendecir a los negocios colombianos, reconociendo 
+que Dios es quien da el crecimiento y la prosperidad.
+
+
+-------------------------------------------------------------------------------
+1. PROPÓSITO DEL SOFTWARE
+-------------------------------------------------------------------------------
+
+CODEC POS v2.0 es un Sistema de Punto de Venta diseñado con excelencia para ayudar 
+a minimercados y negocios colombianos a prosperar. Este software es una herramienta 
+que Dios ha permitido crear para servir, bendecir y facilitar el trabajo honesto.
+
+
+-------------------------------------------------------------------------------
+2. LICENCIA DE USO
+-------------------------------------------------------------------------------
+
+Al instalar CODEC POS v2.0, usted acepta lo siguiente:
+
+[SI] PRUEBA GRATUITA: Incluye 10 días de prueba del plan PROFESIONAL completo.
+
+[SI] USO COMERCIAL: Después de la prueba, requiere licencia activa para uso continuo.
+
+[SI] UNA INSTALACIÓN: Cada licencia es válida para UN negocio/establecimiento.
+
+[SI] MULTI-TIENDA: Las licencias PROFESIONAL y EMPRESARIAL incluyen gestión de 
+  múltiples sucursales bajo un mismo negocio.
+
+[SI] ACTUALIZACIONES: Incluidas durante la vigencia de la licencia activa.
+
+[SI] SOPORTE: Disponible según el plan contratado.
+
+
+-------------------------------------------------------------------------------
+3. PROHIBICIONES
+-------------------------------------------------------------------------------
+
+Queda estrictamente PROHIBIDO:
+
+[NO] Redistribuir, revender o comercializar este software sin autorización.
+[NO] Modificar, descompilar o realizar ingeniería inversa del código.
+[NO] Eliminar o alterar los créditos, logos o marcas de Codec Studio.
+[NO] Usar el software para actividades ilegales, fraudulentas o inmorales.
+[NO] Compartir licencias entre múltiples negocios no autorizados.
+[NO] Usar el software en contra de los principios de Dios y la ley colombiana.
+
+
+-------------------------------------------------------------------------------
+4. PRIVACIDAD Y DATOS
+-------------------------------------------------------------------------------
+
+[SI] ALMACENAMIENTO LOCAL: Todos sus datos se guardan localmente en su computador.
+
+[SI] SIN NUBE OBLIGATORIA: El sistema funciona 100% offline. No enviamos sus datos 
+  a servidores externos sin su consentimiento.
+
+[SI] INTEGRACIONES OPCIONALES: Zapier, n8n y CODEC Verify son opcionales. Usted 
+  controla qué datos comparte.
+
+[SI] PROPIEDAD: Sus datos le pertenecen. Usted es responsable de sus respaldos.
+
+[SI] GDPR COMPATIBLE: Diseñado respetando principios de privacidad internacionales.
+
+
+-------------------------------------------------------------------------------
+5. LIMITACIÓN DE RESPONSABILIDAD
+-------------------------------------------------------------------------------
+
+Codec Studio ha desarrollado CODEC POS con dedicación y excelencia, buscando la 
+guía de Dios en cada línea de código. Sin embargo:
+
+[NO] NO garantizamos que el software esté libre de errores al 100%.
+[NO] NO somos responsables por pérdidas de datos si no realiza respaldos.
+[NO] NO somos responsables por uso inadecuado o configuración incorrecta.
+[NO] NO somos responsables por problemas de hardware o sistema operativo.
+[NO] NO somos responsables por interpretaciones erróneas de la legislación DIAN.
+
+[SI] SÍ nos comprometemos a mejorar constantemente el software.
+[SI] SÍ ofrecemos soporte técnico según su plan de licencia.
+[SI] SÍ trabajamos con integridad, honestidad y temor de Dios.
+
+
+-------------------------------------------------------------------------------
+6. FACTURACIÓN ELECTRÓNICA Y CUMPLIMIENTO DIAN
+-------------------------------------------------------------------------------
+
+[SI] CODEC POS incluye funcionalidades para facturación electrónica compatible con 
+  requisitos de la DIAN (Dirección de Impuestos y Aduanas Nacionales de Colombia).
+
+[SI] USTED ES RESPONSABLE de:
+  - Configurar correctamente su resolución DIAN
+  - Verificar que sus facturas cumplan la normativa vigente
+  - Mantener respaldos de toda su información tributaria
+  - Consultar con un contador si tiene dudas fiscales
+
+[SI] Codec Studio NO es contador ni asesor tributario. Este software es una 
+  herramienta, pero la responsabilidad fiscal es del usuario.
+
+
+-------------------------------------------------------------------------------
+7. SOPORTE Y ACTUALIZACIONES
+-------------------------------------------------------------------------------
+
+[SI] ACTUALIZACIONES GRATUITAS durante la vigencia de su licencia activa.
+
+[SI] SOPORTE TÉCNICO según plan:
+  - BÁSICO: Soporte por correo (48-72 hrs)
+  - PROFESIONAL: Soporte prioritario (24 hrs)
+  - EMPRESARIAL: Soporte VIP + WhatsApp directo
+
+[SI] NUEVAS FUNCIONALIDADES: Se agregan regularmente, buscando la excelencia que 
+  Dios merece.
+
+
+-------------------------------------------------------------------------------
+8. CÓDIGO DE CONDUCTA
+-------------------------------------------------------------------------------
+
+Codec Studio es un ministerio disfrazado de empresa de software. Nuestros valores:
+
+[SI] DIOS PRIMERO: Reconocemos que todo viene de Él y es para Él.
+
+[SI] INTEGRIDAD: Trabajamos con honestidad, rechazando toda forma de corrupción.
+
+[SI] EXCELENCIA: "Todo lo que hagáis, hacedlo de corazón, como para el Señor y no 
+  para los hombres." - Colosenses 3:23
+
+[SI] SERVICIO: Existimos para servir y bendecir, no solo para vender software.
+
+[SI] HONESTIDAD: Decimos la verdad, aunque duela. No hacemos promesas que no podamos 
+  cumplir.
+
+Esperamos que nuestros usuarios también operen sus negocios con principios cristianos:
+honestidad con los clientes, justicia con los empleados, y gratitud a Dios por las 
+bendiciones recibidas.
+
+
+-------------------------------------------------------------------------------
+9. TERMINACIÓN DE LICENCIA
+-------------------------------------------------------------------------------
+
+Su licencia puede ser terminada si:
+
+[NO] Usa el software para actividades ilegales
+[NO] Viola estos términos y condiciones
+[NO] No renueva su licencia al vencimiento
+[NO] Intenta hackear, modificar o redistribuir el software
+
+En caso de terminación:
+- Debe dejar de usar el software inmediatamente
+- Puede solicitar exportación de sus datos (30 días)
+- No hay reembolsos por tiempo no usado
+
+
+-------------------------------------------------------------------------------
+10. GARANTÍA
+---------------------------------------------------------------------------
+
+Aunque no podemos garantizar éxito comercial (eso depende de Dios y su esfuerzo), 
+SÍ garantizamos que:
+
+[SI] Este software fue creado con oración y dedicación
+[SI] Cada función fue desarrollada buscando la guía de Dios
+[SI] Trabajamos con excelencia para honrar a Dios
+[SI] Nuestro deseo es que su negocio prospere y sea de bendición
+
+"Y todo lo que pidiereis en oración, creyendo, lo recibiréis." - Mateo 21:22
+
+Oramos por cada negocio que usa CODEC POS, pidiendo a Dios que los bendiga 
+abundantemente.
+
+
+-------------------------------------------------------------------------------
+11. LEY APLICABLE
+-------------------------------------------------------------------------------
+
+[SI] Estos términos se rigen por las leyes de la República de Colombia.
+
+[SI] Cualquier disputa se resolverá primero mediante diálogo cristiano, buscando 
+  la paz y el acuerdo mutuo.
+
+[SI] Si no hay acuerdo, se someterá a mediación antes de procedimientos legales.
+
+"Si es posible, en cuanto dependa de vosotros, estad en paz con todos los hombres." 
+- Romanos 12:18
+
+
+-------------------------------------------------------------------------------
+12. ACEPTACIÓN DE TÉRMINOS
+-------------------------------------------------------------------------------
+
+Al instalar, activar o usar CODEC POS v2.0, usted declara que:
+
+[SI] Ha leído y comprendido estos términos y condiciones
+[SI] Acepta cumplir con todas las cláusulas establecidas
+[SI] Reconoce que Codec Studio es un regalo de Dios
+[SI] Acepta que Dios es el primero en todo
+[SI] Usará el software con honestidad y temor de Dios
+
+
+===============================================================================
+  FINAL
+===============================================================================
+
+"Jehová te bendiga, y te guarde; Jehová haga resplandecer su rostro sobre ti, 
+y tenga de ti misericordia; Jehová alce sobre ti su rostro, y ponga en ti paz."
+- Números 6:24-26
+
+Que Dios bendiga abundantemente tu negocio, multiplique tus ganancias, proteja 
+tu establecimiento, te dé sabiduría para administrar, y haga prosperar todo el 
+trabajo de tus manos.
+
+Que cada venta sea de bendición, cada cliente salga satisfecho, y tu esfuerzo 
+sea recompensado. Que nunca falte el sustento y siempre haya crecimiento.
+
+En el nombre de Jesucristo, amén.
+
+
+===============================================================================
+  CONTACTO
+===============================================================================
+
+Codec Studio
+Sistema diseñado con excelencia para honrar a Dios
+Colombia tel: +57 3238646844
+https://codecstudio.online/
+
+"Fiel es Dios, que no os dejará ser tentados más de lo que podéis resistir, sino 
+que dará también juntamente con la tentación la salida, para que podáis soportar."
+- 1 Corintios 10:13
+
+
+===============================================================================
+  A Dios sea toda la gloria, por los siglos de los siglos. Amén.
+===============================================================================
+
+Última actualización: Marzo 9, 2026
+Versión: 2.0.0

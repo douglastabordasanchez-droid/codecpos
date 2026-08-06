@@ -1,0 +1,74 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "1️⃣ VERIFICAR - Comprobar prerequisitos",
+      "type": "shell",
+      "command": "node --version && npm --version && echo ✅ Todo listo",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "2️⃣ LIMPIAR - Borrar dist y dist-electron",
+      "type": "shell",
+      "windows": {
+        "command": "if exist dist rmdir /s /q dist & if exist dist-electron rmdir /s /q dist-electron & echo ✅ Carpetas limpiadas"
+      },
+      "linux": {
+        "command": "rm -rf dist dist-electron && echo ✅ Carpetas limpiadas"
+      },
+      "osx": {
+        "command": "rm -rf dist dist-electron && echo ✅ Carpetas limpiadas"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "3️⃣ BUILD - Construir interfaz (npm run build)",
+      "type": "npm",
+      "script": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "4️⃣ COMPILAR - Crear instalador COMPLETO",
+      "type": "npm",
+      "script": "electron:build:win",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true
+      }
+    },
+    {
+      "label": "🚀 COMPILAR TODO (Limpiar + Build + Instalador)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "2️⃣ LIMPIAR - Borrar dist y dist-electron",
+        "3️⃣ BUILD - Construir interfaz (npm run build)",
+        "4️⃣ COMPILAR - Crear instalador COMPLETO"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "⚡ COMPILAR RAPIDO (solo pack)",
+      "type": "npm",
+      "script": "pack",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}

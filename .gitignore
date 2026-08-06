@@ -1,0 +1,22 @@
+# Dependencias
+node_modules/
+
+# Build
+dist/
+dist-electron/
+dist-pwa/
+release/
+*.log
+
+# Copia anidada duplicada del proyecto (housekeeping pendiente, no forma parte del repo)
+/Codecpos2.0 modulo servicio tecnico/
+
+# Entorno / credenciales
+.env
+.env.local
+.env.*.local
+electron/config.js
+
+# Editor / SO
+.DS_Store
+Thumbs.db

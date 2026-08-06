@@ -1,0 +1,61 @@
+Necesito que el sistema se distribuya mediante un instalador profesional (.exe) para Windows, no en versión portable.
+
+El instalador debe cumplir con lo siguiente:
+
+Instalador paso a paso
+
+Pantalla de bienvenida.
+
+Pantalla de términos y condiciones con opción de aceptar.
+
+Selección de carpeta de instalación (por defecto en C:\Program Files\NombreDelSistema).
+
+Progreso de instalación.
+
+Pantalla final que diga “Instalación finalizada”.
+
+Opciones finales
+
+Checkbox “Ejecutar el sistema ahora”.
+
+Checkbox “Crear acceso directo en el escritorio”.
+
+Instalación real en el sistema
+
+El programa debe instalarse en Program Files, no ejecutarse portable.
+
+Debe crear:
+
+Acceso directo en escritorio
+
+Acceso directo en menú inicio
+
+Debe registrar la aplicación en Agregar o quitar programas de Windows para poder desinstalarla.
+
+Compatibilidad
+
+Debe funcionar desde Windows 7 en adelante (Windows 7, 8, 10 y 11).
+
+Arquitectura 64 bits, pero compatible con sistemas que aún usen dependencias de 32 bits si es necesario.
+
+Desinstalador
+
+El instalador debe incluir un desinstalador automático accesible desde el panel de control de Windows.
+
+Branding
+
+El instalador debe mostrar:
+
+Logo del sistema
+
+Nombre del software
+
+Versión
+
+Copyright
+
+Extras opcionales
+
+Verificación de actualizaciones.
+
+Instalación automática de dependencias necesarias.

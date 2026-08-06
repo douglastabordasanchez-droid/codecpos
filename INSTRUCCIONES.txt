@@ -1,0 +1,163 @@
+============================================
+  CODEC POS v2.0 - CREAR INSTALADOR
+============================================
+
+
+PRIMERO - PRUEBA QUE LOS .BAT FUNCIONEN
+============================================
+
+1. Doble click en: PRUEBA.bat
+
+   Si ves el mensaje "HOLA" = Los .bat funcionan
+   Si NO abre nada = Problema con Windows
+
+
+PROCESO COMPLETO
+============================================
+
+
+PASO 1: VERIFICAR
+--------------------------------------------
+
+Click derecho en: VERIFICAR.bat
+Ejecutar como administrador
+
+Resultado esperado:
+- [1/5] Node.js... OK
+- [2/5] npm... OK
+- [3/5] package.json... OK
+- [4/5] node_modules... OK
+- [5/5] builder-config.js... OK
+- TODO LISTO PARA COMPILAR
+
+
+PASO 2: INSTALAR (si falta algo)
+--------------------------------------------
+
+Si VERIFICAR.bat dice "HAY ERRORES":
+
+A) Si falta Node.js:
+   1. https://nodejs.org/
+   2. Descargar version LTS
+   3. Instalar
+   4. Reiniciar PC
+   5. Volver a PASO 1
+
+B) Si falta node_modules:
+   Click derecho en: INSTALAR.bat
+   Ejecutar como administrador
+   Esperar 10 minutos
+   Volver a PASO 1
+
+
+PASO 3: DESACTIVAR WINDOWS DEFENDER
+--------------------------------------------
+
+CRITICO - Sin esto NO funciona
+
+1. Presiona: Windows + I
+2. Ve a: Privacidad y seguridad
+3. Click: Seguridad de Windows
+4. Click: Proteccion contra virus
+5. Click: Administrar configuracion
+6. Desactivar: Proteccion en tiempo real
+
+
+PASO 4: COMPILAR
+--------------------------------------------
+
+1. Click derecho en: COMPILAR.bat
+2. Ejecutar como administrador
+3. Presionar ENTER en cada pausa
+4. Esperar 20 minutos
+5. NO cerrar la ventana
+
+Proceso:
+[1/6] Verificando Node.js... OK
+[2/6] Verificando npm... OK
+[3/6] Verificando dependencias... OK
+[4/6] Limpiando carpetas... OK
+[5/6] Construyendo interfaz... OK (5 min)
+[6/6] Creando instalador... OK (15-20 min)
+
+
+RESULTADO
+--------------------------------------------
+
+Se crea el archivo:
+
+dist-electron\CODECPOS-Setup-2.0.0.exe
+
+Este es el instalador profesional
+
+
+PROBLEMAS
+============================================
+
+
+"El .bat no arranca"
+--------------------------------------------
+1. Prueba PRUEBA.bat primero
+2. Click derecho -> Ejecutar como admin
+3. NO doble click
+
+
+"node no se reconoce"
+--------------------------------------------
+1. Instala Node.js
+2. Reinicia PC
+3. Vuelve a intentar
+
+
+"npm run build falla"
+--------------------------------------------
+1. Ejecuta INSTALAR.bat
+2. Espera a que termine
+3. Ejecuta COMPILAR.bat
+
+
+"electron-builder falla"
+--------------------------------------------
+1. Desactiva Windows Defender
+2. Ejecuta como Administrador
+3. Verifica espacio (minimo 2 GB)
+
+
+ARCHIVOS
+============================================
+
+PRUEBA.bat    - Prueba que .bat funcionen
+VERIFICAR.bat - Verifica prerequisitos
+INSTALAR.bat  - Instala dependencias
+COMPILAR.bat  - Crea el instalador
+
+
+TIEMPOS
+============================================
+
+Verificar ........ 10 segundos
+Instalar Node.js . 5 minutos
+Instalar deps .... 5-10 minutos
+Compilar ......... 20 minutos
+
+Total primera vez: 40 minutos
+Total siguiente:   20 minutos
+
+
+RESUMEN
+============================================
+
+1. PRUEBA.bat (doble click)
+2. VERIFICAR.bat (como admin)
+3. INSTALAR.bat si falta algo (como admin)
+4. Desactivar Windows Defender
+5. COMPILAR.bat (como admin)
+6. Esperar 20 minutos
+7. LISTO
+
+
+============================================
+
+EMPIEZA CON: PRUEBA.bat
+
+============================================

@@ -1,0 +1,26 @@
+@import 'tailwindcss' source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+
+@import 'tw-animate-css';
+
+/* ── ROOT RESET: elimina franjas blancas/transparentes a cualquier zoom ── */
+html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background-color: #0f172a; /* slate-900: fallback oscuro para Electron */
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background-color: #0f172a;
+}
+
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  isolation: isolate;
+}

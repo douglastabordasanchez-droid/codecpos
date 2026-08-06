@@ -1,0 +1,136 @@
+═══════════════════════════════════════════════════════════════════════
+  CODEC POS v2.0 - COMPILAR INSTALADOR (ERRORES SOLUCIONADOS)
+═══════════════════════════════════════════════════════════════════════
+
+
+CAMBIOS IMPORTANTES
+═══════════════════════════════════════════════════════════════════════
+
+✅ Los errores de "command line defined" estan SOLUCIONADOS
+✅ Modulos nativos (.node) ahora se empaquetan correctamente
+✅ Limpieza automatica antes de compilar
+✅ Configuracion optimizada de electron-builder
+
+
+OPCION 1: VISUAL STUDIO CODE (RECOMENDADO)
+═══════════════════════════════════════════════════════════════════════
+
+1. Abre VS Code en la carpeta del proyecto
+
+2. Abre la Terminal (Ctrl + ñ)
+
+3. Ejecuta:
+
+   npm run compile
+
+4. Espera 20 minutos
+
+5. LISTO: dist-electron\CODECPOS-Setup-2.0.0.exe
+
+
+OPCION 2: NUEVO .BAT CON LIMPIEZA
+═══════════════════════════════════════════════════════════════════════
+
+1. Click derecho en: COMPILAR_LIMPIO.bat
+
+2. Ejecutar como administrador
+
+3. Presionar ENTER en cada paso
+
+4. Esperar 20 minutos
+
+5. LISTO
+
+
+OPCION 3: DESDE CMD/PowerShell
+═══════════════════════════════════════════════════════════════════════
+
+1. Abre CMD o PowerShell en esta carpeta
+
+2. Ejecuta:
+
+   npm run compile
+
+3. Espera 20 minutos
+
+4. LISTO
+
+
+IMPORTANTE
+═══════════════════════════════════════════════════════════════════════
+
+⚠️  DESACTIVA WINDOWS DEFENDER antes de compilar
+
+⚠️  Ten 2 GB de espacio libre en disco
+
+⚠️  NO cierres las ventanas durante el proceso
+
+⚠️  La primera vez tarda más (25-30 min)
+
+
+COMANDOS DISPONIBLES
+═══════════════════════════════════════════════════════════════════════
+
+npm run compile         - Crear instalador completo
+npm run compile:clean   - Limpiar + crear instalador
+npm run compile:quick   - Empaquetar rápido (sin instalador)
+npm run build           - Solo construir interfaz
+
+
+VERIFICAR QUE TODO ESTA LISTO
+═══════════════════════════════════════════════════════════════════════
+
+Ejecuta en terminal:
+
+   node --version
+   npm --version
+
+Si ambos dan versión = TODO OK
+
+Si alguno falla = Instala Node.js desde https://nodejs.org/
+
+
+PROCESO COMPLETO PASO A PASO
+═══════════════════════════════════════════════════════════════════════
+
+[PASO 1] Verificar prerequisitos
+         node --version
+         npm --version
+
+[PASO 2] Instalar dependencias (si no están)
+         npm install
+
+[PASO 3] Desactivar Windows Defender
+
+[PASO 4] Compilar
+         npm run compile
+
+[PASO 5] Esperar 20 minutos
+
+[PASO 6] Abrir carpeta dist-electron
+
+
+RESULTADO ESPERADO
+═══════════════════════════════════════════════════════════════════════
+
+Se creará:
+
+📁 dist-electron/
+   ├── CODECPOS-Setup-2.0.0.exe    (Instalador NSIS)
+   └── CODECPOS 2.0.0.exe          (Versión portable)
+
+
+EMPEZAR AHORA
+═══════════════════════════════════════════════════════════════════════
+
+METODO MAS SIMPLE:
+
+1. Abre VS Code
+2. Abre terminal (Ctrl + ñ)
+3. Escribe: npm run compile
+4. Presiona ENTER
+5. Espera
+6. LISTO
+
+
+═══════════════════════════════════════════════════════════════════════

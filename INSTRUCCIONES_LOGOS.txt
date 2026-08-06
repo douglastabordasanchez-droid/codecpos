@@ -1,0 +1,287 @@
+════════════════════════════════════════════════════════════════════════
+  CODEC POS v2.0 - INSTRUCCIONES PARA TUS LOGOS
+  ¡Lee esto PRIMERO antes de compilar!
+════════════════════════════════════════════════════════════════════════
+
+
+🎨 ¿QUÉ LOGOS NECESITAS?
+════════════════════════════════════════════════════════════════════════
+
+Solo necesitas 2 archivos:
+
+  📄 logo.png    ← Logo principal (OBLIGATORIO)
+  📄 icon.ico    ← Ícono del instalador (OPCIONAL)
+
+
+📁 ¿DÓNDE PONERLOS?
+════════════════════════════════════════════════════════════════════════
+
+IMPORTANTE: Ponlos en la carpeta /public/
+
+  Estructura correcta:
+  ────────────────────
+  tu-proyecto/
+    ├── public/
+    │   ├── logo.png     ← Aquí va tu logo principal
+    │   └── icon.ico     ← Aquí va el ícono del instalador
+    ├── src/
+    ├── electron/
+    └── package.json
+
+
+❌ NO pongas logos en estas carpetas:
+  ❌ /src/
+  ❌ /electron/assets/
+  ❌ /dist/
+  ❌ Ninguna otra carpeta
+
+
+✅ SOLO en /public/
+
+
+📐 ESPECIFICACIONES DE LOS LOGOS
+════════════════════════════════════════════════════════════════════════
+
+LOGO PRINCIPAL (logo.png):
+─────────────────────────
+  Nombre:          logo.png
+  Formato:         PNG
+  Tamaño mínimo:   512×512 píxeles
+  Tamaño óptimo:   1024×1024 píxeles
+  Fondo:           Transparente (recomendado)
+  Peso máximo:     500 KB
+  Ubicación:       /public/logo.png
+
+
+ÍCONO DEL INSTALADOR (icon.ico):
+────────────────────────────────
+  Nombre:          icon.ico
+  Formato:         ICO o PNG
+  Tamaño:          256×256 píxeles
+  Fondo:           Transparente o blanco
+  Peso máximo:     200 KB
+  Ubicación:       /public/icon.ico
+
+
+🎯 ¿DÓNDE SE USARÁN TUS LOGOS?
+════════════════════════════════════════════════════════════════════════
+
+LOGO PRINCIPAL (logo.png) aparecerá en:
+──────────────────────────────────────
+  ✅ Página de bienvenida (grande, 128px)
+  ✅ Página de login (con efecto glow, 120px)
+  ✅ Dashboard principal (horizontal, 34px)
+  ✅ Configuración (horizontal, 40px)
+  ✅ Sidebar (circular, 48px)
+
+
+ÍCONO (icon.ico) aparecerá en:
+─────────────────────────────
+  ✅ Ícono del instalador (.exe)
+  ✅ Ícono del programa instalado
+  ✅ Acceso directo en escritorio
+  ✅ Acceso directo en menú inicio
+
+
+🚀 PASOS PARA USAR TUS LOGOS
+════════════════════════════════════════════════════════════════════════
+
+1. PREPARAR TUS ARCHIVOS
+   ─────────────────────
+   ✓ Crea o busca tu logo en formato PNG
+   ✓ Asegúrate que sea de 512×512 px o más
+   ✓ (Opcional) Convierte tu logo a .ico
+
+
+2. COPIAR A /PUBLIC/
+   ─────────────────
+   ✓ Abre la carpeta de tu proyecto
+   ✓ Entra a la carpeta /public/
+   ✓ Copia logo.png ahí
+   ✓ (Opcional) Copia icon.ico ahí
+
+
+3. VERIFICAR NOMBRES
+   ─────────────────
+   ✓ El archivo se debe llamar EXACTAMENTE: logo.png
+   ✓ El ícono se debe llamar EXACTAMENTE: icon.ico
+   ✓ Todo en minúsculas
+   ✓ Sin espacios
+
+
+4. COMPILAR
+   ────────
+   ✓ Abre VS Code
+   ✓ Ejecuta: npm run compile
+   ✓ Espera 20 minutos
+   ✓ ¡Listo!
+
+
+✅ VERIFICACIÓN RÁPIDA
+════════════════════════════════════════════════════════════════════════
+
+Antes de compilar, verifica:
+
+  □ ¿Está logo.png en /public/?
+  □ ¿El archivo se llama exactamente "logo.png"?
+  □ ¿Es PNG?
+  □ ¿Tiene al menos 512×512 px?
+  □ (Opcional) ¿Está icon.ico en /public/?
+
+
+🔍 CÓMO VERIFICAR QUE FUNCIONÓ
+════════════════════════════════════════════════════════════════════════
+
+OPCIÓN 1: Probar en desarrollo
+──────────────────────────────
+  1. Ejecuta: npm run dev
+  2. Abre: http://localhost:5173
+  3. Verifica que aparece TU logo
+
+
+OPCIÓN 2: Compilar y probar
+──────────────────────────
+  1. Ejecuta: npm run compile
+  2. Espera 20 minutos
+  3. Abre: dist-electron/
+  4. Ejecuta: CODECPOS-Setup-2.0.0.exe
+  5. Verifica el ícono del instalador
+  6. Instala
+  7. Verifica ícono en escritorio
+  8. Ejecuta el programa
+  9. Verifica que aparece TU logo
+
+
+❓ PREGUNTAS FRECUENTES
+════════════════════════════════════════════════════════════════════════
+
+P: ¿Qué pasa si NO pongo logo.png?
+R: El sistema usará un SVG profesional de fallback (CP)
+
+
+P: ¿Qué pasa si NO pongo icon.ico?
+R: El sistema usará logo.png como ícono
+
+
+P: ¿Puedo usar solo logo.png sin icon.ico?
+R: Sí, logo.png se usará para todo
+
+
+P: ¿Puedo usar JPG en lugar de PNG?
+R: No, DEBE ser PNG
+
+
+P: Mi logo tiene texto, ¿funciona?
+R: Sí, cualquier logo PNG funciona
+
+
+P: ¿Puedo cambiar el nombre del archivo?
+R: No, DEBE llamarse "logo.png" exactamente
+
+
+P: ¿Puedo ponerlo en otra carpeta?
+R: No, DEBE estar en /public/
+
+
+P: Mi logo es rectangular, ¿funciona?
+R: Sí, pero se recomienda cuadrado (1:1)
+
+
+P: ¿Necesito reiniciar algo después de copiar?
+R: No, solo compila de nuevo
+
+
+🛠️ SOLUCIÓN DE PROBLEMAS
+════════════════════════════════════════════════════════════════════════
+
+PROBLEMA: No veo mi logo en el sistema
+──────────────────────────────────────
+Solución:
+  1. Verifica que el archivo está en /public/logo.png
+  2. Verifica que se llama exactamente "logo.png"
+  3. Recarga el navegador (Ctrl + F5)
+  4. Si usas npm run dev, reinicia el servidor
+
+
+PROBLEMA: El instalador no tiene mi ícono
+─────────────────────────────────────────
+Solución:
+  1. Verifica que icon.ico está en /public/
+  2. Limpia: npm run clean
+  3. Compila de nuevo: npm run compile
+
+
+PROBLEMA: Veo un logo "CP" en lugar del mío
+───────────────────────────────────────────
+Solución:
+  • Ese es el SVG de fallback
+  • Significa que no encuentra logo.png
+  • Pon logo.png en /public/ y recarga
+
+
+PROBLEMA: Mi logo se ve pixelado
+────────────────────────────────
+Solución:
+  • Tu logo es muy pequeño
+  • Usa un PNG de al menos 512×512 px
+  • Idealmente 1024×1024 px
+
+
+📊 EJEMPLOS DE LOGOS
+════════════════════════════════════════════════════════════════════════
+
+LOGO BUENO:
+──────────
+  ✅ Formato: PNG
+  ✅ Tamaño: 1024×1024 px
+  ✅ Fondo: Transparente
+  ✅ Peso: 150 KB
+  ✅ Nombre: logo.png
+  ✅ Ubicación: /public/logo.png
+
+
+LOGO MALO:
+─────────
+  ❌ Formato: JPG
+  ❌ Tamaño: 128×128 px
+  ❌ Fondo: Blanco
+  ❌ Peso: 2 MB
+  ❌ Nombre: mi_logo.png
+  ❌ Ubicación: /src/logo.png
+
+
+🎨 RECOMENDACIONES DE DISEÑO
+════════════════════════════════════════════════════════════════════════
+
+Para que tu logo se vea bien:
+
+  ✓ Usa colores contrastantes
+  ✓ Evita textos muy pequeños
+  ✓ Usa fondo transparente
+  ✓ Diseño simple y limpio
+  ✓ Alta resolución
+  ✓ Formato cuadrado (1:1)
+
+
+🚀 SIGUIENTE PASO
+════════════════════════════════════════════════════════════════════════
+
+1. Copia logo.png a /public/
+2. (Opcional) Copia icon.ico a /public/
+3. Ejecuta: npm run compile
+4. ¡Tu sistema tendrá TUS logos!
+
+
+📚 MÁS INFORMACIÓN
+════════════════════════════════════════════════════════════════════════
+
+Lee estos archivos:
+
+  • SISTEMA_DE_LOGOS.md      - Guía técnica completa
+  • RESUMEN_FINAL.txt        - Resumen de cambios
+  • LEEME_PRIMERO.txt        - Guía de inicio
+
+
+════════════════════════════════════════════════════════════════════════
+  ¡Pon logo.png en /public/ y compila!
+════════════════════════════════════════════════════════════════════════

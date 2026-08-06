@@ -1,0 +1,256 @@
+/**
+ * CODEC POS - Electron Preload Script
+ * Expone APIs seguras de Node.js al renderer process
+ *
+ * NOTA: main.js carga preload.cjs con prioridad sobre este archivo (ver
+ * findPreload() en electron/main.js) porque Electron requiere CommonJS para
+ * el preload incluso con "type": "module" en package.json. Este archivo se
+ * mantiene como respaldo/documentación y debe reflejar exactamente las
+ * mismas APIs que preload.cjs — si agregas una API nueva, agrégala en AMBOS.
+ */
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+// Exponer APIs seguras al renderer
+contextBridge.exposeInMainWorld('electron', {
+  /**
+   * Obtiene el UUID real de la máquina
+   * Requiere permisos de administrador en Windows
+   */
+  getMachineId: () => ipcRenderer.invoke('get-machine-id'),
+
+  /**
+   * Verifica si la aplicación se está ejecutando con permisos de administrador
+   */
+  isAdmin: () => ipcRenderer.invoke('is-admin'),
+
+  /**
+   * true si este equipo fue detectado sin compositing por GPU real (ver
+   * main.js) — el renderer usa esto para apagar efectos de backdrop-blur
+   * costosos en equipos de bajos recursos.
+   */
+  isSoftwareRendering: () => ipcRenderer.invoke('system:is-software-rendering'),
+
+  /**
+   * Solicita reiniciar la aplicación con permisos de administrador
+   */
+  requestAdminRestart: () => ipcRenderer.invoke('request-admin-restart'),
+
+  /**
+   * Información del sistema operativo
+   */
+  getOSInfo: () => ipcRenderer.invoke('get-os-info'),
+
+  /**
+   * Versión instalada de la app (usada para detectar arranques post-actualización)
+   */
+  getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+
+  /**
+   * 💾 Guardar backup en disco (ruta antigua, Documents/CODEC_POS_Backups)
+   */
+  saveBackup: (data) => ipcRenderer.invoke('save-backup', data),
+
+  /**
+   * 🔔 Mostrar notificación del sistema
+   */
+  showNotification: (data) => ipcRenderer.invoke('show-notification', data),
+
+  /**
+   * Abrir enlaces externos en el navegador del sistema
+   */
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  /**
+   * Cuadro de diálogo nativo
+   */
+  showMessageBox: (opts) => ipcRenderer.invoke('show-message-box', opts),
+
+  /**
+   * Control de pantalla completa
+   */
+  toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
+  isFullscreen: () => ipcRenderer.invoke('is-fullscreen'),
+  setFullscreen: (value) => ipcRenderer.invoke('set-fullscreen', value),
+
+  /**
+   * Impresora térmica (Windows spool / ESC-POS) + Etiquetas
+   */
+  printer: {
+    getConfig: () => ipcRenderer.invoke('printer:get-config'),
+    listSystem: () => ipcRenderer.invoke('printer:list-system'),
+    resolveTarget: () => ipcRenderer.invoke('printer:resolve-target'),
+    checkAvailability: (printerName) => ipcRenderer.invoke('printer:check-availability', printerName),
+    rawEscPos: (payload) => ipcRenderer.invoke('printer:raw-escpos', payload),
+    // Compatibilidad con renderer existente
+    list: () => ipcRenderer.invoke('printer:list'),
+    test: (target) => ipcRenderer.invoke('printer:test', target),
+    // Impresión silenciosa de etiquetas de códigos de barras
+    getPrinters: () => ipcRenderer.invoke('get-printers'),
+    printLabel: (data) => ipcRenderer.invoke('print-label', data),
+  },
+
+  /**
+   * Detección universal de hardware
+   */
+  serialport: {
+    list: () => ipcRenderer.invoke('serialport:list'),
+    open: (path, options) => ipcRenderer.invoke('serialport:open', path, options),
+    close: (path) => ipcRenderer.invoke('serialport:close', path),
+    write: (path, data) => ipcRenderer.invoke('serialport:write', path, data),
+  },
+  usb: {
+    getDevices: () => ipcRenderer.invoke('usb:getDevices'),
+  },
+  scale: {
+    read: (port) => ipcRenderer.invoke('scale:read', port),
+    test: (port) => ipcRenderer.invoke('scale:test', port),
+  },
+
+  /**
+   * Eventos en tiempo real de dispositivos USB (plug / unplug)
+   */
+  devices: {
+    onConnected: (callback) =>
+      ipcRenderer.on('device:connected', (_event, data) => callback(data)),
+    onDisconnected: (callback) =>
+      ipcRenderer.on('device:disconnected', (_event, data) => callback(data)),
+    onListUpdated: (callback) =>
+      ipcRenderer.on('device:list-updated', (_event, data) => callback(data)),
+    removeAllDeviceListeners: () => {
+      ipcRenderer.removeAllListeners('device:connected');
+      ipcRenderer.removeAllListeners('device:disconnected');
+      ipcRenderer.removeAllListeners('device:list-updated');
+    },
+  },
+
+  /**
+   * 📡 Diagnóstico de red Wi-Fi
+   */
+  wifi: {
+    getSsid:       () => ipcRenderer.invoke('wifi:get-ssid'),
+    scanNetworks:  () => ipcRenderer.invoke('wifi:scan-networks'),
+  },
+
+  /**
+   * 🌐 Red — acceso directo a la tarjeta de red Wi-Fi del equipo
+   */
+  network: {
+    /** Obtiene el SSID actual + estado de conexión de la tarjeta Wi-Fi */
+    getCurrentSSID:  () => ipcRenderer.invoke('network:getCurrentSSID'),
+    /** Lista todos los SSIDs visibles en el entorno (sin señal, más rápido) */
+    scanAvailable:   () => ipcRenderer.invoke('network:scanAvailable'),
+    /** Escaneo completo con señal, auth y canal (más lento) */
+    scanNetworksFull:() => ipcRenderer.invoke('wifi:scan-networks'),
+  },
+
+  /**
+   * 🖥️ Control de zoom/escala de pantalla
+   */
+  screen: {
+    getZoom: () => ipcRenderer.invoke('app:get-zoom'),
+    setZoom: (factor) => ipcRenderer.invoke('app:set-zoom', factor),
+    toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
+    isFullscreen: () => ipcRenderer.invoke('is-fullscreen'),
+  },
+
+  /**
+   * 🌐 Red LAN — comunicación entre terminales CODEC POS en la misma red
+   */
+  lan: {
+    startServer:        () => ipcRenderer.invoke('lan:start-server'),
+    startClient:        (opts) => ipcRenderer.invoke('lan:start-client', opts),
+    stop:               () => ipcRenderer.invoke('lan:stop'),
+    emitEvent:          (event) => ipcRenderer.invoke('lan:emit-event', event),
+    getStatus:          () => ipcRenderer.invoke('lan:get-status'),
+    getClients:         () => ipcRenderer.invoke('lan:get-clients'),
+    getLocalIp:         () => ipcRenderer.invoke('lan:get-local-ip'),
+    sendAuditRequest:   (terminalId) => ipcRenderer.invoke('lan:send-audit-request', terminalId),
+    sendAuditResponse:  (data) => ipcRenderer.invoke('lan:send-audit-response', data),
+
+    // API HTTP (servidor REST para tablets/comandas externas)
+    startHttp:          () => ipcRenderer.invoke('lan:start-http'),
+    stopHttp:           () => ipcRenderer.invoke('lan:stop-http'),
+    getHttpStatus:      () => ipcRenderer.invoke('lan:get-http-status'),
+
+    // Autenticación centralizada en red local
+    setAuthData:        (data) => ipcRenderer.invoke('lan:set-auth-data', data),
+    getActiveTerminals: () => ipcRenderer.invoke('lan:get-active-terminals'),
+    discoverServers:    () => ipcRenderer.invoke('lan:discover-servers'),
+    pushTallerOrden:    (data) => ipcRenderer.invoke('lan:push-taller-orden', data),
+    getTechStatus:      (userId) => ipcRenderer.invoke('lan:get-tech-status', userId),
+
+    // Listeners: eventos PUSH desde el proceso principal al renderer
+    onClientConnected:    (cb) => ipcRenderer.on('lan:client-connected',   (_e, d) => cb(d)),
+    onClientDisconnected: (cb) => ipcRenderer.on('lan:client-disconnected', (_e, d) => cb(d)),
+    onEventReceived:      (cb) => ipcRenderer.on('lan:event-received',      (_e, d) => cb(d)),
+    onConnectionStatus:   (cb) => ipcRenderer.on('lan:connection-status',   (_e, d) => cb(d)),
+    onAuditRequest:       (cb) => ipcRenderer.on('lan:audit-request',       (_e, d) => cb(d)),
+
+    removeAllListeners: () => {
+      [
+        'lan:client-connected',
+        'lan:client-disconnected',
+        'lan:event-received',
+        'lan:connection-status',
+        'lan:audit-request',
+      ].forEach(ch => ipcRenderer.removeAllListeners(ch));
+    },
+  },
+
+  /**
+   * 🖨️ Impresión nativa Electron — sin popup ni ventanas emergentes
+   * Usa webContents.print() silencioso sobre la impresora térmica configurada
+   */
+  print: {
+    printHtml: (data) => ipcRenderer.invoke('print:html', data),
+  },
+
+  /**
+   * 🛡️ BLINDAJE — Respaldo automático en ruta segura fuera de %AppData%
+   * Ver electron/backupManager.js
+   */
+  backup: {
+    // Guarda un JSON ya serializado (todas las stores de IndexedDB) en la ruta blindada
+    saveSafe: (jsonString) => ipcRenderer.invoke('backup:save-safe', jsonString),
+    // Lista los backups disponibles en la ruta blindada (metadata, sin contenido)
+    list: () => ipcRenderer.invoke('backup:list'),
+    // Lee el contenido JSON de un backup específico por nombre de archivo
+    read: (fileName) => ipcRenderer.invoke('backup:read', fileName),
+    // Info del último backup exitoso (fecha, tamaño)
+    getLastInfo: () => ipcRenderer.invoke('backup:get-last-info'),
+    // Ruta absoluta de la carpeta de backups
+    getDir: () => ipcRenderer.invoke('backup:get-dir'),
+    // "Reparar": limpia el storage local corrupto (IndexedDB/localStorage) de la app
+    repair: () => ipcRenderer.invoke('backup:repair'),
+
+    // El proceso Main pide un backup final antes de cerrar limpiamente la app.
+    onBeforeQuitBackup: (cb) => ipcRenderer.on('app:before-quit-backup', () => cb()),
+    // El renderer confirma que el backup de cierre ya terminó (o falló) para que Main pueda salir.
+    notifyQuitBackupComplete: () => ipcRenderer.send('backup:on-quit-complete'),
+  },
+
+  /**
+   * 🛡️ BLINDAJE — Caja negra de auditoría física (.log en disco)
+   */
+  logs: {
+    readRecent: (limit) => ipcRenderer.invoke('logs:read-recent', limit),
+    write: (level, message, meta) => ipcRenderer.invoke('logs:write', { level, message, meta }),
+    getDir: () => ipcRenderer.invoke('logs:get-dir'),
+  },
+
+  /**
+   * 🛡️ BLINDAJE — Telemetría del sistema para la Sección de Desarrollador
+   */
+  system: {
+    getTelemetry: () => ipcRenderer.invoke('system:get-telemetry'),
+    getDiskSpace: () => ipcRenderer.invoke('system:get-disk-space'),
+  },
+
+  /**
+   * Relanzar la aplicación (usado tras restaurar/reparar la base de datos)
+   */
+  relaunch: () => ipcRenderer.invoke('app:relaunch'),
+});
+
+console.log('✅ Electron Preload Script cargado correctamente');

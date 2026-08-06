@@ -1,0 +1,94 @@
+===============================================================
+  CODEC POS v2.0 - EMPIEZA AQUI
+===============================================================
+
+
+PASO 1: VERIFICAR
+---------------------------------------------------------------
+
+Click derecho en: VERIFICAR.bat
+Ejecutar como administrador
+
+Esto te dira si falta algo
+
+
+PASO 2: SI FALTA NODE.JS
+---------------------------------------------------------------
+
+1. Ve a: https://nodejs.org/
+2. Descarga version LTS (boton verde)
+3. Instala
+4. Reinicia el PC
+5. Vuelve al Paso 1
+
+
+PASO 3: SI FALTA NODE_MODULES
+---------------------------------------------------------------
+
+Click derecho en: INSTALAR.bat
+Ejecutar como administrador
+Espera 5-10 minutos
+
+
+PASO 4: CREAR EL INSTALADOR
+---------------------------------------------------------------
+
+1. Desactiva Windows Defender:
+   Windows + I
+   Seguridad de Windows
+   Proteccion contra virus
+   Proteccion en tiempo real: OFF
+
+2. Click derecho en: COMPILAR.bat
+   Ejecutar como administrador
+
+3. Presiona ENTER cuando pida
+
+4. Espera 20 minutos
+
+5. NO cierres la ventana
+
+
+RESULTADO
+---------------------------------------------------------------
+
+dist-electron\CODECPOS-Setup-2.0.0.exe
+
+Este es el instalador que puedes:
+- Copiar a USB
+- Llevar a otro PC
+- Doble click para instalar
+
+
+===============================================================
+
+ARCHIVOS:
+
+VERIFICAR.bat - Verificar prerequisitos
+INSTALAR.bat  - Instalar dependencias
+COMPILAR.bat  - Crear instalador
+LEEME.txt     - Instrucciones detalladas
+
+
+===============================================================
+
+RESUMEN:
+
+1. VERIFICAR.bat (como admin)
+2. Si falta algo: INSTALAR.bat (como admin)
+3. Desactivar Windows Defender
+4. COMPILAR.bat (como admin)
+5. Esperar 20 minutos
+6. LISTO
+
+
+===============================================================
+
+IMPORTANTE:
+
+- Siempre: Click derecho -> Ejecutar como administrador
+- NO cierres las ventanas
+- NO olvides desactivar Windows Defender
+
+
+===============================================================
