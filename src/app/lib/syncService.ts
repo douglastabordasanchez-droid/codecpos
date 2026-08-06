@@ -37,6 +37,7 @@ function sincronizarProductoEnLocalStorage(producto: Producto): void {
       costo: producto.costo,
       stock: producto.stock,
       stockMinimo: producto.stockMinimo,
+      minStock: producto.stockMinimo,
       categoria: producto.categoria,
       unidad: producto.unidad,
       aplicaIVA: producto.iva > 0,
@@ -44,6 +45,10 @@ function sincronizarProductoEnLocalStorage(producto: Producto): void {
       imagenUrl: producto.imagenUrl,
       pesable: idx >= 0 ? lista[idx].pesable : false,
       tipoInventario: producto.tipoInventario || (idx >= 0 ? lista[idx].tipoInventario : 'directo'),
+      // 🛡️ Este producto ya viene DE Supabase (pull) — marcarlo evita que
+      // pushProductosLocalStorage lo reinterprete como "nuevo local" y cree
+      // una fila duplicada en vez de actualizar la misma.
+      _supabaseSynced: true,
     };
 
     if (idx >= 0) {
@@ -130,6 +135,7 @@ class SyncService {
     try {
       await this.pullProductosRemotos(client, clienteId);
       await this.pushProductosPendientes(client, clienteId);
+      await this.pushProductosLocalStorage(client, clienteId);
       await this.pushVentasPendientes(client, clienteId);
       await this.pushCierresPendientes(client, clienteId);
       await this.pushSesionActivaHeartbeat(client, clienteId);
@@ -278,6 +284,58 @@ class SyncService {
     }
 
     await dbManager.addLog('push_productos', `${pendientes.length} productos subidos`);
+  }
+
+  /**
+   * 🛡️ Hallazgo crítico: la pantalla real de inventario (ProductosPage) NUNCA
+   * escribe en IndexedDB — solo en localStorage['pos-productos'] (mismo
+   * patrón que POSPageNew leyendo esa misma clave). pushProductosPendientes
+   * de arriba lee de IndexedDB y por eso nunca veía estos productos: el
+   * catálogo real de un negocio existente quedaba invisible para Supabase (y
+   * por lo tanto para la PWA) sin que nada fallara ni avisara. Este puente
+   * cierra ese hueco leyendo directamente de 'pos-productos'.
+   */
+  private async pushProductosLocalStorage(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    let productos: any[];
+    try {
+      productos = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+    } catch {
+      return;
+    }
+    if (!Array.isArray(productos) || productos.length === 0) return;
+
+    const pendientes = productos.filter((p) => !p._supabaseSynced);
+    if (pendientes.length === 0) return;
+
+    for (const p of pendientes) {
+      const { error } = await client.from('productos').upsert(
+        {
+          cliente_id: clienteId,
+          local_id: p.id,
+          codigo_barras: p.codigo || null,
+          nombre: p.nombre,
+          categoria: p.categoria || null,
+          precio_venta: p.precio ?? 0,
+          costo: p.costo ?? 0,
+          stock: p.stock ?? 0,
+          stock_minimo: p.minStock ?? p.stockMinimo ?? null,
+          iva: p.aplicaIVA ? 19 : 0,
+          fecha_vencimiento: p.fechaVencimiento || null,
+          foto_url: p.imagenUrl || null,
+          activo: p.activo !== false,
+        },
+        { onConflict: 'cliente_id,local_id' }
+      );
+
+      if (error) {
+        console.error(`[sync] Error subiendo producto local ${p.nombre}:`, error.message);
+        continue;
+      }
+      p._supabaseSynced = true;
+    }
+
+    localStorage.setItem('pos-productos', JSON.stringify(productos));
+    await dbManager.addLog('push_productos_local', `${pendientes.length} productos (inventario local) subidos`);
   }
 
   private async pushVentasPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {

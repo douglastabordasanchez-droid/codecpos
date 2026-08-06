@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera } from 'lucide-react';
+import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
@@ -31,9 +32,12 @@ export default function VenderPage() {
   const [cargando, setCargando] = useState(true);
   const [carrito, setCarrito] = useState<Record<string, ItemCarritoMovil>>({});
   const [mostrarCheckout, setMostrarCheckout] = useState(false);
+  const [mostrarScanner, setMostrarScanner] = useState(false);
   const [metodoPago, setMetodoPago] = useState('efectivo');
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
 
   const cargarProductos = async () => {
     if (!empleado) return;
@@ -105,48 +109,96 @@ export default function VenderPage() {
     }
   };
 
+  // ---- Escáner de cámara integrado (busca y agrega directo al carrito) ----
+  const abrirScanner = () => {
+    setMostrarScanner(true);
+    setTimeout(() => {
+      if (!videoRef.current) return;
+      const reader = new BrowserMultiFormatReader();
+      reader
+        .decodeFromVideoDevice(undefined, videoRef.current, (result, _err, controls) => {
+          controlsRef.current = controls;
+          if (result) {
+            const codigo = result.getText();
+            const encontrado = productos.find((p) => p.codigo_barras === codigo);
+            controls.stop();
+            setMostrarScanner(false);
+            if (encontrado) {
+              agregarAlCarrito(encontrado);
+            } else {
+              setBusqueda(codigo);
+            }
+          }
+        })
+        .catch(() => setMostrarScanner(false));
+    }, 100);
+  };
+
+  const cerrarScanner = () => {
+    controlsRef.current?.stop();
+    setMostrarScanner(false);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 pb-40">
+    <div className="min-h-screen bg-orange-50 pb-40">
       <div className="px-5 pt-8 pb-4">
-        <h1 className="text-white text-xl font-black">Vender</h1>
-        <p className="text-slate-400 text-sm">Busca productos y arma la venta</p>
+        <h1 className="text-slate-900 text-xl font-black">Vender</h1>
+        <p className="text-slate-500 text-sm">Busca productos y arma la venta</p>
       </div>
 
-      <div className="px-5 mb-4 relative">
-        <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-        <Input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar producto, código o categoría..."
-          className="h-11 pl-9 bg-slate-900 border-slate-700 text-white"
-        />
+      {/* Total prominente, al estilo de la pantalla de venta de Electron */}
+      <div className="px-5 mb-5">
+        <div className="bg-white border border-orange-100 rounded-2xl p-5 text-center shadow-sm">
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-1">Total a cobrar</p>
+          <p className="text-emerald-600 text-4xl font-black tracking-tight">${totalCarrito.toLocaleString('es-CO')}</p>
+          <p className="text-slate-400 text-xs mt-1">{cantidadCarrito} producto{cantidadCarrito !== 1 ? 's' : ''}</p>
+        </div>
+      </div>
+
+      <div className="px-5 mb-4 flex gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar producto, código o categoría..."
+            className="h-11 pl-9 bg-white border-orange-200 text-slate-900"
+          />
+        </div>
+        <button
+          onClick={abrirScanner}
+          className="h-11 w-11 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shrink-0 shadow-sm"
+          aria-label="Escanear código"
+        >
+          <Camera className="w-5 h-5 text-white" />
+        </button>
       </div>
 
       <div className="px-5 space-y-2">
-        {cargando && <p className="text-slate-500 text-sm text-center py-8">Cargando productos...</p>}
+        {cargando && <p className="text-slate-400 text-sm text-center py-8">Cargando productos...</p>}
         {!cargando && filtrados.length === 0 && (
-          <p className="text-slate-600 text-sm text-center py-8">Sin productos</p>
+          <p className="text-slate-400 text-sm text-center py-8">Sin productos</p>
         )}
         {filtrados.map((p) => {
           const enCarrito = carrito[p.id]?.cantidad || 0;
           const sinStock = p.stock <= 0;
           return (
-            <div key={p.id} className="w-full flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl p-3">
-              <div className="w-11 h-11 rounded-lg bg-slate-800 flex items-center justify-center overflow-hidden shrink-0">
-                {p.foto_url ? <img src={p.foto_url} alt="" className="w-full h-full object-cover" /> : <Package className="w-5 h-5 text-slate-600" />}
+            <div key={p.id} className="w-full flex items-center gap-3 bg-white border border-orange-100 rounded-xl p-3 shadow-sm">
+              <div className="w-11 h-11 rounded-lg bg-orange-100 flex items-center justify-center overflow-hidden shrink-0">
+                {p.foto_url ? <img src={p.foto_url} alt="" className="w-full h-full object-cover" /> : <Package className="w-5 h-5 text-orange-400" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white font-semibold text-sm truncate">{p.nombre}</p>
-                <p className={`text-xs ${sinStock ? 'text-red-400' : 'text-slate-500'}`}>
+                <p className="text-slate-900 font-semibold text-sm truncate">{p.nombre}</p>
+                <p className={`text-xs ${sinStock ? 'text-red-500' : 'text-slate-500'}`}>
                   ${p.precio_venta.toLocaleString('es-CO')} · Stock: {p.stock}
                 </p>
               </div>
               {enCarrito > 0 ? (
                 <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => cambiarCantidad(p.id, -1)} className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-white">
+                  <button onClick={() => cambiarCantidad(p.id, -1)} className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-orange-700">
                     <Minus className="w-3.5 h-3.5" />
                   </button>
-                  <span className="text-white font-bold text-sm w-4 text-center">{enCarrito}</span>
+                  <span className="text-slate-900 font-bold text-sm w-4 text-center">{enCarrito}</span>
                   <button
                     onClick={() => agregarAlCarrito(p)}
                     disabled={enCarrito >= p.stock}
@@ -174,7 +226,7 @@ export default function VenderPage() {
         <div className="fixed bottom-16 left-0 right-0 px-5 pb-3">
           <button
             onClick={() => setMostrarCheckout(true)}
-            className="w-full h-14 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-amber-500/30 flex items-center justify-between px-5"
+            className="w-full h-14 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/30 flex items-center justify-between px-5"
           >
             <span className="flex items-center gap-2 text-white font-bold text-sm">
               <ShoppingCart className="w-5 h-5" />
@@ -185,11 +237,25 @@ export default function VenderPage() {
         </div>
       )}
 
+      {mostrarScanner && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-6">
+          <div className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-black aspect-square">
+            <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-4/5 h-1/3 border-2 border-amber-400/70 rounded-xl" />
+            </div>
+          </div>
+          <Button onClick={cerrarScanner} variant="outline" className="mt-6 border-white/30 text-white bg-white/10">
+            Cancelar
+          </Button>
+        </div>
+      )}
+
       {mostrarCheckout && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end">
-          <div className="w-full bg-slate-950 rounded-t-3xl border-t border-slate-800 max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="w-full bg-orange-50 rounded-t-3xl border-t border-orange-100 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 pt-5 pb-3">
-              <h2 className="text-white font-bold text-lg">Confirmar venta</h2>
+              <h2 className="text-slate-900 font-bold text-lg">Confirmar venta</h2>
               <button onClick={() => setMostrarCheckout(false)} className="text-slate-400">
                 <X className="w-5 h-5" />
               </button>
@@ -197,22 +263,22 @@ export default function VenderPage() {
 
             <div className="px-5 space-y-2 mb-4">
               {itemsCarrito.map((it) => (
-                <div key={it.productoId} className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl p-3">
+                <div key={it.productoId} className="flex items-center justify-between bg-white border border-orange-100 rounded-xl p-3">
                   <div className="min-w-0">
-                    <p className="text-white text-sm font-semibold truncate">{it.nombre}</p>
-                    <p className="text-slate-500 text-xs">
+                    <p className="text-slate-900 text-sm font-semibold truncate">{it.nombre}</p>
+                    <p className="text-slate-400 text-xs">
                       {it.cantidad} × ${it.precio.toLocaleString('es-CO')}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-white font-bold text-sm">${(it.cantidad * it.precio).toLocaleString('es-CO')}</span>
-                    <button onClick={() => setCarrito((prev) => { const { [it.productoId]: _omit, ...resto } = prev; return resto; })} className="text-red-400">
+                    <span className="text-slate-900 font-bold text-sm">${(it.cantidad * it.precio).toLocaleString('es-CO')}</span>
+                    <button onClick={() => setCarrito((prev) => { const { [it.productoId]: _omit, ...resto } = prev; return resto; })} className="text-red-500">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               ))}
-              <button onClick={vaciarCarrito} className="text-slate-500 text-xs underline">
+              <button onClick={vaciarCarrito} className="text-slate-400 text-xs underline">
                 Vaciar carrito
               </button>
             </div>
@@ -225,7 +291,7 @@ export default function VenderPage() {
                     key={m.valor}
                     onClick={() => setMetodoPago(m.valor)}
                     className={`h-11 rounded-lg text-xs font-bold transition-all ${
-                      metodoPago === m.valor ? 'bg-amber-500 text-white' : 'bg-slate-800 text-slate-400'
+                      metodoPago === m.valor ? 'bg-amber-500 text-white' : 'bg-white border border-orange-200 text-slate-500'
                     }`}
                   >
                     {m.label}
@@ -235,11 +301,11 @@ export default function VenderPage() {
             </div>
 
             <div className="px-5 flex items-center justify-between mb-4">
-              <span className="text-slate-400 text-sm">Total</span>
-              <span className="text-white font-black text-2xl">${totalCarrito.toLocaleString('es-CO')}</span>
+              <span className="text-slate-500 text-sm">Total</span>
+              <span className="text-emerald-600 font-black text-2xl">${totalCarrito.toLocaleString('es-CO')}</span>
             </div>
 
-            {error && <p className="px-5 text-red-400 text-sm mb-3">{error}</p>}
+            {error && <p className="px-5 text-red-500 text-sm mb-3">{error}</p>}
 
             <div className="px-5 pb-8">
               <Button

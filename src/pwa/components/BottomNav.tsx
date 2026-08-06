@@ -28,14 +28,14 @@ export function BottomNav() {
   );
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex items-center justify-around px-1 pb-[env(safe-area-inset-bottom)] z-40">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-orange-100 shadow-[0_-4px_16px_rgba(0,0,0,0.04)] flex items-center justify-around px-1 pb-[env(safe-area-inset-bottom)] z-40">
       {items.map(({ to, icon: Icon, label, end }) => (
         <NavLink
           key={to}
           to={to}
           end={end}
           className={({ isActive }) =>
-            `flex flex-col items-center gap-1 py-3 px-1.5 min-w-0 flex-1 ${isActive ? 'text-amber-400' : 'text-slate-500'}`
+            `flex flex-col items-center gap-1 py-3 px-1.5 min-w-0 flex-1 ${isActive ? 'text-orange-600' : 'text-slate-400'}`
           }
         >
           <Icon className="w-5 h-5 shrink-0" />

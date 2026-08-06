@@ -70,18 +70,18 @@ export default function ConfirmarPagoPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 pb-24">
+    <div className="min-h-screen bg-orange-50 pb-24">
       <div className="px-5 pt-8 pb-4">
-        <h1 className="text-white text-xl font-black">Confirmar Pago</h1>
-        <p className="text-slate-400 text-sm">Registra el pago que viste en tu celular</p>
+        <h1 className="text-slate-900 text-xl font-black">Confirmar Pago</h1>
+        <p className="text-slate-500 text-sm">Registra el pago que viste en tu celular</p>
       </div>
 
       <form onSubmit={handleSubmit} className="px-5 space-y-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+        <div className="bg-white border border-orange-100 rounded-2xl p-5 space-y-4 shadow-sm">
           <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">Monto</Label>
+            <Label className="text-slate-600 text-xs">Monto</Label>
             <div className="relative">
-              <DollarSign className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <Input
                 type="number"
                 inputMode="numeric"
@@ -89,13 +89,13 @@ export default function ConfirmarPagoPage() {
                 value={monto}
                 onChange={(e) => setMonto(e.target.value)}
                 placeholder="0"
-                className="h-14 pl-9 text-2xl font-bold bg-slate-950 border-slate-700 text-white"
+                className="h-14 pl-9 text-2xl font-bold bg-orange-50 border-orange-200 text-slate-900"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">Entidad</Label>
+            <Label className="text-slate-600 text-xs">Entidad</Label>
             <div className="grid grid-cols-3 gap-2">
               {ENTIDADES.map((e) => (
                 <button
@@ -105,7 +105,7 @@ export default function ConfirmarPagoPage() {
                   className={`h-11 rounded-lg text-xs font-bold capitalize transition-all ${
                     entidad === e
                       ? 'bg-amber-500 text-white'
-                      : 'bg-slate-800 text-slate-400'
+                      : 'bg-orange-50 border border-orange-200 text-slate-500'
                   }`}
                 >
                   {e}
@@ -115,18 +115,18 @@ export default function ConfirmarPagoPage() {
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">Referencia (opcional)</Label>
+            <Label className="text-slate-600 text-xs">Referencia (opcional)</Label>
             <Input
               value={referencia}
               onChange={(e) => setReferencia(e.target.value)}
               placeholder="Nombre del remitente, # de referencia..."
-              className="h-12 bg-slate-950 border-slate-700 text-white"
+              className="h-12 bg-orange-50 border-orange-200 text-slate-900"
             />
           </div>
         </div>
 
         {mensaje && (
-          <p className={`text-sm text-center ${mensaje.tipo === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+          <p className={`text-sm text-center ${mensaje.tipo === 'ok' ? 'text-emerald-600' : 'text-red-500'}`}>
             {mensaje.texto}
           </p>
         )}
@@ -145,15 +145,15 @@ export default function ConfirmarPagoPage() {
         <h2 className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-3">Recientes</h2>
         <div className="space-y-2">
           {recientes.length === 0 && (
-            <p className="text-slate-600 text-sm text-center py-6">Sin pagos registrados todavía</p>
+            <p className="text-slate-400 text-sm text-center py-6">Sin pagos registrados todavía</p>
           )}
           {recientes.map((n) => (
-            <div key={n.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+            <div key={n.id} className="bg-white border border-orange-100 rounded-xl p-3 flex items-center justify-between shadow-sm">
               <div>
-                <p className="text-white font-semibold text-sm">
-                  ${n.monto.toLocaleString('es-CO')} <span className="text-slate-500 font-normal capitalize">· {n.entidad}</span>
+                <p className="text-slate-900 font-semibold text-sm">
+                  ${n.monto.toLocaleString('es-CO')} <span className="text-slate-400 font-normal capitalize">· {n.entidad}</span>
                 </p>
-                {n.referencia && <p className="text-slate-500 text-xs">{n.referencia}</p>}
+                {n.referencia && <p className="text-slate-400 text-xs">{n.referencia}</p>}
               </div>
               <EstadoBadge estado={n.estado} />
             </div>
@@ -167,20 +167,20 @@ export default function ConfirmarPagoPage() {
 function EstadoBadge({ estado }: { estado: NotificacionPagoRow['estado'] }) {
   if (estado === 'confirmado') {
     return (
-      <span className="flex items-center gap-1 text-emerald-400 text-xs font-bold">
+      <span className="flex items-center gap-1 text-emerald-600 text-xs font-bold">
         <CheckCircle2 className="w-3.5 h-3.5" /> Confirmado
       </span>
     );
   }
   if (estado === 'descartado') {
     return (
-      <span className="flex items-center gap-1 text-slate-500 text-xs font-bold">
+      <span className="flex items-center gap-1 text-slate-400 text-xs font-bold">
         <XCircle className="w-3.5 h-3.5" /> Descartado
       </span>
     );
   }
   return (
-    <span className="flex items-center gap-1 text-amber-400 text-xs font-bold">
+    <span className="flex items-center gap-1 text-amber-600 text-xs font-bold">
       <Clock className="w-3.5 h-3.5" /> Pendiente
     </span>
   );

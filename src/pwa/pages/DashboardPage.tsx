@@ -144,9 +144,9 @@ export default function DashboardPage() {
   if (!puedeVerDashboard) return <Navigate to="/" replace />;
 
   return (
-    <div className="min-h-screen bg-slate-950 pb-24">
+    <div className="min-h-screen bg-orange-50 pb-24">
       <div className="px-5 pt-8 pb-4">
-        <h1 className="text-white text-xl font-black">Panel Admin</h1>
+        <h1 className="text-slate-900 text-xl font-black">Panel Admin</h1>
         <p className="text-slate-400 text-sm">Reportes, empleados y cierres en tiempo real</p>
       </div>
 
@@ -156,7 +156,7 @@ export default function DashboardPage() {
             key={r.valor}
             onClick={() => setRango(r.valor)}
             className={`h-9 px-4 rounded-full text-xs font-bold transition-all ${
-              rango === r.valor ? 'bg-amber-500 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400'
+              rango === r.valor ? 'bg-amber-500 text-white' : 'bg-white border border-orange-100 text-slate-500'
             }`}
           >
             {r.label}
@@ -165,12 +165,12 @@ export default function DashboardPage() {
       </div>
 
       <div className="px-5 mb-6">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-white border border-orange-100 rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <TrendingUp className="w-4 h-4 text-emerald-600" />
             <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Ventas del período</span>
           </div>
-          <p className="text-white text-3xl font-black">${resumen.total.toLocaleString('es-CO')}</p>
+          <p className="text-slate-900 text-3xl font-black">${resumen.total.toLocaleString('es-CO')}</p>
           <div className="flex gap-4 mt-3 text-xs text-slate-400">
             <span>{resumen.cantidad} ventas</span>
             <span>Ticket prom. ${Math.round(resumen.ticketPromedio).toLocaleString('es-CO')}</span>
@@ -180,17 +180,17 @@ export default function DashboardPage() {
 
       <div className="px-5 mb-6">
         <div className="flex items-center gap-2 mb-3">
-          <Receipt className="w-4 h-4 text-emerald-400" />
+          <Receipt className="w-4 h-4 text-emerald-600" />
           <h2 className="text-slate-400 text-xs font-bold uppercase tracking-wide">Ventas recientes</h2>
         </div>
         <div className="space-y-2">
           {!cargando && ventas.length === 0 && (
-            <p className="text-slate-600 text-sm text-center py-4">Sin ventas en este período</p>
+            <p className="text-slate-400 text-sm text-center py-4">Sin ventas en este período</p>
           )}
           {ventas.slice(0, 15).map((v) => (
-            <div key={v.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+            <div key={v.id} className="bg-white border border-orange-100 rounded-xl p-3 flex items-center justify-between">
               <div className="min-w-0">
-                <p className="text-white font-semibold text-sm truncate">
+                <p className="text-slate-900 font-semibold text-sm truncate">
                   #{v.numero ?? v.id.slice(0, 6)} <span className="text-slate-500 font-normal capitalize">· {v.metodo_pago || 'N/A'}</span>
                 </p>
                 <p className="text-slate-500 text-xs">
@@ -199,11 +199,11 @@ export default function DashboardPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className="text-white font-bold text-sm">${Number(v.total).toLocaleString('es-CO')}</span>
+                <span className="text-slate-900 font-bold text-sm">${Number(v.total).toLocaleString('es-CO')}</span>
                 <button
                   onClick={() => handleCompartir(v)}
                   disabled={compartiendoId === v.id}
-                  className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 disabled:opacity-50"
+                  className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-700 disabled:opacity-50"
                   aria-label="Compartir factura"
                 >
                   {compartiendoId === v.id ? (
@@ -216,30 +216,30 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
-        {errorCompartir && <p className="text-red-400 text-xs text-center mt-2">{errorCompartir}</p>}
+        {errorCompartir && <p className="text-red-500 text-xs text-center mt-2">{errorCompartir}</p>}
       </div>
 
       <div className="px-5 mb-6">
         <div className="flex items-center gap-2 mb-3">
-          <Users className="w-4 h-4 text-amber-400" />
+          <Users className="w-4 h-4 text-amber-500" />
           <h2 className="text-slate-400 text-xs font-bold uppercase tracking-wide">Empleados</h2>
         </div>
         <div className="space-y-2">
           {sesiones.length === 0 && (
-            <p className="text-slate-600 text-sm text-center py-4">Sin actividad de caja registrada</p>
+            <p className="text-slate-400 text-sm text-center py-4">Sin actividad de caja registrada</p>
           )}
           {sesiones.map((s) => (
-            <div key={s.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+            <div key={s.id} className="bg-white border border-orange-100 rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 <Circle
-                  className={`w-2.5 h-2.5 shrink-0 ${estaEnLinea(s) ? 'text-emerald-400 fill-emerald-400' : 'text-slate-600 fill-slate-600'}`}
+                  className={`w-2.5 h-2.5 shrink-0 ${estaEnLinea(s) ? 'text-emerald-500 fill-emerald-500' : 'text-slate-300 fill-slate-300'}`}
                 />
                 <div className="min-w-0">
-                  <p className="text-white font-semibold text-sm truncate">{s.cajero_nombre || 'Sin sesión'}</p>
+                  <p className="text-slate-900 font-semibold text-sm truncate">{s.cajero_nombre || 'Sin sesión'}</p>
                   <p className="text-slate-500 text-xs">{s.terminal_nombre || s.terminal_id}</p>
                 </div>
               </div>
-              <span className={`text-xs font-bold shrink-0 ${estaEnLinea(s) ? 'text-emerald-400' : 'text-slate-600'}`}>
+              <span className={`text-xs font-bold shrink-0 ${estaEnLinea(s) ? 'text-emerald-600' : 'text-slate-400'}`}>
                 {estaEnLinea(s) ? 'En línea' : 'Desconectado'}
               </span>
             </div>
@@ -249,25 +249,25 @@ export default function DashboardPage() {
 
       <div className="px-5">
         <div className="flex items-center gap-2 mb-3">
-          <Archive className="w-4 h-4 text-sky-400" />
+          <Archive className="w-4 h-4 text-sky-600" />
           <h2 className="text-slate-400 text-xs font-bold uppercase tracking-wide">Cierres recientes</h2>
         </div>
         <div className="space-y-2">
           {!cargando && cierres.length === 0 && (
-            <p className="text-slate-600 text-sm text-center py-4">Sin cierres registrados todavía</p>
+            <p className="text-slate-400 text-sm text-center py-4">Sin cierres registrados todavía</p>
           )}
           {cierres.map((c) => {
             const diferencia = Number(c.diferencia);
             return (
-              <div key={c.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3">
+              <div key={c.id} className="bg-white border border-orange-100 rounded-xl p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-white font-semibold text-sm">
+                  <p className="text-slate-900 font-semibold text-sm">
                     {c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : '—'}
                     <span className="text-slate-500 font-normal"> · {c.detalle?.cajero_nombre || c.terminal_id}</span>
                   </p>
                   <span
                     className={`text-xs font-bold ${
-                      diferencia === 0 ? 'text-emerald-400' : diferencia > 0 ? 'text-sky-400' : 'text-red-400'
+                      diferencia === 0 ? 'text-emerald-600' : diferencia > 0 ? 'text-sky-600' : 'text-red-500'
                     }`}
                   >
                     {diferencia === 0 ? 'Cuadrado' : diferencia > 0 ? `+$${diferencia.toLocaleString('es-CO')}` : `-$${Math.abs(diferencia).toLocaleString('es-CO')}`}

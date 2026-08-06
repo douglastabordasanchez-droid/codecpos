@@ -195,16 +195,16 @@ export default function ProductoFormPage() {
 
   if (cargando) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-orange-50 flex items-center justify-center">
         <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 pb-24">
+    <div className="min-h-screen bg-orange-50 pb-24">
       <div className="px-5 pt-8 pb-4">
-        <h1 className="text-white text-xl font-black">{esNuevo ? 'Nuevo producto' : 'Editar producto'}</h1>
+        <h1 className="text-slate-900 text-xl font-black">{esNuevo ? 'Nuevo producto' : 'Editar producto'}</h1>
       </div>
 
       <div className="px-5 space-y-4">
@@ -213,12 +213,12 @@ export default function ProductoFormPage() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-28 h-28 rounded-2xl bg-slate-900 border-2 border-dashed border-slate-700 flex items-center justify-center overflow-hidden"
+            className="w-28 h-28 rounded-2xl bg-white border-2 border-dashed border-orange-200 flex items-center justify-center overflow-hidden"
           >
             {form.foto_url ? (
               <img src={form.foto_url} alt="" className="w-full h-full object-cover" />
             ) : (
-              <Camera className="w-7 h-7 text-slate-600" />
+              <Camera className="w-7 h-7 text-orange-300" />
             )}
           </button>
           <input
@@ -232,56 +232,56 @@ export default function ProductoFormPage() {
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-slate-300 text-xs">Nombre</Label>
-          <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+          <Label className="text-slate-600 text-xs">Nombre</Label>
+          <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} className="h-12 bg-white border-orange-200 text-slate-900" />
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-slate-300 text-xs">Código de barras</Label>
-          <Input value={form.codigo_barras} onChange={(e) => setForm({ ...form, codigo_barras: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white font-mono" />
+          <Label className="text-slate-600 text-xs">Código de barras</Label>
+          <Input value={form.codigo_barras} onChange={(e) => setForm({ ...form, codigo_barras: e.target.value })} className="h-12 bg-white border-orange-200 text-slate-900 font-mono" />
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-slate-300 text-xs">Categoría</Label>
-          <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+          <Label className="text-slate-600 text-xs">Categoría</Label>
+          <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} className="h-12 bg-white border-orange-200 text-slate-900" />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">Precio de venta</Label>
-            <Input type="number" inputMode="numeric" value={form.precio_venta} onChange={(e) => setForm({ ...form, precio_venta: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+            <Label className="text-slate-600 text-xs">Precio de venta</Label>
+            <Input type="number" inputMode="numeric" value={form.precio_venta} onChange={(e) => setForm({ ...form, precio_venta: e.target.value })} className="h-12 bg-white border-orange-200 text-slate-900" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">Costo</Label>
-            <Input type="number" inputMode="numeric" value={form.costo} onChange={(e) => setForm({ ...form, costo: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">Stock</Label>
-            <Input type="number" inputMode="numeric" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">Stock mínimo</Label>
-            <Input type="number" inputMode="numeric" value={form.stock_minimo} onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+            <Label className="text-slate-600 text-xs">Costo</Label>
+            <Input type="number" inputMode="numeric" value={form.costo} onChange={(e) => setForm({ ...form, costo: e.target.value })} className="h-12 bg-white border-orange-200 text-slate-900" />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">Unidad</Label>
+            <Label className="text-slate-600 text-xs">Stock</Label>
+            <Input type="number" inputMode="numeric" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="h-12 bg-white border-orange-200 text-slate-900" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-slate-600 text-xs">Stock mínimo</Label>
+            <Input type="number" inputMode="numeric" value={form.stock_minimo} onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })} className="h-12 bg-white border-orange-200 text-slate-900" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-slate-600 text-xs">Unidad</Label>
             <select
               value={form.unidad}
               onChange={(e) => setForm({ ...form, unidad: e.target.value })}
-              className="w-full h-12 rounded-lg px-3 text-sm bg-slate-900 border border-slate-700 text-white"
+              className="w-full h-12 rounded-lg px-3 text-sm bg-white border border-orange-200 text-slate-900"
             >
               {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-slate-300 text-xs">IVA %</Label>
-            <Input type="number" inputMode="numeric" value={form.iva} onChange={(e) => setForm({ ...form, iva: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+            <Label className="text-slate-600 text-xs">IVA %</Label>
+            <Input type="number" inputMode="numeric" value={form.iva} onChange={(e) => setForm({ ...form, iva: e.target.value })} className="h-12 bg-white border-orange-200 text-slate-900" />
           </div>
         </div>
 
@@ -291,7 +291,7 @@ export default function ProductoFormPage() {
         </Button>
 
         {!esNuevo && (
-          <Button onClick={handleDesactivar} variant="outline" className="w-full h-12 border-red-900/50 text-red-400">
+          <Button onClick={handleDesactivar} variant="outline" className="w-full h-12 border-red-200 text-red-600">
             <Trash2 className="w-4 h-4 mr-2" />
             Desactivar producto
           </Button>
