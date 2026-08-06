@@ -40,7 +40,6 @@ import {
   TrendingUp,
   ChevronDown,
   ShieldCheck,
-  Download,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
@@ -56,34 +55,20 @@ import { ClienteModulosPanel } from './ClienteModulosPanel';
 import { PersonalAdminSection } from './PersonalAdminSection';
 import { SistemaBlindajePanel } from './SistemaBlindajePanel';
 import { AnimatePresence } from 'motion/react';
+import { MODULOS_CATALOGO, MODULOS_CLIENTE_OFICIALES, ModuloPOS } from '../../lib/permissions';
 import {
-  MODULOS_CATALOGO,
-  MODULOS_CLIENTE_OFICIALES,
-  ModuloPOS,
-  guardarModulosCliente,
-  obtenerModulosCliente,
-} from '../../lib/permissions';
+  listarClientesAdmin,
+  crearClienteAdmin,
+  actualizarClienteAdmin,
+  eliminarClienteAdmin,
+  cambiarEstadoClienteAdmin,
+  actualizarModulosClienteAdmin,
+  ClienteAdmin,
+} from '../../lib/supabase/clientesAdminService';
 
-interface Cliente {
-  id: string;
-  nombreNegocio: string;
-  nit: string;
-  contacto: string;
-  telefono: string;
-  email: string;
-  usuario: string;
-  contraseña: string;
-  plan: 'BASICO' | 'PREMIUM';
-  duracion: '1_MES' | '3_MESES' | '1_ANO' | 'VITALICIA';
-  fechaActivacion: string;
-  fechaExpiracion?: string;
-  estado: 'ACTIVA' | 'VENCIDA' | 'SUSPENDIDA';
-  createdAt: number;
-  enPrueba?: boolean;
-  diasPruebaRestantes?: number;
-  ultimoMantenimiento?: string;
-  modulos_activos?: ModuloPOS[];
-}
+// Cliente = fila real de clientes_pos + usuarios_clientes en Supabase (ver
+// clientesAdminService.ts) — este panel ya no gestiona datos locales/demo.
+type Cliente = ClienteAdmin;
 
 type FilterEstado = 'TODOS' | 'ACTIVA' | 'VENCIDA' | 'SUSPENDIDA';
 type FilterPlan = 'TODOS' | 'BASICO' | 'PREMIUM';
@@ -113,66 +98,6 @@ function getDiasRestantes(cliente: Cliente): DaysInfo | null {
   return { dias, total, pct, colorBar: 'bg-emerald-500', colorText: 'text-emerald-600', urgente: false };
 }
 
-/**
- * Mantiene a los administradores creados en el panel de desarrollador
- * sincronizados en la tabla local de usuarios (codecpos_usuarios).
- * Así pueden iniciar sesión normalmente y gestionar su propio personal.
- */
-function sincronizarClienteEnUsuarios(
-  cliente: Cliente,
-  accion: 'upsert' | 'eliminar',
-) {
-  const STORAGE_KEY = 'codecpos_usuarios';
-  let usuarios: any[] = [];
-  try {
-    usuarios = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  } catch { usuarios = []; }
-
-  const localId = `cli_${cliente.id}`;
-
-  if (accion === 'eliminar') {
-    usuarios = usuarios.filter((u: any) => u.id !== localId);
-  } else {
-    const adminUser = {
-      id: localId,
-      nombreCompleto: cliente.nombreNegocio,
-      cedula: cliente.nit || '000000000',
-      username: cliente.usuario,
-      password: cliente.contraseña,
-      rol: 'super_usuario',
-      // 🛡️ FIX: una licencia VITALICIA NUNCA debe bloquear el login por estado
-      // desactualizado. Solo una suspensión explícita del admin puede
-      // desactivar a un cliente vitalicio; cualquier otro valor de `estado`
-      // (p. ej. quedó "VENCIDA" por un bug de normalización anterior) no
-      // debe impedirle entrar.
-      activo: cliente.estado === 'ACTIVA' || (cliente.duracion === 'VITALICIA' && cliente.estado !== 'SUSPENDIDA'),
-      fechaCreacion: new Date(cliente.fechaActivacion || Date.now()).toISOString(),
-      creadoPor: 'PANEL_DESARROLLADOR',
-      permisos: {
-        dashboard: true, ventas: true, productos: true, alertas: true,
-        configuracion: true, usuarios: true, cierreCaja: true, reportes: true,
-        gastos: true, codecVerify: true, devoluciones: true, empleados: true,
-        multitienda: true, fidelizacion: true, panaderiaOnces: true,
-      },
-    };
-
-    // Buscar por ID estable o por username (si el admin ya existía con otro nombre interno)
-    const idx = usuarios.findIndex(
-      (u: any) => u.id === localId ||
-        (u.creadoPor === 'PANEL_DESARROLLADOR' && u.username === cliente.usuario),
-    );
-    if (idx >= 0) {
-      usuarios[idx] = adminUser;
-    } else {
-      usuarios.push(adminUser);
-    }
-  }
-
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(usuarios));
-    window.dispatchEvent(new CustomEvent('codecpos:usuarios-sincronizados'));
-  } catch { /* storage lleno — ignorar */ }
-}
 
 export function DeveloperPanel() {
   const { darkMode } = usePOS();
@@ -234,55 +159,25 @@ export function DeveloperPanel() {
       .map(m => m.id);
 
   // ── Guardar clientes ──
-  const saveClientes = (list: Cliente[]) => {
-    localStorage.setItem('codecpos_dev_clientes', JSON.stringify(list));
-    setClientes(list);
-  };
+  const [cargandoClientes, setCargandoClientes] = useState(true);
 
-  /**
-   * Corrige el estado de cada cliente según su duración real:
-   *  - VITALICIA nunca vence: si por cualquier motivo quedó marcada VENCIDA,
-   *    se restaura a ACTIVA (a menos que el admin la haya suspendido a propósito).
-   *  - El resto de duraciones (1 mes / 3 meses / 1 año) sí vencen por fecha.
-   */
-  const normalizarEstadoPorDuracion = (c: Cliente): Cliente => {
-    if (c.estado === 'SUSPENDIDA') return c;
-    if (c.duracion === 'VITALICIA') {
-      return c.estado !== 'ACTIVA' ? { ...c, estado: 'ACTIVA' as const } : c;
+  const cargarClientes = async () => {
+    setCargandoClientes(true);
+    try {
+      const lista = await listarClientesAdmin();
+      setClientes(lista);
+    } catch (error) {
+      toast.error('No se pudieron cargar los clientes', {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setCargandoClientes(false);
     }
-    const ahora = Date.now();
-    const expiry = c.fechaExpiracion ? new Date(c.fechaExpiracion).getTime() : null;
-    if (expiry && expiry <= ahora && c.estado !== 'VENCIDA') return { ...c, estado: 'VENCIDA' as const };
-    if (expiry && expiry > ahora && c.estado === 'VENCIDA') return { ...c, estado: 'ACTIVA' as const };
-    return c;
   };
 
-  // ── Cargar clientes, corregir vitalicias mal marcadas y migrar a codecpos_usuarios ──
-  // 🛡️ FIX: antes esta normalización vivía en un useEffect([]) aparte que se
-  // ejecutaba ANTES de que `clientes` tuviera datos (capturaba el arreglo vacío
-  // del primer render), por lo que nunca corregía nada en la práctica. Además,
-  // aunque hubiera corregido el estado en `codecpos_dev_clientes`, nunca
-  // volvía a sincronizar `codecpos_usuarios` — la tabla que realmente usa el
-  // login — dejando clientes vitalicios bloqueados con "credenciales
-  // incorrectas" aunque su licencia nunca debía vencer. Ahora todo ocurre en
-  // un solo paso al cargar, y cada corrección se re-sincroniza de inmediato.
+  // ── Cargar clientes reales desde Supabase (clientes_pos + usuarios_clientes) ──
   useEffect(() => {
-    const raw = localStorage.getItem('codecpos_dev_clientes');
-    if (!raw) return;
-
-    let lista: Cliente[] = [];
-    try { lista = JSON.parse(raw); } catch { lista = []; }
-
-    const corregidos = lista.map(normalizarEstadoPorDuracion);
-    const huboCorrecciones = JSON.stringify(corregidos) !== JSON.stringify(lista);
-
-    if (huboCorrecciones) {
-      localStorage.setItem('codecpos_dev_clientes', JSON.stringify(corregidos));
-    }
-    setClientes(corregidos);
-
-    // Sincronizar TODOS los clientes (ya corregidos) con la tabla real de login
-    corregidos.forEach(c => sincronizarClienteEnUsuarios(c, 'upsert'));
+    cargarClientes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -295,25 +190,28 @@ export function DeveloperPanel() {
   };
 
   // ── Renovar licencia (extiende desde la fecha de expiración actual o desde hoy si ya venció) ──
-  const handleRenovar = (id: string) => {
-    const updated = clientes.map(c => {
-      if (c.id !== id) return c;
-      const base = c.fechaExpiracion && new Date(c.fechaExpiracion).getTime() > Date.now()
-        ? new Date(c.fechaExpiracion).getTime()
-        : Date.now();
-      const nuevaFecha = calcularNuevaExpiracion(base, c.duracion);
+  const handleRenovar = async (id: string) => {
+    const c = clientes.find(x => x.id === id);
+    if (!c) return;
+    const base = c.fechaExpiracion && new Date(c.fechaExpiracion).getTime() > Date.now()
+      ? new Date(c.fechaExpiracion).getTime()
+      : Date.now();
+    const nuevaFecha = calcularNuevaExpiracion(base, c.duracion);
+    try {
+      await cambiarEstadoClienteAdmin(id, 'ACTIVA', undefined, nuevaFecha);
+      setClientes(prev => prev.map(x => x.id === id ? { ...x, estado: 'ACTIVA', fechaExpiracion: nuevaFecha } : x));
       toast.success('Licencia renovada', {
         description: nuevaFecha
           ? `Nueva expiración: ${new Date(nuevaFecha).toLocaleDateString('es-CO')}`
           : 'Licencia vitalicia',
       });
-      return { ...c, estado: 'ACTIVA' as const, fechaExpiracion: nuevaFecha };
-    });
-    saveClientes(updated);
+    } catch (error) {
+      toast.error('No se pudo renovar la licencia', { description: error instanceof Error ? error.message : undefined });
+    }
   };
 
   // ── Crear / Editar cliente ──
-  const handleCreateCliente = () => {
+  const handleCreateCliente = async () => {
     if (!formData.nombreNegocio.trim()) { toast.error('El nombre del negocio es requerido'); return; }
     if (!formData.usuario.trim() || formData.usuario.length < 4) { toast.error('El usuario debe tener al menos 4 caracteres'); return; }
     if (!formData.contraseña.trim() || formData.contraseña.length < 6) { toast.error('La contraseña debe tener al menos 6 caracteres'); return; }
@@ -336,46 +234,36 @@ export function DeveloperPanel() {
     }
 
     const modulosActivosArr = Array.from(modulosSeleccionados);
-    const modulosDesactivadosArr = modulosClienteDisponibles.map(m => m.id).filter(id => !modulosSeleccionados.has(id));
 
-    if (editingCliente) {
-      const clienteActualizado: Cliente = {
-        ...editingCliente,
-        ...formData,
-        fechaActivacion,
-        fechaExpiracion,
-        enPrueba,
-        diasPruebaRestantes,
-        modulos_activos: modulosActivosArr,
-      };
-      const updated = clientes.map(c => c.id === editingCliente.id ? clienteActualizado : c);
-      saveClientes(updated);
-      guardarModulosCliente({ clienteId: editingCliente.id, modulosActivos: modulosActivosArr, modulosDesactivados: modulosDesactivadosArr, ultimaActualizacion: new Date().toISOString() });
-      sincronizarClienteEnUsuarios(clienteActualizado, 'upsert');
-      toast.success('Cliente actualizado correctamente');
-    } else {
-      const nuevoCliente: Cliente = {
-        id: `CLI-${Date.now()}`,
-        ...formData,
-        fechaActivacion,
-        fechaExpiracion,
-        estado: 'ACTIVA',
-        createdAt: Date.now(),
-        enPrueba,
-        diasPruebaRestantes,
-        modulos_activos: modulosActivosArr,
-      };
-      saveClientes([...clientes, nuevoCliente]);
-      guardarModulosCliente({ clienteId: nuevoCliente.id, modulosActivos: modulosActivosArr, modulosDesactivados: modulosDesactivadosArr, ultimaActualizacion: new Date().toISOString() });
-      sincronizarClienteEnUsuarios(nuevoCliente, 'upsert');
-      toast.success(enPrueba ? `Prueba de ${formData.diasPrueba} días activada` : 'Cliente creado exitosamente', {
-        description: enPrueba && fechaExpiracion
-          ? `Expira el ${new Date(fechaExpiracion).toLocaleDateString('es-CO')}`
-          : `Plan ${formData.plan}`,
-      });
+    const datos = {
+      ...formData,
+      fechaActivacion,
+      fechaExpiracion,
+      estado: (editingCliente?.estado || 'ACTIVA') as Cliente['estado'],
+      enPrueba,
+      diasPruebaRestantes,
+      modulosActivos: modulosActivosArr,
+    };
+
+    try {
+      if (editingCliente) {
+        const actualizado = await actualizarClienteAdmin(editingCliente.id, datos);
+        setClientes(prev => prev.map(c => c.id === editingCliente.id ? actualizado : c));
+        toast.success('Cliente actualizado correctamente');
+      } else {
+        const nuevo = await crearClienteAdmin(datos);
+        setClientes(prev => [nuevo, ...prev]);
+        toast.success(enPrueba ? `Prueba de ${formData.diasPrueba} días activada` : 'Cliente creado exitosamente', {
+          description: enPrueba && fechaExpiracion
+            ? `Expira el ${new Date(fechaExpiracion).toLocaleDateString('es-CO')}`
+            : `Plan ${formData.plan}`,
+        });
+      }
+      setShowModal(false);
+      resetForm();
+    } catch (error) {
+      toast.error('No se pudo guardar el cliente', { description: error instanceof Error ? error.message : undefined });
     }
-    setShowModal(false);
-    resetForm();
   };
 
   const resetForm = () => {
@@ -392,10 +280,9 @@ export function DeveloperPanel() {
       contraseña: cliente.contraseña, plan: cliente.plan, duracion: cliente.duracion,
       activarPrueba: cliente.enPrueba || false, diasPrueba: cliente.diasPruebaRestantes || 7,
     });
-    try {
-      const raw = localStorage.getItem(`codec_pos_modulos_cliente_${cliente.id}`);
-      setModulosSeleccionados(raw ? new Set((JSON.parse(raw).modulosActivos || []) as ModuloPOS[]) : new Set(construirModulosPorPlan(cliente.plan)));
-    } catch { setModulosSeleccionados(new Set(construirModulosPorPlan(cliente.plan))); }
+    setModulosSeleccionados(
+      cliente.modulosActivos ? new Set(cliente.modulosActivos as ModuloPOS[]) : new Set(construirModulosPorPlan(cliente.plan))
+    );
     setShowModal(true);
   };
 
@@ -404,58 +291,35 @@ export function DeveloperPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showModal, editingCliente, formData.plan]);
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Eliminar este cliente? Esta acción no se puede deshacer.')) {
-      const clienteAEliminar = clientes.find(c => c.id === id);
-      saveClientes(clientes.filter(c => c.id !== id));
-      if (clienteAEliminar) sincronizarClienteEnUsuarios(clienteAEliminar, 'eliminar');
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Eliminar este cliente? Esta acción no se puede deshacer.')) return;
+    try {
+      await eliminarClienteAdmin(id);
+      setClientes(prev => prev.filter(c => c.id !== id));
       toast.success('Cliente eliminado');
+    } catch (error) {
+      toast.error('No se pudo eliminar el cliente', { description: error instanceof Error ? error.message : undefined });
     }
   };
 
-  const toggleEstado = (id: string) => {
-    const updated = clientes.map(c => {
-      if (c.id !== id) return c;
-      if (c.estado === 'ACTIVA') { toast.info('Licencia suspendida'); return { ...c, estado: 'SUSPENDIDA' as const }; }
-      const nuevaFecha = calcularNuevaExpiracion(Date.now(), c.duracion);
-      toast.success('Licencia reactivada');
-      return { ...c, estado: 'ACTIVA' as const, fechaActivacion: new Date().toISOString(), fechaExpiracion: nuevaFecha };
-    });
-    saveClientes(updated);
-    const clienteActualizado = updated.find(c => c.id === id);
-    if (clienteActualizado) sincronizarClienteEnUsuarios(clienteActualizado, 'upsert');
-  };
-
-  /**
-   * 🛡️ NUEVO: como no existe ningún puente de red entre esta máquina y la
-   * ya instalada del cliente (todo el sistema de módulos/licencias es
-   * localStorage local, ver módulo de permisos), un cambio de módulos aquí
-   * no llega solo al equipo del cliente. Este archivo es el puente manual:
-   * se genera aquí, se le envía al cliente, y él lo importa desde su propia
-   * Configuración → Respaldo y Restauración de Datos.
-   */
-  const handleExportarConfigCliente = (cliente: Cliente) => {
-    const modulosConfig = obtenerModulosCliente(cliente.id, cliente.plan);
-    const payload = {
-      tipo: 'codecpos_config_cliente',
-      version: 1,
-      generadoEl: new Date().toISOString(),
-      cliente: { ...cliente },
-      modulosActivos: modulosConfig.modulosActivos,
-      modulosDesactivados: modulosConfig.modulosDesactivados,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `codecpos_config_${cliente.usuario}_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success('Archivo de configuración generado', {
-      description: `Envíaselo a ${cliente.nombreNegocio} — debe importarlo desde Configuración → Respaldo y Restauración de Datos.`,
-    });
+  const toggleEstado = async (id: string) => {
+    const c = clientes.find(x => x.id === id);
+    if (!c) return;
+    try {
+      if (c.estado === 'ACTIVA') {
+        await cambiarEstadoClienteAdmin(id, 'SUSPENDIDA');
+        setClientes(prev => prev.map(x => x.id === id ? { ...x, estado: 'SUSPENDIDA' } : x));
+        toast.info('Licencia suspendida');
+      } else {
+        const nuevaFecha = calcularNuevaExpiracion(Date.now(), c.duracion);
+        const nuevaActivacion = new Date().toISOString();
+        await cambiarEstadoClienteAdmin(id, 'ACTIVA', nuevaActivacion, nuevaFecha);
+        setClientes(prev => prev.map(x => x.id === id ? { ...x, estado: 'ACTIVA', fechaActivacion: nuevaActivacion, fechaExpiracion: nuevaFecha } : x));
+        toast.success('Licencia reactivada');
+      }
+    } catch (error) {
+      toast.error('No se pudo cambiar el estado', { description: error instanceof Error ? error.message : undefined });
+    }
   };
 
   const copiarCredenciales = (cliente: Cliente) => {
@@ -726,7 +590,14 @@ export function DeveloperPanel() {
 
             {/* Lista de clientes */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="space-y-3">
-              {clientesFiltrados.length === 0 ? (
+              {cargandoClientes ? (
+                <Card className={darkMode ? 'bg-white/[0.03] backdrop-blur-xl border border-white/10' : 'bg-white'}>
+                  <CardContent className="p-12 text-center flex items-center justify-center gap-2">
+                    <RefreshCw className={`w-5 h-5 animate-spin ${darkMode ? 'text-slate-400' : 'text-gray-500'}`} />
+                    <span className={darkMode ? 'text-slate-400' : 'text-gray-500'}>Cargando clientes...</span>
+                  </CardContent>
+                </Card>
+              ) : clientesFiltrados.length === 0 ? (
                 <Card className={darkMode ? 'bg-white/[0.03] backdrop-blur-xl border border-white/10' : 'bg-white'}>
                   <CardContent className="p-12 text-center">
                     <Users className={`w-14 h-14 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-gray-300'}`} />
@@ -889,9 +760,6 @@ export function DeveloperPanel() {
                               </Button>
                               <Button onClick={() => setClienteModulos(cliente)} variant="outline" size="sm" className={`h-8 w-8 p-0 border-purple-500 text-purple-500 hover:bg-purple-50 ${darkMode ? 'dark:hover:bg-purple-900/20' : ''}`} title="Gestionar módulos">
                                 <Settings className="w-3.5 h-3.5" />
-                              </Button>
-                              <Button onClick={() => handleExportarConfigCliente(cliente)} variant="outline" size="sm" className={`h-8 w-8 p-0 border-emerald-500 text-emerald-600 hover:bg-emerald-50 ${darkMode ? 'dark:hover:bg-emerald-900/20' : ''}`} title="Generar archivo de configuración para el cliente">
-                                <Download className="w-3.5 h-3.5" />
                               </Button>
                               <Button onClick={() => handleEdit(cliente)} variant="outline" size="sm" className={darkMode ? 'border-slate-600 hover:bg-slate-700 h-8 w-8 p-0' : 'h-8 w-8 p-0'} title="Editar cliente">
                                 <Edit className="w-3.5 h-3.5" />

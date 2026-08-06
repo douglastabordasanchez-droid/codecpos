@@ -1,9 +1,12 @@
-import { LogOut, User } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { LogOut, User, Settings, ChevronRight } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 
 export default function PerfilPage() {
   const { empleado, cerrarSesion } = usePwaAuth();
+  const navigate = useNavigate();
+  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
 
   return (
     <div className="min-h-screen bg-slate-950 pb-24 px-5 pt-8">
@@ -18,6 +21,19 @@ export default function PerfilPage() {
           <p className="text-slate-400 text-xs capitalize">{empleado?.rol}</p>
         </div>
       </div>
+
+      {esAdmin && (
+        <button
+          onClick={() => navigate('/configuracion')}
+          className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between mb-6"
+        >
+          <div className="flex items-center gap-3">
+            <Settings className="w-5 h-5 text-amber-400" />
+            <span className="text-white font-semibold text-sm">Configuración del negocio</span>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-500" />
+        </button>
+      )}
 
       <Button
         onClick={cerrarSesion}

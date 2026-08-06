@@ -15,16 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { usePOS } from '../../contexts/POSContext';
-import {
-  MODULOS_CATALOGO,
-  ModuloInfo,
-  ModuloPOS,
-  obtenerModulosCliente,
-  guardarModulosCliente,
-  toggleModuloCliente,
-  activarTodosModulosCliente,
-  resetearModulosCliente,
-} from '../../lib/permissions';
+import { MODULOS_CATALOGO, ModuloInfo, ModuloPOS } from '../../lib/permissions';
+import { obtenerModulosClienteAdmin, actualizarModulosClienteAdmin } from '../../lib/supabase/clientesAdminService';
 
 interface Cliente {
   id: string;
@@ -67,10 +59,32 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
     return acc;
   }, {} as Record<string, ModuloInfo[]>);
 
+  const [cargando, setCargando] = useState(true);
+
   useEffect(() => {
-    const config = obtenerModulosCliente(cliente.id, cliente.plan);
-    setModulosActivos(new Set(config.modulosActivos));
+    setCargando(true);
+    obtenerModulosClienteAdmin(cliente.id)
+      .then((modulosGuardados) => {
+        if (modulosGuardados) {
+          setModulosActivos(new Set(modulosGuardados as ModuloPOS[]));
+        } else {
+          const porDefecto = modulosVisibles.filter((m) =>
+            cliente.plan === 'PREMIUM' ? m.habilitadoPorDefecto : m.planRequerido === 'basico' && m.habilitadoPorDefecto
+          );
+          setModulosActivos(new Set(porDefecto.map((m) => m.id)));
+        }
+      })
+      .catch((error) => toast.error('No se pudieron cargar los módulos', { description: error.message }))
+      .finally(() => setCargando(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cliente.id, cliente.plan]);
+
+  const guardarSet = (set: Set<ModuloPOS>) => {
+    actualizarModulosClienteAdmin(cliente.id, Array.from(set)).catch((error) =>
+      toast.error('No se pudo guardar', { description: error.message })
+    );
+    setHayCambios(false);
+  };
 
   const handleToggle = (modulo: ModuloPOS) => {
     const nuevo = new Set(modulosActivos);
@@ -81,38 +95,14 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
     }
     setModulosActivos(nuevo);
     // Auto-guardar inmediatamente para sincronización en tiempo real con la barra lateral del cliente
-    guardarModulosCliente({
-      clienteId: cliente.id,
-      modulosActivos: Array.from(nuevo),
-      modulosDesactivados: modulosVisibles.map(m => m.id).filter(id => !nuevo.has(id)),
-      ultimaActualizacion: new Date().toISOString(),
-    });
-    setHayCambios(false);
+    guardarSet(nuevo);
   };
 
   const handleGuardar = () => {
-    guardarModulosCliente({
-      clienteId: cliente.id,
-      modulosActivos: Array.from(modulosActivos),
-      modulosDesactivados: modulosVisibles
-        .map(m => m.id)
-        .filter(id => !modulosActivos.has(id)),
-      ultimaActualizacion: new Date().toISOString(),
-    });
-    setHayCambios(false);
+    guardarSet(modulosActivos);
     toast.success(`✅ Módulos de ${cliente.nombreNegocio} actualizados`, {
       description: `${modulosActivos.size} módulos activos guardados correctamente`,
     });
-  };
-
-  const guardarSet = (set: Set<ModuloPOS>) => {
-    guardarModulosCliente({
-      clienteId: cliente.id,
-      modulosActivos: Array.from(set),
-      modulosDesactivados: modulosVisibles.map(m => m.id).filter(id => !set.has(id)),
-      ultimaActualizacion: new Date().toISOString(),
-    });
-    setHayCambios(false);
   };
 
   const handleActivarTodos = () => {
@@ -266,7 +256,13 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
 
         {/* ── LISTA DE MÓDULOS ── */}
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
-          {Object.entries(modulosPorCategoria).map(([categoria, modulos]) => {
+          {cargando && (
+            <div className={`flex items-center justify-center gap-2 py-12 text-sm ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Cargando módulos...
+            </div>
+          )}
+          {!cargando && Object.entries(modulosPorCategoria).map(([categoria, modulos]) => {
             const info = CATEGORIAS_INFO[categoria];
             const isExpanded = categoriaExpandida === categoria;
             const activosEnCat = modulos.filter(m => modulosActivos.has(m.id)).length;

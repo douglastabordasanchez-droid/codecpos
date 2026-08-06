@@ -12,7 +12,7 @@
  */
 
 import { Usuario, RegistroSesion, SesionActiva } from '../contexts/AuthContext';
-import { hashPassword } from './passwordHash';
+import { hashPassword, verificarPassword } from './passwordHash';
 // 🛡️ FIX: antes este archivo tenía su PROPIA constante DB_VERSION (quedó en
 // 4 mientras indexedDB.ts avanzó a 5) — como ambos abren la misma base de
 // datos ('CodecPOS_DB') con conexiones independientes, pedir una versión
@@ -153,6 +153,32 @@ export async function guardarUsuarios(usuarios: Usuario[]): Promise<void> {
 }
 
 // ─── CARGAR USUARIOS ───────────────────────────────────
+/**
+ * Instalaciones que ya existían antes de renombrar el admin por defecto de
+ * 'Admin'/'CodecPOS2026!' a 'Aadmin'/'Noruega2025++*' se quedaron con el
+ * usuario viejo en su localStorage/IndexedDB — la semilla nueva solo aplica
+ * en instalaciones frescas. Migra el registro EN SITIO (mismo id, mismos
+ * permisos ya otorgados) solo si sigue siendo la semilla de sistema
+ * original: no toca username/password si el dueño ya los personalizó.
+ */
+function migrarAdminLegacy(usuarios: Usuario[]): boolean {
+  let cambiado = false;
+  for (const u of usuarios) {
+    const esSemillaDeSistema = u.creadoPor === 'SISTEMA' && (u.id === 'admin_default_001' || u.username === 'Admin');
+    if (!esSemillaDeSistema) continue;
+
+    if (u.username !== 'Aadmin') {
+      u.username = 'Aadmin';
+      cambiado = true;
+    }
+    if (verificarPassword('CodecPOS2026!', u.password).valido) {
+      u.password = hashPassword('Noruega2025++*');
+      cambiado = true;
+    }
+  }
+  return cambiado;
+}
+
 export async function cargarUsuarios(): Promise<Usuario[]> {
   console.log('📂 [Storage] Cargando usuarios...');
 
@@ -164,12 +190,17 @@ export async function cargarUsuarios(): Promise<Usuario[]> {
       const usuarios = JSON.parse(lsData) as Usuario[];
       if (usuarios.length > 0) {
         console.log('⚡ [localStorage] Usuarios cargados RÁPIDO desde backup:', usuarios.length);
-        
+
+        if (migrarAdminLegacy(usuarios)) {
+          localStorage.setItem(LS_USUARIOS, JSON.stringify(usuarios));
+          console.log('🔧 [Storage] Admin legacy migrado a Aadmin');
+        }
+
         // Sincronizar con IndexedDB en segundo plano (NO BLOQUEA)
         setTimeout(() => {
           sincronizarIndexedDB(usuarios);
         }, 500);
-        
+
         return usuarios;
       }
     }
@@ -182,14 +213,15 @@ export async function cargarUsuarios(): Promise<Usuario[]> {
     const usuariosIDB = await cargarDesdeIndexedDBConTimeout(3000);
     if (usuariosIDB.length > 0) {
       console.log('✅ [IndexedDB] Usuarios cargados:', usuariosIDB.length);
-      
+      migrarAdminLegacy(usuariosIDB);
+
       // Guardar en localStorage para próxima vez
       try {
         localStorage.setItem(LS_USUARIOS, JSON.stringify(usuariosIDB));
       } catch (e) {
         console.warn('⚠️ No se pudo guardar en localStorage');
       }
-      
+
       return usuariosIDB;
     }
   } catch (error) {
@@ -203,19 +235,20 @@ export async function cargarUsuarios(): Promise<Usuario[]> {
       if (resultado.success && resultado.usuarios && resultado.usuarios.length > 0) {
         console.log('✅ [Electron] Usuarios cargados desde archivo:', resultado.usuarios.length);
         console.log('📍 [Electron] Fuente:', resultado.source);
-        
+        migrarAdminLegacy(resultado.usuarios);
+
         // Guardar en localStorage para próxima vez (NO esperar IndexedDB)
         try {
           localStorage.setItem(LS_USUARIOS, JSON.stringify(resultado.usuarios));
         } catch (e) {
           console.warn('⚠️ No se pudo guardar en localStorage');
         }
-        
+
         // Sincronizar con IndexedDB en segundo plano
         setTimeout(() => {
           sincronizarIndexedDB(resultado.usuarios);
         }, 1000);
-        
+
         return resultado.usuarios;
       }
     } catch (error) {
