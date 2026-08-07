@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
-import { TrendingUp, ShoppingCart, Receipt, AlertTriangle, Package, Settings, Users, Circle, ChevronRight } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Receipt, AlertTriangle, Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock } from 'lucide-react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { useModulosActivos } from '../hooks/useModulosActivos';
+import { ModuloPOS } from '../../app/lib/permissions';
 
 interface VentaFila {
   id: string;
@@ -50,6 +52,7 @@ export default function InicioPage() {
   const [cargando, setCargando] = useState(true);
 
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const { tieneModulo } = useModulosActivos();
 
   useEffect(() => {
     if (!empleado) return;
@@ -163,6 +166,9 @@ export default function InicioPage() {
         <h2 className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-3">Accesos rápidos</h2>
         <div className="grid grid-cols-2 gap-3">
           <QuickLink icon={Package} label="Inventario" color="sky" onClick={() => navigate('/inventario')} />
+          {tieneModulo(ModuloPOS.CIERRE_CAJA) && <QuickLink icon={Lock} label="Caja" color="emerald" onClick={() => navigate('/caja')} />}
+          {tieneModulo(ModuloPOS.GASTOS) && <QuickLink icon={Wallet} label="Gastos" color="red" onClick={() => navigate('/gastos')} />}
+          {tieneModulo(ModuloPOS.DEVOLUCIONES) && <QuickLink icon={RotateCcw} label="Devoluciones" color="amber" onClick={() => navigate('/devoluciones')} />}
           {esAdmin && <QuickLink icon={Settings} label="Configuración" color="purple" onClick={() => navigate('/configuracion')} />}
         </div>
       </div>
@@ -214,6 +220,9 @@ export default function InicioPage() {
 const QUICKLINK_COLORS: Record<string, { bg: string; text: string }> = {
   sky: { bg: 'bg-sky-500/15', text: 'text-sky-400' },
   purple: { bg: 'bg-purple-500/15', text: 'text-purple-400' },
+  emerald: { bg: 'bg-emerald-500/15', text: 'text-emerald-400' },
+  red: { bg: 'bg-red-500/15', text: 'text-red-400' },
+  amber: { bg: 'bg-amber-500/15', text: 'text-amber-400' },
 };
 
 function QuickLink({ icon: Icon, label, color, onClick }: { icon: any; label: string; color: string; onClick: () => void }) {

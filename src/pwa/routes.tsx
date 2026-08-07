@@ -14,6 +14,9 @@ import EscanerPage from './pages/EscanerPage';
 import PerfilPage from './pages/PerfilPage';
 import ConfiguracionPage from './pages/ConfiguracionPage';
 import VenderPage from './pages/VenderPage';
+import GastosPage from './pages/GastosPage';
+import DevolucionesPage from './pages/DevolucionesPage';
+import CierreCajaPage from './pages/CierreCajaPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -30,7 +33,10 @@ export const router = createBrowserRouter([
       { path: 'inventario', element: <ModuloGate modulo={ModuloPOS.PRODUCTOS}><InventarioPage /></ModuloGate> },
       { path: 'inventario/:id', element: <ModuloGate modulo={ModuloPOS.PRODUCTOS}><ProductoFormPage /></ModuloGate> },
       { path: 'escaner', element: <ModuloGate modulo={ModuloPOS.PRODUCTOS}><EscanerPage /></ModuloGate> },
-            { path: 'configuracion', element: <ConfiguracionPage /> },
+      { path: 'gastos', element: <ModuloGate modulo={ModuloPOS.GASTOS}><GastosPage /></ModuloGate> },
+      { path: 'devoluciones', element: <ModuloGate modulo={ModuloPOS.DEVOLUCIONES}><DevolucionesPage /></ModuloGate> },
+      { path: 'caja', element: <ModuloGate modulo={ModuloPOS.CIERRE_CAJA}><CierreCajaPage /></ModuloGate> },
+      { path: 'configuracion', element: <ConfiguracionPage /> },
       { path: 'perfil', element: <PerfilPage /> },
     ],
   },

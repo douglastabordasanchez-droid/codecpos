@@ -134,8 +134,10 @@ class SyncService {
 
     try {
       await this.pullProductosRemotos(client, clienteId);
+      await this.pullVentasRemotas(client, clienteId);
       await this.pushProductosPendientes(client, clienteId);
       await this.pushProductosLocalStorage(client, clienteId);
+      await this.pushGastosLocalStorage(client, clienteId);
       await this.pushVentasPendientes(client, clienteId);
       await this.pushCierresPendientes(client, clienteId);
       await this.pushSesionActivaHeartbeat(client, clienteId);
@@ -242,6 +244,89 @@ class SyncService {
     window.dispatchEvent(new CustomEvent('codecpos:productos-sincronizados'));
   }
 
+  /**
+   * 🛡️ La PWA es una ayuda del sistema principal (Electron) — toda venta
+   * hecha desde el celular debe aparecer en la caja de escritorio. El riesgo
+   * real es de colisión de `numero`: Electron lo genera con un contador
+   * local (ver POSPageNew) y la PWA con uno independiente basado en
+   * MAX(numero) de Supabase — dos negocios nunca chocan, pero si se
+   * reutilizara el numero de la PWA tal cual, sí podría chocar contra el
+   * índice único local de IndexedDB. Por eso cada venta remota se guarda con
+   * un numero LOCAL fresco (mismo contador que usa POSPageNew para ventas
+   * nuevas) y se conserva el numero de Supabase solo como referencia.
+   */
+  private async pullVentasRemotas(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const lastPull = await dbManager.getConfig('lastPullVentas');
+
+    let query = client
+      .from('ventas')
+      .select('id, numero, terminal_id, cajero_nombre, total, metodo_pago, created_at')
+      .eq('cliente_id', clienteId)
+      .eq('estado', 'completada')
+      .is('local_id', null); // ventas creadas por Electron siempre traen local_id — solo interesan las que no
+    if (lastPull) query = query.gt('created_at', lastPull);
+
+    const { data: remotas, error } = await query;
+    if (error) throw error;
+    if (!remotas || remotas.length === 0) return;
+
+    const ventasLocales = await dbManager.getAllVentas();
+    const yaExisten = new Set(ventasLocales.filter((v) => v.supabaseId).map((v) => v.supabaseId));
+    const pendientesDePull = remotas.filter((r) => !yaExisten.has(r.id));
+    if (pendientesDePull.length === 0) {
+      await dbManager.setConfig('lastPullVentas', new Date().toISOString());
+      return;
+    }
+
+    const productos = await dbManager.getAllProductos();
+    const idMapInverso = new Map(productos.filter((p) => p.supabaseId).map((p) => [p.supabaseId as string, p.id]));
+
+    let siguienteNumero = (await dbManager.getUltimoNumeroVenta()) + 1;
+    const ultimaFacturaLS = parseInt(localStorage.getItem('pos-ultima-factura') || '0') || 0;
+    siguienteNumero = Math.max(siguienteNumero, ultimaFacturaLS + 1);
+
+    for (const r of pendientesDePull) {
+      const { data: itemsRemotos } = await client
+        .from('venta_items')
+        .select('producto_id, nombre, cantidad, precio_unitario, subtotal')
+        .eq('venta_id', r.id);
+
+      const total = Number(r.total) || 0;
+      const subtotal = total / 1.19;
+
+      const ventaLocal: Venta = {
+        id: r.id,
+        numero: siguienteNumero,
+        fecha: r.created_at,
+        items: (itemsRemotos || []).map((it: any) => ({
+          productoId: (it.producto_id && idMapInverso.get(it.producto_id)) || it.producto_id || '',
+          nombre: it.nombre || 'Producto',
+          cantidad: Number(it.cantidad),
+          precio: Number(it.precio_unitario),
+          subtotal: Number(it.subtotal ?? it.cantidad * it.precio_unitario),
+        })),
+        subtotal,
+        iva: total - subtotal,
+        total,
+        metodoPago: r.metodo_pago || 'efectivo',
+        cajero: r.cajero_nombre || 'Venta móvil',
+        puntoVentaId: r.terminal_id || 'PWA',
+        createdAt: new Date(r.created_at).getTime(),
+        syncStatus: 'pending',
+        supabaseId: r.id,
+      };
+
+      await dbManager.addVenta(ventaLocal);
+      await dbManager.updateVenta({ ...ventaLocal, syncStatus: 'synced' });
+      siguienteNumero += 1;
+    }
+
+    localStorage.setItem('pos-ultima-factura', String(siguienteNumero - 1));
+    await dbManager.setConfig('lastPullVentas', new Date().toISOString());
+    await dbManager.addLog('pull_ventas_movil', `${pendientesDePull.length} ventas de la app móvil bajadas a la caja`);
+    window.dispatchEvent(new CustomEvent('codecpos:ventas-sincronizadas'));
+  }
+
   // ==================== PUSH ====================
 
   private async pushProductosPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
@@ -336,6 +421,51 @@ class SyncService {
 
     localStorage.setItem('pos-productos', JSON.stringify(productos));
     await dbManager.addLog('push_productos_local', `${pendientes.length} productos (inventario local) subidos`);
+  }
+
+  /**
+   * 🛡️ Mismo hallazgo que productos: GastosPage.tsx solo escribe en
+   * localStorage['pos-gastos'], nunca en IndexedDB — sin este puente los
+   * gastos jamás llegan a Supabase ni a la PWA.
+   */
+  private async pushGastosLocalStorage(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    let gastos: any[];
+    try {
+      gastos = JSON.parse(localStorage.getItem('pos-gastos') || '[]');
+    } catch {
+      return;
+    }
+    if (!Array.isArray(gastos) || gastos.length === 0) return;
+
+    const pendientes = gastos.filter((g) => !g._supabaseSynced);
+    if (pendientes.length === 0) return;
+
+    for (const g of pendientes) {
+      const { error } = await client.from('gastos').upsert(
+        {
+          cliente_id: clienteId,
+          local_id: g.id,
+          fecha: g.fecha || new Date().toISOString(),
+          descripcion: g.descripcion || g.concepto || 'Gasto',
+          categoria: g.categoria || 'otros',
+          monto: g.monto ?? 0,
+          medio_pago: g.medioPagoEgreso || g.medio_pago || g.metodoPago || 'efectivo',
+          comprobante: g.comprobante || null,
+          registrado_por_nombre: g.registradoPor || null,
+          notas: g.notas || null,
+        },
+        { onConflict: 'cliente_id,local_id' }
+      );
+
+      if (error) {
+        console.error(`[sync] Error subiendo gasto ${g.descripcion}:`, error.message);
+        continue;
+      }
+      g._supabaseSynced = true;
+    }
+
+    localStorage.setItem('pos-gastos', JSON.stringify(gastos));
+    await dbManager.addLog('push_gastos_local', `${pendientes.length} gastos subidos`);
   }
 
   private async pushVentasPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
