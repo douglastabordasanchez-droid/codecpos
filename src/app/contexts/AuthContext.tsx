@@ -22,6 +22,8 @@ import {
   signInSupabase,
   solicitarRecuperacionPassword as solicitarRecuperacionPasswordSupabase,
 } from '../lib/supabase/authService';
+import { getSupabaseClient } from '../lib/supabase/config';
+import { vincularNegocio, isLinked } from '../lib/supabase/tenantLink';
 
 export type RolUsuario = 'super_usuario' | 'cajero' | 'tecnico';
 
@@ -750,6 +752,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('✅ AUTENTICACIÓN LEGACY COMPLETADA');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         return true;
+      }
+    }
+
+    // 🛡️ PRIORIDAD 3: primer login de una instalación nueva con credenciales
+    // de licencia reales (las que el dueño recibió al comprar el plan desde
+    // el Panel Desarrollador) — no hay usuario local todavía porque la
+    // máquina nunca se vinculó. Se verifica online contra Supabase; si es
+    // válida, esta instalación se vincula a la nube automáticamente, se crea
+    // el usuario local con los módulos REALES que se le asignaron (no una
+    // suposición por plan), y entra sin pasos manuales adicionales. Sin esto,
+    // un cliente nuevo tendría que entrar primero con el "Admin" de fábrica y
+    // vincular a mano — justo la fricción que se quiere eliminar.
+    if (navigator.onLine) {
+      try {
+        const client = getSupabaseClient();
+        if (client) {
+          const { data: clienteId } = await client.rpc('resolver_login_licencia', {
+            p_usuario: usernameNormalizado,
+            p_password: passwordNormalizado,
+          });
+
+          if (clienteId) {
+            const { data: clienteRow } = await client
+              .from('clientes_pos')
+              .select('nombre_negocio, plan, modulos_activos, estado')
+              .eq('id', clienteId)
+              .maybeSingle();
+
+            if (clienteRow && clienteRow.estado !== 'SUSPENDIDA') {
+              console.log('🎉 Licencia válida en la nube — vinculando esta instalación automáticamente');
+
+              if (!isLinked()) {
+                await vincularNegocio(clienteId, usernameNormalizado, passwordNormalizado).catch((e) =>
+                  console.error('[Auth] No se pudo auto-vincular la instalación:', e)
+                );
+              }
+
+              const modulosReales = (clienteRow.modulos_activos as ModuloPOS[] | null)?.length
+                ? (clienteRow.modulos_activos as ModuloPOS[])
+                : obtenerModulosCliente(clienteId, clienteRow.plan as 'BASICO' | 'PREMIUM').modulosActivos;
+
+              const usuarioDesdeLicencia: Usuario = {
+                id: 'lic_' + clienteId,
+                nombreCompleto: clienteRow.nombre_negocio,
+                cedula: '',
+                username: usernameNormalizado,
+                password: hashPassword(passwordNormalizado),
+                rol: 'super_usuario',
+                permisos: construirPermisosDesdeModulos(modulosReales as ModuloPOS[], undefined),
+                activo: true,
+                fechaCreacion: new Date().toISOString(),
+                creadoPor: 'LICENCIA_NUBE',
+                modulosActivos: modulosReales as ModuloPOS[],
+              };
+
+              setUsuarios((prev) => [...prev, usuarioDesdeLicencia]);
+
+              const ahora = new Date().toISOString();
+              setSesionActiva({
+                usuarioId: usuarioDesdeLicencia.id,
+                nombreUsuario: usuarioDesdeLicencia.nombreCompleto,
+                rol: usuarioDesdeLicencia.rol,
+                horaInicio: ahora,
+                ultimaActividad: ahora,
+                usuario: usuarioDesdeLicencia,
+              });
+              setRegistrosSesiones((prev) => [
+                ...prev,
+                { id: 'sesion_' + Date.now(), usuarioId: usuarioDesdeLicencia.id, nombreUsuario: usuarioDesdeLicencia.nombreCompleto, cedula: '', horaInicio: ahora },
+              ]);
+
+              electronStore.iniciarTurno(usuarioDesdeLicencia.id, usuarioDesdeLicencia.nombreCompleto).catch(() => {});
+
+              console.log('✅ AUTENTICACIÓN POR LICENCIA EN LA NUBE COMPLETADA');
+              console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+              return true;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Auth] Error verificando licencia en la nube:', e);
       }
     }
 

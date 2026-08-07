@@ -1,22 +1,50 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { toast } from 'sonner';
-import { Search, X, Gift, Power, Loader2, ShieldAlert, Crown, Zap, Smartphone } from 'lucide-react';
+import { Search, X, Gift, Power, Loader2, ShieldAlert, Crown, Zap, Smartphone, Plus } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
+import { Label } from '../../app/components/ui/label';
 import { RingStat } from '../components/RingStat';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import {
   listarClientesAdmin,
+  crearClienteAdmin,
   actualizarClienteAdmin,
   actualizarModulosClienteAdmin,
   cambiarEstadoClienteAdmin,
   crearAccesoMovilDueno,
   ClienteAdmin,
+  PlanCliente,
+  DuracionCliente,
 } from '../../app/lib/supabase/clientesAdminService';
 import { MODULOS_CATALOGO, MODULOS_CLIENTE_OFICIALES, ModuloPOS } from '../../app/lib/permissions';
 
 const MODULOS_DISPONIBLES = MODULOS_CATALOGO.filter((m) => MODULOS_CLIENTE_OFICIALES.includes(m.id));
+
+const DURACIONES: { id: DuracionCliente; label: string }[] = [
+  { id: '1_MES', label: '1 mes' },
+  { id: '3_MESES', label: '3 meses' },
+  { id: '1_ANO', label: '1 año' },
+  { id: 'VITALICIA', label: 'Vitalicia' },
+];
+
+const FORM_VACIO = {
+  nombreNegocio: '', nit: '', contacto: '', telefono: '', email: '',
+  usuario: '', contraseña: '', plan: 'BASICO' as PlanCliente, duracion: '1_ANO' as DuracionCliente,
+};
+
+function modulosPorPlan(plan: PlanCliente): ModuloPOS[] {
+  return MODULOS_DISPONIBLES
+    .filter((m) => (plan === 'PREMIUM' ? true : m.planRequerido === 'basico'))
+    .map((m) => m.id);
+}
+
+function calcularExpiracion(duracion: DuracionCliente): string | undefined {
+  if (duracion === 'VITALICIA') return undefined;
+  const dias = duracion === '1_MES' ? 30 : duracion === '3_MESES' ? 90 : 365;
+  return new Date(Date.now() + dias * 86_400_000).toISOString();
+}
 
 function diasRestantes(cliente: ClienteAdmin): number | null {
   if (cliente.duracion === 'VITALICIA' || !cliente.fechaExpiracion) return null;
@@ -31,6 +59,10 @@ export default function PanelDesarrolladorPage() {
   const [seleccionado, setSeleccionado] = useState<ClienteAdmin | null>(null);
   const [modulosSel, setModulosSel] = useState<Set<ModuloPOS>>(new Set());
   const [guardando, setGuardando] = useState(false);
+
+  const [mostrarCrear, setMostrarCrear] = useState(false);
+  const [formNuevo, setFormNuevo] = useState(FORM_VACIO);
+  const [errorCrear, setErrorCrear] = useState<string | null>(null);
 
   const cargar = async () => {
     setCargando(true);
@@ -70,6 +102,48 @@ export default function PanelDesarrolladorPage() {
   const abrirDetalle = (c: ClienteAdmin) => {
     setSeleccionado(c);
     setModulosSel(new Set((c.modulosActivos as ModuloPOS[] | null) || []));
+  };
+
+  const abrirCrear = () => {
+    setFormNuevo(FORM_VACIO);
+    setModulosSel(new Set(modulosPorPlan('BASICO')));
+    setErrorCrear(null);
+    setMostrarCrear(true);
+  };
+
+  const cambiarPlanNuevo = (plan: PlanCliente) => {
+    setFormNuevo((f) => ({ ...f, plan }));
+    setModulosSel(new Set(modulosPorPlan(plan)));
+  };
+
+  const crearCliente = async () => {
+    if (!formNuevo.nombreNegocio.trim()) { setErrorCrear('El nombre del negocio es obligatorio'); return; }
+    if (!formNuevo.usuario.trim() || formNuevo.usuario.length < 4) { setErrorCrear('El usuario debe tener al menos 4 caracteres'); return; }
+    if (!formNuevo.contraseña.trim() || formNuevo.contraseña.length < 6) { setErrorCrear('La contraseña debe tener al menos 6 caracteres'); return; }
+    if (clientes.some((c) => c.usuario === formNuevo.usuario)) { setErrorCrear('Ese usuario ya existe'); return; }
+
+    setGuardando(true);
+    setErrorCrear(null);
+    try {
+      await crearClienteAdmin({
+        ...formNuevo,
+        fechaActivacion: new Date().toISOString(),
+        fechaExpiracion: calcularExpiracion(formNuevo.duracion),
+        estado: 'ACTIVA',
+        enPrueba: false,
+        diasPruebaRestantes: 0,
+        modulosActivos: Array.from(modulosSel),
+      });
+      toast.success(`${formNuevo.nombreNegocio} creado`, {
+        description: `Ya puede entrar a Electron y a la app con el usuario "${formNuevo.usuario}" y la misma contraseña.`,
+      });
+      setMostrarCrear(false);
+      cargar();
+    } catch (e) {
+      setErrorCrear(e instanceof Error ? e.message : 'No se pudo crear el negocio');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const toggleEstado = async (c: ClienteAdmin) => {
@@ -149,12 +223,21 @@ export default function PanelDesarrolladorPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
-      <div className="px-5 pt-8 pb-4">
-        <div className="flex items-center gap-2">
-          <ShieldAlert className="w-5 h-5 text-purple-400" />
-          <h1 className="text-white text-xl font-black">Panel Desarrollador</h1>
+      <div className="px-5 pt-8 pb-4 flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-purple-400" />
+            <h1 className="text-white text-xl font-black">Panel Desarrollador</h1>
+          </div>
+          <p className="text-slate-400 text-sm">Administra todos los negocios de Codec Studio</p>
         </div>
-        <p className="text-slate-400 text-sm">Administra todos los negocios de Codec Studio</p>
+        <button
+          onClick={abrirCrear}
+          className="h-11 w-11 rounded-full bg-gradient-to-br from-purple-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-purple-500/30 shrink-0"
+          aria-label="Crear negocio nuevo"
+        >
+          <Plus className="w-5 h-5 text-white" />
+        </button>
       </div>
 
       <div className="px-5 mb-6 grid grid-cols-3 gap-2 bg-slate-900/40 rounded-3xl py-5 mx-5 border border-slate-800/60" style={{ width: 'auto' }}>
@@ -279,6 +362,130 @@ export default function PanelDesarrolladorPage() {
 
               <Button onClick={guardarModulos} disabled={guardando} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600">
                 {guardando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : 'Guardar módulos'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mostrarCrear && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
+          <div className="w-full bg-slate-950 rounded-t-3xl border-t border-slate-800 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <h2 className="text-white font-bold text-lg">Nuevo negocio</h2>
+              <button onClick={() => setMostrarCrear(false)} className="text-slate-400 shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-5 space-y-3 pb-8">
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">Nombre del negocio</Label>
+                <Input value={formNuevo.nombreNegocio} onChange={(e) => setFormNuevo({ ...formNuevo, nombreNegocio: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-slate-400 text-xs">NIT</Label>
+                  <Input value={formNuevo.nit} onChange={(e) => setFormNuevo({ ...formNuevo, nit: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-slate-400 text-xs">Teléfono</Label>
+                  <Input value={formNuevo.telefono} onChange={(e) => setFormNuevo({ ...formNuevo, telefono: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">Contacto</Label>
+                <Input value={formNuevo.contacto} onChange={(e) => setFormNuevo({ ...formNuevo, contacto: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">Correo</Label>
+                <Input type="email" value={formNuevo.email} onChange={(e) => setFormNuevo({ ...formNuevo, email: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+              </div>
+
+              <div className="h-px bg-slate-800 my-2" />
+              <p className="text-purple-300 text-xs font-bold uppercase tracking-wide">Credencial única (Electron + celular)</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-slate-400 text-xs">Usuario</Label>
+                  <Input value={formNuevo.usuario} onChange={(e) => setFormNuevo({ ...formNuevo, usuario: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-slate-400 text-xs">Contraseña</Label>
+                  <Input value={formNuevo.contraseña} onChange={(e) => setFormNuevo({ ...formNuevo, contraseña: e.target.value })} className="h-12 bg-slate-900 border-slate-700 text-white" />
+                </div>
+              </div>
+
+              <div className="h-px bg-slate-800 my-2" />
+
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">Plan</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['BASICO', 'PREMIUM'] as PlanCliente[]).map((p) => (
+                    <button
+                      key={p} type="button" onClick={() => cambiarPlanNuevo(p)}
+                      className={`h-12 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                        formNuevo.plan === p ? 'bg-amber-500 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {p === 'PREMIUM' ? <Crown className="w-4 h-4" /> : <Zap className="w-4 h-4" />} {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">Duración</Label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {DURACIONES.map((d) => (
+                    <button
+                      key={d.id} type="button" onClick={() => setFormNuevo({ ...formNuevo, duracion: d.id })}
+                      className={`h-10 rounded-lg text-[11px] font-bold transition-all ${
+                        formNuevo.duracion === d.id ? 'bg-amber-500 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wide">Módulos ({modulosSel.size})</p>
+                  <button type="button" onClick={() => setModulosSel(new Set(modulosPorPlan(formNuevo.plan)))} className="text-purple-400 text-xs font-semibold">
+                    Restaurar por plan
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {MODULOS_DISPONIBLES.map((m) => {
+                    const activo = modulosSel.has(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setModulosSel((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(m.id)) next.delete(m.id); else next.add(m.id);
+                            return next;
+                          });
+                        }}
+                        className={`text-left px-2.5 py-2 rounded-lg border text-xs transition ${
+                          activo ? 'border-emerald-700 bg-emerald-900/20 text-emerald-300' : 'border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {activo ? '☑' : '☐'} {m.nombre}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {errorCrear && <p className="text-red-400 text-sm text-center">{errorCrear}</p>}
+
+              <Button onClick={crearCliente} disabled={guardando} className="w-full h-14 text-base bg-gradient-to-r from-purple-600 to-fuchsia-600">
+                {guardando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : 'Crear negocio'}
               </Button>
             </div>
           </div>

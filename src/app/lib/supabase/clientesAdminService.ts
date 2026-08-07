@@ -152,7 +152,7 @@ export async function crearClienteAdmin(datos: DatosClienteForm): Promise<Client
       cliente_id: clienteRow.id,
       username: datos.usuario,
       contraseña: datos.contraseña,
-      rol: 'admin',
+      rol: 'super_usuario',
       activo: true,
     })
     .select('*')
@@ -235,7 +235,7 @@ export async function actualizarClienteAdmin(id: string, datos: DatosClienteForm
   } else {
     const { data, error } = await client
       .from('usuarios_clientes')
-      .insert({ cliente_id: id, username: datos.usuario, contraseña: datos.contraseña, rol: 'admin', activo: true })
+      .insert({ cliente_id: id, username: datos.usuario, contraseña: datos.contraseña, rol: 'super_usuario', activo: true })
       .select('*')
       .single();
     if (error) throw new Error(error.message);
