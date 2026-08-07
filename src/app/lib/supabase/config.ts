@@ -27,6 +27,12 @@ export function isSupabaseConfigured(): boolean {
   return client !== null;
 }
 
+/** URL + anon key públicos, para construir a mano llamadas REST/RPC fuera del cliente JS (p. ej. el webhook de Codec Verify que copian a Tasker/Apps Script). */
+export function getSupabasePublicConfig(): { url: string; anonKey: string } | null {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  return { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY };
+}
+
 export async function testSupabaseConnection(): Promise<boolean> {
   if (!client) return false;
 

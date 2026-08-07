@@ -193,20 +193,18 @@ export function useCodecVerify() {
       timestamp: new Date().toLocaleTimeString('es-CO'),
     };
 
-    setPagoEntrante(pago);
-
     // 🔗 Puente para consumidores existentes (p. ej. NequiVerifyModal en el
     // checkout), que ya escuchaban este evento esperando una infraestructura
     // real detrás — ver window.addEventListener('codecverify:pago_recibido', ...).
     window.dispatchEvent(
       new CustomEvent('codecverify:pago_recibido', {
-        detail: { monto: pago.monto, banco: pago.banco, remitente: pago.remitente, referencia: row.referencia },
+        detail: { monto: pago.monto, banco: pago.banco, remitente: pago.remitente, referencia: row.referencia, origen: row.origen },
       })
     );
 
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
-        new Notification('💰 Pago Recibido', {
+        new Notification(row.origen === 'automatizacion' ? '✅ Pago verificado automáticamente' : '💰 Pago recibido', {
           body: `$${pago.monto.toLocaleString('es-CO')} desde ${pago.banco}`,
           icon: '/icon.png',
           tag: 'codecverify-pago',
@@ -216,6 +214,19 @@ export function useCodecVerify() {
       }
     }
 
+    // Origen automático (webhook de correo/SMS con token secreto del
+    // negocio) ya llega verificado — no tiene sentido pedirle al cajero que
+    // "confirme" algo que el propio dueño ya recibió en su celular/correo.
+    // Solo se avisa; el flujo manual sí sigue abriendo el modal de 30s.
+    if (row.origen === 'automatizacion') {
+      toast.success(`✅ Pago verificado automáticamente: $${pago.monto.toLocaleString('es-CO')} · ${pago.banco.toUpperCase()}`, {
+        duration: 8000,
+        description: pago.remitente !== 'Sin referencia' ? pago.remitente : undefined,
+      });
+      return;
+    }
+
+    setPagoEntrante(pago);
     toast.success(`Pago recibido: $${pago.monto.toLocaleString('es-CO')}`);
   }, []);
 

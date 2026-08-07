@@ -91,7 +91,12 @@ export function suscribirNotificacionesPago(
       },
       (payload) => {
         const row = payload.new as NotificacionPagoRow;
-        if (row.estado === 'pendiente') onNuevaNotificacion(row);
+        // Las manuales llegan 'pendiente' (requieren confirmar/descartar en
+        // el modal). Las automáticas (origen='automatizacion', vía el
+        // webhook de correo/SMS) ya llegan 'confirmado' — el token secreto
+        // del webhook ES la verificación, así que no piden acción del
+        // cajero, solo se notifican.
+        if (row.estado === 'pendiente' || row.origen === 'automatizacion') onNuevaNotificacion(row);
       }
     )
     .subscribe();
