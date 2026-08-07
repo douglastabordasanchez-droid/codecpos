@@ -29,11 +29,17 @@
 [data-theme='light'] .bg-slate-900 { background-color: #ffffff !important; }
 [data-theme='light'] .bg-slate-950 { background-color: #f3f1ee !important; }
 [data-theme='light'] .bg-slate-950\/60 { background-color: #f3f1ee !important; }
+[data-theme='light'] .bg-slate-950\/50 { background-color: rgb(243 241 238 / 0.85) !important; }
+[data-theme='light'] .bg-slate-900\/40 { background-color: rgb(255 255 255 / 0.7) !important; }
 [data-theme='light'] .bg-slate-800 { background-color: #ece8e3 !important; }
+[data-theme='light'] .bg-slate-800\/80 { background-color: rgb(236 232 227 / 0.8) !important; }
+[data-theme='light'] .bg-slate-950\/80 { background-color: rgb(243 241 238 / 0.9) !important; }
 [data-theme='light'] .bg-slate-700\/50 { background-color: rgb(214 211 209 / 0.5) !important; }
 
 /* ---- Bordes ---- */
 [data-theme='light'] .border-slate-800 { border-color: #e7e3de !important; }
+[data-theme='light'] .border-slate-800\/80 { border-color: rgb(231 227 222 / 0.8) !important; }
+[data-theme='light'] .border-slate-800\/60 { border-color: rgb(231 227 222 / 0.6) !important; }
 [data-theme='light'] .border-slate-700 { border-color: #ddd8d2 !important; }
 [data-theme='light'] .border-slate-950 { border-color: #e7e3de !important; }
 
@@ -45,6 +51,7 @@
 [data-theme='light'] .text-slate-400 { color: #78716c !important; }
 [data-theme='light'] .text-slate-500 { color: #8a8580 !important; }
 [data-theme='light'] .text-slate-600 { color: #a39e98 !important; }
+[data-theme='light'] .text-slate-800 { color: #e7e3de !important; } /* pista de los anillos de estadísticas (RingStat) */
 
 /* ---- Overlays de modal (quedan oscuros a propósito en ambos temas) ---- */
 [data-theme='light'] .bg-white\/10 { background-color: rgb(0 0 0 / 0.05) !important; }

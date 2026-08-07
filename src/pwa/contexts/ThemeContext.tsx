@@ -18,6 +18,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', tema);
+    // 🛡️ src/styles/theme.css (compartido con Electron) define el color de
+    // texto base de span/p/label/input/etc. según la clase literal `.dark`
+    // en <html> (ver POSContext.tsx) — NO según data-theme. Sin esto, todo
+    // texto que hereda color de un ancestro (en vez de tener su propia
+    // clase text-* de Tailwind) queda siempre con el tono de modo claro
+    // (#1e293b), invisible sobre los fondos oscuros de la PWA.
+    document.documentElement.classList.toggle('dark', tema === 'dark');
     localStorage.setItem(STORAGE_KEY, tema);
   }, [tema]);
 
