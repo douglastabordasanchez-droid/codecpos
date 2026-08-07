@@ -8,8 +8,8 @@ export function PwaLayout() {
 
   if (cargando) {
     return (
-      <div className="min-h-screen bg-orange-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
       </div>
     );
   }

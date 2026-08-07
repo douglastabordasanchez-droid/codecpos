@@ -82,10 +82,10 @@ export default function EscanerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-orange-50 pb-24">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
       <div className="px-5 pt-8 pb-4">
-        <h1 className="text-slate-900 text-xl font-black">Escáner</h1>
-        <p className="text-slate-500 text-sm">Busca, edita o envía un producto a la caja por código de barras</p>
+        <h1 className="text-white text-xl font-black">Escáner</h1>
+        <p className="text-slate-400 text-sm">Busca, edita o envía un producto a la caja por código de barras</p>
       </div>
 
       {!codigo && (
@@ -97,7 +97,7 @@ export default function EscanerPage() {
             </div>
           </div>
           {errorCamara && (
-            <p className="text-red-500 text-sm text-center mt-4">
+            <p className="text-red-400 text-sm text-center mt-4">
               {errorCamara} — revisa los permisos de cámara del navegador.
             </p>
           )}
@@ -106,22 +106,22 @@ export default function EscanerPage() {
 
       {codigo && (
         <div className="px-5 space-y-4">
-          <div className="bg-white border border-orange-100 rounded-2xl p-5 text-center shadow-sm">
-            <ScanLine className="w-6 h-6 text-amber-500 mx-auto mb-2" />
+          <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 text-center shadow-sm">
+            <ScanLine className="w-6 h-6 text-amber-400 mx-auto mb-2" />
             <p className="text-slate-400 text-xs">Código escaneado</p>
-            <p className="text-slate-900 font-mono font-bold text-lg">{codigo}</p>
+            <p className="text-white font-mono font-bold text-lg">{codigo}</p>
           </div>
 
           {buscando && (
             <div className="flex justify-center py-6">
-              <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+              <Loader2 className="w-6 h-6 text-amber-400 animate-spin" />
             </div>
           )}
 
           {!buscando && producto && (
-            <div className="bg-white border border-emerald-200 rounded-2xl p-5 space-y-3 shadow-sm">
-              <p className="text-slate-900 font-bold">{producto.nombre}</p>
-              <p className="text-slate-500 text-sm">
+            <div className="bg-slate-900/70 backdrop-blur border border-emerald-800/50 rounded-2xl p-5 space-y-3 shadow-sm">
+              <p className="text-white font-bold">{producto.nombre}</p>
+              <p className="text-slate-400 text-sm">
                 ${producto.precio_venta.toLocaleString('es-CO')} · Stock: {producto.stock}
               </p>
               <div className="grid grid-cols-2 gap-3">
@@ -136,7 +136,7 @@ export default function EscanerPage() {
                 <Button
                   variant="outline"
                   onClick={() => navigate(`/inventario/${producto.id}`)}
-                  className="h-12 border-orange-200 text-slate-700"
+                  className="h-12 border-slate-700 bg-slate-900/50 text-slate-300"
                 >
                   <Pencil className="w-4 h-4 mr-2" />
                   Editar
@@ -146,8 +146,8 @@ export default function EscanerPage() {
           )}
 
           {!buscando && !producto && (
-            <div className="bg-white border border-amber-200 rounded-2xl p-5 space-y-3 text-center shadow-sm">
-              <p className="text-slate-900 font-semibold">No existe un producto con este código</p>
+            <div className="bg-slate-900/70 backdrop-blur border border-amber-800/40 rounded-2xl p-5 space-y-3 text-center shadow-sm">
+              <p className="text-white font-semibold">No existe un producto con este código</p>
               <Button
                 onClick={() => navigate('/inventario/nuevo', { state: { codigoBarras: codigo } })}
                 className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600"
@@ -158,7 +158,7 @@ export default function EscanerPage() {
             </div>
           )}
 
-          <Button variant="outline" onClick={escanearOtro} className="w-full h-12 border-orange-200 text-slate-600">
+          <Button variant="outline" onClick={escanearOtro} className="w-full h-12 border-slate-700 bg-slate-900/50 text-slate-300">
             Escanear otro código
           </Button>
         </div>

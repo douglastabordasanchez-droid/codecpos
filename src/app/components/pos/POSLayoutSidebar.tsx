@@ -19,7 +19,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { useMultitienda } from '../../contexts/MultitiendaContext';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { DeveloperPanel } from '../developer/DeveloperPanel';
 import {
   ModuloPOS,
   obtenerModulosPersonalizados,
@@ -72,7 +71,6 @@ export default function POSLayoutSidebar() {
     description: '',
   });
   const [showTiendaDropdown, setShowTiendaDropdown] = useState(false);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showFooter, setShowFooter] = useState(true);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [modulosGlobalConfig, setModulosGlobalConfig] = useState<ConfiguracionModulosGlobal>(() => obtenerModulosGlobales());
@@ -379,8 +377,10 @@ export default function POSLayoutSidebar() {
       color: 'cyan',
       moduloId: ModuloPOS.MONITOREO_TERMINALES,
     },
-    // 🔐 PANEL DE DESARROLLADOR (solo para usuario maestro exacto: Admin)
-    ...(hasDeveloperPanelAccess ? [{
+    // 🔐 Visible para cualquier super_usuario (no solo tras pasar ya el login
+    // de staff) — /developer se encarga de pedir esas credenciales si hacen
+    // falta. Sin esto no había forma de descubrir la pantalla la primera vez.
+    ...(hasDeveloperPanelAccess || esSuperUsuario ? [{
       path: '/developer',
       icon: Shield,
       label: 'Panel de Desarrollador',
@@ -586,12 +586,6 @@ export default function POSLayoutSidebar() {
         });
         return;
       }
-    }
-
-    // Si es el panel de admin, abrirlo como drawer
-    if (item.path === '/developer') {
-      setShowAdminPanel(true);
-      return;
     }
 
     // Navegar normalmente
@@ -912,11 +906,17 @@ export default function POSLayoutSidebar() {
           })}
         </nav>
 
-        {/* Acceso rápido al panel de desarrollador — siempre visible */}
-        {hasDeveloperPanelAccess && (
+        {/* 🛡️ FIX: antes este botón solo aparecía cuando `hasDeveloperPanelAccess`
+            ya era true — pero esa bandera SOLO se activa DESPUÉS de pasar el
+            login de staff en /developer. Resultado: no había ninguna forma de
+            descubrir/llegar a esa pantalla desde el sidebar, un candado sin
+            picaporte. Ahora se muestra a cualquier super_usuario (el dueño del
+            negocio) y navega a la ruta completa /developer — StaffLoginGate ya
+            se encarga de pedir las credenciales de staff ahí mismo. */}
+        {(hasDeveloperPanelAccess || esSuperUsuario) && (
           <div className="flex-shrink-0 px-3 pb-1 pt-2">
             <button
-              onClick={() => setShowAdminPanel(true)}
+              onClick={() => navigate('/developer')}
               title="Panel de Desarrollador"
               className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border ${
                 darkMode
@@ -1265,49 +1265,6 @@ export default function POSLayoutSidebar() {
         </DialogContent>
       </Dialog>
 
-      {/* Panel de Administración de Clientes - Drawer */}
-      {showAdminPanel && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setShowAdminPanel(false)}
-        >
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            transition={{ type: 'spring', duration: 0.3 }}
-            className="w-[95vw] h-[95vh] bg-slate-900 rounded-2xl shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header del Panel */}
-            <div className="flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-purple-600 to-indigo-600">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                  <Shield className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">Panel de Administración</h2>
-                  <p className="text-white/80 text-sm">Gestión de clientes y licencias</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowAdminPanel(false)}
-                className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Contenido del Panel */}
-            <div className="h-[calc(100%-88px)] overflow-auto">
-              <DeveloperPanel />
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
     </div>
     </div>
     </div>

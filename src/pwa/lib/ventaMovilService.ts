@@ -23,7 +23,7 @@ export async function crearVentaMovil(
   cajeroNombre: string,
   items: ItemCarritoMovil[],
   metodoPago: string
-): Promise<{ ok: boolean; error?: string; numero?: number }> {
+): Promise<{ ok: boolean; error?: string; numero?: number; ventaId?: string }> {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase no configurado' };
   if (items.length === 0) return { ok: false, error: 'El carrito está vacío' };
@@ -78,5 +78,5 @@ export async function crearVentaMovil(
     )
   );
 
-  return { ok: true, numero };
+  return { ok: true, numero, ventaId: ventaRow.id };
 }

@@ -35,24 +35,24 @@ export function RecuperarPasswordModal({ emailInicial, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-sm bg-white border border-orange-100 rounded-2xl p-6 relative shadow-xl">
-        <button onClick={onClose} className="absolute top-3 right-3 text-slate-400" aria-label="Cerrar">
+      <div className="w-full max-w-sm bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 relative shadow-xl">
+        <button onClick={onClose} className="absolute top-3 right-3 text-slate-500" aria-label="Cerrar">
           <X className="w-4 h-4" />
         </button>
 
-        <h2 className="text-slate-900 font-bold text-base mb-1">Recuperar contraseña</h2>
+        <h2 className="text-white font-bold text-base mb-1">Recuperar contraseña</h2>
 
         {enviado ? (
-          <p className="text-emerald-600 text-sm mt-3">
+          <p className="text-emerald-400 text-sm mt-3">
             Si <strong>{email}</strong> tiene una cuenta registrada, te llegará un enlace para restablecer tu
             contraseña. Revisa también la carpeta de spam.
           </p>
         ) : (
           <>
-            <p className="text-slate-500 text-xs mb-4">Requiere conexión a internet.</p>
+            <p className="text-slate-400 text-xs mb-4">Requiere conexión a internet.</p>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
@@ -60,10 +60,10 @@ export function RecuperarPasswordModal({ emailInicial, onClose }: Props) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="tu-correo@ejemplo.com"
-                  className="w-full pl-10 pr-3 h-11 rounded-lg bg-orange-50 border border-orange-200 text-slate-900 text-sm outline-none focus:border-amber-500"
+                  className="w-full pl-10 pr-3 h-11 rounded-lg bg-slate-950/60 border border-slate-700 text-white text-sm outline-none focus:border-amber-500"
                 />
               </div>
-              {error && <p className="text-red-500 text-xs">{error}</p>}
+              {error && <p className="text-red-400 text-xs">{error}</p>}
               <button
                 type="submit"
                 disabled={loading}

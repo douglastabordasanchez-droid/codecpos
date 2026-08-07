@@ -1,11 +1,13 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router';
-import { Zap, Loader2, Eye, EyeOff } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { RecuperarPasswordModal } from '../components/RecuperarPasswordModal';
+import logo from '/logo.png';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -31,16 +33,34 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-amber-50 flex flex-col items-center justify-center p-6">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-4 shadow-lg shadow-orange-500/25">
-        <Zap className="w-8 h-8 text-white" />
-      </div>
-      <h1 className="text-slate-900 text-2xl font-black mb-1">CODEC POS</h1>
-      <p className="text-slate-500 text-sm mb-8">Administra tu negocio desde el celular</p>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6">
+      <motion.div
+        initial={{ opacity: 0, y: -12, scale: 0.9 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-4 shadow-xl shadow-orange-500/30"
+      >
+        <img src={logo} alt="CODEC POS" className="w-10 h-10 object-contain" />
+      </motion.div>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="text-center"
+      >
+        <h1 className="text-white text-2xl font-black mb-1">CODEC POS</h1>
+        <p className="text-slate-400 text-sm mb-8">Administra tu negocio desde el celular</p>
+      </motion.div>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+      <motion.form
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm space-y-4 bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 shadow-2xl"
+      >
         <div className="space-y-1.5">
-          <Label className="text-slate-600 text-xs">Correo</Label>
+          <Label className="text-slate-400 text-xs">Correo</Label>
           <Input
             type="email"
             required
@@ -48,11 +68,11 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="tu-correo@ejemplo.com"
-            className="h-12 bg-white border-orange-200 text-slate-900"
+            className="h-12 bg-slate-950/60 border-slate-700 text-white"
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-slate-600 text-xs">Contraseña</Label>
+          <Label className="text-slate-400 text-xs">Contraseña</Label>
           <div className="relative">
             <Input
               type={mostrarPassword ? 'text' : 'password'}
@@ -60,12 +80,12 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Tu contraseña"
-              className="h-12 pr-11 bg-white border-orange-200 text-slate-900"
+              className="h-12 pr-11 bg-slate-950/60 border-slate-700 text-white"
             />
             <button
               type="button"
               onClick={() => setMostrarPassword(!mostrarPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
               aria-label={mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
               {mostrarPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -74,26 +94,26 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => setMostrarRecuperar(true)}
-            className="text-orange-600 text-xs font-semibold"
+            className="text-amber-400 text-xs font-semibold"
           >
             ¿Olvidaste tu contraseña?
           </button>
         </div>
 
-        {error && <p className="text-red-500 text-sm">{error}</p>}
+        {error && <p className="text-red-400 text-sm">{error}</p>}
 
-        <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600">
+        <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20">
           {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
           {loading ? 'Ingresando...' : 'Ingresar'}
         </Button>
 
-        <p className="text-center text-sm text-slate-500">
+        <p className="text-center text-sm text-slate-400">
           ¿Primera vez aquí?{' '}
-          <Link to="/registro" className="text-orange-600 font-semibold">
+          <Link to="/registro" className="text-amber-400 font-semibold">
             Crear cuenta
           </Link>
         </p>
-      </form>
+      </motion.form>
 
       {mostrarRecuperar && (
         <RecuperarPasswordModal emailInicial={email} onClose={() => setMostrarRecuperar(false)} />

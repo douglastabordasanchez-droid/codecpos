@@ -89,22 +89,22 @@ export default function RegistroPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-amber-50 flex flex-col items-center justify-center p-6">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-4 shadow-lg shadow-orange-500/25">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6">
+      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-4 shadow-xl shadow-orange-500/30">
         <UserPlus className="w-8 h-8 text-white" />
       </div>
-      <h1 className="text-slate-900 text-xl font-black mb-1">Crear cuenta</h1>
-      <p className="text-slate-500 text-sm mb-6 text-center">
+      <h1 className="text-white text-xl font-black mb-1">Crear cuenta</h1>
+      <p className="text-slate-400 text-sm mb-6 text-center">
         Usa el mismo usuario y contraseña de licencia que ya tienes en la caja
       </p>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-3">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-3 bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 shadow-2xl">
         <div className="space-y-1.5">
-          <Label className="text-slate-600 text-xs">Negocio</Label>
+          <Label className="text-slate-400 text-xs">Negocio</Label>
           <select
             value={clienteId}
             onChange={(e) => setClienteId(e.target.value)}
-            className="w-full h-12 rounded-lg px-3 text-sm bg-white border border-orange-200 text-slate-900"
+            className="w-full h-12 rounded-lg px-3 text-sm bg-slate-950/60 border border-slate-700 text-white"
           >
             <option value="">Selecciona tu negocio...</option>
             {clientes.map((c) => (
@@ -115,22 +115,22 @@ export default function RegistroPage() {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-slate-600 text-xs">Usuario de licencia</Label>
-            <Input value={usuarioLicencia} onChange={(e) => setUsuarioLicencia(e.target.value)} className="h-12 bg-white border-orange-200 text-slate-900" />
+            <Label className="text-slate-400 text-xs">Usuario de licencia</Label>
+            <Input value={usuarioLicencia} onChange={(e) => setUsuarioLicencia(e.target.value)} className="h-12 bg-slate-950/60 border-slate-700 text-white" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-slate-600 text-xs">Contraseña de licencia</Label>
+            <Label className="text-slate-400 text-xs">Contraseña de licencia</Label>
             <div className="relative">
               <Input
                 type={mostrarPasswordLicencia ? 'text' : 'password'}
                 value={passwordLicencia}
                 onChange={(e) => setPasswordLicencia(e.target.value)}
-                className="h-12 pr-10 bg-white border-orange-200 text-slate-900"
+                className="h-12 pr-10 bg-slate-950/60 border-slate-700 text-white"
               />
               <button
                 type="button"
                 onClick={() => setMostrarPasswordLicencia(!mostrarPasswordLicencia)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                 aria-label={mostrarPasswordLicencia ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               >
                 {mostrarPasswordLicencia ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -139,29 +139,29 @@ export default function RegistroPage() {
           </div>
         </div>
 
-        <div className="h-px bg-orange-100 my-2" />
+        <div className="h-px bg-slate-800 my-2" />
 
         <div className="space-y-1.5">
-          <Label className="text-slate-600 text-xs">Tu nombre completo</Label>
-          <Input value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} className="h-12 bg-white border-orange-200 text-slate-900" />
+          <Label className="text-slate-400 text-xs">Tu nombre completo</Label>
+          <Input value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} className="h-12 bg-slate-950/60 border-slate-700 text-white" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-slate-600 text-xs">Tu correo</Label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12 bg-white border-orange-200 text-slate-900" />
+          <Label className="text-slate-400 text-xs">Tu correo</Label>
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12 bg-slate-950/60 border-slate-700 text-white" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-slate-600 text-xs">Elige una contraseña</Label>
+          <Label className="text-slate-400 text-xs">Elige una contraseña</Label>
           <div className="relative">
             <Input
               type={mostrarPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-12 pr-10 bg-white border-orange-200 text-slate-900"
+              className="h-12 pr-10 bg-slate-950/60 border-slate-700 text-white"
             />
             <button
               type="button"
               onClick={() => setMostrarPassword(!mostrarPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
               aria-label={mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
               {mostrarPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -169,15 +169,15 @@ export default function RegistroPage() {
           </div>
         </div>
 
-        {error && <p className="text-red-500 text-sm">{error}</p>}
+        {error && <p className="text-red-400 text-sm">{error}</p>}
 
-        <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600">
+        <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20">
           {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
           {loading ? 'Creando cuenta...' : 'Crear cuenta'}
         </Button>
 
-        <p className="text-center text-sm text-slate-500">
-          ¿Ya tienes cuenta? <Link to="/login" className="text-orange-600 font-semibold">Inicia sesión</Link>
+        <p className="text-center text-sm text-slate-400">
+          ¿Ya tienes cuenta? <Link to="/login" className="text-amber-400 font-semibold">Inicia sesión</Link>
         </p>
       </form>
     </div>
