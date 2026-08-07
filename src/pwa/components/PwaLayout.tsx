@@ -3,9 +3,18 @@ import { Loader2 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { BottomNav } from './BottomNav';
 import { TopBar } from './TopBar';
+import { DesktopLayout } from './DesktopLayout';
+import { useIsDesktop } from '../hooks/useIsDesktop';
 
+/**
+ * Mismo enlace, misma app, mismo login — en pantallas ≥1024px (12" en
+ * adelante) se ve como el sistema de escritorio (sidebar, como Electron);
+ * en celular sigue el shell de bottom nav de siempre. Ninguna página ni
+ * servicio cambia, solo la navegación que las envuelve.
+ */
 export function PwaLayout() {
   const { empleado, cargando } = usePwaAuth();
+  const esEscritorio = useIsDesktop();
 
   if (cargando) {
     return (
@@ -17,6 +26,10 @@ export function PwaLayout() {
 
   if (!empleado) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (esEscritorio) {
+    return <DesktopLayout />;
   }
 
   return (
