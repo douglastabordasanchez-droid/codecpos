@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
-import { TrendingUp, ShoppingCart, Receipt, AlertTriangle, Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock } from 'lucide-react';
+import { Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock } from 'lucide-react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -123,62 +123,45 @@ export default function InicioPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mx-5 mb-6 grid grid-cols-3 gap-2 bg-slate-900/40 rounded-3xl py-5 border border-slate-800/60"
+          className="mx-5 mb-6 grid grid-cols-2 gap-x-2 gap-y-5 bg-slate-900/40 rounded-3xl py-6 border border-slate-800/60"
         >
-          <RingStat label="Ventas vs. ayer" value={`$${stats.totalHoy.toLocaleString('es-CO')}`} pct={stats.pctVentasVsAyer} colorFrom="#34d399" colorTo="#059669" size={92} />
-          <RingStat label="Transacciones vs. ayer" value={String(stats.cantidadHoy)} pct={stats.pctTransaccionesVsAyer} colorFrom="#38bdf8" colorTo="#0284c7" size={92} />
-          <RingStat label="Inventario sano" value={`${Math.round(stats.pctInventarioSano)}%`} pct={stats.pctInventarioSano} colorFrom={stats.pctInventarioSano < 70 ? '#f87171' : '#fbbf24'} colorTo={stats.pctInventarioSano < 70 ? '#dc2626' : '#d97706'} size={92} />
+          <RingStat
+            label="Ventas hoy"
+            value={`$${stats.totalHoy.toLocaleString('es-CO')}`}
+            pct={stats.pctVentasVsAyer}
+            colorFrom="#34d399"
+            colorTo="#059669"
+            size={108}
+            onClick={() => navigate('/ventas')}
+          />
+          <RingStat
+            label="Transacciones"
+            value={String(stats.cantidadHoy)}
+            pct={stats.pctTransaccionesVsAyer}
+            colorFrom="#38bdf8"
+            colorTo="#0284c7"
+            size={108}
+            onClick={() => navigate('/ventas')}
+          />
+          <RingStat
+            label="Ticket promedio"
+            value={`$${Math.round(stats.ticketProm).toLocaleString('es-CO')}`}
+            pct={100}
+            colorFrom="#a78bfa"
+            colorTo="#7c3aed"
+            size={108}
+            onClick={() => navigate('/ventas')}
+          />
+          <RingStat
+            label="Alertas de stock"
+            value={String(alertasCount)}
+            pct={stats.pctInventarioSano}
+            colorFrom={alertasCount > 0 ? '#f87171' : '#fbbf24'}
+            colorTo={alertasCount > 0 ? '#dc2626' : '#d97706'}
+            size={108}
+            onClick={() => navigate('/alertas')}
+          />
         </motion.div>
-      )}
-
-      {esAdmin && (
-        <div className="px-5 mb-6 grid grid-cols-2 gap-3">
-          {[
-            {
-              label: 'Ventas hoy', icon: TrendingUp, iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400',
-              value: `$${stats.totalHoy.toLocaleString('es-CO')}`,
-              trend: stats.cambioVentas, trendSuffix: '%',
-            },
-            {
-              label: 'Transacciones', icon: ShoppingCart, iconBg: 'bg-sky-500/15', iconColor: 'text-sky-400',
-              value: String(stats.cantidadHoy),
-              trend: stats.cambioTransacciones, trendSuffix: '',
-            },
-            {
-              label: 'Ticket promedio', icon: Receipt, iconBg: 'bg-purple-500/15', iconColor: 'text-purple-400',
-              value: `$${Math.round(stats.ticketProm).toLocaleString('es-CO')}`,
-              trend: null, trendSuffix: '',
-            },
-            {
-              label: 'Alertas', icon: AlertTriangle, iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400',
-              value: String(alertasCount),
-              trend: null, trendSuffix: '', danger: alertasCount > 0,
-            },
-          ].map((kpi, i) => (
-            <motion.div
-              key={kpi.label}
-              custom={i}
-              initial="hidden"
-              animate="show"
-              variants={fadeUp}
-              onClick={() => kpi.label === 'Alertas' && navigate('/alertas')}
-              className={`bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4 ${kpi.label === 'Alertas' ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''}`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">{kpi.label}</span>
-                <div className={`w-7 h-7 rounded-lg ${kpi.iconBg} flex items-center justify-center`}>
-                  <kpi.icon className={`w-3.5 h-3.5 ${kpi.iconColor}`} />
-                </div>
-              </div>
-              <p className={`text-xl font-black ${kpi.danger ? 'text-red-400' : 'text-white'}`}>{kpi.value}</p>
-              {kpi.trend !== null && (
-                <p className={`text-xs mt-1 font-semibold ${kpi.trend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {kpi.trend >= 0 ? '↑' : '↓'} {Math.abs(kpi.trend).toFixed(kpi.trendSuffix === '%' ? 1 : 0)}{kpi.trendSuffix}
-                </p>
-              )}
-            </motion.div>
-          ))}
-        </div>
       )}
 
       {/* Accesos rápidos */}
