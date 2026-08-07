@@ -74,6 +74,27 @@ async function construirDatosFactura(clienteId: string, venta: VentaParaComparti
   return { config, facturaVenta };
 }
 
+/**
+ * Abre la factura en una pestaña nueva usando el visor de PDF nativo del
+ * navegador — ese visor ya trae su propio botón de imprimir, así que
+ * cualquier impresora instalada en Windows (térmica incluida, si tiene
+ * driver) queda disponible sin integración adicional. Es el respaldo real
+ * si Electron falla: misma factura, mismo generador (pdfGenerator.ts), solo
+ * cambia cómo se le entrega al usuario.
+ */
+export async function verFactura(clienteId: string, venta: VentaParaCompartir): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { config, facturaVenta } = await construirDatosFactura(clienteId, venta);
+    const blob = await generarFacturaPDF(facturaVenta, config);
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'No se pudo generar el PDF' };
+  }
+}
+
 export async function compartirRecibo(clienteId: string, venta: VentaParaCompartir): Promise<{ ok: boolean; error?: string }> {
   try {
     const { config, facturaVenta } = await construirDatosFactura(clienteId, venta);

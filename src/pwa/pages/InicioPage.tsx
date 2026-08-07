@@ -6,6 +6,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { ModuloPOS } from '../../app/lib/permissions';
+import { RingStat } from '../components/RingStat';
 
 interface VentaFila {
   id: string;
@@ -48,6 +49,7 @@ export default function InicioPage() {
   const [ventasHoy, setVentasHoy] = useState<VentaFila[]>([]);
   const [ventasAyer, setVentasAyer] = useState<VentaFila[]>([]);
   const [alertasCount, setAlertasCount] = useState(0);
+  const [productosConMinimo, setProductosConMinimo] = useState(0);
   const [sesiones, setSesiones] = useState<SesionFila[]>([]);
   const [cargando, setCargando] = useState(true);
 
@@ -81,7 +83,9 @@ export default function InicioPage() {
       if (cancelado) return;
       setVentasHoy((hoyData as VentaFila[]) || []);
       setVentasAyer((ayerData as VentaFila[]) || []);
-      setAlertasCount(((stockData as any[]) || []).filter((p) => p.stock_minimo != null && p.stock <= p.stock_minimo).length);
+      const productos = ((stockData as any[]) || []).filter((p) => p.stock_minimo != null);
+      setProductosConMinimo(productos.length);
+      setAlertasCount(productos.filter((p) => p.stock <= p.stock_minimo).length);
       setSesiones((sesionesData as SesionFila[]) || []);
       setCargando(false);
     };
@@ -97,8 +101,11 @@ export default function InicioPage() {
     const cambioVentas = totalAyer > 0 ? ((totalHoy - totalAyer) / totalAyer) * 100 : totalHoy > 0 ? 100 : 0;
     const ticketProm = ventasHoy.length ? totalHoy / ventasHoy.length : 0;
     const cambioTransacciones = ventasHoy.length - ventasAyer.length;
-    return { totalHoy, cambioVentas, ticketProm, cambioTransacciones, cantidadHoy: ventasHoy.length };
-  }, [ventasHoy, ventasAyer]);
+    const pctVentasVsAyer = totalAyer > 0 ? Math.min(100, (totalHoy / totalAyer) * 100) : totalHoy > 0 ? 100 : 0;
+    const pctTransaccionesVsAyer = ventasAyer.length > 0 ? Math.min(100, (ventasHoy.length / ventasAyer.length) * 100) : ventasHoy.length > 0 ? 100 : 0;
+    const pctInventarioSano = productosConMinimo > 0 ? ((productosConMinimo - alertasCount) / productosConMinimo) * 100 : 100;
+    return { totalHoy, cambioVentas, ticketProm, cambioTransacciones, cantidadHoy: ventasHoy.length, pctVentasVsAyer, pctTransaccionesVsAyer, pctInventarioSano };
+  }, [ventasHoy, ventasAyer, productosConMinimo, alertasCount]);
 
   const primerNombre = (empleado?.nombre_completo || '').split(' ')[0];
   const hora = new Date().getHours();
@@ -110,6 +117,19 @@ export default function InicioPage() {
         <p className="text-slate-400 text-sm">{saludo},</p>
         <h1 className="text-white text-2xl font-black">{primerNombre || 'bienvenido'} 👋</h1>
       </div>
+
+      {esAdmin && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="mx-5 mb-6 grid grid-cols-3 gap-2 bg-slate-900/40 rounded-3xl py-5 border border-slate-800/60"
+        >
+          <RingStat label="Ventas vs. ayer" value={`$${stats.totalHoy.toLocaleString('es-CO')}`} pct={stats.pctVentasVsAyer} colorFrom="#34d399" colorTo="#059669" size={92} />
+          <RingStat label="Transacciones vs. ayer" value={String(stats.cantidadHoy)} pct={stats.pctTransaccionesVsAyer} colorFrom="#38bdf8" colorTo="#0284c7" size={92} />
+          <RingStat label="Inventario sano" value={`${Math.round(stats.pctInventarioSano)}%`} pct={stats.pctInventarioSano} colorFrom={stats.pctInventarioSano < 70 ? '#f87171' : '#fbbf24'} colorTo={stats.pctInventarioSano < 70 ? '#dc2626' : '#d97706'} size={92} />
+        </motion.div>
+      )}
 
       {esAdmin && (
         <div className="px-5 mb-6 grid grid-cols-2 gap-3">

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera, Share2, Receipt } from 'lucide-react';
+import { ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera, Share2, Receipt, Printer } from 'lucide-react';
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { crearVentaMovil, ItemCarritoMovil } from '../lib/ventaMovilService';
-import { compartirRecibo } from '../lib/compartirFactura';
+import { compartirRecibo, verFactura } from '../lib/compartirFactura';
 
 interface ProductoFila {
   id: string;
@@ -46,6 +46,7 @@ export default function VenderPage() {
   const [error, setError] = useState<string | null>(null);
   const [ventaCompletada, setVentaCompletada] = useState<VentaCompletada | null>(null);
   const [compartiendo, setCompartiendo] = useState(false);
+  const [viendoFactura, setViendoFactura] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
 
@@ -131,6 +132,20 @@ export default function VenderPage() {
       cajero_nombre: empleado.nombre_completo,
     });
     setCompartiendo(false);
+  };
+
+  const handleVerFactura = async () => {
+    if (!empleado || !ventaCompletada) return;
+    setViendoFactura(true);
+    await verFactura(empleado.cliente_id, {
+      id: ventaCompletada.id,
+      numero: ventaCompletada.numero,
+      created_at: new Date().toISOString(),
+      total: ventaCompletada.total,
+      metodo_pago: ventaCompletada.metodoPago,
+      cajero_nombre: empleado.nombre_completo,
+    });
+    setViendoFactura(false);
   };
 
   const cerrarTodo = () => {
@@ -300,14 +315,23 @@ export default function VenderPage() {
 
                 <div className="space-y-2">
                   <Button
-                    onClick={handleCompartirFactura}
-                    disabled={compartiendo}
+                    onClick={handleVerFactura}
+                    disabled={viendoFactura}
                     className="w-full h-14 bg-gradient-to-r from-amber-500 to-orange-600"
                   >
-                    {compartiendo ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Share2 className="w-5 h-5 mr-2" />}
-                    {compartiendo ? 'Generando factura...' : 'Compartir factura'}
+                    {viendoFactura ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Printer className="w-5 h-5 mr-2" />}
+                    {viendoFactura ? 'Generando factura...' : 'Ver / imprimir factura'}
                   </Button>
-                  <Button onClick={cerrarTodo} variant="outline" className="w-full h-12 border-slate-700 text-slate-300">
+                  <Button
+                    onClick={handleCompartirFactura}
+                    disabled={compartiendo}
+                    variant="outline"
+                    className="w-full h-12 border-slate-700 bg-slate-900/50 text-slate-300"
+                  >
+                    {compartiendo ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
+                    {compartiendo ? 'Generando...' : 'Compartir factura'}
+                  </Button>
+                  <Button onClick={cerrarTodo} variant="outline" className="w-full h-12 border-slate-700 bg-slate-900/50 text-slate-300">
                     <Receipt className="w-4 h-4 mr-2" />
                     Continuar vendiendo
                   </Button>

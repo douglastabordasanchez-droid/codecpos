@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, Share2, Loader2, Receipt } from 'lucide-react';
+import { Search, Share2, Loader2, Receipt, Printer } from 'lucide-react';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { compartirRecibo } from '../lib/compartirFactura';
+import { compartirRecibo, verFactura } from '../lib/compartirFactura';
 
 interface VentaFila {
   id: string;
@@ -34,6 +34,7 @@ export default function VentasPage() {
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
   const [compartiendoId, setCompartiendoId] = useState<string | null>(null);
+  const [viendoId, setViendoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!empleado) return;
@@ -69,6 +70,13 @@ export default function VentasPage() {
     setCompartiendoId(v.id);
     await compartirRecibo(empleado.cliente_id, v);
     setCompartiendoId(null);
+  };
+
+  const handleVer = async (v: VentaFila) => {
+    if (!empleado || viendoId) return;
+    setViendoId(v.id);
+    await verFactura(empleado.cliente_id, v);
+    setViendoId(null);
   };
 
   return (
@@ -131,14 +139,26 @@ export default function VentasPage() {
                 </span>
                 {v.cajero_nombre && <span className="text-slate-500 text-xs">{v.cajero_nombre}</span>}
               </div>
-              <button
-                onClick={() => handleCompartir(v)}
-                disabled={compartiendoId === v.id}
-                className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 disabled:opacity-50"
-                aria-label="Compartir factura"
-              >
-                {compartiendoId === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleVer(v)}
+                  disabled={viendoId === v.id}
+                  className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 disabled:opacity-50"
+                  aria-label="Ver / imprimir factura"
+                  title="Ver / imprimir factura"
+                >
+                  {viendoId === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={() => handleCompartir(v)}
+                  disabled={compartiendoId === v.id}
+                  className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 disabled:opacity-50"
+                  aria-label="Compartir factura"
+                  title="Compartir factura"
+                >
+                  {compartiendoId === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
           </motion.div>
         ))}
