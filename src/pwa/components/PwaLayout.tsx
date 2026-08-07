@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, Navigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
@@ -15,6 +16,7 @@ import { useIsDesktop } from '../hooks/useIsDesktop';
 export function PwaLayout() {
   const { empleado, cargando } = usePwaAuth();
   const esEscritorio = useIsDesktop();
+  const [navInferiorVisible, setNavInferiorVisible] = useState(true);
 
   if (cargando) {
     return (
@@ -34,9 +36,9 @@ export function PwaLayout() {
 
   return (
     <>
-      <TopBar />
+      <TopBar navInferiorVisible={navInferiorVisible} onToggleNavInferior={() => setNavInferiorVisible((v) => !v)} />
       <Outlet />
-      <BottomNav />
+      {navInferiorVisible && <BottomNav />}
     </>
   );
 }

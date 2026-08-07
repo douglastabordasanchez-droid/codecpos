@@ -71,6 +71,25 @@
 [data-theme='light'] .border-amber-800\/40 { border-color: rgb(180 83 9 / 0.25) !important; }
 [data-theme='light'] .border-emerald-800\/50 { border-color: rgb(5 150 105 / 0.25) !important; }
 
+/* ---- Estados hover: Tailwind genera una clase aparte (.hover\:bg-x:hover)
+   que las reglas de arriba NO cubren — sin esto, cualquier fila/botón con
+   hover:bg-slate-900 (pensado para resaltar sobre fondo oscuro) se queda
+   oscuro también en modo claro, con texto encima ilegible. ---- */
+[data-theme='light'] .hover\:bg-slate-900:hover { background-color: #f3f1ee !important; }
+[data-theme='light'] .hover\:text-slate-200:hover,
+[data-theme='light'] .hover\:text-slate-300:hover { color: #292524 !important; }
+
+/* ---- Acento morado (Plataforma / Panel Desarrollador) ---- */
+[data-theme='light'] .text-purple-200,
+[data-theme='light'] .text-purple-300 { color: #6d28d9 !important; }
+[data-theme='light'] .border-purple-500\/20 { border-color: rgb(168 85 247 / 0.3) !important; }
+[data-theme='light'] .border-purple-800\/40 { border-color: rgb(126 34 206 / 0.25) !important; }
+[data-theme='light'] .bg-purple-500\/15 { background-color: rgb(168 85 247 / 0.12) !important; }
+[data-theme='light'] .from-purple-500\/15.to-fuchsia-500\/10,
+[data-theme='light'] .from-purple-500\/20.to-fuchsia-500\/10 {
+  background-image: linear-gradient(to right, rgb(168 85 247 / 0.12), rgb(217 70 239 / 0.08)) !important;
+}
+
 /* ---- Placeholders de <input>/<select> (heredan currentColor en algunos navegadores) ---- */
 [data-theme='light'] input::placeholder,
 [data-theme='light'] select {

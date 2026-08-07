@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
-import { Menu, Bell, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Menu, Bell, ShieldCheck, ShieldOff, PanelBottomClose, PanelBottomOpen } from 'lucide-react';
 import { SideMenu } from './SideMenu';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { codecVerifyPwaActivo, alternarCodecVerifyPwa, suscribirNotificacionesPagoPwa } from '../lib/codecVerifyPwa';
 import logo from '/logo.png';
 
-export function TopBar() {
+interface Props {
+  navInferiorVisible: boolean;
+  onToggleNavInferior: () => void;
+}
+
+export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [verifyActivo, setVerifyActivo] = useState(codecVerifyPwaActivo);
   const navigate = useNavigate();
@@ -70,6 +75,14 @@ export function TopBar() {
               aria-label="Alertas"
             >
               <Bell className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onToggleNavInferior}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-300 active:bg-slate-900"
+              aria-label={navInferiorVisible ? 'Ocultar menú inferior' : 'Mostrar menú inferior'}
+              title={navInferiorVisible ? 'Ocultar menú inferior' : 'Mostrar menú inferior'}
+            >
+              {navInferiorVisible ? <PanelBottomClose className="w-5 h-5" /> : <PanelBottomOpen className="w-5 h-5" />}
             </button>
           </div>
         </div>
