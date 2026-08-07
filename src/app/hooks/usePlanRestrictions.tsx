@@ -51,7 +51,7 @@ export function usePlanRestrictions() {
     if (!usuarioActual) return;
 
     // 🔐 USUARIO ADMIN = ACCESO TOTAL PREMIUM (Panel de Desarrollador)
-    if (usuarioActual.username === 'Aadmin') {
+    if (usuarioActual.username === 'Admin') {
       setPlanInfo({
         plan: 'PREMIUM',
         duracion: 'VITALICIA',

@@ -2,6 +2,7 @@ import { Outlet, Navigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { BottomNav } from './BottomNav';
+import { TopBar } from './TopBar';
 
 export function PwaLayout() {
   const { empleado, cargando } = usePwaAuth();
@@ -20,6 +21,7 @@ export function PwaLayout() {
 
   return (
     <>
+      <TopBar />
       <Outlet />
       <BottomNav />
     </>

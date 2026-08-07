@@ -885,10 +885,10 @@ export function DeveloperPanel() {
                         const usuariosRaw = localStorage.getItem('codecpos_usuarios');
                         if (!usuariosRaw) { toast.error('No se encontró el usuario administrador'); return; }
                         const usuarios = JSON.parse(usuariosRaw);
-                        const adminUser = usuarios.find((u: any) => u.username === 'Aadmin');
-                        if (!adminUser) { toast.error('No se encontró el usuario Aadmin'); return; }
+                        const adminUser = usuarios.find((u: any) => u.username === 'Admin');
+                        if (!adminUser) { toast.error('No se encontró el usuario Admin'); return; }
                         if (!verificarPassword(passwordData.currentPassword, adminUser.password).valido) { toast.error('Contraseña actual incorrecta'); return; }
-                        const actualizados = usuarios.map((u: any) => u.username === 'Aadmin' ? { ...u, password: hashPassword(passwordData.newPassword) } : u);
+                        const actualizados = usuarios.map((u: any) => u.username === 'Admin' ? { ...u, password: hashPassword(passwordData.newPassword) } : u);
                         localStorage.setItem('codecpos_usuarios', JSON.stringify(actualizados));
                         toast.success('¡Contraseña actualizada exitosamente!');
                         setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });

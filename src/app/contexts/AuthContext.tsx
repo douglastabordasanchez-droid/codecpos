@@ -296,7 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: 'admin_default_001',
           nombreCompleto: 'Administrador',
           cedula: '000000000',
-          username: 'Aadmin',
+          username: 'Admin',
           // Contraseña por defecto de primer arranque — CAMBIAR de inmediato desde
           // Usuarios > Cambiar contraseña. Ya no es un secreto compartido entre
           // instalaciones con privilegios especiales: es solo una semilla local.
@@ -1029,7 +1029,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Si se debe desactivar Admin, actualizar su estado
     const usuariosActualizados = desactivarAdmin
-      ? usuarios.map(u => u.username === 'Aadmin' ? { ...u, activo: false } : u)
+      ? usuarios.map(u => u.username === 'Admin' ? { ...u, activo: false } : u)
       : usuarios;
 
     setUsuarios([...usuariosActualizados, nuevoUsuarioCliente]);

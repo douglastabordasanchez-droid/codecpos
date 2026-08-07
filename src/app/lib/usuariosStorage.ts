@@ -154,21 +154,24 @@ export async function guardarUsuarios(usuarios: Usuario[]): Promise<void> {
 
 // ─── CARGAR USUARIOS ───────────────────────────────────
 /**
- * Instalaciones que ya existían antes de renombrar el admin por defecto de
- * 'Admin'/'CodecPOS2026!' a 'Aadmin'/'Noruega2025++*' se quedaron con el
- * usuario viejo en su localStorage/IndexedDB — la semilla nueva solo aplica
- * en instalaciones frescas. Migra el registro EN SITIO (mismo id, mismos
- * permisos ya otorgados) solo si sigue siendo la semilla de sistema
- * original: no toca username/password si el dueño ya los personalizó.
+ * El admin local por defecto usa el MISMO usuario/contraseña que la
+ * licencia de vinculación a Supabase ('Admin'/'Noruega2025++*') — decisión
+ * explícita del dueño para no manejar dos credenciales distintas. (Hubo un
+ * intento anterior de separarlos en 'Aadmin' para evitar confusión entre el
+ * login local y el usuario de licencia; se revirtió a pedido del usuario.)
+ * Migra el registro EN SITIO (mismo id, mismos permisos ya otorgados) solo
+ * si sigue siendo la semilla de sistema original: no toca username/password
+ * si el dueño ya los personalizó.
  */
 function migrarAdminLegacy(usuarios: Usuario[]): boolean {
   let cambiado = false;
   for (const u of usuarios) {
-    const esSemillaDeSistema = u.creadoPor === 'SISTEMA' && (u.id === 'admin_default_001' || u.username === 'Admin');
+    const esSemillaDeSistema =
+      u.creadoPor === 'SISTEMA' && (u.id === 'admin_default_001' || u.username === 'Admin' || u.username === 'Aadmin');
     if (!esSemillaDeSistema) continue;
 
-    if (u.username !== 'Aadmin') {
-      u.username = 'Aadmin';
+    if (u.username !== 'Admin') {
+      u.username = 'Admin';
       cambiado = true;
     }
     if (verificarPassword('CodecPOS2026!', u.password).valido) {
@@ -193,7 +196,7 @@ export async function cargarUsuarios(): Promise<Usuario[]> {
 
         if (migrarAdminLegacy(usuarios)) {
           localStorage.setItem(LS_USUARIOS, JSON.stringify(usuarios));
-          console.log('🔧 [Storage] Admin legacy migrado a Aadmin');
+          console.log('🔧 [Storage] Admin legacy unificado a Admin');
         }
 
         // Sincronizar con IndexedDB en segundo plano (NO BLOQUEA)
@@ -262,7 +265,7 @@ export async function cargarUsuarios(): Promise<Usuario[]> {
     id: 'super_' + Date.now(),
     nombreCompleto: 'Administrador CODEC POS',
     cedula: '0000000000',
-    username: 'Aadmin',
+    username: 'Admin',
     // Semilla de primer arranque — cambiar de inmediato tras el primer login.
     password: hashPassword('Noruega2025++*'),
     rol: 'super_usuario',

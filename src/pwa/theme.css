@@ -1,0 +1,71 @@
+/*
+ * Modo claro de la PWA. El oscuro navy/glassmorphic es el diseño por
+ * defecto de cada página (clases Tailwind literales); esto repinta esas
+ * MISMAS clases cuando <html data-theme="light"> está activo, sin tocar
+ * el markup de cada componente. Los gradientes de fondo (from/via/to)
+ * siempre aparecen juntos en el mismo elemento en toda la PWA, así que se
+ * sobreescriben como combo para no pelear con las variables internas de
+ * Tailwind para gradientes.
+ */
+
+[data-theme='light'] {
+  color-scheme: light;
+}
+
+/* ---- Fondo base de página (bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950) ---- */
+[data-theme='light'] .from-slate-950.via-slate-900.to-slate-950 {
+  background-image: linear-gradient(to bottom, #faf9f7, #ffffff 40%, #faf9f7) !important;
+}
+[data-theme='light'] .from-slate-900.to-slate-900\/60 {
+  background-image: linear-gradient(to bottom right, #ffffff, #f3f1ee) !important;
+}
+
+/* ---- Superficies (tarjetas) ---- */
+[data-theme='light'] .bg-slate-900\/70 { background-color: rgb(255 255 255 / 0.9) !important; }
+[data-theme='light'] .bg-slate-900\/60 { background-color: rgb(255 255 255 / 0.85) !important; }
+[data-theme='light'] .bg-slate-900\/50 { background-color: rgb(255 255 255 / 0.8) !important; }
+[data-theme='light'] .bg-slate-900\/90 { background-color: rgb(255 255 255 / 0.95) !important; }
+[data-theme='light'] .bg-slate-900\/95 { background-color: rgb(255 255 255 / 0.97) !important; }
+[data-theme='light'] .bg-slate-900 { background-color: #ffffff !important; }
+[data-theme='light'] .bg-slate-950 { background-color: #f3f1ee !important; }
+[data-theme='light'] .bg-slate-950\/60 { background-color: #f3f1ee !important; }
+[data-theme='light'] .bg-slate-800 { background-color: #ece8e3 !important; }
+[data-theme='light'] .bg-slate-700\/50 { background-color: rgb(214 211 209 / 0.5) !important; }
+
+/* ---- Bordes ---- */
+[data-theme='light'] .border-slate-800 { border-color: #e7e3de !important; }
+[data-theme='light'] .border-slate-700 { border-color: #ddd8d2 !important; }
+[data-theme='light'] .border-slate-950 { border-color: #e7e3de !important; }
+
+/* ---- Texto ---- */
+[data-theme='light'] .text-white { color: #1c1917 !important; }
+[data-theme='light'] .text-white\/80 { color: rgb(28 25 23 / 0.8) !important; }
+[data-theme='light'] .text-white\/70 { color: rgb(28 25 23 / 0.7) !important; }
+[data-theme='light'] .text-slate-300 { color: #44403c !important; }
+[data-theme='light'] .text-slate-400 { color: #78716c !important; }
+[data-theme='light'] .text-slate-500 { color: #8a8580 !important; }
+[data-theme='light'] .text-slate-600 { color: #a39e98 !important; }
+
+/* ---- Overlays de modal (quedan oscuros a propósito en ambos temas) ---- */
+[data-theme='light'] .bg-white\/10 { background-color: rgb(0 0 0 / 0.05) !important; }
+[data-theme='light'] .bg-white\/20 { background-color: rgb(0 0 0 / 0.08) !important; }
+[data-theme='light'] .border-white\/30 { border-color: rgb(0 0 0 / 0.15) !important; }
+
+/* ---- Acentos: los tonos -400 están pensados para fondo oscuro; en claro
+   pierden contraste, así que se oscurecen a su equivalente -600/-700 ---- */
+[data-theme='light'] .text-amber-400,
+[data-theme='light'] .text-amber-500 { color: #b45309 !important; }
+[data-theme='light'] .text-red-400,
+[data-theme='light'] .text-red-300 { color: #dc2626 !important; }
+[data-theme='light'] .text-emerald-400 { color: #059669 !important; }
+[data-theme='light'] .text-sky-400 { color: #0284c7 !important; }
+[data-theme='light'] .text-purple-400 { color: #7c3aed !important; }
+
+[data-theme='light'] .border-amber-800\/40 { border-color: rgb(180 83 9 / 0.25) !important; }
+[data-theme='light'] .border-emerald-800\/50 { border-color: rgb(5 150 105 / 0.25) !important; }
+
+/* ---- Placeholders de <input>/<select> (heredan currentColor en algunos navegadores) ---- */
+[data-theme='light'] input::placeholder,
+[data-theme='light'] select {
+  color: #78716c;
+}
