@@ -132,31 +132,48 @@ class SyncService {
     this.isSyncing = true;
     this.notifyListeners({ status: 'syncing', message: 'Sincronizando datos...', lastSync: null });
 
-    try {
-      await this.pullProductosRemotos(client, clienteId);
-      await this.pullVentasRemotas(client, clienteId);
-      await this.pushProductosPendientes(client, clienteId);
-      await this.pushProductosLocalStorage(client, clienteId);
-      await this.pushGastosLocalStorage(client, clienteId);
-      await this.pushVentasPendientes(client, clienteId);
-      await this.pushCierresPendientes(client, clienteId);
-      await this.pushSesionActivaHeartbeat(client, clienteId);
+    // 🛡️ Antes un solo paso que fallaba (p. ej. IndexedDB rechazando un
+    // producto por una restricción de índice) abortaba el resto del ciclo
+    // completo dentro de un único try/catch — incluido el heartbeat que le
+    // avisa a la PWA que esta caja está conectada. Cada paso ahora aísla su
+    // propio error: uno fallido se registra pero no bloquea a los demás, y
+    // el heartbeat siempre llega a ejecutarse.
+    const pasos: Array<[string, () => Promise<void>]> = [
+      ['pull_productos', () => this.pullProductosRemotos(client, clienteId)],
+      ['pull_ventas', () => this.pullVentasRemotas(client, clienteId)],
+      ['push_productos', () => this.pushProductosPendientes(client, clienteId)],
+      ['push_productos_localstorage', () => this.pushProductosLocalStorage(client, clienteId)],
+      ['push_gastos', () => this.pushGastosLocalStorage(client, clienteId)],
+      ['push_ventas', () => this.pushVentasPendientes(client, clienteId)],
+      ['push_cierres', () => this.pushCierresPendientes(client, clienteId)],
+      ['push_heartbeat', () => this.pushSesionActivaHeartbeat(client, clienteId)],
+    ];
 
+    let primerError: unknown = null;
+    for (const [nombre, paso] of pasos) {
+      try {
+        await paso();
+      } catch (error) {
+        primerError = primerError ?? error;
+        console.error(`[sync] Falló el paso "${nombre}":`, error);
+        await dbManager.addLog('sync_error', `Error en paso "${nombre}"`, error);
+      }
+    }
+
+    if (primerError) {
+      this.notifyListeners({
+        status: 'error',
+        message: `Error: ${primerError instanceof Error ? primerError.message : 'Desconocido'}`,
+        lastSync: null,
+      });
+    } else {
       const lastSync = new Date().toISOString();
       await dbManager.setConfig('lastSyncTime', lastSync);
       await dbManager.addLog('sync', 'Sincronización completada exitosamente');
-
       this.notifyListeners({ status: 'success', message: 'Sincronización completada', lastSync });
-    } catch (error) {
-      await dbManager.addLog('sync_error', 'Error en sincronización', error);
-      this.notifyListeners({
-        status: 'error',
-        message: `Error: ${error instanceof Error ? error.message : 'Desconocido'}`,
-        lastSync: null,
-      });
-    } finally {
-      this.isSyncing = false;
     }
+
+    this.isSyncing = false;
   }
 
   // ==================== PULL ====================

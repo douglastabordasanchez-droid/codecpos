@@ -11,7 +11,7 @@ const DB_NAME = 'CodecPOS_DB';
 // primero en casi toda la app), IndexedDB la rechaza con VersionError y esa
 // capa de respaldo de usuarios queda muerta sin que nadie se entere. Ahora
 // usuariosStorage.ts importa esta misma constante en vez de tener la suya.
-export const DB_VERSION = 5; // ✅ Incrementado para módulo panadería/cafetería
+export const DB_VERSION = 6; // ✅ 'codigo' de productos ya no es índice único (ver onupgradeneeded)
 
 // Definición de stores
 export const STORES = {
@@ -174,16 +174,33 @@ class IndexedDBManager {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        const transaction = (event.target as IDBOpenDBRequest).transaction!;
         console.log('🔧 Creando/actualizando esquema de IndexedDB...');
 
         // Store de Productos
         if (!db.objectStoreNames.contains(STORES.PRODUCTOS)) {
           const productosStore = db.createObjectStore(STORES.PRODUCTOS, { keyPath: 'id' });
-          productosStore.createIndex('codigo', 'codigo', { unique: true });
+          // 🛡️ 'codigo' (código de barras) NO puede ser único: muchos
+          // productos no tienen barcode y quedan con codigo:'' — con un
+          // índice único, el segundo producto sin código lanza
+          // "Unable to add key to index 'codigo'" y aborta TODA la
+          // sincronización a mitad de camino (incluido el heartbeat que
+          // marca la caja como "conectada" para la PWA).
+          productosStore.createIndex('codigo', 'codigo', { unique: false });
           productosStore.createIndex('categoria', 'categoria', { unique: false });
           productosStore.createIndex('syncStatus', 'syncStatus', { unique: false });
           productosStore.createIndex('updatedAt', 'updatedAt', { unique: false });
           console.log('✅ Store PRODUCTOS creado');
+        } else {
+          // Instalación existente con el índice 'codigo' todavía marcado
+          // como único (versiones de esquema anteriores) — se recrea sin
+          // esa restricción. deleteIndex es un no-op seguro si ya se migró.
+          const productosStore = transaction.objectStore(STORES.PRODUCTOS);
+          if (productosStore.indexNames.contains('codigo')) {
+            productosStore.deleteIndex('codigo');
+          }
+          productosStore.createIndex('codigo', 'codigo', { unique: false });
+          console.log('🔧 Índice "codigo" de PRODUCTOS migrado a no-único');
         }
 
         // Store de Ventas

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, User, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
-  Settings, LogOut, Sun, Moon, Crown, Zap,
+  Settings, LogOut, Sun, Moon, Crown, Zap, ShieldAlert,
 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -24,6 +24,7 @@ interface ItemMenu {
   path: string;
   modulo?: ModuloPOS;
   soloAdmin?: boolean;
+  soloStaff?: boolean;
 }
 
 export function SideMenu({ open, onClose }: Props) {
@@ -68,8 +69,12 @@ export function SideMenu({ open, onClose }: Props) {
     { icon: Settings, label: 'Configuración', subtitulo: 'Datos del negocio y módulos', path: '/configuracion', soloAdmin: true },
   ];
 
+  const plataforma: ItemMenu[] = [
+    { icon: ShieldAlert, label: 'Panel Desarrollador', subtitulo: 'Administra todos los negocios', path: '/desarrollador', soloStaff: true },
+  ];
+
   const visible = (it: ItemMenu) =>
-    (!it.modulo || tieneModulo(it.modulo)) && (!it.soloAdmin || esAdmin);
+    (!it.modulo || tieneModulo(it.modulo)) && (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec);
 
   return (
     <AnimatePresence>
@@ -124,6 +129,13 @@ export function SideMenu({ open, onClose }: Props) {
                 <>
                   <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Administración</p>
                   {administracion.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} destacado />)}
+                </>
+              )}
+
+              {plataforma.some(visible) && (
+                <>
+                  <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Plataforma</p>
+                  {plataforma.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} destacado />)}
                 </>
               )}
             </div>

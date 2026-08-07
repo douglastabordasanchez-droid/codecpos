@@ -17,6 +17,7 @@ import VenderPage from './pages/VenderPage';
 import GastosPage from './pages/GastosPage';
 import DevolucionesPage from './pages/DevolucionesPage';
 import CierreCajaPage from './pages/CierreCajaPage';
+import PanelDesarrolladorPage from './pages/PanelDesarrolladorPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
       { path: 'caja', element: <ModuloGate modulo={ModuloPOS.CIERRE_CAJA}><CierreCajaPage /></ModuloGate> },
       { path: 'configuracion', element: <ConfiguracionPage /> },
       { path: 'perfil', element: <PerfilPage /> },
+      { path: 'desarrollador', element: <PanelDesarrolladorPage /> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

@@ -43,16 +43,24 @@ export function VinculacionNubeCard() {
       return;
     }
     setVinculando(true);
-    const resultado = await vincularNegocio(clienteSeleccionado, usuarioLicencia, passwordLicencia);
-    setVinculando(false);
-
-    if (resultado.ok) {
-      toast.success('Instalación vinculada correctamente');
-      setLinked(true);
-      setClienteIdActual(clienteSeleccionado);
-      setPasswordLicencia('');
-    } else {
-      toast.error('No se pudo vincular', { description: resultado.error });
+    try {
+      const resultado = await vincularNegocio(clienteSeleccionado, usuarioLicencia, passwordLicencia);
+      if (resultado.ok) {
+        toast.success('Instalación vinculada correctamente');
+        setLinked(true);
+        setClienteIdActual(clienteSeleccionado);
+        setPasswordLicencia('');
+      } else {
+        toast.error('No se pudo vincular', { description: resultado.error });
+      }
+    } catch (error) {
+      // 🛡️ vincularNegocio ya no debería lanzar (tiene su propio try/catch),
+      // pero esto es una segunda red de seguridad: sin ella, cualquier
+      // excepción inesperada dejaba el botón pegado en "Vinculando..." para
+      // siempre, sin ningún mensaje visible.
+      toast.error('No se pudo vincular', { description: error instanceof Error ? error.message : 'Error inesperado' });
+    } finally {
+      setVinculando(false);
     }
   };
 

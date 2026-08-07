@@ -13,13 +13,31 @@ export interface EmpleadoSupabase {
  * Verificación ONLINE contra Supabase Auth. Usada para:
  * 1) priming best-effort de sesión en la nube tras un login local exitoso (Fase 2 la aprovechará para sync)
  * 2) el gate del Panel Desarrollador (staff Codec Studio), que exige internet a propósito
+ *
+ * `emailOUsuario` acepta un correo real (empleados con cuenta personal,
+ * ver invitar_empleado) O el usuario de licencia del negocio (el dueño
+ * entra con la MISMA credencial que usa en Electron — ver migración 0014,
+ * decisión explícita para simplificar el onboarding). Si no tiene forma de
+ * correo, se resuelve primero vía resolver_login_licencia.
  */
 export async function signInSupabase(
-  email: string,
+  emailOUsuario: string,
   password: string
 ): Promise<{ ok: boolean; empleado?: EmpleadoSupabase; error?: string }> {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase no configurado' };
+
+  let email = emailOUsuario;
+  if (!email.includes('@')) {
+    const { data: clienteId, error: resolveError } = await client.rpc('resolver_login_licencia', {
+      p_usuario: emailOUsuario,
+      p_password: password,
+    });
+    if (resolveError || !clienteId) {
+      return { ok: false, error: 'Usuario o contraseña incorrectos' };
+    }
+    email = `owner+${clienteId}@codecpos.internal`;
+  }
 
   const { data, error } = await client.auth.signInWithPassword({ email, password });
   if (error || !data.user) {

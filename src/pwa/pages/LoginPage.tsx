@@ -60,16 +60,18 @@ export default function LoginPage() {
         className="w-full max-w-sm space-y-4 bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 shadow-2xl"
       >
         <div className="space-y-1.5">
-          <Label className="text-slate-400 text-xs">Correo</Label>
+          <Label className="text-slate-400 text-xs">Correo o usuario</Label>
           <Input
-            type="email"
+            type="text"
             required
             autoFocus
+            autoCapitalize="none"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="tu-correo@ejemplo.com"
+            placeholder="tu-correo@ejemplo.com o tu usuario"
             className="h-12 bg-slate-950/60 border-slate-700 text-white"
           />
+          <p className="text-slate-500 text-[11px]">Si eres el dueño del negocio, usa el mismo usuario y contraseña de Electron.</p>
         </div>
         <div className="space-y-1.5">
           <Label className="text-slate-400 text-xs">Contraseña</Label>

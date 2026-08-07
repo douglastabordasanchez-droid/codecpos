@@ -45,6 +45,14 @@ async function sha256Hex(texto: string): Promise<string> {
  * máquina" para esta instalación, sin depender de que ningún empleado tenga
  * cuenta individual. Ver migración 0003/0004 (provisionar_sync_identidad).
  */
+/** Evita que una llamada de red colgada deje el botón "Vinculando..." pegado para siempre sin ningún mensaje de error. */
+function conTimeout<T>(promesa: Promise<T>, ms: number, mensaje: string): Promise<T> {
+  return Promise.race([
+    promesa,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(mensaje)), ms)),
+  ]);
+}
+
 export async function vincularNegocio(
   clienteId: string,
   usuarioLicencia: string,
@@ -53,35 +61,44 @@ export async function vincularNegocio(
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase no configurado' };
 
-  const syncEmail = `sync+${clienteId}@codecpos.internal`;
-  const syncPassword = await sha256Hex(`${usuarioLicencia}:${passwordLicencia}:${clienteId}`);
+  try {
+    const syncEmail = `sync+${clienteId}@codecpos.internal`;
+    const syncPassword = await sha256Hex(`${usuarioLicencia}:${passwordLicencia}:${clienteId}`);
 
-  const { error: rpcError } = await client.rpc('provisionar_sync_identidad', {
-    p_cliente_id: clienteId,
-    p_usuario_licencia: usuarioLicencia,
-    p_password_licencia: passwordLicencia,
-    p_sync_email: syncEmail,
-    p_sync_password: syncPassword,
-  });
+    const { error: rpcError } = await conTimeout(
+      client.rpc('provisionar_sync_identidad', {
+        p_cliente_id: clienteId,
+        p_usuario_licencia: usuarioLicencia,
+        p_password_licencia: passwordLicencia,
+        p_sync_email: syncEmail,
+        p_sync_password: syncPassword,
+      }),
+      15000,
+      'Tiempo de espera agotado verificando las credenciales. Revisa tu conexión e intenta de nuevo.'
+    );
 
-  if (rpcError) {
-    return { ok: false, error: rpcError.message };
+    if (rpcError) {
+      return { ok: false, error: rpcError.message };
+    }
+
+    const { error: signInError } = await conTimeout(
+      client.auth.signInWithPassword({ email: syncEmail, password: syncPassword }),
+      15000,
+      'Tiempo de espera agotado iniciando sesión. Revisa tu conexión e intenta de nuevo.'
+    );
+
+    if (signInError) {
+      return { ok: false, error: signInError.message };
+    }
+
+    localStorage.setItem(LS_CLIENTE_ID, clienteId);
+    localStorage.setItem(LS_SYNC_EMAIL, syncEmail);
+    localStorage.setItem(LS_SYNC_PASSWORD, syncPassword);
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Error desconocido vinculando la instalación' };
   }
-
-  const { error: signInError } = await client.auth.signInWithPassword({
-    email: syncEmail,
-    password: syncPassword,
-  });
-
-  if (signInError) {
-    return { ok: false, error: signInError.message };
-  }
-
-  localStorage.setItem(LS_CLIENTE_ID, clienteId);
-  localStorage.setItem(LS_SYNC_EMAIL, syncEmail);
-  localStorage.setItem(LS_SYNC_PASSWORD, syncPassword);
-
-  return { ok: true };
 }
 
 /**

@@ -160,7 +160,33 @@ export async function crearClienteAdmin(datos: DatosClienteForm): Promise<Client
 
   if (e2) throw new Error(e2.message);
 
+  // El dueño debe poder entrar a la PWA con la MISMA credencial de
+  // licencia que acaba de crearse — ver migración 0014. No bloquea la
+  // creación del cliente si falla (p. ej. offline momentáneo): el Panel
+  // Desarrollador permite generar este acceso manualmente después.
+  await client.rpc('provisionar_dueno_pwa', {
+    p_cliente_id: clienteRow.id,
+    p_usuario_licencia: datos.usuario,
+    p_password_licencia: datos.contraseña,
+    p_nombre_negocio: datos.nombreNegocio,
+  }).then(({ error }) => {
+    if (error) console.error('[clientesAdminService] No se pudo provisionar el acceso móvil del dueño:', error.message);
+  });
+
   return mapCliente(clienteRow as ClientePosRow, credRow as UsuarioClienteRow);
+}
+
+/** Provisiona (o re-sincroniza la contraseña de) el acceso móvil del dueño, usando las credenciales de licencia actuales — útil para clientes creados antes de esta función, o tras cambiar la contraseña. */
+export async function crearAccesoMovilDueno(cliente: ClienteAdmin): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase no configurado');
+  const { error } = await client.rpc('provisionar_dueno_pwa', {
+    p_cliente_id: cliente.id,
+    p_usuario_licencia: cliente.usuario,
+    p_password_licencia: cliente.contraseña,
+    p_nombre_negocio: cliente.nombreNegocio,
+  });
+  if (error) throw new Error(error.message);
 }
 
 export async function actualizarClienteAdmin(id: string, datos: DatosClienteForm): Promise<ClienteAdmin> {
@@ -215,6 +241,17 @@ export async function actualizarClienteAdmin(id: string, datos: DatosClienteForm
     if (error) throw new Error(error.message);
     credRow = data as UsuarioClienteRow;
   }
+
+  // Mantiene el acceso móvil del dueño sincronizado si la contraseña de
+  // licencia cambió (ver crearClienteAdmin / migración 0014).
+  await client.rpc('provisionar_dueno_pwa', {
+    p_cliente_id: id,
+    p_usuario_licencia: datos.usuario,
+    p_password_licencia: datos.contraseña,
+    p_nombre_negocio: datos.nombreNegocio,
+  }).then(({ error }) => {
+    if (error) console.error('[clientesAdminService] No se pudo sincronizar el acceso móvil del dueño:', error.message);
+  });
 
   return mapCliente(clienteRow as ClientePosRow, credRow);
 }
