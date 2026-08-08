@@ -2,51 +2,17 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
-  Home, ShoppingCart, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
-  DollarSign, Bell, Settings, ShieldAlert, User, LogOut, Sun, Moon,
-  ShieldCheck, ShieldOff, Crown, Zap, PanelLeftClose, PanelLeftOpen,
+  User, LogOut, Sun, Moon,
+  ShieldCheck, ShieldOff, Crown, Zap, PanelLeftClose, PanelLeftOpen, Bell,
 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { useTheme } from '../contexts/ThemeContext';
-import { ModuloPOS } from '../../app/lib/permissions';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { codecVerifyPwaActivo, alternarCodecVerifyPwa, suscribirNotificacionesPagoPwa } from '../lib/codecVerifyPwa';
+import { NAV_PRINCIPAL as PRINCIPAL, NAV_HERRAMIENTAS as HERRAMIENTAS, NAV_ADMINISTRACION as ADMINISTRACION, NAV_PLATAFORMA as PLATAFORMA, ItemNavSidebar as ItemNav } from '../lib/sidebarNav';
+import { esRutaOculta, EVENTO_SIDEBAR_OCULTOS_CAMBIADO } from '../lib/sidebarPrefs';
 import logo from '/logo.png';
-
-interface ItemNav {
-  icon: any;
-  label: string;
-  path: string;
-  modulo?: ModuloPOS;
-  soloAdmin?: boolean;
-  soloStaff?: boolean;
-  end?: boolean;
-}
-
-const PRINCIPAL: ItemNav[] = [
-  { icon: Home, label: 'Inicio', path: '/', end: true },
-  { icon: ShoppingCart, label: 'Vender', path: '/vender', modulo: ModuloPOS.PUNTO_DE_VENTA },
-  { icon: Receipt, label: 'Ventas', path: '/ventas' },
-  { icon: Package, label: 'Inventario', path: '/inventario', modulo: ModuloPOS.PRODUCTOS },
-];
-
-const HERRAMIENTAS: ItemNav[] = [
-  { icon: Lock, label: 'Caja', path: '/caja', modulo: ModuloPOS.CIERRE_CAJA },
-  { icon: Wallet, label: 'Gastos', path: '/gastos', modulo: ModuloPOS.GASTOS },
-  { icon: RotateCcw, label: 'Devoluciones', path: '/devoluciones', modulo: ModuloPOS.DEVOLUCIONES },
-  { icon: ScanLine, label: 'Escáner', path: '/escaner', modulo: ModuloPOS.PRODUCTOS },
-  { icon: DollarSign, label: 'Pagos', path: '/pagos', modulo: ModuloPOS.CODEC_VERIFY },
-  { icon: Bell, label: 'Alertas', path: '/alertas' },
-];
-
-const ADMINISTRACION: ItemNav[] = [
-  { icon: Settings, label: 'Configuración', path: '/configuracion', soloAdmin: true },
-];
-
-const PLATAFORMA: ItemNav[] = [
-  { icon: ShieldAlert, label: 'Panel Desarrollador', path: '/desarrollador', soloStaff: true },
-];
 
 export function DesktopLayout() {
   const { empleado, cargando, cerrarSesion } = usePwaAuth();
@@ -66,6 +32,13 @@ export function DesktopLayout() {
   };
 
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const actualizar = () => forceUpdate((n) => n + 1);
+    window.addEventListener(EVENTO_SIDEBAR_OCULTOS_CAMBIADO, actualizar);
+    return () => window.removeEventListener(EVENTO_SIDEBAR_OCULTOS_CAMBIADO, actualizar);
+  }, []);
 
   useEffect(() => {
     if (!empleado) return;
@@ -97,7 +70,8 @@ export function DesktopLayout() {
   }, [verifyActivo, empleado?.cliente_id]);
 
   const visible = (it: ItemNav) =>
-    (!it.modulo || tieneModulo(it.modulo)) && (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec);
+    (!it.modulo || tieneModulo(it.modulo)) && (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec) &&
+    (it.fijo || !esRutaOculta(it.path));
 
   const toggleVerify = () => {
     const nuevo = alternarCodecVerifyPwa();

@@ -2919,17 +2919,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </button>
                   );
                   if (m.id === 'tarjeta') return (
-                    <button key={m.id} style={style} onClick={() => setMetodoPagoSimple('tarjeta')} className={cls}>
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setMetodoPagoSimple('tarjeta'); }} className={cls}>
                       <CreditCard className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );
                   if (m.id === 'transferencia') return (
-                    <button key={m.id} style={style} onClick={() => setMetodoPagoSimple('transferencia')} className={cls}>
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setMetodoPagoSimple('transferencia'); }} className={cls}>
                       <Wallet className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );
                   if (m.id === 'rappi') return (
-                    <button key={m.id} style={style} onClick={() => setMetodoPagoSimple('rappi')} className={cls}>
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setMetodoPagoSimple('rappi'); }} className={cls}>
                       <Bike className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );
@@ -2939,7 +2939,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </button>
                   );
                   if (m.id === 'daviplata') return (
-                    <button key={m.id} style={style} onClick={() => setMetodoPagoSimple('daviplata')} className={cls}>
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setMetodoPagoSimple('daviplata'); }} className={cls}>
                       <DollarSign className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );
@@ -3107,7 +3107,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
-            onClick={() => setMetodoPagoSimple(null)}
+            onClick={() => { setMetodoPagoSimple(null); setShowPagoModal(true); }}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -3182,7 +3182,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
               <div className="flex gap-3">
                 <Button
-                  onClick={() => setMetodoPagoSimple(null)}
+                  onClick={() => { setMetodoPagoSimple(null); setShowPagoModal(true); }}
                   variant="outline"
                   className="flex-1 rounded-2xl h-14 text-lg"
                 >

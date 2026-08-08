@@ -6,7 +6,7 @@ import {
   ShoppingCart, Package, Receipt, RotateCcw, BarChart3, Calculator,
   FileText, Wallet, Settings, Monitor, Users, User, Bell, Gift,
   TrendingUp, Tag, Building2, Barcode, Zap, Shield, ChevronLeft, ChevronRight,
-  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Webhook, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi,
+  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Webhook, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff,
 } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -96,6 +96,27 @@ export default function POSLayoutSidebar() {
   });
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
+
+  // Módulos que el usuario ocultó personalmente de SU sidebar (no afecta
+  // permisos ni al resto del equipo — es solo su vista, distinto del toggle
+  // de "Personalización del Espacio de Trabajo" en Configuración que sí
+  // afecta a todos los empleados).
+  const SIDEBAR_HIDDEN_STORAGE_KEY = 'codecpos_sidebar_ocultos_personal';
+  const [hiddenPaths, setHiddenPaths] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_HIDDEN_STORAGE_KEY);
+      if (saved) return JSON.parse(saved) as string[];
+    } catch {}
+    return [];
+  });
+
+  const toggleHiddenPath = (path: string) => {
+    setHiddenPaths((prev) => {
+      const next = prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path];
+      try { localStorage.setItem(SIDEBAR_HIDDEN_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
 
   const rolNormalizado = (usuarioActual?.rol || '').toLowerCase().trim();
   const hasDeveloperPanelAccess = esDesarrollador || rolNormalizado === 'super_admin' || rolNormalizado === 'developer';
@@ -493,6 +514,13 @@ export default function POSLayoutSidebar() {
     });
   }, [visibleMenuItems, menuOrder]);
 
+  const finalVisibleMenuItems = useMemo(
+    () => orderedVisibleMenuItems.filter(
+      (item) => item.path === '/configuracion' || item.path === '/developer' || !hiddenPaths.includes(item.path)
+    ),
+    [orderedVisibleMenuItems, hiddenPaths]
+  );
+
   const handleDragStart = (path: string) => {
     setDraggedPath(path);
   };
@@ -790,7 +818,7 @@ export default function POSLayoutSidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 min-h-0 p-4 space-y-2 overflow-y-auto scrollbar-thin">
-          {orderedVisibleMenuItems.map((item) => {
+          {finalVisibleMenuItems.map((item) => {
             const isActive = location.pathname === item.path;
             const locked = isItemLocked(item);
             const disabled = isItemDisabled(item);
@@ -891,6 +919,22 @@ export default function POSLayoutSidebar() {
                             <Pencil className="w-3 h-3" />
                           </button>
                         )}
+                        {item.path !== '/configuracion' && item.path !== '/developer' && (esSuperUsuario || modoAdminTemporalActivo) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleHiddenPath(item.path);
+                            }}
+                            className={`hidden group-hover:flex items-center justify-center w-5 h-5 rounded transition-all ${
+                              darkMode
+                                ? 'text-white/40 hover:text-white hover:bg-white/15'
+                                : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/70'
+                            }`}
+                            title="Ocultar de mi sidebar"
+                          >
+                            <EyeOff className="w-3 h-3" />
+                          </button>
+                        )}
                         {locked && (
                           <div className="flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-500 to-amber-500 rounded-full">
                             <Crown className="w-3 h-3 text-white" />
@@ -905,6 +949,29 @@ export default function POSLayoutSidebar() {
             );
           })}
         </nav>
+
+        {!collapsed && hiddenPaths.length > 0 && (esSuperUsuario || modoAdminTemporalActivo) && (
+          <div className="flex-shrink-0 px-3 pb-1">
+            <details>
+              <summary className={`cursor-pointer select-none text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-lg ${darkMode ? 'text-white/40 hover:text-white/70' : 'text-gray-400 hover:text-gray-600'}`}>
+                {hiddenPaths.length} módulo{hiddenPaths.length === 1 ? '' : 's'} oculto{hiddenPaths.length === 1 ? '' : 's'}
+              </summary>
+              <div className="mt-1 space-y-0.5">
+                {menuItems.filter((it) => hiddenPaths.includes(it.path)).map((it) => (
+                  <button
+                    key={it.path}
+                    onClick={() => toggleHiddenPath(it.path)}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all ${darkMode ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}
+                    title="Mostrar de nuevo en el sidebar"
+                  >
+                    <Eye className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{getMenuLabel(it)}</span>
+                  </button>
+                ))}
+              </div>
+            </details>
+          </div>
+        )}
 
         {/* 🛡️ FIX: antes este botón solo aparecía cuando `hasDeveloperPanelAccess`
             ya era true — pero esa bandera SOLO se activa DESPUÉS de pasar el

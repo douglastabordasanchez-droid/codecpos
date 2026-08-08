@@ -320,6 +320,21 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
 
   return (
     <>
+      {/* El recibo usa clases genéricas (.center, .right, .bold, .line,
+          .double-line, .item-table, .spacing) que ningún stylesheet global
+          define — sin esto se veía sin separadores, sin negritas y sin
+          alinear, sea cual sea el tema activo. Se define aquí, scopeada a
+          .ticket, para no depender del orden de carga de otros CSS. */}
+      <style>{`
+        .ticket .center { text-align: center; }
+        .ticket .right { text-align: right; }
+        .ticket .bold { font-weight: 700; }
+        .ticket .spacing { margin: 8px 0; }
+        .ticket .line { border-top: 1px dashed #333; margin: 8px 0; height: 0; }
+        .ticket .double-line { border-top: 2px solid #000; margin: 10px 0; height: 0; }
+        .ticket .item-table { width: 100%; border-collapse: collapse; }
+        .ticket .item-table td { padding: 3px 0; vertical-align: top; }
+      `}</style>
       {/* Ticket Content */}
       <div
         ref={ticketRef}

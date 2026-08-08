@@ -12,6 +12,29 @@
   color-scheme: light;
 }
 
+/* ---- Efecto "vidrio" premium para tarjetas — antes eran solo un fondo
+   translúcido con blur leve (backdrop-blur = 8px), que en modo claro casi
+   se fundía con el fondo de página por ser blancos muy parecidos, sin
+   ninguna sombra que las despegara. El selector por substring cubre TODAS
+   las variantes de opacidad (bg-slate-900/40, /50, /60, /70, /90, /95) sin
+   tener que listarlas una por una ni tocar el markup de cada página. ---- */
+.backdrop-blur[class*="bg-slate-900/"] {
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.07),
+    0 14px 32px -16px rgba(0, 0, 0, 0.65),
+    0 3px 10px -3px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='light'] .backdrop-blur[class*="bg-slate-900/"] {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95),
+    0 16px 34px -18px rgba(28, 25, 23, 0.18),
+    0 3px 8px -3px rgba(28, 25, 23, 0.1);
+  border-color: rgba(28, 25, 23, 0.12) !important;
+}
+
 /* ---- Fondo base de página (bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950) ---- */
 [data-theme='light'] .from-slate-950.via-slate-900.to-slate-950 {
   background-image: linear-gradient(to bottom, #faf9f7, #ffffff 40%, #faf9f7) !important;

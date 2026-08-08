@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
-import { Store, Save, Loader2, Layers, Crown, Zap, ShieldCheck, Eye, EyeOff, Copy, Check, RefreshCw, ChevronDown, Mail, Smartphone } from 'lucide-react';
+import { Store, Save, Loader2, Layers, Crown, Zap, ShieldCheck, Eye, EyeOff, Copy, Check, RefreshCw, ChevronDown, Mail, Smartphone, PanelLeft } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
@@ -8,6 +8,8 @@ import { getSupabaseClient, getSupabasePublicConfig } from '../../app/lib/supaba
 import { MODULOS_CATALOGO } from '../../app/lib/permissions';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
+import { NAV_TODOS } from '../lib/sidebarNav';
+import { esRutaOculta, alternarRutaOculta } from '../lib/sidebarPrefs';
 
 interface NegocioForm {
   nombre_negocio: string;
@@ -30,6 +32,7 @@ export default function ConfiguracionPage() {
   const [generandoToken, setGenerandoToken] = useState(false);
   const [copiado, setCopiado] = useState<'token' | 'url' | 'script' | null>(null);
   const [mostrarGuia, setMostrarGuia] = useState(false);
+  const [, forceUpdateSidebar] = useState(0);
 
   const puedeVer = empleado && ['admin', 'super_usuario'].includes(empleado.rol);
 
@@ -133,6 +136,19 @@ export default function ConfiguracionPage() {
   const modulosVisibles = MODULOS_CATALOGO.filter((m) => m.categoria !== 'desarrollador');
   const modulosActivosInfo = modulosVisibles.filter((m) => tieneModulo(m.id));
 
+  const esAdmin = ['admin', 'super_usuario'].includes(empleado.rol);
+  const itemsPersonalizables = NAV_TODOS.filter((it) =>
+    !it.fijo &&
+    (!it.modulo || tieneModulo(it.modulo)) &&
+    (!it.soloAdmin || esAdmin) &&
+    (!it.soloStaff || empleado.es_staff_codec)
+  );
+
+  const handleToggleSidebar = (path: string) => {
+    alternarRutaOculta(path);
+    forceUpdateSidebar((n) => n + 1);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
       <div className="px-5 pt-8 pb-4">
@@ -230,6 +246,34 @@ export default function ConfiguracionPage() {
               <p className="text-slate-500 text-xs mt-3">
                 Los módulos se gestionan desde el Panel Desarrollador de Codec Studio. Contáctalos para activar o desactivar alguno.
               </p>
+            </div>
+
+            <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <PanelLeft className="w-4 h-4 text-sky-400" />
+                <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Personalizar sidebar</span>
+              </div>
+              <p className="text-slate-500 text-xs mb-4">
+                Elige qué módulos aparecen en tu menú lateral. Los que ocultes siguen activos, solo dejan de mostrarse en la navegación.
+              </p>
+              <div className="space-y-1.5">
+                {itemsPersonalizables.map((it) => {
+                  const oculto = esRutaOculta(it.path);
+                  return (
+                    <button
+                      key={it.path}
+                      onClick={() => handleToggleSidebar(it.path)}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-slate-950/50 border border-slate-800 text-left"
+                    >
+                      <span className={`flex items-center gap-3 text-sm font-semibold ${oculto ? 'text-slate-500' : 'text-white'}`}>
+                        <it.icon className={`w-4 h-4 shrink-0 ${oculto ? 'text-slate-600' : 'text-sky-400'}`} />
+                        {it.label}
+                      </span>
+                      {oculto ? <EyeOff className="w-4 h-4 text-slate-600 shrink-0" /> : <Eye className="w-4 h-4 text-emerald-400 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="bg-slate-900/70 backdrop-blur border border-purple-800/40 rounded-2xl p-5">
