@@ -324,8 +324,14 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
           .double-line, .item-table, .spacing) que ningún stylesheet global
           define — sin esto se veía sin separadores, sin negritas y sin
           alinear, sea cual sea el tema activo. Se define aquí, scopeada a
-          .ticket, para no depender del orden de carga de otros CSS. */}
+          .ticket, para no depender del orden de carga de otros CSS.
+          Los colores llevan !important porque src/styles/theme.css fuerza
+          `.dark body td/th/span { color: #e5e7eb }` con más especificidad
+          que un simple ".ticket td" — sin esto el texto de las columnas
+          quedaba gris clarísimo, casi invisible, sobre el fondo blanco del
+          recibo (un recibo impreso no debe seguir el tema oscuro de la app). */}
       <style>{`
+        .ticket, .ticket * { color: #000 !important; }
         .ticket .center { text-align: center; }
         .ticket .right { text-align: right; }
         .ticket .bold { font-weight: 700; }
