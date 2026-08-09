@@ -25,6 +25,9 @@ import { lanServer } from './lan/lanServer.js';
 import { lanClient } from './lan/lanClient.js';
 import * as backupManager from './backupManager.js';
 import * as fileLogger from './fileLogger.js';
+import * as dianSecrets from './dianSecrets.js';
+import * as dianSigner from './dianSigner.js';
+import * as dianSoapClient from './dianSoapClient.js';
 
 const STORAGE_PARTITION = 'persist:codecpos';
 
@@ -1051,6 +1054,111 @@ ipcMain.handle('backup:repair', async () => {
     return { success: true };
   } catch (e) {
     fileLogger.writeLog('ERROR', 'Falló la reparación del storage local', { error: e.message });
+    return { success: false, error: e.message };
+  }
+});
+
+// ── Facturación electrónica DIAN: certificado/PIN cifrados con safeStorage ──
+// El contenido real (buffer del .p12, PIN en claro) nunca vuelve al renderer
+// — estos handlers solo devuelven metadata o booleanos de éxito/fallo.
+ipcMain.handle('dian:guardar-certificado', async (_, { perfilFiscalId, base64, nombreArchivo }) => {
+  try {
+    const meta = dianSecrets.guardarCertificado(perfilFiscalId, base64, nombreArchivo);
+    return { success: true, meta };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('dian:obtener-metadata-certificado', async (_, perfilFiscalId) => {
+  return dianSecrets.obtenerMetadataCertificado(perfilFiscalId);
+});
+
+ipcMain.handle('dian:existe-certificado', async (_, perfilFiscalId) => {
+  return dianSecrets.existeCertificado(perfilFiscalId);
+});
+
+ipcMain.handle('dian:eliminar-certificado', async (_, perfilFiscalId) => {
+  dianSecrets.eliminarCertificado(perfilFiscalId);
+  return { success: true };
+});
+
+ipcMain.handle('dian:guardar-pin', async (_, { perfilFiscalId, pin }) => {
+  try {
+    dianSecrets.guardarPin(perfilFiscalId, pin);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('dian:existe-pin', async (_, perfilFiscalId) => {
+  return dianSecrets.existePin(perfilFiscalId);
+});
+
+ipcMain.handle('dian:eliminar-pin', async (_, perfilFiscalId) => {
+  dianSecrets.eliminarPin(perfilFiscalId);
+  return { success: true };
+});
+
+// Firma XAdES-EPES real — ver electron/dianSigner.js / dianXadesSigner.js.
+ipcMain.handle('dian:firmar-documento', async (_, perfilFiscalId, base64) => {
+  try {
+    const xmlSinFirmar = Buffer.from(base64, 'base64');
+    const xmlFirmado = await dianSigner.firmarXml(perfilFiscalId, xmlSinFirmar);
+    return { success: true, base64Firmado: xmlFirmado.toString('base64') };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Transmisión SOAP real a la DIAN — ver electron/dianSoapClient.js.
+ipcMain.handle('dian:enviar-factura-sync', async (_, perfilFiscalId, fileName, xmlFirmado, ambiente) => {
+  try {
+    if (!dianSecrets.existeCertificado(perfilFiscalId)) throw new Error('No hay certificado digital configurado para este perfil fiscal.');
+    if (!dianSecrets.existePin(perfilFiscalId)) throw new Error('No hay PIN del certificado configurado para este perfil fiscal.');
+    const p12Buffer = dianSecrets.leerCertificadoParaFirma(perfilFiscalId);
+    const pin = dianSecrets.leerPinParaFirma(perfilFiscalId);
+    const xmlBase64 = Buffer.from(xmlFirmado, 'utf8').toString('base64');
+    const respuesta = await dianSoapClient.enviarFacturaSync({ p12Buffer, pin, ambiente, fileName, xmlFirmadoBase64: xmlBase64 });
+    return { success: true, respuesta };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('dian:enviar-set-pruebas', async (_, perfilFiscalId, fileName, xmlFirmado, testSetId) => {
+  try {
+    if (!dianSecrets.existeCertificado(perfilFiscalId)) throw new Error('No hay certificado digital configurado para este perfil fiscal.');
+    if (!dianSecrets.existePin(perfilFiscalId)) throw new Error('No hay PIN del certificado configurado para este perfil fiscal.');
+    const p12Buffer = dianSecrets.leerCertificadoParaFirma(perfilFiscalId);
+    const pin = dianSecrets.leerPinParaFirma(perfilFiscalId);
+    const xmlBase64 = Buffer.from(xmlFirmado, 'utf8').toString('base64');
+    const respuesta = await dianSoapClient.enviarSetPruebas({ p12Buffer, pin, fileName, xmlFirmadoBase64: xmlBase64, testSetId });
+    return { success: true, respuesta };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('dian:consultar-estado', async (_, perfilFiscalId, trackId, ambiente) => {
+  try {
+    const p12Buffer = dianSecrets.leerCertificadoParaFirma(perfilFiscalId);
+    const pin = dianSecrets.leerPinParaFirma(perfilFiscalId);
+    const respuesta = await dianSoapClient.consultarEstado({ p12Buffer, pin, ambiente, trackId });
+    return { success: true, respuesta };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('dian:consultar-rango-numeracion', async (_, perfilFiscalId, ambiente, accountCode, accountCodeT, softwareCode) => {
+  try {
+    const p12Buffer = dianSecrets.leerCertificadoParaFirma(perfilFiscalId);
+    const pin = dianSecrets.leerPinParaFirma(perfilFiscalId);
+    const respuesta = await dianSoapClient.consultarRangoNumeracion({ p12Buffer, pin, ambiente, accountCode, accountCodeT, softwareCode });
+    return { success: true, respuesta };
+  } catch (e) {
     return { success: false, error: e.message };
   }
 });

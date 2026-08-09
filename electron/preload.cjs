@@ -223,6 +223,33 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   /**
+   * Facturación electrónica DIAN — certificado/PIN cifrados con safeStorage.
+   * El contenido real nunca vuelve al renderer, solo metadata/booleanos.
+   * Ver electron/dianSecrets.js
+   */
+  dian: {
+    guardarCertificado: (perfilFiscalId, base64, nombreArchivo) =>
+      ipcRenderer.invoke('dian:guardar-certificado', { perfilFiscalId, base64, nombreArchivo }),
+    obtenerMetadataCertificado: (perfilFiscalId) => ipcRenderer.invoke('dian:obtener-metadata-certificado', perfilFiscalId),
+    existeCertificado: (perfilFiscalId) => ipcRenderer.invoke('dian:existe-certificado', perfilFiscalId),
+    eliminarCertificado: (perfilFiscalId) => ipcRenderer.invoke('dian:eliminar-certificado', perfilFiscalId),
+    guardarPin: (perfilFiscalId, pin) => ipcRenderer.invoke('dian:guardar-pin', { perfilFiscalId, pin }),
+    existePin: (perfilFiscalId) => ipcRenderer.invoke('dian:existe-pin', perfilFiscalId),
+    eliminarPin: (perfilFiscalId) => ipcRenderer.invoke('dian:eliminar-pin', perfilFiscalId),
+    // Firma digital XAdES-EPES real — ver electron/dianSigner.js
+    firmarDocumento: (perfilFiscalId, base64) => ipcRenderer.invoke('dian:firmar-documento', perfilFiscalId, base64),
+    // Transmisión SOAP real a la DIAN — ver electron/dianSoapClient.js
+    enviarFacturaSync: (perfilFiscalId, fileName, xmlFirmado, ambiente) =>
+      ipcRenderer.invoke('dian:enviar-factura-sync', perfilFiscalId, fileName, xmlFirmado, ambiente),
+    enviarSetPruebas: (perfilFiscalId, fileName, xmlFirmado, testSetId) =>
+      ipcRenderer.invoke('dian:enviar-set-pruebas', perfilFiscalId, fileName, xmlFirmado, testSetId),
+    consultarEstado: (perfilFiscalId, trackId, ambiente) =>
+      ipcRenderer.invoke('dian:consultar-estado', perfilFiscalId, trackId, ambiente),
+    consultarRangoNumeracion: (perfilFiscalId, ambiente, accountCode, accountCodeT, softwareCode) =>
+      ipcRenderer.invoke('dian:consultar-rango-numeracion', perfilFiscalId, ambiente, accountCode, accountCodeT, softwareCode),
+  },
+
+  /**
    * 🛡️ BLINDAJE — Caja negra de auditoría física (.log en disco)
    */
   logs: {

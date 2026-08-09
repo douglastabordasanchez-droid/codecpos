@@ -7,6 +7,8 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { crearVentaMovil, ItemCarritoMovil } from '../lib/ventaMovilService';
 import { compartirRecibo, verFactura } from '../lib/compartirFactura';
+import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
+import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
 
 interface ProductoFila {
   id: string;
@@ -47,6 +49,8 @@ export default function VenderPage() {
   const [ventaCompletada, setVentaCompletada] = useState<VentaCompletada | null>(null);
   const [compartiendo, setCompartiendo] = useState(false);
   const [viendoFactura, setViendoFactura] = useState(false);
+  const [docClienteFactura, setDocClienteFactura] = useState('');
+  const [nombreClienteFactura, setNombreClienteFactura] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
 
@@ -113,6 +117,24 @@ export default function VenderPage() {
 
     if (resultado.ok && resultado.ventaId && resultado.numero) {
       setVentaCompletada({ id: resultado.ventaId, numero: resultado.numero, total: totalCarrito, metodoPago });
+      // DIAN directo — nunca bloquea la venta (ya se guardó arriba). Si el
+      // cliente identificó su NIT/cédula se intenta Factura (CUFE); si no,
+      // Documento Equivalente POS (CUDE) — la decisión la toma
+      // decidirTipoDocumentoDian() dentro del orquestador, no aquí.
+      emitirFacturaDianDirecto({
+        clienteId: empleado.cliente_id,
+        ventaReferencia: resultado.ventaId,
+        fecha: new Date().toISOString(),
+        adquirente: docClienteFactura.trim()
+          ? { tipoDocumento: '13', numeroDocumento: docClienteFactura.trim(), nombreORazonSocial: nombreClienteFactura.trim() || 'Consumidor final' }
+          : { tipoDocumento: '13', numeroDocumento: NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, nombreORazonSocial: 'Consumidor final' },
+        items: itemsCarrito.map((it) => ({ descripcion: it.nombre, cantidad: it.cantidad, precioUnitario: it.precio, subtotal: it.cantidad * it.precio })),
+        subtotal: totalCarrito,
+        totalImpuestos: 0,
+        total: totalCarrito,
+      }).catch(() => {});
+      setDocClienteFactura('');
+      setNombreClienteFactura('');
       setCarrito({});
       cargarProductos();
     } else {
@@ -384,6 +406,27 @@ export default function VenderPage() {
                         <span>{m.label}</span>
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                <div className="px-5 mb-4">
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-2">Identificar cliente (opcional)</p>
+                  <p className="text-slate-500 text-[11px] mb-2">
+                    Si el cliente da su NIT/cédula, la venta se factura electrónicamente a su nombre. Si lo dejas vacío, se emite como consumidor final.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      value={docClienteFactura}
+                      onChange={(e) => setDocClienteFactura(e.target.value)}
+                      placeholder="NIT / Cédula"
+                      className="h-11 bg-slate-900 border-slate-700 text-white text-sm"
+                    />
+                    <Input
+                      value={nombreClienteFactura}
+                      onChange={(e) => setNombreClienteFactura(e.target.value)}
+                      placeholder="Nombre"
+                      className="h-11 bg-slate-900 border-slate-700 text-white text-sm"
+                    />
                   </div>
                 </div>
 

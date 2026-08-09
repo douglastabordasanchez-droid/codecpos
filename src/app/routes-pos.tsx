@@ -38,6 +38,7 @@ const IntegracionesPage = lazy(() => import('./pages/IntegracionesPage'));
 const TallerPage = lazy(() => import('./components/taller/TallerPage'));
 const PanaderiaOncesPage = lazy(() => import('./components/pos/PanaderiaOncesPage'));
 const MonitoreoTerminalesPage = lazy(() => import('./components/monitoreo/MonitoreoTerminalesPage'));
+const FacturacionElectronicaPage = lazy(() => import('./pages/FacturacionElectronicaPage'));
 
 function LoadingFallback() {
   return (
@@ -319,6 +320,14 @@ export const router = createHashRouter([
             <ModuleProtectedRoute modulo={ModuloPOS.MONITOREO_TERMINALES}>
               <MonitoreoTerminalesPage />
             </ModuleProtectedRoute>
+          </Suspense>
+        )
+      },
+      {
+        path: 'facturacion-electronica',
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <FacturacionElectronicaPage />
           </Suspense>
         )
       },

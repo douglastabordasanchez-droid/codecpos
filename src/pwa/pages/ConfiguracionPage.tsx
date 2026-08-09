@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
-import { Store, Save, Loader2, Layers, Crown, Zap, ShieldCheck, Eye, EyeOff, Copy, Check, RefreshCw, ChevronDown, Mail, Smartphone, PanelLeft } from 'lucide-react';
+import { Store, Save, Loader2, Layers, Crown, Zap, ShieldCheck, Eye, EyeOff, Copy, Check, RefreshCw, ChevronDown, Mail, Smartphone, PanelLeft, FileText, ChevronRight } from 'lucide-react';
+import { Link } from 'react-router';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
@@ -247,6 +248,22 @@ export default function ConfiguracionPage() {
                 Los módulos se gestionan desde el Panel Desarrollador de Codec Studio. Contáctalos para activar o desactivar alguno.
               </p>
             </div>
+
+            <Link
+              to="/facturacion"
+              className="flex items-center justify-between gap-3 bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-white text-sm font-semibold">Facturación Electrónica DIAN</p>
+                  <p className="text-slate-500 text-xs">Perfil fiscal e historial de facturas</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+            </Link>
 
             <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-1">

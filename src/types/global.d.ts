@@ -65,6 +65,30 @@ interface Window {
       }>;
       getDiskSpace: () => Promise<{ freeBytes: number | null; usedBytes: number | null; drive: string }>;
     };
+
+    // Facturación electrónica DIAN — certificado/PIN cifrados con safeStorage.
+    // El contenido real nunca vuelve al renderer, solo metadata/booleanos.
+    dian?: {
+      guardarCertificado: (perfilFiscalId: string, base64: string, nombreArchivo: string) =>
+        Promise<{ success: boolean; meta?: { nombreArchivo: string; huellaSha256: string; guardadoEn: string }; error?: string }>;
+      obtenerMetadataCertificado: (perfilFiscalId: string) =>
+        Promise<{ nombreArchivo: string; huellaSha256: string; guardadoEn: string } | null>;
+      existeCertificado: (perfilFiscalId: string) => Promise<boolean>;
+      eliminarCertificado: (perfilFiscalId: string) => Promise<{ success: boolean }>;
+      guardarPin: (perfilFiscalId: string, pin: string) => Promise<{ success: boolean; error?: string }>;
+      existePin: (perfilFiscalId: string) => Promise<boolean>;
+      eliminarPin: (perfilFiscalId: string) => Promise<{ success: boolean }>;
+      firmarDocumento: (perfilFiscalId: string, base64: string) =>
+        Promise<{ success: boolean; base64Firmado?: string; error?: string }>;
+      enviarFacturaSync: (perfilFiscalId: string, fileName: string, xmlFirmado: string, ambiente: 'habilitacion' | 'produccion') =>
+        Promise<{ success: boolean; respuesta?: Record<string, any>; error?: string }>;
+      enviarSetPruebas: (perfilFiscalId: string, fileName: string, xmlFirmado: string, testSetId: string) =>
+        Promise<{ success: boolean; respuesta?: Record<string, any>; error?: string }>;
+      consultarEstado: (perfilFiscalId: string, trackId: string, ambiente: 'habilitacion' | 'produccion') =>
+        Promise<{ success: boolean; respuesta?: Record<string, any>; error?: string }>;
+      consultarRangoNumeracion: (perfilFiscalId: string, ambiente: 'habilitacion' | 'produccion', accountCode: string, accountCodeT: string, softwareCode: string) =>
+        Promise<{ success: boolean; respuesta?: Record<string, any>; error?: string }>;
+    };
   };
   // ✅ NUEVO: API de persistencia de usuarios en Electron
   electronAPI?: {

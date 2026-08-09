@@ -113,24 +113,53 @@ export interface Venta {
   id: string;
   numero: number;
   fecha: string;
+  /** 🛡️ FIX: POSPageNew.tsx ya guarda estos campos desde hace tiempo — esta
+      interfaz estaba desactualizada respecto a lo que realmente se persiste
+      (Vite no type-checka el build, así que nunca se notó). Se corrige aquí
+      en vez de asumir que la interfaz documentaba la realidad. */
+  fechaOperativa?: string;
+  sesionCajaId?: string;
   items: Array<{
-    productoId: string;
+    productoId?: string;
+    id?: string;
+    codigo?: string;
     nombre: string;
     cantidad: number;
     precio: number;
     subtotal: number;
+    [key: string]: unknown;
   }>;
   subtotal: number;
-  iva: number;
+  iva?: number;
+  descuento?: number;
   total: number;
   metodoPago: string;
   metodosMultiples?: Array<{ metodo: string; monto: number }>;
+  /** Desglose real del pago mixto: { efectivo: 5000, tarjeta: 10000, ... } */
+  pagoMixto?: Record<string, number>;
   cajero: string;
+  cajeroId?: string;
+  cliente?: string;
+  mesa?: string;
+  referencia_mesa?: string;
   puntoVentaId: string;
   createdAt: number;
   syncStatus?: 'synced' | 'pending' | 'conflict';
+  sincronizado?: boolean;
   /** id real en la tabla ventas de Supabase, una vez sincronizada */
   supabaseId?: string;
+
+  // ── Facturación electrónica (stub de proveedor externo — ver ConfiguracionPage.tsx) ──
+  facturacionElectronica?: boolean;
+  facturaEstado?: 'PENDIENTE_ENVIO' | 'SINCRONIZADA' | 'PENDIENTE_SINCRONIZAR' | 'NO_APLICA';
+  folioElectronico?: string | null;
+  cufe?: string | null;
+  qrUrl?: string | null;
+
+  // ── Facturación electrónica DIAN directa (módulo nuevo, src/app/lib/dian/) ──
+  /** id de la fila en Supabase facturas_electronicas, una vez creada/sincronizada */
+  dianFacturaId?: string;
+  dianEstado?: 'draft' | 'pending' | 'signing' | 'sent' | 'accepted' | 'rejected' | 'error' | 'contingency' | 'cancelled';
 }
 
 export interface SyncQueueItem {

@@ -22,6 +22,7 @@ import { CodecLogoHorizontal, CodecFavicon } from '../shared/CodecLogos';
 import { PlanSummaryCard } from './PlanSummaryCard';
 import { ConfiguracionTipoNegocio } from '../settings/ConfiguracionTipoNegocio';
 import { ConfiguracionIntegraciones } from '../settings/ConfiguracionIntegraciones';
+import { ConfiguracionDianDirecto } from '../settings/ConfiguracionDianDirecto';
 import { electronStore } from '../../lib/electronStore';
 import { backupService } from '../../lib/backupService';
 import {
@@ -66,6 +67,10 @@ interface ConfiguracionEmpresa {
   
   // Facturación Electrónica
   facturacionElectronicaHabilitada: boolean;
+  /** Cuál integración usa el negocio — el stub de proveedor externo (legado,
+   * sigue funcionando igual que siempre) o DIAN directo (módulo nuevo,
+   * src/app/lib/dian/). Mutuamente excluyentes, elegidas explícitamente. */
+  modoFacturacionElectronica: 'ninguna' | 'proveedor_externo' | 'dian_directo';
   prefijoFactura: string;
   consecutivoInicial: number;
   tipoDocumento: 'factura' | 'factura_contingencia' | 'nota_debito' | 'nota_credito';
@@ -230,7 +235,18 @@ export default function ConfiguracionPage() {
 
   const [config, setConfig] = useState<ConfiguracionEmpresa>(() => {
     const saved = localStorage.getItem('codec_pos_config');
-    return saved ? JSON.parse(saved) : {
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // 🛡️ Migración: instalaciones existentes no tienen modoFacturacionElectronica
+      // (campo nuevo). Si ya tenían el stub de proveedor externo activado, se
+      // respeta esa elección; si no, queda en "ninguna" — nunca se activa DIAN
+      // directo solo porque el campo esté vacío.
+      if (!parsed.modoFacturacionElectronica) {
+        parsed.modoFacturacionElectronica = parsed.facturacionElectronicaHabilitada ? 'proveedor_externo' : 'ninguna';
+      }
+      return parsed;
+    }
+    return {
       razonSocial: '',
       nombreComercial: '',
       nombreEmpresaCliente: '',
@@ -253,6 +269,7 @@ export default function ConfiguracionPage() {
       regimenFiscal: 'simplificado',
       // Facturación Electrónica
       facturacionElectronicaHabilitada: false,
+      modoFacturacionElectronica: 'ninguna',
       prefijoFactura: 'FE',
       consecutivoInicial: 1,
       tipoDocumento: 'factura',
@@ -1653,6 +1670,38 @@ export default function ConfiguracionPage() {
           borderColor="border-orange-700/40"
         >
           <div className="space-y-6">
+            {/* Selector de modo — proveedor externo (legado, sigue intacto) vs
+                DIAN directo (módulo nuevo). Mutuamente excluyentes. */}
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { id: 'ninguna', label: 'Ninguna' },
+                { id: 'proveedor_externo', label: 'Proveedor externo' },
+                { id: 'dian_directo', label: 'DIAN directo' },
+              ] as const).map((opcion) => (
+                <button
+                  key={opcion.id}
+                  type="button"
+                  onClick={() => {
+                    handleChange('modoFacturacionElectronica', opcion.id);
+                    handleChange('facturacionElectronicaHabilitada', opcion.id === 'proveedor_externo');
+                  }}
+                  className={`px-3 py-2.5 rounded-xl text-sm font-bold border-2 transition-colors ${
+                    config.modoFacturacionElectronica === opcion.id
+                      ? 'bg-orange-600 border-orange-500 text-white'
+                      : darkMode
+                        ? 'bg-slate-800 border-slate-600 text-slate-300'
+                        : 'bg-white border-gray-300 text-gray-600'
+                  }`}
+                >
+                  {opcion.label}
+                </button>
+              ))}
+            </div>
+
+            {config.modoFacturacionElectronica === 'dian_directo' && <ConfiguracionDianDirecto darkMode={darkMode} />}
+
+            {config.modoFacturacionElectronica === 'proveedor_externo' && (
+              <>
             {/* Switch para habilitar/deshabilitar Facturación Electrónica */}
             <div className={`p-4 rounded-xl border-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.35),0_10px_30px_rgba(0,0,0,0.25)] ${
               config.facturacionElectronicaHabilitada
@@ -1943,6 +1992,8 @@ export default function ConfiguracionPage() {
                 </div>
               </div>
             </div>
+              </>
+            )}
           </div>
         </AccordionSection>
 

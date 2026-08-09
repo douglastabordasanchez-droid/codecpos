@@ -67,6 +67,8 @@ import {
 import { buscarPorCodigoBarras } from '../../lib/promocionesService';
 import { suscribirCodigosEscaneados } from '../../lib/supabase/scanBroadcast';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
+import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
+import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../lib/dian/types';
 
 interface Producto {
   id: string;
@@ -1422,7 +1424,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       let respuestaElectronica: any = null;
       let facturaEstado = venta.facturaEstado;
 
-      if (feConfig.feActiva) {
+      // Este bloque es del stub de "proveedor externo" (webhook genérico) —
+      // cuando el negocio eligió "DIAN directo" la emisión corre aparte, en
+      // segundo plano y sin bloquear la venta (ver emitirFacturaDianDirecto
+      // más abajo), así que aquí no debe intentar pegarle a un endpoint que
+      // ni siquiera aplica en ese modo.
+      if (feConfig.feActiva && config.modoFacturacionElectronica !== 'dian_directo') {
         const payloadElectronico = {
           documento: {
             numero: numeroFacturaCompleto,
@@ -1565,6 +1572,38 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               items: carrito.length,
               numeroFactura: numeroFacturaCompleto,
             });
+          }
+
+          // 🧾 DIAN directo: emitir factura electrónica (best-effort — nunca
+          // bloquea la venta, ver emitirFacturaDian.ts). Solo corre cuando el
+          // negocio eligió explícitamente "DIAN directo" en Configuración,
+          // separado del stub de proveedor externo (feConfig.feActiva) que
+          // ya se maneja arriba de forma síncrona.
+          if (feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo') {
+            const clienteIdVinculado = getLinkedClienteId();
+            if (clienteIdVinculado) {
+              emitirFacturaDianDirecto({
+                clienteId: clienteIdVinculado,
+                ventaReferencia: numeroFacturaCompleto,
+                fecha: venta.fecha,
+                adquirente: clienteFE.nitCedula.trim()
+                  ? { tipoDocumento: '13', numeroDocumento: clienteFE.nitCedula.trim(), nombreORazonSocial: clienteFE.nombre || 'Consumidor final', email: clienteFE.email || undefined, direccion: clienteFE.direccion || undefined }
+                  : { tipoDocumento: '13', numeroDocumento: NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, nombreORazonSocial: 'Consumidor final' },
+                items: venta.items.map((it) => ({
+                  codigo: it.codigo,
+                  descripcion: it.nombre,
+                  cantidad: it.cantidad,
+                  precioUnitario: it.precioVenta,
+                  subtotal: it.subtotal,
+                  impuestos: configIVA.ivaHabilitado ? [{ codigo: '01' as const, porcentaje: configIVA.porcentajeIVA, valor: Number((it.subtotal * (configIVA.porcentajeIVA / 100)).toFixed(2)) }] : undefined,
+                })),
+                subtotal: configIVA.ivaHabilitado ? subtotal : total,
+                totalImpuestos: configIVA.ivaHabilitado ? iva : 0,
+                total,
+              }).catch(() => {});
+            } else {
+              console.warn('[DIAN] Negocio no vinculado a la nube — no se puede emitir factura DIAN directa (necesita cliente_id de Supabase).');
+            }
           }
 
           // 🔔 NOTIFICACIONES AUTOMÁTICAS A INTEGRACIONES

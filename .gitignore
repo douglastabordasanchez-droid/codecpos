@@ -23,3 +23,9 @@ Thumbs.db
 
 .vercel
 .env*
+
+# Fuentes DIAN vendorizadas para investigación/verificación (PDFs oficiales +
+# dumps de texto extraído, ~46MB) — evidencia de la investigación, no
+# necesarias en tiempo de ejecución (esa parte vive en electron/dian-wsdl/).
+# Quedan en el filesystem local, fuera del repo por tamaño.
+docs/electronic-invoicing/dian-sources/
