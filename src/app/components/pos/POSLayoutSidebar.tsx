@@ -421,7 +421,17 @@ export default function POSLayoutSidebar() {
       return { allowed: false, reason: 'hidden_by_license' };
     }
 
-    // Admin maestro o modo temporal tienen paso libre tras el filtro de licencia
+    // 🛡️ FIX: "Personalización del Espacio de Trabajo" (Configuración) dice
+    // literalmente "oculta los módulos que tu negocio no utiliza" — pero el
+    // admin/dueño bypaseaba este chequeo por completo, así que apagar un
+    // módulo ahí nunca se reflejaba ni en su propia pantalla (la persona que
+    // configura el toggle). Ahora se respeta para todos, admin incluido —
+    // el escape hatch sigue siendo "Forzar visibilidad automática" más abajo.
+    if (item.moduloId && !modulosGlobalConfig.forceGlobalModules && !modulosGlobalConfig.modulosActivos.includes(item.moduloId)) {
+      return { allowed: false, reason: 'disabled_globally' };
+    }
+
+    // Admin maestro o modo temporal tienen paso libre tras los filtros de arriba
     if (esSuperUsuario || modoAdminTemporalActivo || hasDeveloperPanelAccess) {
       return { allowed: true };
     }
@@ -431,27 +441,16 @@ export default function POSLayoutSidebar() {
       return { allowed: true };
     }
 
-    // 🛡️ FIX: el PERMISO por rol (autoritativo, otorgado en Empleados /
-    // Gestionar Permisos) y la ORGANIZACIÓN visual del panel (Configuración →
-    // Personalización del Espacio de Trabajo) son dos cosas distintas y se
-    // evalúan por separado. El permiso de rol decide QUIÉN puede ver el
-    // módulo — eso nunca lo toca el toggle de Configuración. El toggle de
-    // Configuración solo puede OCULTAR, entre los módulos que el rol ya
-    // permite, los que el negocio no usa; jamás otorga acceso que el rol no
-    // dio. Antes ese toggle se ignoraba por completo en cuanto el usuario
-    // tenía algún permiso explícito configurado (el caso normal de cualquier
-    // cajero/técnico ya dado de alta), así que "mostrar/ocultar paneles"
-    // desde Configuración no tenía ningún efecto real para ellos.
+    // El PERMISO por rol (autoritativo, otorgado en Empleados / Gestionar
+    // Permisos) es independiente del toggle de "Personalización del Espacio
+    // de Trabajo" (ya evaluado arriba, aplica a todos): el permiso de rol
+    // decide QUIÉN puede ver el módulo, el toggle decide si el negocio lo usa.
     if (item.moduloId) {
       const modulosUsuario = new Set((usuarioActual?.modulosActivos || []) as ModuloPOS[]);
       const tienePermisoDeRol = modulosUsuario.size > 0 ? modulosUsuario.has(item.moduloId) : true;
 
       if (!tienePermisoDeRol) {
         return { allowed: false, reason: 'no_permission' };
-      }
-
-      if (!modulosGlobalConfig.modulosActivos.includes(item.moduloId)) {
-        return { allowed: false, reason: 'disabled_globally' };
       }
     }
 

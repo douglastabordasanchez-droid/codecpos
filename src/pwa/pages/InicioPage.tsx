@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
-import { Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock } from 'lucide-react';
+import { Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock, Calendar } from 'lucide-react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -23,14 +23,47 @@ interface SesionFila {
   activa: boolean;
 }
 
+type RangoFiltro = 'hoy' | '3d' | '7d' | 'custom';
+
+const RANGO_OPCIONES: { id: RangoFiltro; label: string }[] = [
+  { id: 'hoy', label: 'Hoy' },
+  { id: '3d', label: '3 días' },
+  { id: '7d', label: '7 días' },
+  { id: 'custom', label: 'Personalizado' },
+];
+
 function inicioDeHoy(): Date {
   const ahora = new Date();
   return new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
 }
 
-function inicioDeAyer(): Date {
+function formatoFechaInput(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Calcula el rango [inicio, fin) del periodo elegido y el rango equivalente
+// inmediatamente anterior (misma duración) para poder mostrar el % de cambio
+// en los anillos, igual que antes se comparaba "hoy" contra "ayer".
+function calcularRangos(rango: RangoFiltro, customDesde: string, customHasta: string) {
   const hoy = inicioDeHoy();
-  return new Date(hoy.getTime() - 24 * 60 * 60 * 1000);
+  const finHoy = new Date(hoy.getTime() + 24 * 60 * 60 * 1000);
+
+  if (rango === '3d' || rango === '7d') {
+    const dias = rango === '3d' ? 3 : 7;
+    const inicio = new Date(hoy.getTime() - (dias - 1) * 24 * 60 * 60 * 1000);
+    const inicioAnterior = new Date(inicio.getTime() - dias * 24 * 60 * 60 * 1000);
+    return { inicio, fin: finHoy, inicioAnterior, finAnterior: inicio };
+  }
+  if (rango === 'custom' && customDesde && customHasta) {
+    const inicio = new Date(`${customDesde}T00:00:00`);
+    const fin = new Date(new Date(`${customHasta}T00:00:00`).getTime() + 24 * 60 * 60 * 1000);
+    const duracionMs = Math.max(fin.getTime() - inicio.getTime(), 24 * 60 * 60 * 1000);
+    const inicioAnterior = new Date(inicio.getTime() - duracionMs);
+    return { inicio, fin, inicioAnterior, finAnterior: inicio };
+  }
+  // 'hoy' (y fallback de 'custom' sin fechas elegidas aún)
+  const inicioAnterior = new Date(hoy.getTime() - 24 * 60 * 60 * 1000);
+  return { inicio: hoy, fin: finHoy, inicioAnterior, finAnterior: hoy };
 }
 
 function estaEnLinea(s: SesionFila): boolean {
@@ -46,12 +79,15 @@ const fadeUp = {
 export default function InicioPage() {
   const { empleado } = usePwaAuth();
   const navigate = useNavigate();
-  const [ventasHoy, setVentasHoy] = useState<VentaFila[]>([]);
-  const [ventasAyer, setVentasAyer] = useState<VentaFila[]>([]);
+  const [ventasPeriodo, setVentasPeriodo] = useState<VentaFila[]>([]);
+  const [ventasPeriodoAnterior, setVentasPeriodoAnterior] = useState<VentaFila[]>([]);
   const [alertasCount, setAlertasCount] = useState(0);
   const [productosConMinimo, setProductosConMinimo] = useState(0);
   const [sesiones, setSesiones] = useState<SesionFila[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [rango, setRango] = useState<RangoFiltro>('hoy');
+  const [customDesde, setCustomDesde] = useState(() => formatoFechaInput(inicioDeHoy()));
+  const [customHasta, setCustomHasta] = useState(() => formatoFechaInput(inicioDeHoy()));
 
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
   const { tieneModulo } = useModulosActivos();
@@ -64,13 +100,15 @@ export default function InicioPage() {
       const client = getSupabaseClient();
       if (!client) return;
 
-      const [{ data: hoyData }, { data: ayerData }, { data: stockData }, { data: sesionesData }] = await Promise.all([
+      const { inicio, fin, inicioAnterior, finAnterior } = calcularRangos(rango, customDesde, customHasta);
+
+      const [{ data: periodoData }, { data: anteriorData }, { data: stockData }, { data: sesionesData }] = await Promise.all([
         client.from('ventas').select('id, total, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', inicioDeHoy().toISOString()),
+          .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString()),
         client.from('ventas').select('id, total, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', inicioDeAyer().toISOString()).lt('created_at', inicioDeHoy().toISOString()),
+          .gte('created_at', inicioAnterior.toISOString()).lt('created_at', finAnterior.toISOString()),
         esAdmin
           ? client.from('productos').select('id, stock, stock_minimo').eq('cliente_id', empleado.cliente_id).eq('activo', true)
           : Promise.resolve({ data: [] as any[] }),
@@ -81,8 +119,8 @@ export default function InicioPage() {
       ]);
 
       if (cancelado) return;
-      setVentasHoy((hoyData as VentaFila[]) || []);
-      setVentasAyer((ayerData as VentaFila[]) || []);
+      setVentasPeriodo((periodoData as VentaFila[]) || []);
+      setVentasPeriodoAnterior((anteriorData as VentaFila[]) || []);
       const productos = ((stockData as any[]) || []).filter((p) => p.stock_minimo != null);
       setProductosConMinimo(productos.length);
       setAlertasCount(productos.filter((p) => p.stock <= p.stock_minimo).length);
@@ -93,19 +131,20 @@ export default function InicioPage() {
     cargar();
     const interval = window.setInterval(cargar, 30000);
     return () => { cancelado = true; window.clearInterval(interval); };
-  }, [empleado?.cliente_id, esAdmin]);
+  }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta]);
 
   const stats = useMemo(() => {
-    const totalHoy = ventasHoy.reduce((a, v) => a + Number(v.total), 0);
-    const totalAyer = ventasAyer.reduce((a, v) => a + Number(v.total), 0);
-    const cambioVentas = totalAyer > 0 ? ((totalHoy - totalAyer) / totalAyer) * 100 : totalHoy > 0 ? 100 : 0;
-    const ticketProm = ventasHoy.length ? totalHoy / ventasHoy.length : 0;
-    const cambioTransacciones = ventasHoy.length - ventasAyer.length;
-    const pctVentasVsAyer = totalAyer > 0 ? Math.min(100, (totalHoy / totalAyer) * 100) : totalHoy > 0 ? 100 : 0;
-    const pctTransaccionesVsAyer = ventasAyer.length > 0 ? Math.min(100, (ventasHoy.length / ventasAyer.length) * 100) : ventasHoy.length > 0 ? 100 : 0;
+    const totalPeriodo = ventasPeriodo.reduce((a, v) => a + Number(v.total), 0);
+    const totalAnterior = ventasPeriodoAnterior.reduce((a, v) => a + Number(v.total), 0);
+    const ticketProm = ventasPeriodo.length ? totalPeriodo / ventasPeriodo.length : 0;
+    const pctVentasVsAnterior = totalAnterior > 0 ? Math.min(100, (totalPeriodo / totalAnterior) * 100) : totalPeriodo > 0 ? 100 : 0;
+    const pctTransaccionesVsAnterior = ventasPeriodoAnterior.length > 0 ? Math.min(100, (ventasPeriodo.length / ventasPeriodoAnterior.length) * 100) : ventasPeriodo.length > 0 ? 100 : 0;
     const pctInventarioSano = productosConMinimo > 0 ? ((productosConMinimo - alertasCount) / productosConMinimo) * 100 : 100;
-    return { totalHoy, cambioVentas, ticketProm, cambioTransacciones, cantidadHoy: ventasHoy.length, pctVentasVsAyer, pctTransaccionesVsAyer, pctInventarioSano };
-  }, [ventasHoy, ventasAyer, productosConMinimo, alertasCount]);
+    return { totalPeriodo, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano };
+  }, [ventasPeriodo, ventasPeriodoAnterior, productosConMinimo, alertasCount]);
+
+  const etiquetaVentas = rango === 'hoy' ? 'Ventas hoy' : rango === '3d' ? 'Ventas 3 días' : rango === '7d' ? 'Ventas 7 días' : 'Ventas del periodo';
+  const etiquetaTransacciones = rango === 'hoy' ? 'Transacciones' : 'Transacciones periodo';
 
   const primerNombre = (empleado?.nombre_completo || '').split(' ')[0];
   const hora = new Date().getHours();
@@ -123,44 +162,87 @@ export default function InicioPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mx-5 mb-6 grid grid-cols-2 gap-x-2 gap-y-5 bg-slate-900/40 rounded-3xl py-6 border border-slate-800/60"
+          className="mx-5 mb-6 bg-slate-900/40 rounded-3xl pt-4 pb-6 border border-slate-800/60"
         >
-          <RingStat
-            label="Ventas hoy"
-            value={`$${stats.totalHoy.toLocaleString('es-CO')}`}
-            pct={stats.pctVentasVsAyer}
-            colorFrom="#34d399"
-            colorTo="#059669"
-            size={108}
-            onClick={() => navigate('/ventas')}
-          />
-          <RingStat
-            label="Transacciones"
-            value={String(stats.cantidadHoy)}
-            pct={stats.pctTransaccionesVsAyer}
-            colorFrom="#38bdf8"
-            colorTo="#0284c7"
-            size={108}
-            onClick={() => navigate('/ventas')}
-          />
-          <RingStat
-            label="Ticket promedio"
-            value={`$${Math.round(stats.ticketProm).toLocaleString('es-CO')}`}
-            pct={100}
-            colorFrom="#a78bfa"
-            colorTo="#7c3aed"
-            size={108}
-            onClick={() => navigate('/ventas')}
-          />
-          <RingStat
-            label="Alertas de stock"
-            value={String(alertasCount)}
-            pct={stats.pctInventarioSano}
-            colorFrom={alertasCount > 0 ? '#f87171' : '#fbbf24'}
-            colorTo={alertasCount > 0 ? '#dc2626' : '#d97706'}
-            size={108}
-            onClick={() => navigate('/alertas')}
-          />
+          <div className="flex items-center gap-1.5 px-4 mb-4 overflow-x-auto">
+            {RANGO_OPCIONES.map((op) => (
+              <button
+                key={op.id}
+                onClick={() => setRango(op.id)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                  rango === op.id ? 'bg-amber-500 text-slate-950' : 'bg-slate-800/70 text-slate-400'
+                }`}
+              >
+                {op.label}
+              </button>
+            ))}
+          </div>
+
+          {rango === 'custom' && (
+            <div className="flex items-center gap-2 px-4 mb-4">
+              <div className="flex-1 flex items-center gap-1.5 bg-slate-950/60 border border-slate-700 rounded-xl px-2.5 h-9">
+                <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <input
+                  type="date"
+                  value={customDesde}
+                  max={customHasta}
+                  onChange={(e) => setCustomDesde(e.target.value)}
+                  className="bg-transparent text-white text-xs w-full outline-none [color-scheme:dark]"
+                />
+              </div>
+              <span className="text-slate-600 text-xs">a</span>
+              <div className="flex-1 flex items-center gap-1.5 bg-slate-950/60 border border-slate-700 rounded-xl px-2.5 h-9">
+                <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <input
+                  type="date"
+                  value={customHasta}
+                  min={customDesde}
+                  max={formatoFechaInput(inicioDeHoy())}
+                  onChange={(e) => setCustomHasta(e.target.value)}
+                  className="bg-transparent text-white text-xs w-full outline-none [color-scheme:dark]"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-x-2 gap-y-5">
+            <RingStat
+              label={etiquetaVentas}
+              value={`$${stats.totalPeriodo.toLocaleString('es-CO')}`}
+              pct={stats.pctVentasVsAnterior}
+              colorFrom="#34d399"
+              colorTo="#059669"
+              size={108}
+              onClick={() => navigate('/ventas')}
+            />
+            <RingStat
+              label={etiquetaTransacciones}
+              value={String(stats.cantidadPeriodo)}
+              pct={stats.pctTransaccionesVsAnterior}
+              colorFrom="#38bdf8"
+              colorTo="#0284c7"
+              size={108}
+              onClick={() => navigate('/ventas')}
+            />
+            <RingStat
+              label="Ticket promedio"
+              value={`$${Math.round(stats.ticketProm).toLocaleString('es-CO')}`}
+              pct={100}
+              colorFrom="#a78bfa"
+              colorTo="#7c3aed"
+              size={108}
+              onClick={() => navigate('/ventas')}
+            />
+            <RingStat
+              label="Alertas de stock"
+              value={String(alertasCount)}
+              pct={stats.pctInventarioSano}
+              colorFrom={alertasCount > 0 ? '#f87171' : '#fbbf24'}
+              colorTo={alertasCount > 0 ? '#dc2626' : '#d97706'}
+              size={108}
+              onClick={() => navigate('/alertas')}
+            />
+          </div>
         </motion.div>
       )}
 

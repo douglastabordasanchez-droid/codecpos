@@ -18,9 +18,17 @@ import {
   PlanCliente,
   DuracionCliente,
 } from '../../app/lib/supabase/clientesAdminService';
-import { MODULOS_CATALOGO, MODULOS_CLIENTE_OFICIALES, ModuloPOS } from '../../app/lib/permissions';
+import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
 
-const MODULOS_DISPONIBLES = MODULOS_CATALOGO.filter((m) => MODULOS_CLIENTE_OFICIALES.includes(m.id));
+// 🛡️ FIX: antes se filtraba contra MODULOS_CLIENTE_OFICIALES, una lista
+// separada que se quedó desactualizada y le faltaban 8 módulos reales que sí
+// se venden (Clientes, Reportes Avanzados, Backup y Restauración, Exportar
+// Datos, Impresora Térmica, Margen Automático, Facturación DIAN, Integración
+// Siigo) — no había forma de activárselos a un cliente que los compró, así
+// que este panel siempre se veía "incompleto" frente al catálogo real. Ahora
+// usa el mismo filtro que ya funciona en Configuración (Electron): todo el
+// catálogo excepto lo exclusivo de desarrollador.
+const MODULOS_DISPONIBLES = MODULOS_CATALOGO.filter((m) => m.categoria !== 'desarrollador');
 
 const DURACIONES: { id: DuracionCliente; label: string }[] = [
   { id: '1_MES', label: '1 mes' },
@@ -176,7 +184,7 @@ export default function PanelDesarrolladorPage() {
         plan: 'PREMIUM', duracion: '1_MES',
         fechaActivacion: new Date().toISOString(), fechaExpiracion,
         estado: 'ACTIVA', enPrueba: true, diasPruebaRestantes: 30,
-        modulosActivos: MODULOS_CLIENTE_OFICIALES,
+        modulosActivos: MODULOS_DISPONIBLES.map((m) => m.id),
       });
       toast.success(`🎁 Prueba gratis de 1 mes activada para ${c.nombreNegocio}`, {
         description: `Expira el ${new Date(fechaExpiracion).toLocaleDateString('es-CO')} — todos los módulos activos`,

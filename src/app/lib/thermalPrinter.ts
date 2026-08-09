@@ -47,7 +47,9 @@ export interface TicketData {
   razonSocial?: string;
   nit?: string;
   direccion?: string;
+  ciudad?: string;
   telefono?: string;
+  email?: string;
   numeroFactura?: string;
   fechaFactura?: string;
   regimenTributario?: string;
@@ -334,8 +336,14 @@ export class ThermalPrinter {
       if (data.direccion) {
         this.wrapText(data.direccion).forEach((line) => bytes.push(...this.addLine(line, 'center')));
       }
+      if (data.ciudad) {
+        bytes.push(...this.addLine(data.ciudad, 'center'));
+      }
       if (data.telefono) {
         bytes.push(...this.addLine(`Tel: ${data.telefono}`, 'center'));
+      }
+      if (data.email) {
+        bytes.push(...this.addLine(data.email, 'center'));
       }
       if (data.regimenTributario) {
         bytes.push(...this.addLine(`Régimen ${data.regimenTributario}`, 'center'));
@@ -428,8 +436,14 @@ export class ThermalPrinter {
         footerLines.forEach((line) => bytes.push(...this.addLine(line, 'center')));
       }
       
-      bytes.push(...this.addLine('Gracias por su compra!', 'center'));
-      bytes.push(...this.addLine('https://www.codecstudio.online/', 'center'));
+      // 🧾 Antes esto imprimía "Gracias por su compra!" (duplicado — ya venía
+      // en `data.footer` desde printSaleReceipt) y una URL que no aparece en
+      // ningún otro lado de la factura (pantalla ni PDF). Ahora imprime el
+      // mismo pie de marca que se ve en pantalla, para que el recibo físico
+      // sea igual al que vio el cajero antes de imprimir.
+      bytes.push(...this.addLine('Desarrollado por Codec Studio', 'center'));
+      bytes.push(...this.addLine('Diseño de software personalizado', 'center'));
+      bytes.push(...this.addLine('Bogotá, Colombia', 'center'));
       bytes.push(...this.addLine('Tel: 3238646844', 'center'));
       
       // QR Code (opcional)
@@ -890,7 +904,9 @@ export async function printSaleReceipt(
     razonSocial,
     nit: nitCompleto,
     direccion: cfg.direccion,
+    ciudad: cfg.ciudad ? `${cfg.ciudad}${cfg.departamento ? ` - ${cfg.departamento}` : ''}` : undefined,
     telefono: cfg.telefono,
+    email: config.email || cfg.email,
     numeroFactura: venta.numeroFactura,
     fechaFactura: venta.fecha ? new Date(venta.fecha).toLocaleString('es-CO') : new Date().toLocaleString('es-CO'),
     cajero: venta.cajero,

@@ -55,7 +55,7 @@ import { ClienteModulosPanel } from './ClienteModulosPanel';
 import { PersonalAdminSection } from './PersonalAdminSection';
 import { SistemaBlindajePanel } from './SistemaBlindajePanel';
 import { AnimatePresence } from 'motion/react';
-import { MODULOS_CATALOGO, MODULOS_CLIENTE_OFICIALES, ModuloPOS } from '../../lib/permissions';
+import { MODULOS_CATALOGO, ModuloPOS } from '../../lib/permissions';
 import {
   listarClientesAdmin,
   crearClienteAdmin,
@@ -149,9 +149,11 @@ export function DeveloperPanel() {
     confirmPassword: '',
   });
 
-  const modulosClienteDisponibles = MODULOS_CATALOGO.filter(m =>
-    MODULOS_CLIENTE_OFICIALES.includes(m.id),
-  );
+  // 🛡️ FIX: ver comentario equivalente en PanelDesarrolladorPage.tsx (PWA) —
+  // MODULOS_CLIENTE_OFICIALES estaba desactualizada y le faltaban 8 módulos
+  // reales (Clientes, Reportes Avanzados, Backup, Exportar Datos, Impresora,
+  // Margen Automático, Facturación DIAN, Integración Siigo).
+  const modulosClienteDisponibles = MODULOS_CATALOGO.filter(m => m.categoria !== 'desarrollador');
 
   const construirModulosPorPlan = (plan: 'BASICO' | 'PREMIUM') =>
     modulosClienteDisponibles

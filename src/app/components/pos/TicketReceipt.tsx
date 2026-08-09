@@ -298,13 +298,24 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
       cufeLines.forEach((line: string) => { doc.text(line, 4, y); y += 3.5; });
     }
 
+    // Pie de marca — igual al que se ve en pantalla (bloque final del ticket
+    // HTML más abajo), para que el PDF descargado no sea un resumen distinto
+    // de lo que el cajero ya vio antes de generarlo.
     separator();
+    doc.setFont('helvetica', 'bold');
+    center('CODEC POS v2.0', 8);
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
-    center('Software: CODEC POS v2.0 — Codec Studio', 7);
-    center('Diseño de software personalizado', 7);
+    center(`Software POS - Facturación ${empresa.facturaElectronica ? 'Electrónica' : 'Tradicional'}`, 7);
     y += 1;
+    center('Desarrollado por Codec Studio', 7);
+    center('Diseño de software personalizado', 7);
+    center('Bogotá, Colombia', 7);
+    y += 1;
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     center('Tel: 3238646844', 8);
+    doc.setFont('helvetica', 'normal');
 
     // Ajustar alto del documento según contenido
     const totalPages = doc.getNumberOfPages();

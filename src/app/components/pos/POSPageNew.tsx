@@ -1499,11 +1499,14 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
 
-      // 💾 PERSISTENCIA — best-effort, no bloquea el flujo
+      // 💾 PERSISTENCIA CRÍTICA — se espera porque de esto depende que la venta
+      // realmente quede guardada; todo lo demás (estadísticas, LAN, webhooks,
+      // fidelización, refresco de catálogo) es "best-effort" y antes se
+      // esperaba igual con `await` en cadena, manteniendo el botón de pago
+      // deshabilitado varios segundos de más después de que la venta ya
+      // estaba guardada — la causa más probable de "el sistema se pone lento
+      // al facturar". Ahora esos pasos corren en segundo plano sin bloquear.
       if (usuarioActual) {
-        const utilidadNeta = calcularUtilidadNeta();
-        const tiempoTrabajo = calcularTiempoTrabajo();
-
         try {
           await electronStore.registrarVenta({
             id: numeroFacturaCompleto,
@@ -1540,76 +1543,90 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             { numeroFactura: numeroFacturaCompleto, total, metodoPago, cajero: usuarioActual.nombreCompleto || usuarioActual.username }
           );
         }
-
-        try { await electronStore.calcularEstadisticasDelDia(); } catch { /* estadísticas no críticas */ }
-
-        console.log(`💼 Cajero: ${usuarioActual.nombreCompleto || usuarioActual.username} | Tiempo: ${tiempoTrabajo} min | Utilidad: $${utilidadNeta.toLocaleString('es-CO')}`);
-
-        emitLanEvent('VENTA_NUEVA', {
-          total,
-          metodoPago,
-          cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
-          items: carrito.length,
-          numeroFactura: numeroFacturaCompleto,
-        });
       }
 
-      // 🔔 NOTIFICACIONES AUTOMÁTICAS A INTEGRACIONES
-      onVentaCompletada({
-        total,
-        metodoPago,
-        productos: carrito.reduce((s, i) => s + i.cantidad, 0),
-        cajero: usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero',
-      }).catch(() => {});
-
-      try {
-        await fetch('http://localhost:3001/ventas', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(venta),
-        });
-      } catch { /* servidor externo no disponible */ }
-
-      // 🔐 SISTEMA ANTI-FRAUDE
-      if (metodoPago === 'nequi' || metodoPago === 'daviplata' || metodoPago === 'transferencia') {
+      // 🚀 TAREAS EN SEGUNDO PLANO — no se esperan, para que el botón de pago
+      // vuelva a habilitarse de inmediato y el cajero pueda cobrar la
+      // siguiente venta sin esperar estadísticas, LAN, webhooks ni fidelización.
+      (async () => {
         try {
-          await antiFraudeService.registrarTransaccionPendiente(
-            numeroFacturaCompleto,
-            metodoPago as 'nequi' | 'daviplata' | 'transferencia',
-            total
-          );
-        } catch { /* anti-fraude no crítico */ }
-      }
+          if (usuarioActual) {
+            const utilidadNeta = calcularUtilidadNeta();
+            const tiempoTrabajo = calcularTiempoTrabajo();
 
-      if (metodoPago === 'efectivo') {
-        try { openCashDrawer(); } catch { /* cajón no crítico */ }
-      }
+            try { await electronStore.calcularEstadisticasDelDia(); } catch { /* estadísticas no críticas */ }
 
-      try { await loadProductos(); } catch { /* refresco no crítico */ }
-      try { triggerRefresh(); } catch { /* refresh no crítico */ }
+            console.log(`💼 Cajero: ${usuarioActual.nombreCompleto || usuarioActual.username} | Tiempo: ${tiempoTrabajo} min | Utilidad: $${utilidadNeta.toLocaleString('es-CO')}`);
 
-      // ── Fidelización: acumular o redimir puntos ─────────────────────────────
-      if (clienteFidelizacion) {
-        try {
-          if (metodoPago === 'fidelizacion') {
-            await redimirPuntos(clienteFidelizacion.id, puntosRequeridos, numeroFacturaCompleto);
-            toast.success(`${puntosRequeridos.toLocaleString('es-CO')} puntos redimidos`, {
-              description: clienteFidelizacion.nombre,
-              duration: 3000,
+            emitLanEvent('VENTA_NUEVA', {
+              total,
+              metodoPago,
+              cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
+              items: carrito.length,
+              numeroFactura: numeroFacturaCompleto,
             });
-          } else {
-            const ganados = await acumularPuntos(clienteFidelizacion.id, total, numeroFacturaCompleto);
-            if (ganados > 0) {
-              toast.success(`+${ganados} puntos acumulados`, {
-                description: `${clienteFidelizacion.nombre} · Nivel ${clienteFidelizacion.nivelFidelidad}`,
-                duration: 3000,
-              });
-            }
           }
-        } catch { /* fidelización no crítica */ }
-        setClienteFidelizacion(null);
-        setPuntosARedimirFidel(0);
-      }
+
+          // 🔔 NOTIFICACIONES AUTOMÁTICAS A INTEGRACIONES
+          onVentaCompletada({
+            total,
+            metodoPago,
+            productos: carrito.reduce((s, i) => s + i.cantidad, 0),
+            cajero: usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero',
+          }).catch(() => {});
+
+          try {
+            await fetch('http://localhost:3001/ventas', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(venta),
+            });
+          } catch { /* servidor externo no disponible */ }
+
+          // 🔐 SISTEMA ANTI-FRAUDE
+          if (metodoPago === 'nequi' || metodoPago === 'daviplata' || metodoPago === 'transferencia') {
+            try {
+              await antiFraudeService.registrarTransaccionPendiente(
+                numeroFacturaCompleto,
+                metodoPago as 'nequi' | 'daviplata' | 'transferencia',
+                total
+              );
+            } catch { /* anti-fraude no crítico */ }
+          }
+
+          if (metodoPago === 'efectivo') {
+            try { openCashDrawer(); } catch { /* cajón no crítico */ }
+          }
+
+          try { await loadProductos(); } catch { /* refresco no crítico */ }
+          try { triggerRefresh(); } catch { /* refresh no crítico */ }
+
+          // ── Fidelización: acumular o redimir puntos ─────────────────────────────
+          if (clienteFidelizacion) {
+            try {
+              if (metodoPago === 'fidelizacion') {
+                await redimirPuntos(clienteFidelizacion.id, puntosRequeridos, numeroFacturaCompleto);
+                toast.success(`${puntosRequeridos.toLocaleString('es-CO')} puntos redimidos`, {
+                  description: clienteFidelizacion.nombre,
+                  duration: 3000,
+                });
+              } else {
+                const ganados = await acumularPuntos(clienteFidelizacion.id, total, numeroFacturaCompleto);
+                if (ganados > 0) {
+                  toast.success(`+${ganados} puntos acumulados`, {
+                    description: `${clienteFidelizacion.nombre} · Nivel ${clienteFidelizacion.nivelFidelidad}`,
+                    duration: 3000,
+                  });
+                }
+              }
+            } catch { /* fidelización no crítica */ }
+            setClienteFidelizacion(null);
+            setPuntosARedimirFidel(0);
+          }
+        } catch (bgError) {
+          console.error('Error en tareas en segundo plano de procesarVenta:', bgError);
+        }
+      })();
     } catch (error) {
       // 🚨 Este catch interno cubre la lógica de persistencia/envío (más abajo).
       // Se relanza para que el catch exterior — que también cubre las
@@ -1766,14 +1783,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       setMostrarPago(false);
 
-      // 💾 PERSISTENCIA — best-effort, no bloquea el flujo
+      // 💾 PERSISTENCIA CRÍTICA — ver comentario equivalente en procesarVenta().
+      const pagoMixtoObj: any = {};
+      detalles.forEach((detalle: any) => { pagoMixtoObj[detalle.metodo] = detalle.monto; });
+
       if (usuarioActual) {
-        const utilidadNeta = calcularUtilidadNeta();
-        const tiempoTrabajo = calcularTiempoTrabajo();
-
-        const pagoMixtoObj: any = {};
-        detalles.forEach((detalle: any) => { pagoMixtoObj[detalle.metodo] = detalle.monto; });
-
         try {
           await electronStore.registrarVenta({
             id: numeroFacturaCompleto,
@@ -1805,46 +1819,58 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             { numeroFactura: numeroFacturaCompleto, total, metodoPago: 'mixto', cajero: usuarioActual.nombreCompleto || usuarioActual.username }
           );
         }
-
-        try { await electronStore.calcularEstadisticasDelDia(); } catch { /* estadísticas no críticas */ }
-
-        console.log(`💼 Cajero: ${usuarioActual.nombreCompleto || usuarioActual.username} | Tiempo: ${tiempoTrabajo} min | Utilidad: $${utilidadNeta.toLocaleString('es-CO')}`);
-
-        emitLanEvent('VENTA_NUEVA', {
-          total,
-          metodoPago: 'mixto',
-          cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
-          items: carrito.length,
-          numeroFactura: numeroFacturaCompleto,
-        });
       }
 
-      try {
-        await fetch('http://localhost:3001/ventas', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(venta),
-        });
-      } catch { /* servidor externo no disponible */ }
+      // 🚀 TAREAS EN SEGUNDO PLANO — ver comentario equivalente en procesarVenta().
+      (async () => {
+        try {
+          if (usuarioActual) {
+            const utilidadNeta = calcularUtilidadNeta();
+            const tiempoTrabajo = calcularTiempoTrabajo();
 
-      // 🔐 SISTEMA ANTI-FRAUDE
-      for (const detalle of detalles) {
-        if (detalle.metodo === 'nequi' || detalle.metodo === 'daviplata' || detalle.metodo === 'transferencia') {
+            try { await electronStore.calcularEstadisticasDelDia(); } catch { /* estadísticas no críticas */ }
+
+            console.log(`💼 Cajero: ${usuarioActual.nombreCompleto || usuarioActual.username} | Tiempo: ${tiempoTrabajo} min | Utilidad: $${utilidadNeta.toLocaleString('es-CO')}`);
+
+            emitLanEvent('VENTA_NUEVA', {
+              total,
+              metodoPago: 'mixto',
+              cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
+              items: carrito.length,
+              numeroFactura: numeroFacturaCompleto,
+            });
+          }
+
           try {
-            await antiFraudeService.registrarTransaccionPendiente(
-              numeroFacturaCompleto,
-              detalle.metodo as 'nequi' | 'daviplata' | 'transferencia',
-              detalle.monto
-            );
-          } catch { /* anti-fraude no crítico */ }
+            await fetch('http://localhost:3001/ventas', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(venta),
+            });
+          } catch { /* servidor externo no disponible */ }
+
+          // 🔐 SISTEMA ANTI-FRAUDE
+          for (const detalle of detalles) {
+            if (detalle.metodo === 'nequi' || detalle.metodo === 'daviplata' || detalle.metodo === 'transferencia') {
+              try {
+                await antiFraudeService.registrarTransaccionPendiente(
+                  numeroFacturaCompleto,
+                  detalle.metodo as 'nequi' | 'daviplata' | 'transferencia',
+                  detalle.monto
+                );
+              } catch { /* anti-fraude no crítico */ }
+            }
+          }
+
+          const tieneEfectivo = detalles.some(d => d.metodo === 'efectivo');
+          if (tieneEfectivo) { try { openCashDrawer(); } catch { /* cajón no crítico */ } }
+
+          try { await loadProductos(); } catch { /* refresco no crítico */ }
+          try { triggerRefresh(); } catch { /* refresh no crítico */ }
+        } catch (bgError) {
+          console.error('Error en tareas en segundo plano de handlePagoMixto:', bgError);
         }
-      }
-
-      const tieneEfectivo = detalles.some(d => d.metodo === 'efectivo');
-      if (tieneEfectivo) { try { openCashDrawer(); } catch { /* cajón no crítico */ } }
-
-      try { await loadProductos(); } catch { /* refresco no crítico */ }
-      try { triggerRefresh(); } catch { /* refresh no crítico */ }
+      })();
     } catch (error) {
       console.error('Error inesperado en handlePagoMixto:', error);
       toast.error('No se pudo procesar el pago mixto. Intenta de nuevo; si el problema persiste, contacta a soporte.');
