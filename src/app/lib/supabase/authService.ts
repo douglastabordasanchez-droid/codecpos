@@ -7,6 +7,7 @@ export interface EmpleadoSupabase {
   rol: string;
   activo: boolean;
   es_staff_codec: boolean;
+  permisos?: { modulosHabilitados?: string[] } | null;
 }
 
 /**
@@ -46,7 +47,7 @@ export async function signInSupabase(
 
   const { data: empleado, error: empError } = await client
     .from('empleados')
-    .select('id, cliente_id, nombre_completo, rol, activo, es_staff_codec')
+    .select('id, cliente_id, nombre_completo, rol, activo, es_staff_codec, permisos')
     .eq('id', data.user.id)
     .maybeSingle();
 

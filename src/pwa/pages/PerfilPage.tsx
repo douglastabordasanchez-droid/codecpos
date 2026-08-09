@@ -1,12 +1,14 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
-import { LogOut, User, Settings, ChevronRight, Crown, Zap, Users, Plus, X, Loader2 } from 'lucide-react';
+import { LogOut, User, Settings, ChevronRight, Crown, Zap, Users, Plus, X, Loader2, ShieldCheck, Check } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { useModulosActivos } from '../hooks/useModulosActivos';
+import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
 import logo from '/logo.png';
 
 interface EmpleadoFila {
@@ -14,6 +16,7 @@ interface EmpleadoFila {
   nombre_completo: string;
   rol: string;
   activo: boolean;
+  permisos: { modulosHabilitados?: string[] } | null;
 }
 
 const ROLES = ['cajero', 'admin', 'tecnico', 'cocina', 'barra', 'mesero'];
@@ -27,11 +30,15 @@ export default function PerfilPage() {
   const { empleado, cerrarSesion } = usePwaAuth();
   const navigate = useNavigate();
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const { tieneModulo } = useModulosActivos();
 
   const [plan, setPlan] = useState<string | null>(null);
   const [equipo, setEquipo] = useState<EmpleadoFila[]>([]);
   const [cargandoEquipo, setCargandoEquipo] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [editandoPermisos, setEditandoPermisos] = useState<EmpleadoFila | null>(null);
+  const [permisosSel, setPermisosSel] = useState<Set<ModuloPOS>>(new Set());
+  const [guardandoPermisos, setGuardandoPermisos] = useState(false);
 
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
@@ -48,7 +55,7 @@ export default function PerfilPage() {
     const [{ data: clienteData }, { data: empleadosData }] = await Promise.all([
       client.from('clientes_pos').select('plan').eq('id', empleado.cliente_id).maybeSingle(),
       esAdmin
-        ? client.from('empleados').select('id, nombre_completo, rol, activo').eq('cliente_id', empleado.cliente_id).order('nombre_completo')
+        ? client.from('empleados').select('id, nombre_completo, rol, activo, permisos').eq('cliente_id', empleado.cliente_id).order('nombre_completo')
         : Promise.resolve({ data: [] as EmpleadoFila[] }),
     ]);
     setPlan((clienteData as { plan: string } | null)?.plan || null);
@@ -86,6 +93,43 @@ export default function PerfilPage() {
     setPassword('');
     setRol('cajero');
     setMostrarForm(false);
+    cargarEquipo();
+  };
+
+  const modulosNegocio = MODULOS_CATALOGO.filter((m) => m.categoria !== 'desarrollador' && tieneModulo(m.id));
+
+  const abrirPermisos = (e: EmpleadoFila) => {
+    const actuales = e.permisos?.modulosHabilitados;
+    // Sin permisos explícitos = ve todo lo que el negocio tiene activo (mismo
+    // criterio que Electron) — se refleja marcando todo por defecto, así el
+    // dueño ve el estado real antes de empezar a restringir.
+    setPermisosSel(new Set(actuales && actuales.length > 0 ? actuales as ModuloPOS[] : modulosNegocio.map((m) => m.id)));
+    setError(null);
+    setEditandoPermisos(e);
+  };
+
+  const togglePermiso = (modulo: ModuloPOS) => {
+    setPermisosSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(modulo)) next.delete(modulo); else next.add(modulo);
+      return next;
+    });
+  };
+
+  const guardarPermisos = async () => {
+    if (!editandoPermisos) return;
+    setGuardandoPermisos(true);
+    const client = getSupabaseClient()!;
+    const { error: rpcError } = await client.rpc('actualizar_permisos_empleado', {
+      p_empleado_id: editandoPermisos.id,
+      p_modulos: Array.from(permisosSel),
+    });
+    setGuardandoPermisos(false);
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+    setEditandoPermisos(null);
     cargarEquipo();
   };
 
@@ -154,22 +198,39 @@ export default function PerfilPage() {
             {!cargandoEquipo && equipo.length === 0 && (
               <p className="text-slate-500 text-sm text-center py-4">Sin compañeros registrados todavía</p>
             )}
-            {equipo.map((e, i) => (
-              <motion.div
-                key={e.id}
-                custom={i}
-                initial="hidden"
-                animate="show"
-                variants={fadeUp}
-                className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3 flex items-center justify-between"
-              >
-                <div>
-                  <p className="text-white font-semibold text-sm">{e.nombre_completo}</p>
-                  <p className="text-slate-500 text-xs capitalize">{e.rol}</p>
-                </div>
-                {!e.activo && <span className="text-xs text-red-400 font-bold">Inactivo</span>}
-              </motion.div>
-            ))}
+            {equipo.map((e, i) => {
+              const restringido = (e.permisos?.modulosHabilitados?.length || 0) > 0;
+              const puedeEditar = e.rol !== 'super_usuario';
+              return (
+                <motion.div
+                  key={e.id}
+                  custom={i}
+                  initial="hidden"
+                  animate="show"
+                  variants={fadeUp}
+                  onClick={() => puedeEditar && abrirPermisos(e)}
+                  className={`bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3 flex items-center justify-between ${
+                    puedeEditar ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold text-sm truncate">{e.nombre_completo}</p>
+                    <p className="text-slate-500 text-xs capitalize">{e.rol}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!e.activo && <span className="text-xs text-red-400 font-bold">Inactivo</span>}
+                    {puedeEditar && (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        restringido ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'
+                      }`}>
+                        {restringido ? 'Restringido' : 'Todos los módulos'}
+                      </span>
+                    )}
+                    {puedeEditar && <ChevronRight className="w-4 h-4 text-slate-500" />}
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -222,6 +283,59 @@ export default function PerfilPage() {
               </Button>
               <p className="text-slate-500 text-xs text-center">Comparte el correo y la contraseña con la persona para que inicie sesión.</p>
             </form>
+          </div>
+        </div>
+      )}
+
+      {editandoPermisos && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
+          <div className="w-full bg-slate-950 rounded-t-3xl border-t border-slate-800 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
+              <div className="min-w-0">
+                <h2 className="text-white font-bold text-lg flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0" />
+                  Permisos
+                </h2>
+                <p className="text-slate-500 text-xs truncate">{editandoPermisos.nombre_completo}</p>
+              </div>
+              <button onClick={() => setEditandoPermisos(null)} className="text-slate-400 shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-slate-500 text-xs px-5 pb-3 shrink-0">
+              Elige qué módulos puede usar. Solo se listan los que tu negocio tiene activos.
+            </p>
+            <div className="flex-1 overflow-y-auto px-5 space-y-1.5">
+              {modulosNegocio.map((m) => {
+                const activo = permisosSel.has(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => togglePermiso(m.id)}
+                    className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                      activo ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900 border-slate-800'
+                    }`}
+                  >
+                    <span className={`flex items-center gap-2.5 text-sm font-semibold ${activo ? 'text-white' : 'text-slate-500'}`}>
+                      <span className="text-base leading-none">{m.icono}</span>
+                      {m.nombre}
+                    </span>
+                    <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                      activo ? 'bg-emerald-500' : 'border border-slate-700'
+                    }`}>
+                      {activo && <Check className="w-3 h-3 text-slate-950" />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-5 py-4 shrink-0">
+              {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
+              <Button onClick={guardarPermisos} disabled={guardandoPermisos} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600">
+                {guardandoPermisos && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {guardandoPermisos ? 'Guardando...' : 'Guardar permisos'}
+              </Button>
+            </div>
           </div>
         </div>
       )}

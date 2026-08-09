@@ -11,6 +11,9 @@ import UsuariosStorage from '../lib/usuariosStorage';
 import {
   obtenerModulosCliente,
   obtenerPermisosUsuario,
+  guardarPermisosUsuarioPersistente,
+  obtenerModulosGlobales,
+  guardarModulosGlobales,
   EVENTO_PERMISOS_ACTUALIZADOS,
   ModuloPOS,
   MODULOS_MAESTRO_OFICIALES,
@@ -659,6 +662,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInSupabase(usuario.email, passwordNormalizado).catch(() => {});
       }
 
+      // 🛡️ FIX: una cuenta de dueño creada en el primer login por licencia
+      // (id 'lic_{clienteId}') guarda sus módulos en caché local para poder
+      // entrar offline — pero en logins SIGUIENTES esta rama (Prioridad 1)
+      // nunca volvía a mirar Supabase, así que si Douglas cambiaba los
+      // módulos del cliente desde Panel Desarrollador, ese cambio nunca
+      // llegaba a la instalación del cliente hasta reinstalar. Ahora, en
+      // segundo plano (no bloquea el login), se refresca contra la nube y se
+      // aplica en caliente vía el mismo mecanismo que ya usa "Gestionar
+      // Permisos" — sesión activa, sidebar y config global incluidos.
+      if (navigator.onLine && usuario.id.startsWith('lic_')) {
+        const clienteId = usuario.id.slice(4);
+        (async () => {
+          try {
+            const client = getSupabaseClient();
+            if (!client) return;
+            const { data: clienteRow } = await client
+              .from('clientes_pos')
+              .select('modulos_activos, estado')
+              .eq('id', clienteId)
+              .maybeSingle();
+            if (!clienteRow || clienteRow.estado === 'SUSPENDIDA') return;
+            const modulosFrescos = (clienteRow.modulos_activos as ModuloPOS[] | null) || [];
+            if (modulosFrescos.length === 0) return;
+            guardarModulosGlobales({
+              modulosActivos: modulosFrescos,
+              forceGlobalModules: obtenerModulosGlobales().forceGlobalModules,
+              ultimaActualizacion: new Date().toISOString(),
+            });
+            await guardarPermisosUsuarioPersistente({ userId: usuario.id, modulosHabilitados: modulosFrescos });
+          } catch { /* offline o error de red — se sigue usando la caché local */ }
+        })();
+      }
+
       return true;
     }
 
@@ -792,6 +828,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const modulosReales = (clienteRow.modulos_activos as ModuloPOS[] | null)?.length
                 ? (clienteRow.modulos_activos as ModuloPOS[])
                 : obtenerModulosCliente(clienteId, clienteRow.plan as 'BASICO' | 'PREMIUM').modulosActivos;
+
+              // 🛡️ FIX: `modulosReales` (lo que el dueño realmente compró, según
+              // Panel Desarrollador) solo se guardaba en `usuarioDesdeLicencia`,
+              // que el gate de admin/super_usuario en POSLayoutSidebar bypasea
+              // por completo. La visibilidad real terminaba dependiendo de
+              // `codec_pos_modulos_globales` (config local con sus propios
+              // valores por defecto, sin relación con lo que el dueño compró) —
+              // así que activar/desactivar módulos desde Panel Desarrollador no
+              // tenía ningún efecto visible para el dueño en su propia pantalla.
+              // Ahora se sincroniza la config local con la real de la nube.
+              guardarModulosGlobales({
+                modulosActivos: modulosReales as ModuloPOS[],
+                forceGlobalModules: false,
+                ultimaActualizacion: new Date().toISOString(),
+              });
 
               const usuarioDesdeLicencia: Usuario = {
                 id: 'lic_' + clienteId,

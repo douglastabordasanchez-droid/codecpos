@@ -5,6 +5,14 @@
  * clientesAdminService.ts). Mientras carga o si Supabase no responde,
  * `tieneModulo` devuelve true para no bloquear al empleado con una pantalla
  * vacía — se corrige solo en el siguiente refresco.
+ *
+ * Además de lo que el NEGOCIO tiene activo, cada empleado puede tener sus
+ * propios permisos (empleados.permisos.modulosHabilitados, editable desde
+ * Perfil > Equipo) — un subconjunto de lo que el negocio ya tiene. Si el
+ * empleado no tiene permisos explícitos configurados (array vacío o
+ * ausente), ve todo lo que el negocio tiene activo — mismo criterio que ya
+ * usa Electron en PermisosUsuarioModal/POSLayoutSidebar, para que ambas
+ * plataformas se comporten igual.
  */
 import { useEffect, useState } from 'react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
@@ -39,14 +47,22 @@ export function useModulosActivos() {
 
       const row = data as { plan: string | null; modulos_activos: string[] | null } | null;
 
+      let modulosNegocio: ModuloPOS[];
       if (row?.modulos_activos) {
-        setModulos(new Set(row.modulos_activos as ModuloPOS[]));
+        modulosNegocio = row.modulos_activos as ModuloPOS[];
       } else {
         const esPremium = row?.plan === 'PREMIUM';
-        const porDefecto = MODULOS_CATALOGO.filter((m) =>
+        modulosNegocio = MODULOS_CATALOGO.filter((m) =>
           esPremium ? m.habilitadoPorDefecto : m.planRequerido === 'basico' && m.habilitadoPorDefecto
         ).map((m) => m.id);
-        setModulos(new Set(porDefecto));
+      }
+
+      const modulosEmpleado = empleado.permisos?.modulosHabilitados;
+      if (modulosEmpleado && modulosEmpleado.length > 0) {
+        const permitidos = new Set(modulosEmpleado);
+        setModulos(new Set(modulosNegocio.filter((m) => permitidos.has(m))));
+      } else {
+        setModulos(new Set(modulosNegocio));
       }
       setCargando(false);
     };

@@ -13,7 +13,6 @@ import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   MODULOS_CATALOGO,
-  MODULOS_CLIENTE_OFICIALES,
   ModuloInfo,
   ModuloPOS,
   obtenerPermisosUsuario,
@@ -21,6 +20,7 @@ import {
   guardarPermisosUsuarioPersistente,
   togglePermisoUsuario,
   esModuloActivoGlobal,
+  obtenerModulosGlobales,
   asignarPermisosCompletos,
 } from '../../lib/permissions';
 
@@ -39,7 +39,13 @@ export default function PermisosUsuarioModal({ userId, userName, userRole, onClo
   const esAdmin = ['admin', 'administrador', 'super_usuario', 'super usuario']
     .includes((usuarioActual?.rol || '').toLowerCase().trim());
 
-  const modulosCliente = MODULOS_CATALOGO.filter(m => MODULOS_CLIENTE_OFICIALES.includes(m.id));
+  // 🛡️ FIX: antes mostraba el catálogo COMPLETO (menos los de desarrollador),
+  // sin importar qué compró realmente el negocio — el dueño podía "otorgar"
+  // a un empleado un módulo que ni él mismo tiene activo. Ahora se limita a
+  // los módulos que el negocio realmente tiene activos (codec_pos_modulos_globales,
+  // sincronizado con lo que Panel Desarrollador activó vía clientes_pos).
+  const modulosActivosNegocio = obtenerModulosGlobales().modulosActivos;
+  const modulosCliente = MODULOS_CATALOGO.filter(m => m.categoria !== 'desarrollador' && modulosActivosNegocio.includes(m.id));
   const modulosFiltrados = modulosCliente.filter(m =>
     m.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
@@ -235,14 +241,11 @@ export default function PermisosUsuarioModal({ userId, userName, userRole, onClo
                     <div className="p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {modulos.map(modulo => {
                         const activo = permisos.modulosHabilitados.includes(modulo.id);
-                        const globalOff = !esModuloActivoGlobal(modulo.id) && !esAdmin;
                         return (
                           <div
                             key={modulo.id}
-                            onClick={() => !globalOff && handleToggle(modulo.id)}
+                            onClick={() => handleToggle(modulo.id)}
                             className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition-all cursor-pointer select-none ${
-                              globalOff ? 'opacity-40 cursor-not-allowed' : ''
-                            } ${
                               activo
                                 ? dm ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'
                                 : dm ? 'bg-slate-700/30 border-slate-700 hover:bg-slate-700/60' : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'

@@ -169,8 +169,10 @@ export default function InicioPage() {
               <button
                 key={op.id}
                 onClick={() => setRango(op.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
-                  rango === op.id ? 'bg-amber-500 text-slate-950' : 'bg-slate-800/70 text-slate-400'
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  rango === op.id
+                    ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30'
+                    : 'bg-slate-800/80 text-slate-400 border border-slate-700 hover:bg-slate-900'
                 }`}
               >
                 {op.label}
@@ -187,7 +189,7 @@ export default function InicioPage() {
                   value={customDesde}
                   max={customHasta}
                   onChange={(e) => setCustomDesde(e.target.value)}
-                  className="bg-transparent text-white text-xs w-full outline-none [color-scheme:dark]"
+                  className="bg-transparent text-white text-xs w-full outline-none"
                 />
               </div>
               <span className="text-slate-600 text-xs">a</span>
@@ -199,7 +201,7 @@ export default function InicioPage() {
                   min={customDesde}
                   max={formatoFechaInput(inicioDeHoy())}
                   onChange={(e) => setCustomHasta(e.target.value)}
-                  className="bg-transparent text-white text-xs w-full outline-none [color-scheme:dark]"
+                  className="bg-transparent text-white text-xs w-full outline-none"
                 />
               </div>
             </div>
