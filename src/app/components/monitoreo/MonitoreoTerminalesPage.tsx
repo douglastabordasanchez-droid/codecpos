@@ -9,7 +9,7 @@ import {
   AlertCircle, Signal, Network, TrendingUp, DollarSign,
   Users, Clock, ShoppingCart, Zap, Radio, Globe,
   CheckCircle2, Settings, Send, Database, ArrowRightLeft,
-  Wrench, Shield, Package,
+  Wrench, Shield, Package, Cloud, CloudOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePOS } from '../../contexts/POSContext';
@@ -130,7 +130,15 @@ function PulsingLed({ connected }: { connected: boolean }) {
 
 // ── Badge tipo conexión ───────────────────────────────────────────────────────
 
-function ConnectionTypeBadge({ wifiSsid, dark }: { wifiSsid?: string | null; dark: boolean }) {
+function ConnectionTypeBadge({ wifiSsid, dark, transport }: { wifiSsid?: string | null; dark: boolean; transport?: 'lan' | 'cloud' }) {
+  // Tercera vía: la terminal no está en esta red — llega por el relay de
+  // Supabase (otra sede, datos móviles, otro Wi-Fi). Ver cloudRelayService.ts.
+  if (transport === 'cloud') return (
+    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${dark ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-50 text-violet-700'}`} title="Conectada por internet (Supabase), fuera de esta red local">
+      <Cloud className="w-2.5 h-2.5" />
+      Nube
+    </span>
+  );
   if (wifiSsid === undefined || wifiSsid === null) return (
     <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${dark ? 'bg-slate-700 text-slate-400' : 'bg-gray-100 text-gray-500'}`}>
       <Network className="w-2.5 h-2.5" />
@@ -669,7 +677,7 @@ function TerminalStation({
           </div>
 
           {/* Connection type */}
-          <ConnectionTypeBadge wifiSsid={terminal.wifiSsid} dark={dark} />
+          <ConnectionTypeBadge wifiSsid={terminal.wifiSsid} dark={dark} transport={terminal.transport} />
         </div>
 
         {/* Stats row */}
@@ -910,6 +918,116 @@ function EventLog({ events, dark }: { events: Array<{ raw: any; label: string }>
   );
 }
 
+// ── Tarjeta de la tercera vía: relay por la nube (Supabase Realtime) ─────────
+//
+// Las dos vías existentes (Wi-Fi y LAN cableada) solo alcanzan terminales de la
+// MISMA red. Esta tercera vía conecta terminales de redes distintas —otra sede,
+// la cocina con su propio router, el técnico de taller desde su casa, el dueño
+// en datos móviles— transportando exactamente los mismos eventos.
+
+function CloudRelayCard({
+  dark, available, enabled, state, detail, onlineCount, onToggle,
+}: {
+  dark: boolean;
+  available: boolean;
+  enabled: boolean;
+  state: 'disabled' | 'unavailable' | 'connecting' | 'connected' | 'error';
+  detail: string;
+  onlineCount: number;
+  onToggle: (valor: boolean) => void;
+}) {
+  const text = dark ? 'text-white' : 'text-slate-900';
+  const muted = dark ? 'text-slate-400' : 'text-slate-500';
+
+  const conectado = state === 'connected';
+  const conectando = state === 'connecting';
+  const fallo = state === 'error' || state === 'unavailable';
+
+  const estadoLabel = !enabled
+    ? 'Desactivada'
+    : conectado ? 'Conectada'
+    : conectando ? 'Conectando…'
+    : state === 'unavailable' ? 'Sin vincular'
+    : state === 'error' ? 'Error de conexión'
+    : 'Inactiva';
+
+  return (
+    <div className={`rounded-2xl border p-4 ${
+      conectado
+        ? dark ? 'bg-violet-900/20 border-violet-700/40' : 'bg-violet-50 border-violet-200'
+        : fallo && enabled
+        ? dark ? 'bg-amber-900/15 border-amber-700/40' : 'bg-amber-50 border-amber-200'
+        : dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+    }`}>
+      <div className="flex items-start gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <PulsingLed connected={conectado} />
+          {conectado
+            ? <Cloud className="w-4 h-4 text-violet-400" />
+            : <CloudOff className={`w-4 h-4 ${dark ? 'text-slate-400' : 'text-slate-400'}`} />
+          }
+          <span className={`text-sm font-bold ${text}`}>Conexión por la Nube</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${
+            conectado
+              ? dark ? 'bg-violet-900/60 text-violet-300' : 'bg-violet-100 text-violet-700'
+              : dark ? 'bg-slate-700 text-slate-400' : 'bg-gray-100 text-gray-500'
+          }`}>
+            3.ª vía
+          </span>
+        </div>
+
+        <span className={`text-xs ${muted}`}>|</span>
+        <span className={`text-sm font-semibold ${
+          conectado ? (dark ? 'text-violet-300' : 'text-violet-700') : muted
+        }`}>
+          {estadoLabel}
+        </span>
+
+        {conectado && (
+          <>
+            <span className={`text-xs ${muted}`}>|</span>
+            <span className={`text-sm font-bold ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>
+              {onlineCount} terminal{onlineCount === 1 ? '' : 'es'} remota{onlineCount === 1 ? '' : 's'} en línea
+            </span>
+          </>
+        )}
+
+        {/* Interruptor */}
+        <button
+          onClick={() => onToggle(!enabled)}
+          disabled={!available && !enabled}
+          title={available ? 'Activar / desactivar el relay por internet' : 'Vincula el negocio a la nube para poder activarlo'}
+          className={`ml-auto relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+            !available && !enabled
+              ? dark ? 'bg-slate-700 opacity-50 cursor-not-allowed' : 'bg-gray-200 opacity-50 cursor-not-allowed'
+              : enabled ? 'bg-violet-600' : dark ? 'bg-slate-600' : 'bg-gray-300'
+          }`}
+        >
+          <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${
+            enabled ? 'left-[22px]' : 'left-0.5'
+          }`} />
+        </button>
+      </div>
+
+      <p className={`text-xs mt-2 ${muted}`}>
+        {!available
+          ? 'Vincula esta instalación a un negocio (Configuración → Vinculación con la Nube) para conectar terminales que NO están en esta red: otra sede, la cocina, el taller o el celular del dueño.'
+          : !enabled
+          ? 'Apagada: esta terminal solo se comunica con las que estén en su misma red Wi-Fi o cableada.'
+          : conectado
+          ? 'Las terminales de otras redes reciben ventas, órdenes de taller, comandas y cierres de caja igual que si estuvieran en la red local. La LAN sigue siendo la vía principal cuando ambas están disponibles.'
+          : detail || 'Estableciendo el canal seguro con la nube…'}
+      </p>
+
+      {fallo && enabled && detail && state === 'error' && (
+        <p className={`text-xs mt-1 font-semibold ${dark ? 'text-amber-300' : 'text-amber-700'}`}>
+          {detail}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function MonitoreoTerminalesPage() {
@@ -921,6 +1039,7 @@ export default function MonitoreoTerminalesPage() {
     mode, connectionState, localIp, serverIp,
     terminals, allEvents, isAvailable,
     emitLanEvent, requestAudit, setServerIp, clearAudit,
+    cloudAvailable, cloudEnabled, cloudState, cloudDetail, cloudOnlineCount, setCloudEnabled,
   } = useLanContext();
 
   const isAdmin = usuarioActual?.rol === 'super_usuario';
@@ -1107,8 +1226,10 @@ export default function MonitoreoTerminalesPage() {
   );
   const connectedCount = terminals.filter(t => t.connected).length;
   const offlineCount = terminals.filter(t => !t.connected).length;
-  const wifiTerminals = terminals.filter(t => t.wifiSsid && t.wifiSsid !== '').length;
-  const lanTerminals = terminals.filter(t => t.wifiSsid === '').length;
+  // Las terminales de la nube no cuentan como Wi-Fi/LAN: están en OTRA red.
+  const cloudTerminalsCount = terminals.filter(t => t.transport === 'cloud').length;
+  const wifiTerminals = terminals.filter(t => t.transport !== 'cloud' && t.wifiSsid && t.wifiSsid !== '').length;
+  const lanTerminals = terminals.filter(t => t.transport !== 'cloud' && t.wifiSsid === '').length;
   const totalSalesToday = allEvents
     .filter(e => e.raw.type === 'VENTA_NUEVA')
     .reduce((sum, e) => sum + Number(e.raw.payload?.total ?? 0), 0);
@@ -1124,7 +1245,11 @@ export default function MonitoreoTerminalesPage() {
     ? terminals.find(t => t.terminalId === auditTarget.terminalId) ?? auditTarget
     : null;
 
-  if (!isAvailable) {
+  // 🛡️ Antes esto cortaba la pantalla entera sin Electron. Ahora solo corta
+  // cuando NINGUNA de las tres vías es utilizable: sin bridge LAN pero con
+  // negocio vinculado a la nube, el monitoreo sigue siendo útil (terminales
+  // remotas vía relay de Supabase).
+  if (!isAvailable && !cloudAvailable) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${bg}`}>
         <div className="text-center max-w-sm">
@@ -1133,7 +1258,8 @@ export default function MonitoreoTerminalesPage() {
           </div>
           <h2 className={`text-xl font-bold mb-2 ${text}`}>Red LAN no disponible</h2>
           <p className={`text-sm ${muted}`}>
-            Esta función requiere que CODEC POS esté ejecutándose como aplicación de escritorio (Electron).
+            Esta función requiere que CODEC POS esté ejecutándose como aplicación de escritorio (Electron),
+            o que esta instalación esté vinculada a un negocio en la nube para usar la conexión por internet.
           </p>
         </div>
       </div>
@@ -1262,8 +1388,8 @@ export default function MonitoreoTerminalesPage() {
               },
               {
                 icon: Wifi,
-                label: 'WiFi / LAN',
-                value: `${wifiTerminals} / ${lanTerminals}`,
+                label: 'WiFi / LAN / Nube',
+                value: `${wifiTerminals} / ${lanTerminals} / ${cloudTerminalsCount}`,
                 color: 'cyan',
                 bg: dark ? 'bg-cyan-900/20 border-cyan-700/40' : 'bg-cyan-50 border-cyan-200',
               },
@@ -1336,8 +1462,29 @@ export default function MonitoreoTerminalesPage() {
           </div>
         )}
 
+        {/* ── TERCERA VÍA: CONEXIÓN POR LA NUBE ───────────────── */}
+        <CloudRelayCard
+          dark={dark}
+          available={cloudAvailable}
+          enabled={cloudEnabled}
+          state={cloudState}
+          detail={cloudDetail}
+          onlineCount={cloudOnlineCount}
+          onToggle={(valor) => {
+            setCloudEnabled(valor);
+            toast[valor ? 'success' : 'info'](
+              valor ? 'Conexión por la nube activada' : 'Conexión por la nube desactivada',
+              {
+                description: valor
+                  ? 'Esta terminal ahora también se comunica con las que están fuera de esta red.'
+                  : 'Solo se comunicará con terminales de su misma red Wi-Fi o cableada.',
+              }
+            );
+          }}
+        />
+
         {/* ── PANEL CAJERO ────────────────────────────────────── */}
-        {!isAdmin && (
+        {!isAdmin && isAvailable && (
           <ClientConfigPanel
             connectionState={connectionState}
             serverIp={serverIp}
@@ -1440,7 +1587,8 @@ export default function MonitoreoTerminalesPage() {
                 </div>
                 <h3 className={`text-lg font-bold mb-2 ${text}`}>Sin terminales en la red</h3>
                 <p className={`text-sm ${muted} max-w-sm mx-auto mb-4`}>
-                  Cuando un cajero inicie sesión en la misma red, su terminal POS aparecerá aquí automáticamente.
+                  Cuando un cajero inicie sesión en la misma red —o en otra red, si la conexión por la nube
+                  está activa— su terminal POS aparecerá aquí automáticamente.
                 </p>
                 <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-mono font-semibold ${dark ? 'bg-slate-800 text-emerald-400 border border-slate-700' : 'bg-slate-100 text-emerald-700 border border-slate-200'}`}>
                   Servidor: {localIp}:4000
@@ -1465,7 +1613,7 @@ export default function MonitoreoTerminalesPage() {
         )}
 
         {/* ── ESTADO CAJERO CONECTADO/DESCONECTADO ───────────── */}
-        {!isAdmin && (
+        {!isAdmin && isAvailable && (
           <div className={`rounded-3xl border-2 p-10 text-center ${dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
             {connectionState === 'connected' ? (
               <>

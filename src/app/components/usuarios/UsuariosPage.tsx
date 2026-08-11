@@ -119,6 +119,7 @@ const PERMISOS_CAJERO_DEFAULT: PermisosUsuario = {
   usuarios: false,
   cierreCaja: true,
   reportes: false,
+  contabilidad: false,
   gastos: true,
   codecVerify: false,
   devoluciones: false,

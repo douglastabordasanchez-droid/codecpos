@@ -39,6 +39,7 @@ export interface PermisosUsuario {
   usuarios: boolean;
   cierreCaja?: boolean;
   reportes?: boolean;
+  contabilidad?: boolean;
   gastos?: boolean;
   codecVerify?: boolean;
   devoluciones?: boolean;
@@ -198,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       usuarios: mods.has(ModuloPOS.USUARIOS),
       cierreCaja: mods.has(ModuloPOS.CIERRE_CAJA),
       reportes: mods.has(ModuloPOS.REPORTES),
+      contabilidad: mods.has(ModuloPOS.CONTABILIDAD),
       gastos: mods.has(ModuloPOS.GASTOS),
       codecVerify: mods.has(ModuloPOS.CODEC_VERIFY),
       devoluciones: mods.has(ModuloPOS.DEVOLUCIONES),
@@ -319,6 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             usuarios: true,
             cierreCaja: true,
             reportes: true,
+            contabilidad: true,
             gastos: true,
             codecVerify: true,
             devoluciones: true,
@@ -481,6 +484,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       usuarios: true,
       cierreCaja: true,
       reportes: true,
+      contabilidad: true,
       gastos: true,
       codecVerify: true,
       devoluciones: true,
@@ -746,6 +750,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             usuarios: true,
             cierreCaja: true,
             reportes: esPremiumLegacy,
+            contabilidad: true,
             gastos: esPremiumLegacy,
             codecVerify: esPremiumLegacy,
             devoluciones: esPremiumLegacy,

@@ -15,9 +15,19 @@ export interface Venta {
   fechaOperativa?: string;
   sesionCajaId?: string;
   items: VentaItem[];
+  /** Base gravable (total SIN IVA). Cuando el IVA está apagado coincide con `total`. */
   subtotal: number;
   descuento: number;
   total: number;
+  /**
+   * IVA cobrado en esta venta. Se persiste para que la REIMPRESIÓN (Ventas,
+   * Reportes, PDF, Excel) muestre el mismo desglose que la tirilla original —
+   * antes solo existía en memoria durante la venta y se perdía al guardar.
+   */
+  iva?: number;
+  porcentajeIVA?: number;
+  /** Número de factura con prefijo (FAC000123). Espejo de `id`, explícito para exportes. */
+  numeroFactura?: string;
   metodoPago: MetodoPago;
   pagoMixto?: PagoMixtoDetalle; // Para pagos distribuidos
   cajero: string;

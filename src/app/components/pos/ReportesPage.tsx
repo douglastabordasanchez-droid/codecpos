@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, TrendingUp, Package, DollarSign, BarChart3, Trash2,
@@ -84,23 +84,35 @@ type TipoId = typeof TIPOS_REPORTES[number]['id'];
 
 // ── Métricas en vivo ──────────────────────────────────────────────────────────
 
-function calcMetricasLive() {
-  const hoy = new Date().toISOString().split('T')[0];
-  const mesInicio = new Date(); mesInicio.setDate(1);
-  const mesStr = mesInicio.toISOString().split('T')[0];
+/**
+ * Fecha local en formato YYYY-MM-DD.
+ *
+ * 🛡️ FIX: antes se usaba `new Date().toISOString().split('T')[0]`, que da la
+ * fecha en **UTC**. En Colombia (UTC-5) el día UTC cambia a las 19:00 hora
+ * local: de 7 p.m. en adelante, "Gastos del Mes" y los cierres del mes
+ * empezaban a compararse contra el mes equivocado el día 1, y cualquier
+ * comparación de "hoy" se corría un día completo. Mismo criterio que
+ * `electronStore.getFechaLocalISO()`, para que Reportes y Cierre de Caja
+ * cuenten exactamente el mismo día.
+ */
+function fechaLocalISO(date: Date = new Date()): string {
+  const tzOffsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - tzOffsetMs).toISOString().split('T')[0];
+}
 
+function calcMetricasLive() {
+  const mesInicio = new Date(); mesInicio.setDate(1);
+  const mesStr = fechaLocalISO(mesInicio);
+
+  // ventasHoy NO se calcula aquí: la fuente real de las ventas es IndexedDB
+  // (electronStore/dbManager), no localStorage. La clave 'pos-ventas' que se
+  // leía antes NO la escribe nadie en todo el proyecto, así que este contador
+  // devolvía $0 siempre. Lo llena `refrescarMetricas()` de forma asíncrona.
   let ventasHoy = 0;
   let gastosMes = 0;
   let alertasStock = 0;
   let ultimoCierre: string | null = null;
   let totalCierresMes = 0;
-
-  try {
-    const ventas = JSON.parse(localStorage.getItem('pos-ventas') || '[]');
-    ventasHoy = ventas
-      .filter((v: any) => String(v.fecha || '').startsWith(hoy))
-      .reduce((s: number, v: any) => s + (Number(v.total) || 0), 0);
-  } catch { /* no-op */ }
 
   try {
     const gastos = JSON.parse(localStorage.getItem('pos-gastos') || '[]');
@@ -159,20 +171,42 @@ export default function ReportesPage() {
   const [filtroTipo, setFiltroTipo] = useState<TipoId | ''>('');
   const [loading, setLoading] = useState(false);
 
+  /**
+   * 🛡️ FIX: "Ventas Hoy" volvía a $0 cada vez que se pulsaba «Actualizar
+   * datos» o se generaba un reporte, porque esos dos caminos llamaban
+   * `setMetricas(calcMetricasLive())` a secas — que lee localStorage y NO la
+   * fuente real (IndexedDB). El valor correcto solo se cargaba una vez, al
+   * montar la página. Ahora los tres caminos usan esta misma función, que
+   * combina la parte síncrona con el total real de ventas del día.
+   */
+  const refrescarMetricas = useCallback(async () => {
+    setMetricas(calcMetricasLive());
+    try {
+      const ventas = await electronStore.obtenerVentas();
+      // Comparación por timestamp contra el inicio del día LOCAL: `venta.fecha`
+      // se guarda en UTC (new Date().toISOString()), así que un `startsWith`
+      // sobre la fecha dejaba fuera las ventas hechas después de las 7 p.m.
+      const inicioDia = new Date(); inicioDia.setHours(0, 0, 0, 0);
+      const inicioTs = inicioDia.getTime();
+      const ventasHoy = ventas
+        .filter(v => {
+          const ts = new Date(v.fecha).getTime();
+          return Number.isFinite(ts) && ts >= inicioTs;
+        })
+        // Las ventas devueltas/anuladas no suman al total del día.
+        .filter(v => !['devuelto', 'anulado'].includes(String((v as any).estado || '').toLowerCase()))
+        .reduce((s, v) => s + (Number(v.total) || 0), 0);
+      setMetricas(prev => ({ ...prev, ventasHoy }));
+    } catch {
+      /* IndexedDB no disponible — se mantienen las métricas síncronas */
+    }
+  }, []);
+
   useEffect(() => {
     cargarReportesGuardados();
     limpiarExpirados();
-    const base = calcMetricasLive();
-    setMetricas(base);
-    // Cargar ventas de hoy desde IndexedDB (fuente real de datos)
-    electronStore.obtenerVentas().then(ventas => {
-      const hoy = new Date().toISOString().split('T')[0];
-      const ventasHoy = ventas
-        .filter(v => String(v.fecha || '').startsWith(hoy))
-        .reduce((s, v) => s + (Number(v.total) || 0), 0);
-      setMetricas(prev => ({ ...prev, ventasHoy }));
-    }).catch(() => {});
-  }, []);
+    refrescarMetricas();
+  }, [refrescarMetricas]);
 
   const cargarReportesGuardados = () => {
     setReportesGuardados(reportesService.obtenerReportes());
@@ -203,7 +237,7 @@ export default function ReportesPage() {
       }
       reportesService.guardarReporte(r);
       cargarReportesGuardados();
-      setMetricas(calcMetricasLive());
+      refrescarMetricas();
       toast.success('Reporte generado', { description: `${r.nombre} · ${r.metadata.totalRegistros} registros` });
       return r;
     } catch (e) {
@@ -260,7 +294,7 @@ export default function ReportesPage() {
           </div>
         </div>
         <button
-          onClick={() => { cargarReportesGuardados(); setMetricas(calcMetricasLive()); toast.success('Datos actualizados'); }}
+          onClick={() => { cargarReportesGuardados(); refrescarMetricas(); toast.success('Datos actualizados'); }}
           className={`p-2.5 rounded-xl border transition-colors ${darkMode ? 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-500' : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'}`}
           title="Actualizar datos"
         >

@@ -18,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLicense } from '../../contexts/LicenseContext';
 import { SyncStatusCard } from '../electron/SyncStatusCard';
 import { VinculacionNubeCard } from '../electron/VinculacionNubeCard';
+import { ModulosAppWebCard } from '../electron/ModulosAppWebCard';
 import { CodecLogoHorizontal, CodecFavicon } from '../shared/CodecLogos';
 import { PlanSummaryCard } from './PlanSummaryCard';
 import { ConfiguracionTipoNegocio } from '../settings/ConfiguracionTipoNegocio';
@@ -94,6 +95,7 @@ const WORKSPACE_MODULE_OPTIONS: Array<{ id: ModuloPOS; nombre: string; descripci
   { id: ModuloPOS.CIERRE_CAJA, nombre: 'Cierre de Caja', descripcion: 'Apertura, arqueo y cierre diario.' },
   { id: ModuloPOS.REPORTES, nombre: 'Reportes', descripcion: 'Exportes y análisis operativos.' },
   { id: ModuloPOS.GASTOS, nombre: 'Gastos', descripcion: 'Registro de egresos y conceptos.' },
+  { id: ModuloPOS.CONTABILIDAD, nombre: 'Contabilidad', descripcion: 'Ingresos, gastos, balance y flujo de caja editable.' },
   { id: ModuloPOS.DISPOSITIVOS, nombre: 'Dispositivos', descripcion: 'Gestión de hardware conectado.' },
   { id: ModuloPOS.USUARIOS, nombre: 'Personal', descripcion: 'Gestión de usuarios y equipo.' },
   { id: ModuloPOS.ALERTAS_STOCK, nombre: 'Alertas', descripcion: 'Notificaciones por stock crítico.' },
@@ -2042,6 +2044,11 @@ export default function ConfiguracionPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <VinculacionNubeCard />
             <SyncStatusCard />
+            {/* Panel de control de la app móvil: qué módulos ve el equipo en
+                el celular. Vive junto a la vinculación porque depende de ella. */}
+            <div className="md:col-span-2">
+              <ModulosAppWebCard />
+            </div>
           </div>
         </AccordionSection>
 

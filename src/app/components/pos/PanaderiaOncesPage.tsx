@@ -282,7 +282,16 @@ export default function PanaderiaOncesPage() {
   }, []);
 
   useEffect(() => {
-    try { const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS); const parsed = raw ? JSON.parse(raw) : {}; setCuentasMesas(parsed && typeof parsed === 'object' ? parsed : {}); } catch { setCuentasMesas({}); }
+    const leerCuentas = () => {
+      try { const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS); const parsed = raw ? JSON.parse(raw) : {}; setCuentasMesas(parsed && typeof parsed === 'object' ? parsed : {}); } catch { setCuentasMesas({}); }
+    };
+    leerCuentas();
+
+    // ☁️ Comanda enviada desde el celular de un mesero: useSyncModulosNube ya
+    // la guardó en localStorage y dispara este evento para que el salón se
+    // repinte sin recargar la pantalla.
+    window.addEventListener('codecpos:panaderia-cuentas-sincronizadas', leerCuentas);
+    return () => window.removeEventListener('codecpos:panaderia-cuentas-sincronizadas', leerCuentas);
   }, []);
 
   useEffect(() => { try { if (!localStorage.getItem(GLOBAL_CATS_KEY)) { localStorage.setItem(GLOBAL_CATS_KEY, JSON.stringify(categoriasPos.map(c => ({ id: c.id, nombre: c.nombre, color: c.color })))); } } catch {} }, []);
@@ -331,7 +340,43 @@ export default function PanaderiaOncesPage() {
   const abrirModalMesa = (mesa: MesaConfig) => { setMesaSeleccionada(mesa); setProductoMesaId(''); setCantidadMesa('1'); };
   const cerrarModalMesa = () => { setMesaSeleccionada(null); setProductoMesaId(''); setCantidadMesa('1'); };
 
-  const persistirCuentas = (map: Record<string, ItemMesa[]>) => { setCuentasMesas(map); localStorage.setItem(STORAGE_CUENTAS_MESAS, JSON.stringify(map)); };
+  const persistirCuentas = (map: Record<string, ItemMesa[]>, mesaTocada?: string) => {
+    setCuentasMesas(map);
+    localStorage.setItem(STORAGE_CUENTAS_MESAS, JSON.stringify(map));
+
+    // ☁️ Espeja la cuenta en la nube para que el celular del mesero vea la
+    // mesa como la dejó la caja (típicamente: liberada tras cobrarla).
+    // Best-effort — si no hay internet o el negocio no está vinculado, no
+    // pasa nada: la cuenta ya quedó guardada localmente, como siempre.
+    const mesasAEnviar = mesaTocada ? [mesaTocada] : Object.keys(map);
+    Promise.all([
+      import('../../lib/supabase/tenantLink'),
+      import('../../lib/supabase/panaderiaSyncService'),
+    ])
+      .then(([{ getLinkedClienteId }, { guardarCuentaMesa }]) => {
+        const clienteId = getLinkedClienteId();
+        if (!clienteId) return;
+        return Promise.all(
+          mesasAEnviar.map((mesaId) =>
+            guardarCuentaMesa(
+              clienteId,
+              mesaId,
+              (map[mesaId] || []).map((it) => ({
+                producto: {
+                  id: it.producto.id,
+                  nombre: it.producto.nombre,
+                  precio: Number(it.producto.precio) || 0,
+                  codigo: it.producto.codigo,
+                },
+                cantidad: Number(it.cantidad) || 0,
+              })),
+              'electron'
+            ).catch(() => {})
+          )
+        );
+      })
+      .catch(() => { /* sin nube */ });
+  };
   const persistirCuentaLibre = (items: ItemMesa[]) => { setCuentaLibre(items); try { localStorage.setItem(STORAGE_CUENTA_LIBRE, JSON.stringify(items)); } catch {} };
 
   const agregarItemMesa = () => {

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Info, User, Clock, Banknote, TrendingUp, TrendingDown, Minus, Equal, Plus, PackageX } from 'lucide-react';
+import { X, Info, User, Clock, Banknote, TrendingUp, TrendingDown, Minus, Equal, Plus, PackageX, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { electronStore } from '../../lib/electronStore';
+import { electronStore, type Venta } from '../../lib/electronStore';
+import ModalImprimirFactura from './ModalImprimirFactura';
 
 export type TipoModalKPI =
   | 'ventas'
@@ -89,6 +90,13 @@ export default function ModalDetalleKPI({ open, onClose, darkMode, tipo, titulo,
   const [devoluciones, setDevoluciones] = useState<any[]>([]);
   const [productosStock, setProductosStock] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
+  // 🖨️ Reimpresión desde Reportes: hasta ahora la única forma de reimprimir
+  // una factura era ir a Ventas y buscarla a mano. El detalle de KPI ya tiene
+  // la lista exacta de ventas del período, así que se reutiliza el MISMO modal
+  // que usa Ventas (ModalImprimirFactura) — misma vista previa, misma
+  // impresora configurada en Dispositivos y mismo PDF, sin una segunda
+  // plantilla que se pueda desalinear.
+  const [ventaParaImprimir, setVentaParaImprimir] = useState<Venta | null>(null);
 
   const necesitaLista = tipo === 'ventas' || tipo === 'ticket_promedio' || tipo === 'gastos' || tipo === 'devoluciones' || tipo === 'stock';
 
@@ -240,7 +248,20 @@ export default function ModalDetalleKPI({ open, onClose, darkMode, tipo, titulo,
                   </span>
                 </div>
               </div>
-              <span className={`text-sm font-bold shrink-0 ml-2 ${txt}`}>{fmt(v.total)}</span>
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                <span className={`text-sm font-bold ${txt}`}>{fmt(v.total)}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setVentaParaImprimir(v as Venta); }}
+                  title={`Ver e imprimir la factura ${(v as any).numeroFactura || v.id || ''}`}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    darkMode
+                      ? 'text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/15'
+                      : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
+                  }`}
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -430,6 +451,14 @@ export default function ModalDetalleKPI({ open, onClose, darkMode, tipo, titulo,
               )}
             </div>
           </motion.div>
+
+          {/* Vista previa + impresión de una factura del período (mismo modal que Ventas) */}
+          <ModalImprimirFactura
+            open={!!ventaParaImprimir}
+            venta={ventaParaImprimir}
+            onClose={() => setVentaParaImprimir(null)}
+            darkMode={darkMode}
+          />
         </motion.div>
       )}
     </AnimatePresence>

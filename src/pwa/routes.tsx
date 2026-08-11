@@ -19,6 +19,8 @@ import DevolucionesPage from './pages/DevolucionesPage';
 import CierreCajaPage from './pages/CierreCajaPage';
 import PanelDesarrolladorPage from './pages/PanelDesarrolladorPage';
 import FacturacionPage from './pages/FacturacionPage';
+import TallerPage from './pages/TallerPage';
+import PanaderiaPage from './pages/PanaderiaPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -38,6 +40,8 @@ export const router = createBrowserRouter([
       { path: 'gastos', element: <ModuloGate modulo={ModuloPOS.GASTOS}><GastosPage /></ModuloGate> },
       { path: 'devoluciones', element: <ModuloGate modulo={ModuloPOS.DEVOLUCIONES}><DevolucionesPage /></ModuloGate> },
       { path: 'caja', element: <ModuloGate modulo={ModuloPOS.CIERRE_CAJA}><CierreCajaPage /></ModuloGate> },
+      { path: 'taller', element: <ModuloGate modulo={ModuloPOS.TALLER_REPARACIONES}><TallerPage /></ModuloGate> },
+      { path: 'panaderia', element: <ModuloGate modulo={ModuloPOS.PANADERIA_ONCES}><PanaderiaPage /></ModuloGate> },
       { path: 'configuracion', element: <ConfiguracionPage /> },
       { path: 'facturacion', element: <FacturacionPage /> },
       { path: 'perfil', element: <PerfilPage /> },

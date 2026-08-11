@@ -37,7 +37,7 @@ type MenuItemType = {
   color: string;
   moduloId?: ModuloPOS;
   // CAPA 1: Permisos de ROL (qué puede VER según su rol de usuario)
-  requiredPermission?: 'ventas' | 'productos' | 'dashboard' | 'alertas' | 'configuracion' | 'usuarios' | 'cierreCaja' | 'reportes' | 'gastos' | 'codecVerify' | 'devoluciones' | 'monitoreo' | 'empleados' | 'panaderiaOnces';
+  requiredPermission?: 'ventas' | 'productos' | 'dashboard' | 'alertas' | 'configuracion' | 'usuarios' | 'cierreCaja' | 'reportes' | 'contabilidad' | 'gastos' | 'codecVerify' | 'devoluciones' | 'monitoreo' | 'empleados' | 'panaderiaOnces';
   adminOnly?: boolean; // Solo para super_usuario
   // CAPA 2: Restricciones de PLAN (qué puede USAR según su plan de licencia)
   requiresPremium?: boolean;
@@ -299,6 +299,7 @@ export default function POSLayoutSidebar() {
       label: 'Contabilidad',
       color: 'emerald',
       moduloId: ModuloPOS.CONTABILIDAD,
+      requiredPermission: 'contabilidad',
     },
     {
       path: '/configuracion',
@@ -513,9 +514,18 @@ export default function POSLayoutSidebar() {
     });
   }, [visibleMenuItems, menuOrder]);
 
+  // Configuración ya NO vive en la lista de navegación: se movió al panel
+  // inferior (junto a Modo Claro/Oscuro, Pantalla Completa y Cerrar Sesión),
+  // que es donde están el resto de acciones de "ajustes de esta terminal".
+  // Se sigue evaluando con la MISMA cascada de permisos que tenía como ítem
+  // del menú — solo cambia dónde se dibuja.
+  const configuracionItem = menuItems.find((item) => item.path === '/configuracion') || null;
+  const puedeVerConfiguracion = configuracionItem ? canAccessItem(configuracionItem).allowed : false;
+
   const finalVisibleMenuItems = useMemo(
     () => orderedVisibleMenuItems.filter(
-      (item) => item.path === '/configuracion' || item.path === '/developer' || !hiddenPaths.includes(item.path)
+      (item) => item.path !== '/configuracion'
+        && (item.path === '/developer' || !hiddenPaths.includes(item.path))
     ),
     [orderedVisibleMenuItems, hiddenPaths]
   );
@@ -1162,6 +1172,23 @@ export default function POSLayoutSidebar() {
             <Shield className={`w-5 h-5 ${collapsed ? 'mx-auto' : 'mr-2'}`} />
             {!collapsed && <span>{modoAdminTemporalActivo ? 'Salir modo Admin' : 'Acceso Admin Temporal'}</span>}
           </Button>
+
+          {/* Configuración — vive aquí, no en la lista de navegación */}
+          {puedeVerConfiguracion && configuracionItem && (
+            <Button
+              onClick={() => handleMenuClick(configuracionItem)}
+              variant="outline"
+              title="Configuración"
+              className={`w-full rounded-2xl ${
+                location.pathname === '/configuracion'
+                  ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 text-white border-transparent hover:from-cyan-600 hover:to-cyan-700 hover:text-white'
+                  : ''
+              } ${collapsed ? 'px-3' : ''}`}
+            >
+              {renderMenuIcon(configuracionItem, `w-5 h-5 ${collapsed ? 'mx-auto' : 'mr-2'}`)}
+              {!collapsed && <span>{getMenuLabel(configuracionItem)}</span>}
+            </Button>
+          )}
 
           {/* Dark Mode Toggle */}
           <Button

@@ -2,7 +2,7 @@
 // Inicializa automáticamente servidor (admin) o cliente (cajero) al login
 // Proporciona emitLanEvent() a todos los componentes via contexto
 
-import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Wrench, X } from 'lucide-react';
 import { useAuth } from './AuthContext';
@@ -21,6 +21,14 @@ import { playTallerAlertSound } from '../lib/tallerAlertSound';
 import { getRoleCapabilities } from '../lib/terminalRoles';
 import { tallerService } from '../services/tallerService';
 import { guardarPermisosUsuario, ModuloPOS } from '../lib/permissions';
+import {
+  cloudRelay,
+  isCloudRelayAvailable,
+  isCloudRelayEnabled,
+  setCloudRelayEnabled as persistCloudRelayEnabled,
+  CloudRelayState,
+  CloudTerminalPresence,
+} from '../lib/supabase/cloudRelayService';
 
 // ── Tipos de contexto ─────────────────────────────────────────────────────────
 
@@ -38,6 +46,12 @@ export interface TerminalCard {
   auditData?: Record<string, unknown> | null;
   /** SSID de la red WiFi del terminal remoto. '' = LAN cable. null = desconocido. */
   wifiSsid?: string | null;
+  /**
+   * Por dónde llega esta terminal: 'lan' = misma red física (TCP:4000),
+   * 'cloud' = otra red, vía relay de Supabase. Ver cloudRelayService.ts.
+   * Ausente = 'lan' (terminales creadas antes de existir el relay).
+   */
+  transport?: 'lan' | 'cloud';
 }
 
 interface LanContextValue {
@@ -45,6 +59,7 @@ interface LanContextValue {
   connectionState: LanConnectionState;
   localIp: string;
   serverIp: string;
+  /** Terminales conocidas por CUALQUIER vía (LAN + nube), sin duplicados. */
   terminals: TerminalCard[];
   allEvents: Array<{ raw: LanEvent; label: string }>;
   isAvailable: boolean;
@@ -56,6 +71,17 @@ interface LanContextValue {
   setServerIp: (ip: string) => void;
   /** Limpia audit data de una terminal */
   clearAudit: (terminalId: string) => void;
+  // ── Tercera vía: relay por la nube (Supabase Realtime) ──────────────────────
+  /** Hay nube utilizable (Supabase configurado + negocio vinculado). */
+  cloudAvailable: boolean;
+  /** El usuario tiene activado el relay en ESTA terminal. */
+  cloudEnabled: boolean;
+  cloudState: CloudRelayState;
+  /** Mensaje legible cuando cloudState es 'error' o 'unavailable'. */
+  cloudDetail: string;
+  /** Cuántas terminales remotas están en línea vía nube ahora mismo. */
+  cloudOnlineCount: number;
+  setCloudEnabled: (valor: boolean) => void;
 }
 
 const LanContext = createContext<LanContextValue>({
@@ -70,6 +96,12 @@ const LanContext = createContext<LanContextValue>({
   requestAudit: () => {},
   setServerIp: () => {},
   clearAudit: () => {},
+  cloudAvailable: false,
+  cloudEnabled: false,
+  cloudState: 'disabled',
+  cloudDetail: '',
+  cloudOnlineCount: 0,
+  setCloudEnabled: () => {},
 });
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -86,9 +118,42 @@ export function LanProvider({ children }: { children: ReactNode }) {
   const [terminals, setTerminals]         = useState<TerminalCard[]>([]);
   const [allEvents, setAllEvents]         = useState<Array<{ raw: LanEvent; label: string }>>([]);
 
+  // ── Estado del relay por nube (tercera vía de comunicación) ──────────────────
+  const [cloudTerminals, setCloudTerminals] = useState<TerminalCard[]>([]);
+  const [cloudEnabled, setCloudEnabledState] = useState<boolean>(() => isCloudRelayEnabled());
+  const [cloudState, setCloudState]         = useState<CloudRelayState>('disabled');
+  const [cloudDetail, setCloudDetail]       = useState('');
+  const cloudAvailable = isCloudRelayAvailable();
+
   const identityRef     = useRef<LanTerminalIdentity | null>(null);
   const terminalIdRef   = useRef<string>('');
   const initializedRef  = useRef(false);
+
+  // 🛡️ Deduplicación LAN ⟷ nube: cuando dos terminales están unidas por AMBAS
+  // vías, el mismo evento llega dos veces (una por TCP, otra por Realtime) y
+  // sin esto se guardaría la orden de taller dos veces, sonaría la alerta dos
+  // veces, aparecerían dos toasts. Se procesa solo la primera copia, por
+  // `eventId`. La ventana se acota para que el Set no crezca sin control en
+  // terminales que llevan días abiertas.
+  const processedEventIdsRef = useRef<Set<string>>(new Set());
+  const processedOrderRef    = useRef<string[]>([]);
+  const MAX_EVENTOS_RECORDADOS = 800;
+
+  const yaProcesado = useCallback((event: LanEvent): boolean => {
+    const id = event.eventId;
+    // Eventos de versiones antiguas (sin eventId) no se pueden deduplicar:
+    // se procesan siempre, exactamente igual que antes de existir el relay.
+    if (!id) return false;
+    if (processedEventIdsRef.current.has(id)) return true;
+
+    processedEventIdsRef.current.add(id);
+    processedOrderRef.current.push(id);
+    if (processedOrderRef.current.length > MAX_EVENTOS_RECORDADOS) {
+      const viejo = processedOrderRef.current.shift();
+      if (viejo) processedEventIdsRef.current.delete(viejo);
+    }
+    return false;
+  }, []);
 
   // ── Construye identidad del usuario actual ────────────────────────────────────
   function buildIdentity(terminalId: string): LanTerminalIdentity {
@@ -107,8 +172,11 @@ export function LanProvider({ children }: { children: ReactNode }) {
   }
 
   // ── Obtener IP local + machine ID ─────────────────────────────────────────────
+  // 🛡️ Ya NO exige `isAvailable`: la identidad de terminal también la necesita
+  // el relay por nube, que funciona sin el bridge de Electron (build web/PWA).
+  // `getLocalIp()` devuelve '' sin bridge, así que es seguro llamarlo siempre.
   useEffect(() => {
-    if (!isAvailable || !usuarioActual) return;
+    if (!usuarioActual) return;
 
     lanService.getLocalIp().then(ip => setLocalIp(ip));
 
@@ -125,7 +193,7 @@ export function LanProvider({ children }: { children: ReactNode }) {
       terminalIdRef.current = tid;
       identityRef.current   = buildIdentity(tid);
     }
-  }, [isAvailable, usuarioActual?.username]);
+  }, [usuarioActual?.username]);
 
   // ── Inicializar red según rol ─────────────────────────────────────────────────
   useEffect(() => {
@@ -247,6 +315,9 @@ export function LanProvider({ children }: { children: ReactNode }) {
     });
 
     lanService.onEventReceived((event) => {
+      // Dedup LAN ⟷ nube: si esta misma emisión ya llegó por el relay, no se
+      // vuelve a procesar (ni al revés). Ver `yaProcesado`.
+      if (yaProcesado(event)) return;
       if (event.type === 'AUDIT_RESPONSE') {
         setTerminals(prev =>
           prev.map(t => t.terminalId === event.terminalId
@@ -317,6 +388,8 @@ export function LanProvider({ children }: { children: ReactNode }) {
 
     // Escuchar eventos dirigidos desde el servidor a esta terminal
     lanService.onEventReceived((event) => {
+      // Dedup LAN ⟷ nube — ver comentario en `yaProcesado`.
+      if (yaProcesado(event)) return;
       if (event.type === 'NUEVA_REPARACION_REGISTRADA') {
         const myId = identityRef.current?.userId;
         if (event.targetUserId && myId && event.targetUserId !== myId) return;
@@ -340,30 +413,173 @@ export function LanProvider({ children }: { children: ReactNode }) {
 
     // Responder peticiones de auditoría del admin
     lanService.onAuditRequest(() => {
-      const auditSnapshot = {
-        ventasHoy: (() => {
-          try { return JSON.parse(localStorage.getItem('pos-ventas-dia') || '[]').slice(-10); } catch { return []; }
-        })(),
-        caja: (() => {
-          try { return JSON.parse(localStorage.getItem('pos-caja-sesiones-diarias') || '[]').slice(-1); } catch { return []; }
-        })(),
-        gastos: (() => {
-          try { return JSON.parse(localStorage.getItem('pos-gastos') || '[]').slice(-5); } catch { return []; }
-        })(),
-        turnoActivo: (() => {
-          try {
-            const turnos: any[] = JSON.parse(localStorage.getItem('pos-turnos') || '[]');
-            return turnos.find(t => t.activo) || null;
-          } catch { return null; }
-        })(),
-        timestamp: new Date().toISOString(),
-        cajero: identity.cajeroNombre,
-      };
-
-      const responseEvent = buildLanEvent('AUDIT_RESPONSE', identity, auditSnapshot as Record<string, unknown>);
+      const responseEvent = buildLanEvent('AUDIT_RESPONSE', identity, _construirAuditoria());
       lanService.emitEvent(responseEvent);
     });
   }
+
+  // ── RELAY POR NUBE (tercera vía) ──────────────────────────────────────────────
+  //
+  // Un evento que llega por la nube se procesa con EXACTAMENTE los mismos
+  // handlers que si hubiera llegado por LAN — no hay lógica de negocio
+  // duplicada, solo un transporte distinto. Por eso todo módulo que ya
+  // funciona en red local (taller, comandas de cocina/mesas, cierres de caja,
+  // sincronización de usuarios y permisos, transferencias) funciona entre
+  // sedes sin escribir nada nuevo.
+  const _dispatchCloudEvent = useCallback((event: LanEvent) => {
+    // Eco propio (por si el servidor reenvía) — ya lo vimos localmente.
+    if (event.terminalId && event.terminalId === terminalIdRef.current) return;
+    // Ya llegó por LAN (o duplicado del propio canal): no repetir efectos.
+    if (yaProcesado(event)) return;
+
+    // El canal de nube es broadcast puro (no hay servidor que enrute), así que
+    // el filtrado dirigido lo hace el receptor: si el evento va a un usuario
+    // concreto y no soy yo, lo ignoro.
+    const myUserId = identityRef.current?.userId;
+    if (event.targetUserId && myUserId && event.targetUserId !== myUserId) return;
+
+    switch (event.type) {
+      case 'AUDIT_REQUEST':
+        _responderAuditoria();
+        return;
+      case 'AUDIT_RESPONSE':
+        setCloudTerminals(prev => prev.map(t => t.terminalId === event.terminalId
+          ? { ...t, auditData: event.payload as Record<string, unknown> }
+          : t
+        ));
+        return;
+      case 'NUEVA_REPARACION_REGISTRADA':
+        _handleNuevaReparacion(event);
+        break;
+      case 'TALLER_ORDEN_NUEVA':
+        _handleTallerOrdenNueva(event);
+        break;
+      case 'TALLER_ORDEN':
+        _handleTallerOrdenCambio(event);
+        break;
+      case 'SINCRONIZAR_USUARIO':
+        _handleSyncUsuario(event);
+        break;
+      case 'SINCRONIZAR_METODOS_PAGO':
+        _handleSyncMetodosPago(event);
+        break;
+      case 'COMANDA_NUEVA':
+        _handleComandaNueva(event);
+        break;
+      case 'TRANSFERENCIA_RECIBIDA':
+        _handleTransferenciaRecibida(event);
+        break;
+      case 'CAJA_CIERRE':
+        _handleCajaCierreRecibido(event);
+        break;
+      default:
+        break;
+    }
+
+    // Feed de actividad — el panel de Monitoreo muestra LAN y nube en la misma
+    // línea de tiempo.
+    const entry = { raw: event, label: formatLanEventLabel(event) };
+    setAllEvents(prev => [entry, ...prev].slice(0, 500));
+    setCloudTerminals(prev => prev.map(t => t.terminalId === event.terminalId
+      ? { ...t, lastSeen: Date.now(), recentEvents: [entry, ...t.recentEvents].slice(0, 5) }
+      : t
+    ));
+  }, [yaProcesado]);
+
+  /** Snapshot de auditoría de ESTA terminal — compartido por LAN y por nube. */
+  function _construirAuditoria(): Record<string, unknown> {
+    return {
+      ventasHoy: (() => {
+        try { return JSON.parse(localStorage.getItem('pos-ventas-dia') || '[]').slice(-10); } catch { return []; }
+      })(),
+      caja: (() => {
+        try { return JSON.parse(localStorage.getItem('pos-caja-sesiones-diarias') || '[]').slice(-1); } catch { return []; }
+      })(),
+      gastos: (() => {
+        try { return JSON.parse(localStorage.getItem('pos-gastos') || '[]').slice(-5); } catch { return []; }
+      })(),
+      turnoActivo: (() => {
+        try {
+          const turnos: any[] = JSON.parse(localStorage.getItem('pos-turnos') || '[]');
+          return turnos.find(t => t.activo) || null;
+        } catch { return null; }
+      })(),
+      timestamp: new Date().toISOString(),
+      cajero: identityRef.current?.cajeroNombre ?? '',
+    };
+  }
+
+  function _responderAuditoria() {
+    if (!identityRef.current) return;
+    cloudRelay.emit(buildLanEvent('AUDIT_RESPONSE', identityRef.current, _construirAuditoria()));
+  }
+
+  // Conectar/desconectar el relay según preferencia del usuario y vinculación.
+  useEffect(() => {
+    if (!usuarioActual) return;
+
+    if (!cloudEnabled) {
+      cloudRelay.disconnect();
+      setCloudState('disabled');
+      setCloudDetail('');
+      setCloudTerminals([]);
+      return;
+    }
+
+    let cancelado = false;
+    const intentarConectar = () => {
+      if (cancelado) return;
+      if (!identityRef.current) { setTimeout(intentarConectar, 250); return; }
+
+      cloudRelay.connect(identityRef.current, {
+        onEvent: (event) => { if (!cancelado) _dispatchCloudEvent(event); },
+        onState: (estado, detalle) => {
+          if (cancelado) return;
+          setCloudState(estado);
+          setCloudDetail(detalle || '');
+        },
+        onPresence: (presentes: CloudTerminalPresence[]) => {
+          if (cancelado) return;
+          setCloudTerminals(prev => {
+            const enLinea = new Set(presentes.map(p => p.terminalId));
+            const previas = new Map(prev.map(t => [t.terminalId, t]));
+
+            const actualizadas: TerminalCard[] = presentes.map(p => {
+              const anterior = previas.get(p.terminalId);
+              return {
+                terminalId: p.terminalId,
+                userId: p.userId,
+                cajeroNombre: p.cajeroNombre || 'Terminal',
+                cajeroIp: p.cajeroIp || '',
+                cajeroRol: p.cajeroRol || 'cajero',
+                machineHostname: p.machineHostname || '',
+                connected: true,
+                lastSeen: Date.now(),
+                recentEvents: anterior?.recentEvents ?? [],
+                auditData: anterior?.auditData ?? null,
+                wifiSsid: p.wifiSsid ?? null,
+                transport: 'cloud',
+              };
+            });
+
+            // Las que ya no están presentes se conservan como desconectadas,
+            // igual que hace la LAN — así el admin ve "esta caja estuvo aquí".
+            const desconectadas = prev
+              .filter(t => !enLinea.has(t.terminalId))
+              .map(t => ({ ...t, connected: false }));
+
+            return [...actualizadas, ...desconectadas];
+          });
+        },
+      });
+    };
+    intentarConectar();
+
+    return () => {
+      cancelado = true;
+      cloudRelay.disconnect();
+    };
+  }, [usuarioActual?.username, cloudEnabled, _dispatchCloudEvent]);
 
   // ── Orden de taller completa recibida desde otra terminal (Admin ⟷ Cajero/Técnico) ──
   // A diferencia de TALLER_ORDEN (solo un resumen de cambio de estado) y de
@@ -669,7 +885,9 @@ export function LanProvider({ children }: { children: ReactNode }) {
     payload: Record<string, unknown> = {},
     targetUserId?: string,
   ) => {
-    if (!isAvailable || !identityRef.current) return;
+    // 🛡️ Ya no exige `isAvailable`: sin Electron no hay LAN, pero el relay por
+    // nube sí puede transportar el evento. Cada transporte se decide abajo.
+    if (!identityRef.current) return;
 
     // Auto-notificación: el admin se asigna a sí mismo como técnico → manejar localmente sin red
     if (targetUserId && targetUserId === identityRef.current.userId) {
@@ -689,16 +907,35 @@ export function LanProvider({ children }: { children: ReactNode }) {
     // Tanto el admin (server) como cajeros (client) pueden emitir eventos a la red.
     // El IPC lan:emit-event en main.js se encarga del enrutamiento correcto según el modo.
     const event = buildLanEvent(type, identityRef.current, payload, targetUserId);
-    lanService.emitEvent(event);
+
+    // Se publica por AMBAS vías cuando ambas están disponibles: la LAN llega
+    // primero (misma red, sin internet) y la nube alcanza a las terminales de
+    // otras redes. El `eventId` garantiza que quien reciba las dos copias
+    // procese una sola. Ver `yaProcesado`.
+    if (isAvailable) lanService.emitEvent(event);
+    cloudRelay.emit(event);
   }, [isAvailable]);
 
   const requestAudit = useCallback((terminalId: string) => {
+    // Terminal remota vía nube: la petición viaja por el relay (broadcast
+    // dirigido por targetUserId; ver _dispatchCloudEvent → 'AUDIT_REQUEST').
+    const remotaNube = cloudTerminals.find(t => t.terminalId === terminalId);
+    if (remotaNube && !terminals.some(t => t.terminalId === terminalId)) {
+      if (identityRef.current) {
+        cloudRelay.emit(buildLanEvent('AUDIT_REQUEST', identityRef.current, {}, remotaNube.userId));
+      }
+      setCloudTerminals(prev =>
+        prev.map(t => t.terminalId === terminalId ? { ...t, auditData: undefined } : t)
+      );
+      return;
+    }
+
     if (mode !== 'server') return;
     lanService.sendAuditRequest(terminalId);
     setTerminals(prev =>
       prev.map(t => t.terminalId === terminalId ? { ...t, auditData: undefined } : t)
     );
-  }, [mode]);
+  }, [mode, cloudTerminals, terminals]);
 
   const setServerIp = useCallback((ip: string) => {
     localStorage.setItem('lan_server_ip', ip);
@@ -723,12 +960,34 @@ export function LanProvider({ children }: { children: ReactNode }) {
     setTerminals(prev =>
       prev.map(t => t.terminalId === terminalId ? { ...t, auditData: null } : t)
     );
+    setCloudTerminals(prev =>
+      prev.map(t => t.terminalId === terminalId ? { ...t, auditData: null } : t)
+    );
   }, []);
+
+  const setCloudEnabled = useCallback((valor: boolean) => {
+    persistCloudRelayEnabled(valor);
+    setCloudEnabledState(valor);
+  }, []);
+
+  // Vista unificada: una terminal alcanzable por LAN **y** por nube aparece una
+  // sola vez, y gana la LAN (transporte más rápido y con más datos: IP real,
+  // auditoría directa).
+  const terminalesUnificadas = useMemo(() => {
+    const idsLan = new Set(terminals.map(t => t.terminalId));
+    return [
+      ...terminals.map(t => ({ ...t, transport: t.transport ?? ('lan' as const) })),
+      ...cloudTerminals.filter(t => !idsLan.has(t.terminalId)),
+    ];
+  }, [terminals, cloudTerminals]);
+
+  const cloudOnlineCount = cloudTerminals.filter(t => t.connected).length;
 
   return (
     <LanContext.Provider value={{
-      mode, connectionState, localIp, serverIp, terminals, allEvents,
+      mode, connectionState, localIp, serverIp, terminals: terminalesUnificadas, allEvents,
       isAvailable, emitLanEvent, requestAudit, setServerIp, clearAudit,
+      cloudAvailable, cloudEnabled, cloudState, cloudDetail, cloudOnlineCount, setCloudEnabled,
     }}>
       {children}
     </LanContext.Provider>

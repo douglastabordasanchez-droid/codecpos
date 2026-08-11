@@ -1518,11 +1518,21 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           await electronStore.registrarVenta({
             id: numeroFacturaCompleto,
             numero: numeroFactura,
+            numeroFactura: numeroFacturaCompleto,
             fecha: new Date().toISOString(),
             fechaOperativa,
             sesionCajaId: sesionCajaActiva?.id,
             items: venta.items,
-            subtotal: total,
+            // 🛡️ FIX: aquí se guardaba `subtotal: total` (es decir, el total CON
+            // IVA) y el IVA no se guardaba en absoluto. La tirilla que se
+            // imprime en el momento de la venta sí mostraba el desglose (lo
+            // tenía en memoria), pero cualquier REIMPRESIÓN posterior —desde
+            // Ventas, desde Reportes, el PDF o el Excel— leía estos campos y
+            // por eso salía sin línea de IVA y con "Subtotal" igual al total.
+            // El export de Excel incluso rotula esa columna "Total sin IVA".
+            subtotal: configIVA.ivaHabilitado ? subtotal : total,
+            iva: configIVA.ivaHabilitado ? iva : 0,
+            porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
             descuento: 0,
             total,
             metodoPago,
@@ -1831,11 +1841,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           await electronStore.registrarVenta({
             id: numeroFacturaCompleto,
             numero: numeroFactura,
+            numeroFactura: numeroFacturaCompleto,
             fecha: new Date().toISOString(),
             fechaOperativa,
             sesionCajaId: sesionCajaActiva?.id,
             items: venta.items,
-            subtotal: total,
+            // 🛡️ FIX: ver comentario equivalente en procesarVenta() — se
+            // persiste la base gravable y el IVA para que la reimpresión y los
+            // exportes muestren el mismo desglose que la tirilla original.
+            subtotal: configIVA.ivaHabilitado ? subtotal : total,
+            iva: configIVA.ivaHabilitado ? iva : 0,
+            porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
             descuento: 0,
             total,
             metodoPago: 'mixto',

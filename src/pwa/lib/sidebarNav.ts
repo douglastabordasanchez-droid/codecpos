@@ -1,6 +1,6 @@
 import {
   Home, ShoppingCart, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
-  DollarSign, Bell, Settings, ShieldAlert,
+  DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee,
 } from 'lucide-react';
 import { ModuloPOS } from '../../app/lib/permissions';
 
@@ -22,6 +22,17 @@ export const NAV_PRINCIPAL: ItemNavSidebar[] = [
   { icon: Package, label: 'Inventario', path: '/inventario', modulo: ModuloPOS.PRODUCTOS },
 ];
 
+/**
+ * Módulos operativos que se activan desde Electron (Configuración → Módulos en
+ * la App Web). Van en su propio grupo porque no son "herramientas" del cajero:
+ * son áreas completas del negocio, y para el mesero o el técnico ESTA es su
+ * pantalla principal.
+ */
+export const NAV_MODULOS: ItemNavSidebar[] = [
+  { icon: Coffee, label: 'Panadería y Onces', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
+  { icon: Wrench, label: 'Taller', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
+];
+
 export const NAV_HERRAMIENTAS: ItemNavSidebar[] = [
   { icon: Lock, label: 'Caja', path: '/caja', modulo: ModuloPOS.CIERRE_CAJA },
   { icon: Wallet, label: 'Gastos', path: '/gastos', modulo: ModuloPOS.GASTOS },
@@ -39,4 +50,10 @@ export const NAV_PLATAFORMA: ItemNavSidebar[] = [
   { icon: ShieldAlert, label: 'Panel Desarrollador', path: '/desarrollador', soloStaff: true, fijo: true },
 ];
 
-export const NAV_TODOS: ItemNavSidebar[] = [...NAV_PRINCIPAL, ...NAV_HERRAMIENTAS, ...NAV_ADMINISTRACION, ...NAV_PLATAFORMA];
+export const NAV_TODOS: ItemNavSidebar[] = [
+  ...NAV_PRINCIPAL,
+  ...NAV_MODULOS,
+  ...NAV_HERRAMIENTAS,
+  ...NAV_ADMINISTRACION,
+  ...NAV_PLATAFORMA,
+];

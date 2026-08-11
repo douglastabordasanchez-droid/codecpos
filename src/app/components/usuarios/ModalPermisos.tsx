@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Shield, Save, CheckCircle, XCircle, BarChart3, ShoppingCart, Package, AlertTriangle, Settings, Users, DollarSign, FileText, Wallet, CreditCard, RotateCcw, RefreshCw, FileSpreadsheet, User, Building2, Crown, Star } from 'lucide-react';
+import { Shield, Save, CheckCircle, XCircle, BarChart3, ShoppingCart, Package, AlertTriangle, Settings, Users, DollarSign, FileText, Wallet, CreditCard, RotateCcw, RefreshCw, FileSpreadsheet, User, Building2, Crown, Star, Calculator } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import type { Usuario, PermisosUsuario } from '../../contexts/AuthContext';
@@ -115,6 +115,14 @@ const GRUPOS_PERMISOS: GrupoPermisos[] = [
         bgColor: 'bg-orange-500/15',
       },
       {
+        key: 'contabilidad',
+        label: 'Contabilidad',
+        descripcion: 'Ingresos, gastos, balance y flujo de caja',
+        icon: Calculator,
+        color: 'text-emerald-500',
+        bgColor: 'bg-emerald-500/15',
+      },
+      {
         key: 'empleados',
         label: 'Empleados',
         descripcion: 'Ver métricas personales',
@@ -199,6 +207,7 @@ const PERMISOS_DEFAULT: PermisosUsuario = {
   usuarios: false,
   cierreCaja: true,
   reportes: false,
+  contabilidad: false,
   gastos: true,
   codecVerify: false,
   devoluciones: false,

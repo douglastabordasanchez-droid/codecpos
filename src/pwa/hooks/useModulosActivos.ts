@@ -39,13 +39,17 @@ export function useModulosActivos() {
 
       const { data } = await client
         .from('clientes_pos')
-        .select('plan, modulos_activos')
+        .select('plan, modulos_activos, modulos_web')
         .eq('id', empleado.cliente_id)
         .maybeSingle();
 
       if (cancelado) return;
 
-      const row = data as { plan: string | null; modulos_activos: string[] | null } | null;
+      const row = data as {
+        plan: string | null;
+        modulos_activos: string[] | null;
+        modulos_web: string[] | null;
+      } | null;
 
       let modulosNegocio: ModuloPOS[];
       if (row?.modulos_activos) {
@@ -55,6 +59,16 @@ export function useModulosActivos() {
         modulosNegocio = MODULOS_CATALOGO.filter((m) =>
           esPremium ? m.habilitadoPorDefecto : m.planRequerido === 'basico' && m.habilitadoPorDefecto
         ).map((m) => m.id);
+      }
+
+      // 📱 Selección del dueño desde Electron (Configuración → Módulos en la
+      // App Web / Celular, columna `modulos_web`, migración 0024). Es un
+      // SUBCONJUNTO de la licencia: nunca puede conceder un módulo no
+      // comprado. `null` = el dueño todavía no eligió → se ve todo lo
+      // licenciado, igual que antes de existir esta columna.
+      if (row?.modulos_web) {
+        const permitidosEnWeb = new Set(row.modulos_web as ModuloPOS[]);
+        modulosNegocio = modulosNegocio.filter((m) => permitidosEnWeb.has(m));
       }
 
       const modulosEmpleado = empleado.permisos?.modulosHabilitados;

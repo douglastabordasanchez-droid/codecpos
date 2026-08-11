@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import POSLayoutSidebar from './POSLayoutSidebar';
 import { CodecVerifyListener } from '../codecVerify/CodecVerifyListener';
 import { useDeveloperShortcut } from '../../hooks/useDeveloperShortcut';
+import { useSyncModulosNube } from '../../hooks/useSyncModulosNube';
 import { LanProvider } from '../../contexts/LanContext';
 
 /**
@@ -15,6 +16,11 @@ export default function ProtectedLayout() {
 
   // ⚡ ATAJO DE TECLADO: Ctrl+Shift+D para Panel de Desarrollador
   useDeveloperShortcut();
+
+  // ☁️ Recibe en caliente lo que el equipo hace desde el celular (comandas de
+  // mesa, cambios de estado de órdenes de taller). No hace nada si esta
+  // instalación no está vinculada a la nube.
+  useSyncModulosNube();
 
   console.log('🔐 ProtectedLayout - Estado:', { estaAutenticado, configuracionInicial });
 

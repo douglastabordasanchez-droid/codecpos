@@ -47,6 +47,14 @@ export interface LanEvent {
   payload: Record<string, unknown>;
   /** Si está presente, el servidor enruta el evento al usuario con ese ID (no broadcast) */
   targetUserId?: string;
+  /**
+   * Identificador único del evento. Existe porque un mismo evento puede llegar
+   * DOS veces cuando las terminales están unidas por LAN y por nube a la vez
+   * (ver cloudRelayService.ts): LanContext lo usa para procesar solo la
+   * primera copia. Opcional para no romper eventos emitidos por versiones
+   * anteriores que no lo traen.
+   */
+  eventId?: string;
 }
 
 // ── Payload restaurante ───────────────────────────────────────────────────────
@@ -177,8 +185,21 @@ export function buildLanEvent(
     cajeroIp: identity.cajeroIp,
     timestamp: new Date().toISOString(),
     payload,
+    eventId: nuevoEventId(),
     ...(targetUserId ? { targetUserId } : {}),
   };
+}
+
+/** ID único por evento — permite deduplicar cuando llega por LAN y por nube. */
+function nuevoEventId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* entorno sin crypto.randomUUID */
+  }
+  return `evt_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export function formatLanEventLabel(event: LanEvent): string {

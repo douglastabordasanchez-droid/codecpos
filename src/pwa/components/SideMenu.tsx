@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, User, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
-  Settings, LogOut, Sun, Moon, Crown, Zap, ShieldAlert,
+  Settings, LogOut, Sun, Moon, Crown, Zap, ShieldAlert, Wrench, Coffee,
 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -56,6 +56,14 @@ export function SideMenu({ open, onClose }: Props) {
     { icon: User, label: 'Mi perfil', path: '/perfil' },
     { icon: Receipt, label: 'Ventas', subtitulo: 'Historial y estadísticas del día', path: '/ventas' },
     { icon: Package, label: 'Inventario', subtitulo: 'Productos, stock y fotos', path: '/inventario', modulo: ModuloPOS.PRODUCTOS },
+  ];
+
+  // Módulos completos del negocio, activados desde Electron (Configuración →
+  // Módulos en la App Web). Van antes de "Herramientas" porque para un mesero
+  // o un técnico esta es su pantalla de trabajo, no un accesorio.
+  const modulos: ItemMenu[] = [
+    { icon: Coffee, label: 'Panadería y Onces', subtitulo: 'Mesas, comandas y pedidos del salón', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
+    { icon: Wrench, label: 'Taller', subtitulo: 'Órdenes de reparación y estados', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
   ];
 
   const herramientas: ItemMenu[] = [
@@ -117,6 +125,13 @@ export function SideMenu({ open, onClose }: Props) {
             <div className="px-3 py-4">
               <p className="px-2 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Principal</p>
               {principal.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} />)}
+
+              {modulos.some(visible) && (
+                <>
+                  <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Módulos</p>
+                  {modulos.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} />)}
+                </>
+              )}
 
               {herramientas.some(visible) && (
                 <>

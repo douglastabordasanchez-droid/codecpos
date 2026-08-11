@@ -113,6 +113,25 @@ class TallerService {
   /**
    * Crear nueva orden de servicio
    */
+  /**
+   * ☁️ Publica la orden en la nube para que la app del celular la vea.
+   *
+   * Best-effort y NUNCA bloqueante: si no hay internet, si el negocio no está
+   * vinculado o si el módulo Taller no está activado para móvil, simplemente
+   * no pasa nada — la orden ya quedó guardada en IndexedDB, que sigue siendo
+   * la fuente de verdad local. El import es dinámico para no arrastrar el
+   * cliente de Supabase al bundle del taller cuando no se usa.
+   *
+   * Se llama desde cada escritura LOCAL, pero deliberadamente NO desde
+   * `upsertOrdenRemota()`: esa recibe órdenes que vienen de la red (LAN o
+   * celular), y volver a publicarlas crearía un eco infinito.
+   */
+  private publicarEnNube(orden: OrdenServicio): void {
+    import('../lib/supabase/tallerSyncService')
+      .then(({ pushOrdenTaller }) => pushOrdenTaller(orden))
+      .catch(() => { /* sin nube: la orden vive local, como siempre */ });
+  }
+
   async crearOrden(orden: Omit<OrdenServicio, 'id' | 'numeroOrden' | 'fechaCreacion' | 'ultimaActualizacion' | 'historialEstados'>): Promise<OrdenServicio> {
     await this.ensureDB();
     if (!this.db) throw new Error('Base de datos no disponible');
@@ -142,6 +161,7 @@ class TallerService {
       const nuevaOrdenNormalizada = this.normalizarOrden(nuevaOrden);
 
       await this.db.add(STORES.ORDENES, nuevaOrdenNormalizada);
+      this.publicarEnNube(nuevaOrdenNormalizada);
 
       // Guardar/actualizar cliente
       if (orden.cliente.telefono) {
@@ -200,6 +220,7 @@ class TallerService {
       const ordenActualizadaNormalizada = this.normalizarOrden(ordenActualizada);
 
       await this.db.put(STORES.ORDENES, ordenActualizadaNormalizada);
+      this.publicarEnNube(ordenActualizadaNormalizada);
 
       console.log(`✅ Orden actualizada: ${ordenActualizada.numeroOrden}`);
       return ordenActualizadaNormalizada;
@@ -274,6 +295,7 @@ class TallerService {
       const ordenActualizadaNormalizada = this.normalizarOrden(ordenActualizada);
 
       await this.db.put(STORES.ORDENES, ordenActualizadaNormalizada);
+      this.publicarEnNube(ordenActualizadaNormalizada);
 
       console.log(`✅ Estado cambiado: ${orden.numeroOrden} → ${nuevoEstado}`);
       return ordenActualizadaNormalizada;
@@ -304,6 +326,7 @@ class TallerService {
       };
 
       await this.db.put(STORES.ORDENES, ordenActualizada);
+      this.publicarEnNube(ordenActualizada);
 
       console.log(`✅ Diagnóstico agregado a orden: ${orden.numeroOrden}`);
       return ordenActualizada;
@@ -341,6 +364,7 @@ class TallerService {
     });
 
     await this.db.put(STORES.ORDENES, ordenActualizada);
+    this.publicarEnNube(ordenActualizada);
     return ordenActualizada;
   }
 
@@ -376,6 +400,7 @@ class TallerService {
       };
 
       await this.db.put(STORES.ORDENES, ordenActualizada);
+      this.publicarEnNube(ordenActualizada);
 
       console.log(`✅ Pago registrado: ${pago.monto} → ${orden.numeroOrden}`);
       return ordenActualizada;
@@ -414,6 +439,7 @@ class TallerService {
       };
 
       await this.db.put(STORES.ORDENES, ordenActualizada);
+      this.publicarEnNube(ordenActualizada);
 
       console.log(`✅ Nota agregada a orden: ${orden.numeroOrden}`);
       return ordenActualizada;
