@@ -232,7 +232,7 @@ export default function POSLayoutSidebar() {
     {
       path: '/panaderia-onces',
       icon: Coffee,
-      label: 'Panadería y Onces',
+      label: 'Alimentos y Bebidas',
       color: 'orange',
       moduloId: ModuloPOS.PANADERIA_ONCES,
       requiredPermission: 'panaderiaOnces',

@@ -117,7 +117,7 @@ export function ModulosAppWebCard() {
 
       if (resumen.length === 0) {
         toast.info('Nada que sincronizar', {
-          description: 'Activa Panadería o Taller para publicar sus datos en la nube.',
+          description: 'Activa Alimentos y Bebidas o Taller para publicar sus datos en la nube.',
         });
       } else {
         toast.success('Datos publicados en la nube', { description: resumen.join(' · ') });

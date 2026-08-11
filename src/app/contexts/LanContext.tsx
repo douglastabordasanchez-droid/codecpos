@@ -783,7 +783,7 @@ export function LanProvider({ children }: { children: ReactNode }) {
     const moduloLabel: Record<string, string> = {
       taller: 'Taller de Reparaciones',
       soporte: 'Soporte Técnico',
-      restaurante: 'Restaurante / Panadería',
+      restaurante: 'Restaurante / Alimentos y Bebidas',
     };
     const tipoLabel: Record<string, string> = {
       respaldo_caja: 'Respaldo de Caja',

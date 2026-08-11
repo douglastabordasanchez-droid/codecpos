@@ -87,7 +87,7 @@ interface ConfiguracionEmpresa {
 
 const WORKSPACE_MODULE_OPTIONS: Array<{ id: ModuloPOS; nombre: string; descripcion: string }> = [
   { id: ModuloPOS.PUNTO_DE_VENTA, nombre: 'Punto de Venta', descripcion: 'Cobro principal y flujo de caja.' },
-  { id: ModuloPOS.PANADERIA_ONCES, nombre: 'Panadería y Onces', descripcion: 'Recetas, mermas y producción.' },
+  { id: ModuloPOS.PANADERIA_ONCES, nombre: 'Alimentos y Bebidas', descripcion: 'Mesas, comandas, recetas y producción.' },
   { id: ModuloPOS.PRODUCTOS, nombre: 'Inventario', descripcion: 'Productos, stock y costos.' },
   { id: ModuloPOS.DASHBOARD, nombre: 'Dashboard', descripcion: 'Métricas estratégicas del negocio.' },
   { id: ModuloPOS.VENTAS_HISTORIAL, nombre: 'Ventas', descripcion: 'Historial y trazabilidad comercial.' },

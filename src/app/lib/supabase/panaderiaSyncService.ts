@@ -1,5 +1,5 @@
 /**
- * CODEC POS v2.0 — Sincronización de Panadería y Onces con la nube
+ * CODEC POS v2.0 — Sincronización de Alimentos y Bebidas con la nube
  *
  * En Electron este módulo son 4 claves sueltas de localStorage:
  *   codecpos_panaderia_cats   → categorías del POS táctil

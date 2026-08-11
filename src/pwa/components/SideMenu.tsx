@@ -62,7 +62,7 @@ export function SideMenu({ open, onClose }: Props) {
   // Módulos en la App Web). Van antes de "Herramientas" porque para un mesero
   // o un técnico esta es su pantalla de trabajo, no un accesorio.
   const modulos: ItemMenu[] = [
-    { icon: Coffee, label: 'Panadería y Onces', subtitulo: 'Mesas, comandas y pedidos del salón', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
+    { icon: Coffee, label: 'Alimentos y Bebidas', subtitulo: 'Mesas, comandas y pedidos del salón', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
     { icon: Wrench, label: 'Taller', subtitulo: 'Órdenes de reparación y estados', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
   ];
 

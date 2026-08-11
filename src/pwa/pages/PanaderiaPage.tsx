@@ -1,5 +1,5 @@
 /**
- * Panadería y Onces — versión móvil.
+ * Alimentos y Bebidas — versión móvil.
  *
  * En Electron este módulo es un POS táctil pensado para una pantalla grande
  * fija en el mostrador. En el celular no tiene sentido replicar eso: lo que
@@ -117,7 +117,7 @@ export default function PanaderiaPage() {
             <Coffee className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-white text-xl font-black leading-tight">Panadería y Onces</h1>
+            <h1 className="text-white text-xl font-black leading-tight">Alimentos y Bebidas</h1>
             <p className="text-slate-400 text-sm">Comandas del salón</p>
           </div>
         </div>

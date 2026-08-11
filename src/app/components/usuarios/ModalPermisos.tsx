@@ -164,7 +164,7 @@ const GRUPOS_PERMISOS: GrupoPermisos[] = [
       },
       {
         key: 'panaderiaOnces',
-        label: 'Panadería y Onces',
+        label: 'Alimentos y Bebidas',
         descripcion: 'Gestión de ingredientes, recetas, mesas y combos',
         icon: Star,
         color: 'text-amber-500',

@@ -1380,7 +1380,7 @@ export function UsuariosPage() {
 
                 {/* ─── PANADERÍA / ONCES (solo si el módulo está activo globalmente) ─── */}
                 {modulosActivos.panaderia && (
-                  <SeccionPermisos titulo="Panadería y Onces" icono={<Coffee className="w-4 h-4 text-amber-700" />} dm={dm}>
+                  <SeccionPermisos titulo="Alimentos y Bebidas" icono={<Coffee className="w-4 h-4 text-amber-700" />} dm={dm}>
                     <PermisoRow
                       label="Acceso a Ventas"
                       desc="Puede operar el módulo y registrar ventas de onces y panadería."

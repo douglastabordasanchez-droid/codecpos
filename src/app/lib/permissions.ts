@@ -150,8 +150,8 @@ export const MODULOS_CATALOGO: ModuloInfo[] = [
   },
   {
     id: ModuloPOS.PANADERIA_ONCES,
-    nombre: 'Panadería y Onces',
-    descripcion: 'Gestión de ingredientes, recetas, mermas y combos para cafetería/desayunos',
+    nombre: 'Alimentos y Bebidas',
+    descripcion: 'Mesas, comandas, recetas, mermas y combos de cocina, cafetería y panadería',
     icono: '☕',
     categoria: 'inventario',
     planRequerido: 'basico',

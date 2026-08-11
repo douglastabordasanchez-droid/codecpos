@@ -29,7 +29,7 @@ export const NAV_PRINCIPAL: ItemNavSidebar[] = [
  * pantalla principal.
  */
 export const NAV_MODULOS: ItemNavSidebar[] = [
-  { icon: Coffee, label: 'Panadería y Onces', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
+  { icon: Coffee, label: 'Alimentos y Bebidas', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
   { icon: Wrench, label: 'Taller', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
 ];
 

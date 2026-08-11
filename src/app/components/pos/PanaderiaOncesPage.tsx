@@ -519,7 +519,7 @@ export default function PanaderiaOncesPage() {
   const actualizarLineaReceta = (index: number, field: keyof RecetaLinea, value: string) => setProductoRecetaLineas((prev) => prev.map((linea, idx) => idx === index ? { ...linea, [field]: value } : linea));
 
   const toqueRapidoProducto = (prod: ProductoPos) => {
-    const productoNormalizado: ProductoMesa = { id: prod.id, codigo: `TAC-${prod.nombre.substring(0,3).toUpperCase()}`, nombre: prod.nombre, precio: prod.precio, stock: 999999, categoria: 'Panadería Táctil', costo: prod.costo || 0, tipoInventario: prod.tipoInventario, recipeId: prod.recipeId };
+    const productoNormalizado: ProductoMesa = { id: prod.id, codigo: `TAC-${prod.nombre.substring(0,3).toUpperCase()}`, nombre: prod.nombre, precio: prod.precio, stock: 999999, categoria: 'Alimentos y Bebidas', costo: prod.costo || 0, tipoInventario: prod.tipoInventario, recipeId: prod.recipeId };
     const cuentaSeleccionActual = mesaSeleccionada ? (Array.isArray(cuentasMesas[mesaSeleccionada.id]) ? cuentasMesas[mesaSeleccionada.id] : []) : cuentaLibre;
     const existente = cuentaSeleccionActual.find((it) => it.producto.id === productoNormalizado.id);
     const nuevos = existente ? cuentaSeleccionActual.map((it) => it.producto.id === productoNormalizado.id ? { ...it, cantidad: it.cantidad + 1 } : it) : [...cuentaSeleccionActual, { producto: productoNormalizado, cantidad: 1 }];
@@ -755,7 +755,7 @@ export default function PanaderiaOncesPage() {
   // ── Configuración visual de secciones ────────────────────────────────────────
   const SECTION_CONFIG: Record<SectionId, { label: string; icon: React.ReactNode; gradient: string }> = {
     dashboard:     { label: 'Panel de Control',     icon: <BarChart3 className="w-5 h-5" />,    gradient: 'from-violet-600 to-purple-700'   },
-    pos_tactil:    { label: 'Panadería y Onces',     icon: <Croissant className="w-5 h-5" />,    gradient: 'from-amber-500 to-orange-600'    },
+    pos_tactil:    { label: 'Alimentos y Bebidas',     icon: <Croissant className="w-5 h-5" />,    gradient: 'from-amber-500 to-orange-600'    },
     mesas:         { label: 'Cuentas por Mesa',     icon: <Armchair className="w-5 h-5" />,     gradient: 'from-emerald-500 to-teal-600'    },
     ingredientes:  { label: 'Ingredientes',         icon: <Package2 className="w-5 h-5" />,     gradient: 'from-green-600 to-emerald-700'   },
     recetas:       { label: 'Recetas',              icon: <BookOpen className="w-5 h-5" />,     gradient: 'from-sky-500 to-cyan-600'        },
@@ -774,7 +774,7 @@ export default function PanaderiaOncesPage() {
             {/* Módulo toggle */}
             <div className={`flex items-center justify-between rounded-2xl p-4 ${darkMode ? 'bg-slate-800/60' : 'bg-slate-50'}`}>
               <div>
-                <p className="font-black text-base">Módulo Panadería y Onces</p>
+                <p className="font-black text-base">Módulo Alimentos y Bebidas</p>
                 <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Activa o desactiva la visibilidad en el POS principal</p>
               </div>
               <div className="flex items-center gap-3">
@@ -845,7 +845,7 @@ export default function PanaderiaOncesPage() {
           </div>
         );
 
-      // ── Panadería y Onces (POS Táctil + Cuenta Rápida integrados) ───────────────
+      // ── Alimentos y Bebidas (POS Táctil + Cuenta Rápida integrados) ─────────────
       case 'pos_tactil':
         return (
           <div className="space-y-4">
@@ -1369,7 +1369,7 @@ export default function PanaderiaOncesPage() {
                 <Coffee className="w-7 h-7 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-black text-white tracking-tight">Panadería y Onces</h1>
+                <h1 className="text-2xl font-black text-white tracking-tight">Alimentos y Bebidas</h1>
                 <p className="text-white/70 text-sm">Gestiona tus categorias y productos desde aqui</p>
               </div>
             </div>
