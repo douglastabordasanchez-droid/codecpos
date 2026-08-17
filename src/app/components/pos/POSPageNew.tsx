@@ -1468,6 +1468,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               'x-api-secret': feConfig.apiSecret,
             },
             body: JSON.stringify(payloadElectronico),
+            // Evita que el punto de pago se congele si el proveedor de FE
+            // no responde: sin esto, un endpoint caído podía dejar el
+            // checkout colgado por decenas de segundos (timeout por defecto
+            // del navegador) en vez de caer rápido a modo contingencia.
+            signal: AbortSignal.timeout(15000),
           });
 
           if (!feResponse.ok) {

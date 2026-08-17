@@ -330,6 +330,45 @@ export const storeEvents = new EventEmitter();
 class ElectronStoreService {
   private turnoActual: Map<string, TurnoEmpleado> = new Map();
 
+  // 🚀 FIX rendimiento (punto de pago): 'pos-productos' guarda el catálogo
+  // COMPLETO (hasta ~20.000 productos, con fotos en base64) en localStorage,
+  // que es síncrono y bloquea la UI al hacer JSON.parse/stringify. Antes,
+  // cada venta lo parseaba DOS VECES (validarDisponibilidadVenta +
+  // descontarInventarioVenta), sin que nada cambiara entre medio. Esta caché
+  // solo se usa cuando el string crudo en localStorage es idéntico al último
+  // leído — si algo lo modificó (edición de producto, importación, etc.) el
+  // string cambia y se vuelve a parsear normalmente, así que nunca puede
+  // devolver datos obsoletos, solo evita trabajo repetido cuando nada cambió.
+  private _productosLSCacheRaw: string | null = null;
+  private _productosLSCacheParsed: any[] | null = null;
+
+  private leerProductosLS(): any[] {
+    const raw = localStorage.getItem('pos-productos') || '[]';
+    if (this._productosLSCacheRaw === raw && this._productosLSCacheParsed) {
+      return this._productosLSCacheParsed;
+    }
+    let parsed: any[] = [];
+    try { parsed = JSON.parse(raw); } catch { parsed = []; }
+    this._productosLSCacheRaw = raw;
+    this._productosLSCacheParsed = parsed;
+    return parsed;
+  }
+
+  private escribirProductosLS(productos: any[]): void {
+    const raw = JSON.stringify(productos);
+    try { localStorage.setItem('pos-productos', raw); } catch { /* storage lleno */ }
+    this._productosLSCacheRaw = raw;
+    this._productosLSCacheParsed = productos;
+  }
+
+  // 🚀 FIX rendimiento: 'codecpos_stock_movements' es un log interno que
+  // NINGUNA pantalla lee (confirmado por búsqueda completa) — solo se
+  // escribe. Antes crecía sin límite para siempre: en un negocio de tráfico
+  // pesado, después de meses de ventas podía llegar a cientos de miles de
+  // registros, y cada venta tenía que parsear/re-serializar ese arreglo
+  // completo además del catálogo. Se limita a los últimos N movimientos.
+  private static readonly MAX_MOVIMIENTOS_STOCK = 2000;
+
   private getFechaLocalISO(date: Date = new Date()): string {
     const tzOffsetMs = date.getTimezoneOffset() * 60000;
     return new Date(date.getTime() - tzOffsetMs).toISOString().split('T')[0];
@@ -1218,7 +1257,15 @@ class ElectronStoreService {
   }
 
   async descontarInventarioVenta(items: VentaItem[]): Promise<void> {
-    const productos = this.getLS<any[]>('pos-productos', []);
+    const productos = this.leerProductosLS();
+    // Esta función muta los objetos de 'productos' en el sitio antes de
+    // volver a guardarlos. Se invalida la caché de inmediato (antes de mutar
+    // nada) para que, si algo lanza una excepción a medio camino y nunca se
+    // llega a escribirProductosLS(), la próxima lectura jamás pueda devolver
+    // ese arreglo mutado-pero-no-persistido — vuelve a leer de localStorage
+    // (el dato real, sin tocar) en vez de servir caché envenenada.
+    this._productosLSCacheRaw = null;
+    this._productosLSCacheParsed = null;
     const ingredientes = this.getLS<any[]>('pos-ingredientes-inventario', []);
     const recipes = this.getLS<any[]>('pos-recetas', []);
     const recipeIngredients = this.getLS<any[]>('pos-receta-ingredientes', []);
@@ -1363,9 +1410,14 @@ class ElectronStoreService {
       }
     }
 
-    this.setLS('pos-productos', productos);
+    this.escribirProductosLS(productos);
     this.setLS('pos-ingredientes-inventario', ingredientes);
-    this.setLS('codecpos_stock_movements', movimientos);
+    this.setLS(
+      'codecpos_stock_movements',
+      movimientos.length > ElectronStoreService.MAX_MOVIMIENTOS_STOCK
+        ? movimientos.slice(-ElectronStoreService.MAX_MOVIMIENTOS_STOCK)
+        : movimientos
+    );
     console.log(`📦 Inventario híbrido actualizado para ${items.length} productos`);
   }
 
@@ -1471,7 +1523,12 @@ class ElectronStoreService {
       unidad: payload.unidad,
       motivo: payload.motivo || 'Merma manual',
     });
-    this.setLS('codecpos_stock_movements', movimientos);
+    this.setLS(
+      'codecpos_stock_movements',
+      movimientos.length > ElectronStoreService.MAX_MOVIMIENTOS_STOCK
+        ? movimientos.slice(0, ElectronStoreService.MAX_MOVIMIENTOS_STOCK)
+        : movimientos
+    );
 
     return merma;
   }
@@ -1507,7 +1564,7 @@ class ElectronStoreService {
   }
 
   async validarDisponibilidadVenta(items: VentaItem[]): Promise<InventoryValidationResult> {
-    const productos = this.getLS<any[]>('pos-productos', []);
+    const productos = this.leerProductosLS();
     const ingredientes = this.getLS<any[]>('pos-ingredientes-inventario', []);
     const recipeIngredients = this.getLS<any[]>('pos-receta-ingredientes', []);
 
