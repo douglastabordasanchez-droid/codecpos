@@ -312,7 +312,9 @@ export default function ContabilidadPage() {
   const porCobrarVencido = useMemo(() => cuentasPorCobrar.filter((c) => c.estado === 'vencido'), [cuentasPorCobrar]);
 
   const enviarRecordatorio = (c: CuentaPorCobrar) => {
-    const mensaje = `Hola ${c.cliente}, te recordamos que tienes un saldo pendiente de ${fmt(c.valorPendiente)} por ${c.referencia}. ¡Gracias por tu preferencia!`;
+    const config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+    const nombreEmpresa = config.nombreComercial || config.razonSocial || 'MI NEGOCIO';
+    const mensaje = `Hola ${c.cliente}, te recordamos que tienes un saldo pendiente de ${fmt(c.valorPendiente)} con ${nombreEmpresa} por ${c.referencia}. ¡Gracias por tu preferencia!`;
     if (c.telefono) {
       const telLimpio = c.telefono.replace(/\D/g, '');
       window.open(`https://wa.me/${telLimpio}?text=${encodeURIComponent(mensaje)}`, '_blank');
