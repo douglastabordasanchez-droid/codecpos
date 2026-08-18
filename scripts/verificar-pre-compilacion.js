@@ -94,7 +94,6 @@ console.log('');
 
 verificarArchivo('src/app/contexts/AuthContext.tsx', 'AuthContext.tsx');
 verificarArchivo('src/app/contexts/POSContext.tsx', 'POSContext.tsx');
-verificarArchivo('src/app/contexts/LicenseContext.tsx', 'LicenseContext.tsx');
 verificarArchivo('src/app/contexts/MultitiendaContext.tsx', 'MultitiendaContext.tsx');
 
 console.log('');

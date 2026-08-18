@@ -22,7 +22,6 @@ const archivosCriticos = [
   'src/app/routes-pos.tsx',
   'src/app/contexts/AuthContext.tsx',
   'src/app/contexts/POSContext.tsx',
-  'src/app/contexts/LicenseContext.tsx',
   'src/app/contexts/MultitiendaContext.tsx',
   'src/app/hooks/usePlanRestrictions.ts',
   'src/app/hooks/useCodecVerifyWebSocket.ts',
