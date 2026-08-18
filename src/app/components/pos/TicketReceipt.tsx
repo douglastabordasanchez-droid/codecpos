@@ -63,6 +63,7 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
   const { usuarioActual } = useAuth();
   const ticketRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<any>({});
+  const [imprimiendo, setImprimiendo] = useState(false);
 
   // Cargar configuración SOLO UNA VEZ (sin interval pesado)
   useEffect(() => {
@@ -108,6 +109,11 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
     || (venta.mesa && venta.mesa.toLowerCase() !== 'general' ? venta.mesa : null);
 
   const handlePrint = () => {
+    // 🚀 Evita que un doble toque (muy común en pantallas táctiles de POS,
+    // más aún si el usuario cree que no pasó nada mientras el spooler
+    // trabaja) mande el mismo ticket dos veces a la impresora.
+    if (imprimiendo) return;
+    setImprimiendo(true);
     printSaleReceipt({
       numeroFactura: venta.numeroFactura,
       items: venta.items.map((item) => ({
@@ -152,7 +158,8 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
       })
       .catch(() => {
         toast.error('La impresora predeterminada no está conectada. Por favor, verifícala en el área de Dispositivos');
-      });
+      })
+      .finally(() => setImprimiendo(false));
   };
 
   const handleDownloadPDF = () => {
@@ -620,10 +627,14 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
       <div className="grid grid-cols-2 gap-3 mt-6">
         <Button
           onClick={handlePrint}
-          className="rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+          disabled={imprimiendo}
+          className="rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:opacity-60"
         >
-          <Printer className="w-5 h-5 mr-2" />
-          Imprimir
+          {imprimiendo
+            ? <div className="w-5 h-5 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : <Printer className="w-5 h-5 mr-2" />
+          }
+          {imprimiendo ? 'Imprimiendo…' : 'Imprimir'}
         </Button>
         
         <Button

@@ -511,21 +511,34 @@ async function resolvePrinterTargetByPreference(preferredPrinterName) {
   return resolvePrinterTarget();
 }
 
+// 🚀 FIX rendimiento (popup de factura → botón Imprimir): la parte lenta de
+// esta función NUNCA fue el spooler de Windows (WritePrinter es instantáneo)
+// sino `Add-Type -TypeDefinition`, que invoca al compilador de C# de .NET
+// desde CERO en cada impresión — 1-2 segundos solo para compilar la misma
+// clase de siempre, en cada ticket. Se compila UNA sola vez a un .dll
+// cacheado en userData (persiste entre reinicios de la app); de ahí en
+// adelante cada impresión solo lo CARGA con `Add-Type -Path` (sin
+// recompilar), que es prácticamente instantáneo. El mecanismo de impresión
+// en sí (WinSpool RAW vía P/Invoke) no cambia.
 async function sendRawEscPosToWindowsSpool(printerName, rawBuffer) {
   const tempDir = app.getPath('temp');
   const jobId = `codecpos-${Date.now()}`;
   const dataPath = path.join(tempDir, `${jobId}.bin`);
   const psPath = path.join(tempDir, `${jobId}.ps1`);
+  const dllPath = path.join(app.getPath('userData'), 'RawPrinterHelper.dll');
 
   await fsPromises.writeFile(dataPath, rawBuffer);
 
   const escapedData = dataPath.replace(/'/g, "''");
   const escapedPrinter = printerName.replace(/'/g, "''");
+  const escapedDllPath = dllPath.replace(/'/g, "''");
 
   const psScript = `
 $ErrorActionPreference = 'Stop'
 
-Add-Type -TypeDefinition @"
+$dllPath = '${escapedDllPath}'
+if (-not (Test-Path $dllPath)) {
+  Add-Type -OutputAssembly $dllPath -OutputType Library -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 
@@ -559,6 +572,8 @@ public class RawPrinterHelper {
   public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, Int32 dwCount, out Int32 dwWritten);
 }
 "@
+}
+Add-Type -Path $dllPath
 
 $bytes = [System.IO.File]::ReadAllBytes('${escapedData}')
 $h = [IntPtr]::Zero

@@ -3146,44 +3146,39 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         )}
       </AnimatePresence>
 
-      {/* Modal Ticket */}
-      <AnimatePresence>
-        {mostrarTicket && ventaActual && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setMostrarTicket(false)}
+      {/* Modal Ticket — sin animación de entrada/salida a propósito: este
+          popup se abre en el momento más caliente del flujo (justo después
+          de cobrar), así que aparece instantáneo en vez de esperar la
+          transición de framer-motion. */}
+      {mostrarTicket && ventaActual && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setMostrarTicket(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`max-w-2xl w-full rounded-3xl p-8 ${
+              darkMode ? 'bg-slate-900 border-2 border-slate-700' : 'bg-white'
+            } max-h-[92vh] overflow-y-auto`}
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className={`max-w-md w-full rounded-3xl p-8 ${
-                darkMode ? 'bg-slate-900 border-2 border-slate-700' : 'bg-white'
-              } max-h-[90vh] overflow-y-auto`}
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  Factura de Venta
-                </h2>
-                <Button
-                  onClick={() => setMostrarTicket(false)}
-                  size="icon"
-                  variant="ghost"
-                  className="rounded-xl"
-                >
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Factura de Venta
+              </h2>
+              <Button
+                onClick={() => setMostrarTicket(false)}
+                size="icon"
+                variant="ghost"
+                className="rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
 
-              <TicketReceipt venta={ventaActual} />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <TicketReceipt venta={ventaActual} />
+          </div>
+        </div>
+      )}
 
       {/* Modal de Confirmación para Métodos de Pago Simples */}
       <AnimatePresence>
