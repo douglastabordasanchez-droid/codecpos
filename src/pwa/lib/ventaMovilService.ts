@@ -17,15 +17,26 @@ export interface ItemCarritoMovil {
   precio: number;
 }
 
+/** Mismo shape que `PagoMixtoDetalle` de Electron (electronStore.ts) — así el historial se ve igual en las dos plataformas. */
+export interface MetodosMultiplesMovil {
+  efectivo?: number;
+  tarjeta?: number;
+  nequi?: number;
+  daviplata?: number;
+  transferencia?: number;
+  rappi?: number;
+}
+
 export async function crearVentaMovil(
   clienteId: string,
   empleadoId: string,
   cajeroNombre: string,
   items: ItemCarritoMovil[],
-  metodoPago: string
+  metodoPago: string,
+  metodosMultiples?: MetodosMultiplesMovil
 ): Promise<{ ok: boolean; error?: string; numero?: number; ventaId?: string }> {
   const client = getSupabaseClient();
-  if (!client) return { ok: false, error: 'Supabase no configurado' };
+  if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
   if (items.length === 0) return { ok: false, error: 'El carrito está vacío' };
 
   const total = items.reduce((acc, it) => acc + it.cantidad * it.precio, 0);
@@ -49,6 +60,7 @@ export async function crearVentaMovil(
       cajero_nombre: cajeroNombre,
       total,
       metodo_pago: metodoPago,
+      metodos_multiples: metodoPago === 'mixto' ? (metodosMultiples || null) : null,
       estado: 'completada',
     })
     .select('id')

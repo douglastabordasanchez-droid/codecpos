@@ -74,7 +74,7 @@ export function DesktopLayout() {
     (it.fijo || !esRutaOculta(it.path));
 
   const toggleVerify = () => {
-    const nuevo = alternarCodecVerifyPwa();
+    const nuevo = alternarCodecVerifyPwa(empleado?.id);
     setVerifyActivo(nuevo);
     toast.success(nuevo ? 'Codec Verify activado' : 'Codec Verify desactivado');
   };

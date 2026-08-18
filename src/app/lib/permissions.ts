@@ -48,6 +48,8 @@ export enum ModuloPOS {
   CODEC_VERIFY         = 'codec_verify',
   INTEGRACIONES        = 'integraciones',
   TALLER_REPARACIONES  = 'taller_reparaciones',
+  ARTES_GRAFICAS       = 'artes_graficas',
+  PAPELERIA_PINATERIA  = 'papeleria_pinateria',
   FACTURACION_DIAN     = 'facturacion_dian',
   INTEGRACION_SIIGO    = 'integracion_siigo',
   REPORTES_AVANZADOS   = 'reportes_avanzados',
@@ -330,15 +332,6 @@ export const MODULOS_CATALOGO: ModuloInfo[] = [
     habilitadoPorDefecto: false,
   },
   {
-    id: ModuloPOS.INTEGRACIONES,
-    nombre: 'Integraciones',
-    descripcion: 'Conectores y servicios externos del sistema',
-    icono: '🔗',
-    categoria: 'premium',
-    planRequerido: 'premium',
-    habilitadoPorDefecto: false,
-  },
-  {
     id: ModuloPOS.TALLER_REPARACIONES,
     nombre: 'Taller de Reparaciones',
     descripcion: 'Gestión de órdenes de servicio y reparaciones',
@@ -350,6 +343,24 @@ export const MODULOS_CATALOGO: ModuloInfo[] = [
     // para TODOS los usuarios incluido el Admin — la pantalla de Configuración
     // que activa/desactiva módulos globalmente respeta este valor por
     // defecto, y no hay forma de "encontrarlo" si empieza apagado.
+    habilitadoPorDefecto: true,
+  },
+  {
+    id: ModuloPOS.ARTES_GRAFICAS,
+    nombre: 'Artes Gráficas',
+    descripcion: 'Catálogo por escalas (marcado/sin marcar) y facturación dinámica con abono',
+    icono: '🎨',
+    categoria: 'premium',
+    planRequerido: 'premium',
+    habilitadoPorDefecto: true,
+  },
+  {
+    id: ModuloPOS.PAPELERIA_PINATERIA,
+    nombre: 'Papelería y Piñatería',
+    descripcion: 'Globos por calibre/color, dulcería, juguetería de piñata, temáticas y carga masiva por plantillas',
+    icono: '🎉',
+    categoria: 'premium',
+    planRequerido: 'premium',
     habilitadoPorDefecto: true,
   },
   {
@@ -401,7 +412,7 @@ export const MODULOS_CATALOGO: ModuloInfo[] = [
   },
 ];
 
-// 🎯 Lista oficial para licenciamiento de clientes (23 módulos operativos)
+// 🎯 Lista oficial para licenciamiento de clientes (24 módulos operativos)
 export const MODULOS_CLIENTE_OFICIALES: ModuloPOS[] = [
   ModuloPOS.PUNTO_DE_VENTA,
   ModuloPOS.PRODUCTOS,
@@ -423,8 +434,9 @@ export const MODULOS_CLIENTE_OFICIALES: ModuloPOS[] = [
   ModuloPOS.PROMOCIONES,
   ModuloPOS.MULTITIENDA,
   ModuloPOS.CODIGOS_BARRAS,
-  ModuloPOS.INTEGRACIONES,
   ModuloPOS.TALLER_REPARACIONES,
+  ModuloPOS.ARTES_GRAFICAS,
+  ModuloPOS.PAPELERIA_PINATERIA,
   ModuloPOS.CODEC_VERIFY,
   ModuloPOS.MONITOREO_TERMINALES,
 ];

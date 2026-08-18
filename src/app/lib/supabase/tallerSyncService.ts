@@ -3,24 +3,51 @@
  *
  * El Taller vivía únicamente en el IndexedDB de UNA instalación de Electron.
  * Esto lo publica en `taller_ordenes` (migración 0024) para que el celular
- * pueda ver y operar las órdenes desde cualquier red.
+ * pueda ver y operar las órdenes desde cualquier red — Y para que OTRA
+ * instalación de Electron (otra sede, o simplemente otra caja fuera de la
+ * misma LAN) también las reciba.
  *
  * Modelo de sincronización, deliberadamente simple y sin CRDT:
- *   • push  → Electron es la fuente de verdad del catálogo completo de la
- *             orden (diagnóstico, insumos, pagos, firmas…). Sube todo.
- *   • pull  → del celular solo vuelven los cambios que la PWA sabe hacer
- *             (estado, técnico asignado, notas). Se aplican por
- *             `upsertOrdenRemota`, el mismo camino que ya usa la LAN.
+ *   • push  → quien crea/edita la orden es la fuente de verdad del catálogo
+ *             completo (diagnóstico, insumos, pagos, firmas…). Sube todo.
+ *   • pull  → vuelven TODOS los cambios ajenos, sin importar si el origen
+ *             fue la PWA u otra instalación de Electron.
  *
- * El campo `actualizado_en` distingue quién escribió último ('electron' |
- * 'pwa'), para que Electron no se baje su propio push como si fuera un cambio
- * ajeno y entre en un ciclo.
+ * ⚠️ Antes se filtraba estrictamente `actualizado_en === 'pwa'` para evitar
+ * que una caja se bajara su propio push como si fuera un cambio ajeno — pero
+ * eso también bloqueaba, sin excepción, cualquier orden creada/asignada
+ * desde OTRA instalación de Electron: un técnico en otra sede (o incluso en
+ * la misma sede pero fuera de la LAN local) nunca se enteraba de una
+ * reparación asignada, ni al instante ni con retraso. El anti-eco correcto
+ * es local: cada terminal recuerda qué `local_id` empujó ella misma en los
+ * últimos segundos y se ignora a sí misma — sin bloquear a las demás.
  */
 import { getSupabaseClient } from './config';
 import { getLinkedClienteId } from './tenantLink';
 import type { OrdenServicio } from '../../types/taller';
 
 const LS_ULTIMO_PULL = 'codecpos_taller_ultimo_pull';
+
+// Anti-eco: local_id → momento en que ESTA terminal lo empujó. Un cambio
+// remoto para ese mismo local_id dentro de la ventana es casi seguro el
+// reflejo del propio push (Supabase Realtime notifica a todos los
+// suscriptores, incluido quien escribió), no un cambio ajeno real.
+const VENTANA_ECO_MS = 8000;
+const recienEmpujadas = new Map<string, number>();
+
+function marcarComoRecienEmpujada(localId: string): void {
+  recienEmpujadas.set(localId, Date.now());
+  // Housekeeping ocasional para no acumular memoria indefinidamente.
+  if (recienEmpujadas.size > 200) {
+    const limite = Date.now() - VENTANA_ECO_MS;
+    for (const [id, ts] of recienEmpujadas) if (ts < limite) recienEmpujadas.delete(id);
+  }
+}
+
+function esEcoPropio(localId: string): boolean {
+  const ts = recienEmpujadas.get(localId);
+  return !!ts && Date.now() - ts < VENTANA_ECO_MS;
+}
 
 interface FilaTallerOrden {
   local_id: string;
@@ -76,6 +103,7 @@ export async function pushOrdenesTaller(ordenes: OrdenServicio[]): Promise<numbe
       .from('taller_ordenes')
       .upsert(lote, { onConflict: 'cliente_id,local_id' });
     if (error) throw new Error(error.message);
+    lote.forEach((f) => marcarComoRecienEmpujada(f.local_id));
     subidas += lote.length;
   }
   return subidas;
@@ -87,8 +115,8 @@ export async function pushOrdenTaller(orden: OrdenServicio): Promise<void> {
 }
 
 /**
- * Baja los cambios hechos DESDE EL CELULAR desde el último pull.
- * Devuelve las órdenes que Electron debe aplicar localmente.
+ * Baja los cambios ajenos (celular U OTRA instalación de Electron) desde el
+ * último pull. Devuelve las órdenes que esta caja debe aplicar localmente.
  */
 export async function pullOrdenesTallerDesdePwa(): Promise<OrdenServicio[]> {
   const client = getSupabaseClient();
@@ -101,7 +129,6 @@ export async function pullOrdenesTallerDesdePwa(): Promise<OrdenServicio[]> {
     .from('taller_ordenes')
     .select('local_id, numero_orden, estado, datos, actualizado_en, updated_at')
     .eq('cliente_id', clienteId)
-    .eq('actualizado_en', 'pwa')
     .gt('updated_at', desde)
     .order('updated_at', { ascending: true });
 
@@ -113,11 +140,12 @@ export async function pullOrdenesTallerDesdePwa(): Promise<OrdenServicio[]> {
   }
 
   return filas
+    .filter((f) => !esEcoPropio(f.local_id))
     .map((f) => f.datos)
     .filter((o): o is OrdenServicio => !!o && typeof o.id === 'string');
 }
 
-/** Escucha en tiempo real los cambios que haga el celular sobre las órdenes. */
+/** Escucha en tiempo real los cambios ajenos (celular u otra caja) sobre las órdenes. */
 export function suscribirCambiosTallerPwa(
   onCambio: (orden: OrdenServicio) => void
 ): () => void {
@@ -132,8 +160,9 @@ export function suscribirCambiosTallerPwa(
       { event: '*', schema: 'public', table: 'taller_ordenes', filter: `cliente_id=eq.${clienteId}` },
       (payload) => {
         const fila = payload.new as FilaTallerOrden | null;
-        // Solo interesa lo que escribió el celular: lo propio ya está aplicado.
-        if (!fila || fila.actualizado_en !== 'pwa') return;
+        // Ignorar el reflejo del propio push — todo lo demás (celular u otra
+        // caja) sí es un cambio ajeno real que hay que aplicar.
+        if (!fila || esEcoPropio(fila.local_id)) return;
         if (fila.datos && typeof fila.datos.id === 'string') onCambio(fila.datos);
       }
     )

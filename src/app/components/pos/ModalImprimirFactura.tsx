@@ -3,10 +3,10 @@
 
 import { useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { X, Printer, FileText, Receipt, User, Calendar, CreditCard } from 'lucide-react';
+import { X, Printer, FileText, Receipt, User, Calendar, CreditCard, MessageCircle, Mail, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { type Venta } from '../../lib/electronStore';
-import { descargarFacturaPDF } from '../../lib/pdfGenerator';
+import { descargarFacturaPDF, enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
 import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
 
@@ -274,7 +274,10 @@ interface Props {
 // ── Modal principal ───────────────────────────────────────────────────────────
 
 export default function ModalImprimirFactura({ open, venta, onClose, darkMode }: Props) {
-  const [busy, setBusy] = useState<'imprimir' | 'pdf' | null>(null);
+  const [busy, setBusy] = useState<'imprimir' | 'pdf' | 'whatsapp' | 'email' | null>(null);
+  const [panelCompartir, setPanelCompartir] = useState<'whatsapp' | 'email' | null>(null);
+  const [telefono, setTelefono] = useState('');
+  const [emailDestino, setEmailDestino] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
 
   if (!venta) return null;
@@ -282,6 +285,61 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
   const nFactura = (venta as any).numeroFactura || venta.id;
   const subtotal = (venta as any).subtotal || venta.total;
   const iva      = (venta as any).iva      || 0;
+
+  /** Mismos datos que ejecutarPDF() arma para descargarFacturaPDF — reutilizado por WhatsApp/Correo. */
+  function datosParaCompartir() {
+    const cfg = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+    return {
+      venta: {
+        numeroFactura: nFactura,
+        fecha: venta!.fecha,
+        items: venta!.items.map(i => ({ nombre: i.nombre, cantidad: i.cantidad, precio: i.precio, subtotal: i.subtotal })),
+        subtotal, iva, total: venta!.total,
+        metodoPago: venta!.metodoPago,
+        cajero: venta!.cajero,
+        cliente: (venta as any).cliente || 'Consumidor Final',
+      },
+      config: {
+        nombreComercial: cfg.nombreComercial || 'CODEC POS',
+        razonSocial: cfg.razonSocial || '',
+        nit: cfg.nit || '',
+        direccion: cfg.direccion || '',
+        telefono: cfg.telefono || '',
+        email: cfg.email || '',
+        ciudad: cfg.ciudad || '',
+      },
+    };
+  }
+
+  async function ejecutarWhatsApp() {
+    if (!telefono.trim()) { toast.error('Ingresa el número de WhatsApp del cliente'); return; }
+    setBusy('whatsapp');
+    try {
+      const { venta: v, config } = datosParaCompartir();
+      await enviarFacturaPorWhatsApp(v, config, telefono.trim());
+      toast.success('PDF descargado — WhatsApp se abrió con el mensaje listo, solo adjunta el archivo');
+      setPanelCompartir(null);
+    } catch {
+      toast.error('No se pudo preparar el envío por WhatsApp');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function ejecutarEmail() {
+    if (!emailDestino.trim()) { toast.error('Ingresa el correo del cliente'); return; }
+    setBusy('email');
+    try {
+      const { venta: v, config } = datosParaCompartir();
+      await enviarFacturaPorEmail(v, config, emailDestino.trim());
+      toast.success('PDF descargado — tu cliente de correo se abrió con el mensaje listo, solo adjunta el archivo');
+      setPanelCompartir(null);
+    } catch {
+      toast.error('No se pudo preparar el envío por correo');
+    } finally {
+      setBusy(null);
+    }
+  }
 
   const dark = darkMode;
   const head    = dark ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200';
@@ -498,6 +556,76 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
                     }
                     {busy === 'pdf' ? 'Generando PDF…' : 'Descargar PDF'}
                   </motion.button>
+
+                  <p className={`text-xs font-semibold uppercase tracking-wider pt-2 ${textMuted}`}>Compartir</p>
+
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setPanelCompartir(panelCompartir === 'whatsapp' ? null : 'whatsapp')}
+                    disabled={!!busy}
+                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-60 disabled:cursor-not-allowed border ${
+                      panelCompartir === 'whatsapp' ? 'border-emerald-500/60' : dark ? 'border-white/10' : 'border-slate-200'
+                    } ${textPrimary}`}
+                  >
+                    <MessageCircle className="w-4 h-4 shrink-0 text-emerald-500" />
+                    WhatsApp
+                  </motion.button>
+
+                  {panelCompartir === 'whatsapp' && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="flex gap-1.5">
+                      <input
+                        type="tel"
+                        value={telefono}
+                        onChange={(e) => setTelefono(e.target.value)}
+                        placeholder="300 000 0000"
+                        className={`flex-1 min-w-0 h-10 rounded-lg px-3 text-sm border ${dark ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-500' : 'bg-white border-slate-300'}`}
+                      />
+                      <button
+                        onClick={ejecutarWhatsApp}
+                        disabled={busy === 'whatsapp'}
+                        className="shrink-0 w-10 h-10 rounded-lg bg-emerald-600 flex items-center justify-center disabled:opacity-60"
+                      >
+                        {busy === 'whatsapp' ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="w-4 h-4 text-white" />}
+                      </button>
+                    </motion.div>
+                  )}
+
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setPanelCompartir(panelCompartir === 'email' ? null : 'email')}
+                    disabled={!!busy}
+                    className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-60 disabled:cursor-not-allowed border ${
+                      panelCompartir === 'email' ? 'border-sky-500/60' : dark ? 'border-white/10' : 'border-slate-200'
+                    } ${textPrimary}`}
+                  >
+                    <Mail className="w-4 h-4 shrink-0 text-sky-500" />
+                    Correo
+                  </motion.button>
+
+                  {panelCompartir === 'email' && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="flex gap-1.5">
+                      <input
+                        type="email"
+                        value={emailDestino}
+                        onChange={(e) => setEmailDestino(e.target.value)}
+                        placeholder="cliente@correo.com"
+                        className={`flex-1 min-w-0 h-10 rounded-lg px-3 text-sm border ${dark ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-500' : 'bg-white border-slate-300'}`}
+                      />
+                      <button
+                        onClick={ejecutarEmail}
+                        disabled={busy === 'email'}
+                        className="shrink-0 w-10 h-10 rounded-lg bg-sky-600 flex items-center justify-center disabled:opacity-60"
+                      >
+                        {busy === 'email' ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="w-4 h-4 text-white" />}
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {panelCompartir && (
+                    <p className={`text-[10px] leading-snug ${textMuted}`}>
+                      El PDF se descarga automáticamente y {panelCompartir === 'whatsapp' ? 'WhatsApp' : 'tu correo'} se abre con el mensaje listo — solo falta adjuntar el archivo descargado.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

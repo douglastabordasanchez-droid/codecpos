@@ -24,16 +24,6 @@ import { usePOS } from '../contexts/POSContext';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
-interface ProductoLocal {
-  id: string;
-  nombre: string;
-  codigoBarras?: string;
-  precio: number;
-  categoria: string;
-  stock?: number;
-  precioCompra?: number;
-}
-
 interface ProductoPOS {
   id: string;
   codigo: string;
@@ -44,6 +34,7 @@ interface ProductoPOS {
   categoria: string;
   categoriaId: string;
   costo: number;
+  _supabaseSynced?: boolean;
 }
 
 interface CategoriaGlobal {
@@ -63,10 +54,6 @@ const COLORES_CATEGORIA = [
 ];
 
 // ─── Helpers localStorage ──────────────────────────────────────────────────────
-
-function leerProductosLocal(): ProductoLocal[] {
-  try { return JSON.parse(localStorage.getItem('codecpos_productos') || '[]'); } catch { return []; }
-}
 
 function leerProductosPOS(): ProductoPOS[] {
   try { return JSON.parse(localStorage.getItem('pos-productos') || '[]'); } catch { return []; }
@@ -89,12 +76,28 @@ function guardarProductoEnInventario(producto: ProductoPOS) {
   window.dispatchEvent(new CustomEvent('pos-productos-updated', { detail: prods }));
 }
 
-function actualizarProductoLocal(producto: ProductoLocal) {
-  const prods = leerProductosLocal();
+/**
+ * ⚠️ Antes esta función escribía en 'codecpos_productos', una clave
+ * huérfana que nada más en el sistema lee — el código asignado nunca
+ * llegaba al inventario real, ni se sincronizaba a Supabase, ni el escáner
+ * de la PWA podía encontrarlo jamás. Ahora escribe en 'pos-productos' (la
+ * MISMA clave que usa el inventario real, POSPageNew y la sincronización),
+ * en el campo `codigo` (el que el resto del sistema ya trata como el
+ * código escaneable — ver POSPageNew.tsx y syncService.ts).
+ *
+ * También limpia `_supabaseSynced`: syncService.ts marca esa bandera true
+ * la primera vez que sube un producto y nunca la vuelve a tocar, así que un
+ * producto ya sincronizado se queda con el código viejo (o sin código) en
+ * Supabase para siempre si no se invalida aquí tras cada edición.
+ */
+function actualizarProductoPOS(producto: ProductoPOS) {
+  const prods = leerProductosPOS();
   const idx = prods.findIndex(p => p.id === producto.id);
   if (idx !== -1) {
-    prods[idx] = producto;
-    localStorage.setItem('codecpos_productos', JSON.stringify(prods));
+    prods[idx] = { ...producto, _supabaseSynced: false };
+    localStorage.setItem('pos-productos', JSON.stringify(prods));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'pos-productos' }));
+    window.dispatchEvent(new CustomEvent('pos-productos-updated', { detail: prods }));
   }
 }
 
@@ -132,9 +135,9 @@ export default function CodigosBarrasPageFull() {
   const [confirmEliminarCat, setConfirmEliminarCat] = useState<string | null>(null);
 
   // Asignar a productos existentes
-  const [productos, setProductos] = useState<ProductoLocal[]>([]);
+  const [productos, setProductos] = useState<ProductoPOS[]>([]);
   const [busquedaProducto, setBusquedaProducto] = useState('');
-  const [productoSeleccionado, setProductoSeleccionado] = useState<ProductoLocal | null>(null);
+  const [productoSeleccionado, setProductoSeleccionado] = useState<ProductoPOS | null>(null);
 
   // Modales de integración
   const [showModalProducto, setShowModalProducto] = useState(false);
@@ -157,7 +160,7 @@ export default function CodigosBarrasPageFull() {
         plantillasData = await listarPlantillasEtiquetas();
       }
       setPlantillas(plantillasData);
-      setProductos(leerProductosLocal());
+      setProductos(leerProductosPOS());
       setCategorias(leerCategorias());
       calcularStats();
     } catch (e) {
@@ -166,14 +169,14 @@ export default function CodigosBarrasPageFull() {
   };
 
   const calcularStats = useCallback(() => {
-    const prods = leerProductosLocal();
+    const prods = leerProductosPOS();
     const generados = (() => {
       try { return JSON.parse(localStorage.getItem('codecpos_codigos_generados') || '[]').length; } catch { return 0; }
     })();
     const impresas = (() => {
       try { return parseInt(localStorage.getItem('codecpos_etiquetas_impresas') || '0'); } catch { return 0; }
     })();
-    setStats({ codigosGenerados: generados, etiquetasImpresas: impresas, productosConCodigo: prods.filter(p => p.codigoBarras).length });
+    setStats({ codigosGenerados: generados, etiquetasImpresas: impresas, productosConCodigo: prods.filter(p => p.codigo).length });
   }, []);
 
   // ── Categorías ──────────────────────────────────────────────────────────────
@@ -281,35 +284,35 @@ export default function CodigosBarrasPageFull() {
 
   const handleAsignarCodigo = () => {
     if (!productoSeleccionado || !codigoGenerado) return;
-    actualizarProductoLocal({ ...productoSeleccionado, codigoBarras: codigoGenerado });
+    actualizarProductoPOS({ ...productoSeleccionado, codigo: codigoGenerado });
     toast.success(`Código asignado a ${productoSeleccionado.nombre}`);
-    setProductos(leerProductosLocal());
+    setProductos(leerProductosPOS());
     setProductoSeleccionado(null);
     setCodigoGenerado(null);
     setImagenCodigo(null);
     calcularStats();
   };
 
-  const handleGenerarYAsignar = async (producto: ProductoLocal) => {
+  const handleGenerarYAsignar = async (producto: ProductoPOS) => {
     setLoading(true);
     try {
       const codigo = await generarCodigoEAN13();
-      actualizarProductoLocal({ ...producto, codigoBarras: codigo });
+      actualizarProductoPOS({ ...producto, codigo });
       await registrarCodigoGenerado({ codigo, tipo: 'EAN13', productoId: producto.id, productoNombre: producto.nombre });
       toast.success(`Código ${codigo} asignado a ${producto.nombre}`);
-      setProductos(leerProductosLocal());
+      setProductos(leerProductosPOS());
       calcularStats();
     } catch { toast.error('Error generando código'); }
     finally { setLoading(false); }
   };
 
-  const handleImprimirEtiquetaProducto = async (producto: ProductoLocal) => {
-    if (!producto.codigoBarras || plantillas.length === 0) {
+  const handleImprimirEtiquetaProducto = async (producto: ProductoPOS) => {
+    if (!producto.codigo || plantillas.length === 0) {
       toast.error('El producto no tiene código o no hay plantillas');
       return;
     }
     try {
-      await imprimirEtiquetas(plantillas[0].id, [{ codigoBarras: producto.codigoBarras, nombre: producto.nombre, precio: producto.precio, categoria: producto.categoria }], 1);
+      await imprimirEtiquetas(plantillas[0].id, [{ codigoBarras: producto.codigo, nombre: producto.nombre, precio: producto.precio, categoria: producto.categoria }], 1);
       const cur = parseInt(localStorage.getItem('codecpos_etiquetas_impresas') || '0');
       localStorage.setItem('codecpos_etiquetas_impresas', (cur + 1).toString());
       calcularStats();
@@ -343,9 +346,9 @@ export default function CodigosBarrasPageFull() {
   const productosFiltrados = productos.filter(p =>
     p.nombre.toLowerCase().includes(busquedaProducto.toLowerCase()) ||
     p.id.toLowerCase().includes(busquedaProducto.toLowerCase()) ||
-    (p.codigoBarras && p.codigoBarras.includes(busquedaProducto))
+    (p.codigo && p.codigo.includes(busquedaProducto))
   );
-  const productosSinCodigo = productos.filter(p => !p.codigoBarras);
+  const productosSinCodigo = productos.filter(p => !p.codigo);
 
   // ── Clases de tema ───────────────────────────────────────────────────────────
 
@@ -630,12 +633,12 @@ export default function CodigosBarrasPageFull() {
                       <td className={`px-4 py-3 ${muted}`}>{p.categoria || '—'}</td>
                       <td className="px-4 py-3 font-semibold">${p.precio.toLocaleString('es-CO')}</td>
                       <td className="px-4 py-3">
-                        {p.codigoBarras
-                          ? <span className="font-mono text-xs bg-green-100 text-green-800 px-2 py-1 rounded-lg">{p.codigoBarras}</span>
+                        {p.codigo
+                          ? <span className="font-mono text-xs bg-green-100 text-green-800 px-2 py-1 rounded-lg">{p.codigo}</span>
                           : <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-lg">Sin código</span>}
                       </td>
                       <td className="px-4 py-3">
-                        {!p.codigoBarras ? (
+                        {!p.codigo ? (
                           <button
                             onClick={() => handleGenerarYAsignar(p)}
                             disabled={loading}

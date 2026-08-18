@@ -29,7 +29,7 @@ interface VentaParaCompartir {
 
 async function construirDatosFactura(clienteId: string, venta: VentaParaCompartir) {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const [{ data: negocio }, { data: items }] = await Promise.all([
     client

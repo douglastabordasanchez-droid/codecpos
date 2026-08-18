@@ -17,53 +17,90 @@ import { toast } from 'sonner';
 import { tallerService } from '../services/tallerService';
 import { getLinkedClienteId } from '../lib/supabase/tenantLink';
 import { isSupabaseConfigured } from '../lib/supabase/config';
+import { useAuth } from '../contexts/AuthContext';
+import { playTallerAlertSound } from '../lib/tallerAlertSound';
 import {
   pullOrdenesTallerDesdePwa,
   suscribirCambiosTallerPwa,
 } from '../lib/supabase/tallerSyncService';
 import {
   suscribirCuentasMesa,
+  esEcoPropioDeMesa,
   type CuentaMesa,
 } from '../lib/supabase/panaderiaSyncService';
 import type { OrdenServicio } from '../types/taller';
 
 const STORAGE_CUENTAS_MESAS = 'codecpos_mesas_cuentas';
+const TALLER_PULL_INTERVAL_MS = 30000;
 
 export function useSyncModulosNube() {
+  const { usuarioActual } = useAuth();
+
   useEffect(() => {
     const clienteId = getLinkedClienteId();
     if (!isSupabaseConfigured() || !clienteId) return;
 
     let cancelado = false;
 
-    // ── Taller: aplicar una orden que llegó del celular ──────────────────────
+    // ── Taller: aplicar una orden que llegó de otra caja o del celular ───────
     const aplicarOrden = async (orden: OrdenServicio) => {
       if (cancelado) return;
       try {
         await tallerService.init();
+        const yaExistia = !!(await tallerService.obtenerOrden(orden.id));
         await tallerService.upsertOrdenRemota(orden);
         window.dispatchEvent(new CustomEvent('lan:taller-estado-cambio', { detail: orden }));
-        toast(`Taller · Orden ${orden.numeroOrden}`, {
-          description: `Actualizada desde la app móvil · ${orden.estado}`,
-          duration: 5000,
-        });
+
+        // Compara por nombre completo — es lo único que viaja hoy en
+        // `tecnicoAsignado` desde cualquier origen (Electron u otra caja).
+        const asignadaAMi =
+          !!usuarioActual?.nombreCompleto &&
+          orden.tecnicoAsignado?.trim().toLowerCase() === usuarioActual.nombreCompleto.trim().toLowerCase();
+
+        if (!yaExistia && asignadaAMi) {
+          playTallerAlertSound();
+          toast.success(`🔧 Nueva reparación asignada a ti — Orden ${orden.numeroOrden}`, {
+            description: orden.dispositivo?.marca || orden.dispositivo?.tipo || undefined,
+            duration: 8000,
+          });
+        } else if (!yaExistia) {
+          toast(`Taller · Nueva orden ${orden.numeroOrden}`, {
+            description: orden.tecnicoAsignado ? `Asignada a ${orden.tecnicoAsignado}` : 'Sin técnico asignado',
+            duration: 5000,
+          });
+        } else {
+          toast(`Taller · Orden ${orden.numeroOrden}`, {
+            description: `Actualizada · ${orden.estado}`,
+            duration: 5000,
+          });
+        }
       } catch (e) {
-        console.warn('[SyncNube] No se pudo aplicar la orden recibida del celular:', e);
+        console.warn('[SyncNube] No se pudo aplicar la orden recibida:', e);
       }
     };
 
+    const pullTaller = () => {
+      pullOrdenesTallerDesdePwa()
+        .then((ordenes) => { ordenes.forEach(aplicarOrden); })
+        .catch((e) => console.warn('[SyncNube] Pull de taller falló:', e));
+    };
+
     // Al arrancar: recuperar lo que pasó mientras la caja estaba cerrada.
-    pullOrdenesTallerDesdePwa()
-      .then((ordenes) => { ordenes.forEach(aplicarOrden); })
-      .catch((e) => console.warn('[SyncNube] Pull inicial de taller falló:', e));
+    pullTaller();
+    // 🛡️ Red de seguridad: además del realtime, un pull periódico por si se
+    // cae la conexión del canal sin que nadie lo note (mismo patrón que
+    // ventas/productos en syncService.ts).
+    const intervaloTaller = window.setInterval(pullTaller, TALLER_PULL_INTERVAL_MS);
 
     const desuscribirTaller = suscribirCambiosTallerPwa(aplicarOrden);
 
-    // ── Panadería: cuenta de mesa enviada por un mesero ──────────────────────
+    // ── Panadería: cuenta de mesa enviada por un mesero U OTRA CAJA ──────────
     const desuscribirCuentas = suscribirCuentasMesa(clienteId, (cuenta: CuentaMesa) => {
       if (cancelado) return;
-      // Lo que escribió esta misma caja ya está aplicado localmente.
-      if (cuenta.actualizadoEn !== 'pwa') return;
+      // Ignorar el reflejo del propio guardado — antes se ignoraba TODO lo
+      // que no viniera marcado 'pwa', lo que también bloqueaba enterarse de
+      // cambios hechos desde otra caja Electron.
+      if (esEcoPropioDeMesa(cuenta.mesaLocalId)) return;
 
       try {
         const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS);
@@ -90,8 +127,9 @@ export function useSyncModulosNube() {
 
     return () => {
       cancelado = true;
+      window.clearInterval(intervaloTaller);
       desuscribirTaller();
       desuscribirCuentas();
     };
-  }, []);
+  }, [usuarioActual?.nombreCompleto]);
 }

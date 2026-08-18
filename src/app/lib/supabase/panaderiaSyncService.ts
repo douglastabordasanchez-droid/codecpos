@@ -69,6 +69,28 @@ function ctx() {
   return { client, clienteId };
 }
 
+// Anti-eco (mismo patrón que tallerSyncService.ts): si esta misma terminal
+// acaba de escribir la cuenta de una mesa, el cambio remoto que Supabase le
+// devuelve de vuelta es el reflejo de su propio guardado, no un pedido ajeno
+// — sin esto, DOS cajas Electron (no solo caja+celular) nunca se enterarían
+// una de la otra, porque antes solo se aceptaba lo que viniera marcado como
+// `actualizado_en: 'pwa'`.
+const VENTANA_ECO_MS = 8000;
+const mesasRecienGuardadas = new Map<string, number>();
+
+function marcarMesaComoRecienGuardada(mesaLocalId: string): void {
+  mesasRecienGuardadas.set(mesaLocalId, Date.now());
+  if (mesasRecienGuardadas.size > 100) {
+    const limite = Date.now() - VENTANA_ECO_MS;
+    for (const [id, ts] of mesasRecienGuardadas) if (ts < limite) mesasRecienGuardadas.delete(id);
+  }
+}
+
+export function esEcoPropioDeMesa(mesaLocalId: string): boolean {
+  const ts = mesasRecienGuardadas.get(mesaLocalId);
+  return !!ts && Date.now() - ts < VENTANA_ECO_MS;
+}
+
 // ── Catálogo: Electron → nube ────────────────────────────────────────────────
 
 export async function pushCatalogoPanaderia(datos: {
@@ -236,7 +258,7 @@ export async function guardarCuentaMesa(
   meseroNombre?: string
 ): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const total = items.reduce(
     (s, it) => s + (Number(it.producto?.precio) || 0) * (Number(it.cantidad) || 0),
@@ -259,9 +281,10 @@ export async function guardarCuentaMesa(
     { onConflict: 'cliente_id,mesa_local_id' }
   );
   if (error) throw new Error(error.message);
+  marcarMesaComoRecienGuardada(mesaLocalId);
 }
 
-/** Realtime de cuentas — la caja ve el pedido del mesero al instante. */
+/** Realtime de cuentas — la caja ve el pedido del mesero (o de otra caja) al instante. */
 export function suscribirCuentasMesa(
   clienteId: string,
   onCambio: (cuenta: CuentaMesa) => void
@@ -277,6 +300,121 @@ export function suscribirCuentasMesa(
       (payload) => {
         const fila = payload.new as Record<string, unknown> | null;
         if (fila?.mesa_local_id) onCambio(mapCuenta(fila));
+      }
+    )
+    .subscribe();
+
+  return () => { client.removeChannel(canal); };
+}
+
+// ── Comandas de Cocina/Bar ───────────────────────────────────────────────────
+//
+// A diferencia de la cuenta de mesa (un solo registro que se sobrescribe),
+// cada comanda es un pedido puntual que el mesero decide "enviar a
+// preparar" — se inserta una fila nueva por cada envío y tiene su propio
+// ciclo de vida (pendiente → preparando → listo → entregado) que la
+// pantalla de Cocina/Bar actualiza.
+
+export type EstadoComanda = 'pendiente' | 'preparando' | 'listo' | 'entregado' | 'cancelado';
+
+export interface ItemComanda {
+  nombre: string;
+  cantidad: number;
+  nota?: string;
+}
+
+export interface Comanda {
+  id: string;
+  mesaLocalId: string;
+  mesaNombre?: string;
+  items: ItemComanda[];
+  estado: EstadoComanda;
+  meseroNombre?: string;
+  nota?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapComanda(r: any): Comanda {
+  return {
+    id: r.id,
+    mesaLocalId: r.mesa_local_id,
+    mesaNombre: r.mesa_nombre || undefined,
+    items: Array.isArray(r.items) ? r.items : [],
+    estado: r.estado || 'pendiente',
+    meseroNombre: r.mesero_nombre || undefined,
+    nota: r.nota || undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/** El mesero (PWA o Electron) envía el pedido actual de la mesa a cocina/bar. */
+export async function enviarComanda(
+  clienteId: string,
+  mesaLocalId: string,
+  mesaNombre: string,
+  items: ItemComanda[],
+  meseroNombre?: string,
+  nota?: string
+): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  if (items.length === 0) throw new Error('No hay ítems para enviar a cocina');
+
+  const { error } = await client.from('panaderia_comandas').insert({
+    cliente_id: clienteId,
+    mesa_local_id: mesaLocalId,
+    mesa_nombre: mesaNombre,
+    items,
+    estado: 'pendiente',
+    mesero_nombre: meseroNombre || null,
+    nota: nota || null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Cocina/Bar avanza el estado del pedido (pendiente → preparando → listo → entregado). */
+export async function actualizarEstadoComanda(comandaId: string, estado: EstadoComanda): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { error } = await client
+    .from('panaderia_comandas')
+    .update({ estado, updated_at: new Date().toISOString() })
+    .eq('id', comandaId);
+  if (error) throw new Error(error.message);
+}
+
+/** Comandas activas (no entregadas ni canceladas) para poblar la pantalla al abrirla. */
+export async function obtenerComandasActivas(clienteId: string): Promise<Comanda[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  const { data, error } = await client
+    .from('panaderia_comandas')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .in('estado', ['pendiente', 'preparando', 'listo'])
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapComanda);
+}
+
+/** Realtime de comandas — cocina/bar ve el pedido apenas el mesero lo envía. */
+export function suscribirComandas(
+  clienteId: string,
+  onCambio: (comanda: Comanda) => void
+): () => void {
+  const client = getSupabaseClient();
+  if (!client) return () => {};
+
+  const canal = client
+    .channel(`panaderia-comandas-${clienteId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'panaderia_comandas', filter: `cliente_id=eq.${clienteId}` },
+      (payload) => {
+        const fila = (payload.new || payload.old) as Record<string, unknown> | null;
+        if (fila?.id) onCambio(mapComanda(fila));
       }
     )
     .subscribe();

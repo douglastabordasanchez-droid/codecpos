@@ -21,7 +21,8 @@ export type PrintSection =
   | 'gastos'
   | 'codigos_barras'
   | 'devoluciones'
-  | 'contabilidad';
+  | 'contabilidad'
+  | 'comanda_cocina';
 
 export interface SectionInfo {
   label: string;
@@ -39,6 +40,7 @@ export const SECTION_INFO: Record<PrintSection, SectionInfo> = {
   codigos_barras: { label: 'Código de Barras / Etiquetas',  desc: 'Etiquetas e impresión de productos',     emoji: '🏷️', fallbackKey: 'etiquetas' },
   devoluciones:   { label: 'Devoluciones y Notas Crédito',  desc: 'Comprobantes de devoluciones y ajustes', emoji: '↩️', fallbackKey: 'facturas'  },
   contabilidad:   { label: 'Contabilidad',                  desc: 'Comprobantes de movimientos contables',  emoji: '🧾', fallbackKey: 'facturas'  },
+  comanda_cocina: { label: 'Cocina / Bar',                  desc: 'Tiquetes de comanda para preparar pedidos', emoji: '🍳', fallbackKey: 'facturas' },
 };
 
 export const ALL_SECTIONS: PrintSection[] = [
@@ -50,11 +52,12 @@ export const ALL_SECTIONS: PrintSection[] = [
   'codigos_barras',
   'devoluciones',
   'contabilidad',
+  'comanda_cocina',
 ];
 
 const STORAGE_KEY = 'pos-section-printers';
 
-const SECTION_SCOPE_MAP: Record<PrintSection, 'ventas' | 'cierre' | 'gastos' | 'taller' | 'reportes' | 'barras' | 'devoluciones' | 'contabilidad'> = {
+const SECTION_SCOPE_MAP: Record<PrintSection, 'ventas' | 'cierre' | 'gastos' | 'taller' | 'reportes' | 'barras' | 'devoluciones' | 'contabilidad' | 'comanda'> = {
   pos_tickets: 'ventas',
   cierre_caja: 'cierre',
   gastos: 'gastos',
@@ -63,6 +66,7 @@ const SECTION_SCOPE_MAP: Record<PrintSection, 'ventas' | 'cierre' | 'gastos' | '
   codigos_barras: 'barras',
   devoluciones: 'devoluciones',
   contabilidad: 'contabilidad',
+  comanda_cocina: 'comanda',
 };
 
 function load(): Partial<Record<PrintSection, string>> {

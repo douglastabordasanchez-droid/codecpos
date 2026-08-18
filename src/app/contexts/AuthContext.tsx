@@ -18,7 +18,7 @@ import {
   ModuloPOS,
   MODULOS_MAESTRO_OFICIALES,
 } from '../lib/permissions';
-import { dispararEvento } from '../lib/webhookService';
+import { onUsuarioCreado } from '../lib/integracionesService';
 import { hashPassword, verificarPassword, esHashBcrypt } from '../lib/passwordHash';
 import {
   verificarAccesoStaff,
@@ -1077,7 +1077,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setUsuarios(prev => [...prev, nuevoUsuario]);
     window.dispatchEvent(new CustomEvent('codecpos:usuario-cambio', { detail: { action: 'CREATE', data: nuevoUsuario } }));
-    dispararEvento('usuario_creado' as any, { nombre: nuevoUsuario.nombreCompleto, rol: nuevoUsuario.rol, timestamp: nuevoUsuario.fechaCreacion }).catch(() => {});
+    onUsuarioCreado({ nombre: nuevoUsuario.nombreCompleto, rol: nuevoUsuario.rol }).catch(() => {});
     return true;
   };
 

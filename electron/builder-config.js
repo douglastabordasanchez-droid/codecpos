@@ -63,6 +63,9 @@ const config = {
   files: [
     'dist/**/*',
     'electron/**/*',
+    // Va como extraResources (arriba), no aquí — evita duplicar ~120MB
+    // dentro del .asar además de en resources/piper.
+    '!electron/resources/piper/**/*',
     'package.json',
     {
       from:   'node_modules',
@@ -79,6 +82,17 @@ const config = {
         '!**/tsconfig.json',
         '!**/.git*',
       ],
+    },
+  ],
+
+  // ── Recursos extra fuera del ASAR: motor de voz Piper (binario nativo +
+  // modelo .onnx) — necesita poder spawnearse y leer archivos directo del
+  // disco, así que va en resources/piper, no empaquetado en el .asar.
+  extraResources: [
+    {
+      from: 'electron/resources/piper',
+      to: 'piper',
+      filter: ['**/*'],
     },
   ],
 

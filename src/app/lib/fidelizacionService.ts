@@ -7,12 +7,20 @@
 import { openDB } from './indexedDB';
 import { logAction } from './logger';
 
+/** ☁️ Espeja el cliente de fidelización en la nube para que la PWA lo pueda ver — best-effort. */
+function publicarClienteEnLaNube(cliente: Cliente): void {
+  import('./supabase/fidelizacionContabilidadSyncService')
+    .then(({ publicarClientesFidelizacion }) => publicarClientesFidelizacion([cliente]))
+    .catch(() => {});
+}
+
 export interface Cliente {
   id: string;
   nombre: string;
   documento: string;
   telefono?: string;
   email?: string;
+  direccion?: string;
   puntos: number;
   puntosAcumulados: number; // Total histórico
   puntosRedimidos: number;
@@ -125,6 +133,7 @@ export async function crearCliente(datos: Partial<Cliente>): Promise<Cliente> {
       documento: datos.documento || '',
       telefono: datos.telefono,
       email: datos.email,
+      direccion: datos.direccion,
       puntos: config.puntosBienvenida,
       puntosAcumulados: config.puntosBienvenida,
       puntosRedimidos: 0,
@@ -138,6 +147,7 @@ export async function crearCliente(datos: Partial<Cliente>): Promise<Cliente> {
     };
 
     await db.put('clientes', cliente);
+    publicarClienteEnLaNube(cliente);
 
     // Registrar puntos de bienvenida
     if (config.puntosBienvenida > 0) {
@@ -257,6 +267,7 @@ export async function actualizarCliente(
 
     const actualizado = { ...cliente, ...datos };
     await db.put('clientes', actualizado);
+    publicarClienteEnLaNube(actualizado);
 
     await logAction('fidelizacion', 'cliente_actualizado', {
       clienteId: id,

@@ -10,10 +10,25 @@ export function codecVerifyPwaActivo(): boolean {
   }
 }
 
-export function alternarCodecVerifyPwa(): boolean {
+/**
+ * `empleadoId` es opcional para no romper llamadas existentes, pero sin él
+ * Electron nunca se entera de que este celular activó Codec Verify — ver
+ * migración 0041 y CodecVerifyConexionPage.tsx ("Celulares conectados").
+ */
+export function alternarCodecVerifyPwa(empleadoId?: string): boolean {
   const nuevo = !codecVerifyPwaActivo();
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ enabled: nuevo }));
   window.dispatchEvent(new CustomEvent('codecverify-pwa:config-changed'));
+
+  if (empleadoId) {
+    const client = getSupabaseClient();
+    client
+      ?.from('empleados')
+      .update({ codec_verify_activo: nuevo, codec_verify_actualizado_en: new Date().toISOString() })
+      .eq('id', empleadoId)
+      .then(() => {});
+  }
+
   return nuevo;
 }
 

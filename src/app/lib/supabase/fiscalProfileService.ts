@@ -117,7 +117,7 @@ export type DatosPerfilFiscalForm = Partial<Omit<FiscalProfile, 'id' | 'clienteI
  * ya usado en facturas). */
 export async function crearPerfilFiscal(clienteId: string, datos: DatosPerfilFiscalForm): Promise<FiscalProfile> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   if (!datos.tipoPersona || !datos.nombreORazonSocial) {
     throw new Error('Falta tipo de persona o nombre/razón social');
   }
@@ -162,7 +162,7 @@ export async function crearPerfilFiscal(clienteId: string, datos: DatosPerfilFis
  * perfil que ya facturó: mejor crear uno nuevo (crearPerfilFiscal). */
 export async function actualizarPerfilFiscal(id: string, datos: DatosPerfilFiscalForm): Promise<FiscalProfile> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (datos.tipoPersona !== undefined) payload.tipo_persona = datos.tipoPersona;
@@ -194,7 +194,7 @@ export async function actualizarPerfilFiscal(id: string, datos: DatosPerfilFisca
 
 export async function actualizarEstadoPerfilFiscal(id: string, estado: EstadoPerfilFiscal): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.from('perfiles_fiscales').update({ estado, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) throw new Error(error.message);
 }
@@ -203,14 +203,14 @@ export async function actualizarEstadoPerfilFiscal(id: string, estado: EstadoPer
  * (vía RPC transaccional — nunca quedan dos activos a la vez). */
 export async function activarPerfilFiscal(perfilId: string): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.rpc('activar_perfil_fiscal', { p_perfil_id: perfilId });
   if (error) throw new Error(error.message);
 }
 
 export async function marcarPinConfigurado(perfilId: string): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.from('perfiles_fiscales').update({ pin_configurado: true, updated_at: new Date().toISOString() }).eq('id', perfilId);
   if (error) throw new Error(error.message);
 }
@@ -267,7 +267,7 @@ export async function crearResolucionDian(
   datos: { tipoDocumento: ResolucionDian['tipoDocumento']; prefijo: string; resolucionNumero: string; resolucionFecha?: string; rangoDesde: number; rangoHasta: number; vigenciaHasta?: string }
 ): Promise<ResolucionDian> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   const { data, error } = await client
     .from('perfiles_fiscales_resoluciones')
     .insert({
@@ -291,7 +291,7 @@ export async function crearResolucionDian(
  * servidor toma el row lock, así que dos ventas simultáneas nunca chocan). */
 export async function siguienteConsecutivoDian(resolucionId: string): Promise<number> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   const { data, error } = await client.rpc('siguiente_consecutivo_dian', { p_resolucion_id: resolucionId });
   if (error) throw new Error(error.message);
   return data as number;
@@ -301,7 +301,7 @@ export async function siguienteConsecutivoDian(resolucionId: string): Promise<nu
 
 export async function guardarMetadataCertificado(clienteId: string, perfilFiscalId: string, meta: CertificadoDianMeta): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.from('dian_certificados').insert({
     cliente_id: clienteId,
     perfil_fiscal_id: perfilFiscalId,

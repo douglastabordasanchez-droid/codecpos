@@ -57,6 +57,10 @@ export interface CierreDetalle {
   gastosTransferencia?: number;
   gastosTarjetaBanco?: number;
   devoluciones?: number;
+  abonosCarteraEfectivo?: number;
+  abonosCarteraTransferencia?: number;
+  abonosCarteraTarjetaBanco?: number;
+  abonosCarteraDetalle?: Array<{ descripcion: string; concepto?: string; monto: number; medioPago?: string }>;
   cantidadTransacciones?: number;
   ticketPromedio?: number;
   productosTop?: ProductoTop[];
@@ -116,10 +120,23 @@ function getPrinterName(): string {
   return getPrinterForSectionOrUndefined('cierre_caja') || '';
 }
 
-export default function ModalDetalleCierre({ open, onClose, cierre, darkMode }: Props) {
+export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, darkMode }: Props) {
   const receiptRef = useRef<HTMLDivElement>(null);
 
-  if (!cierre) return null;
+  if (!cierreProp) return null;
+
+  // 🛡️ FIX: cierres antiguos (guardados antes de que `desglose` existiera,
+  // o creados por un camino que no lo llenó) traían `desglose: undefined`.
+  // Cada acceso de abajo era `cierre.desglose.tarjeta` sin `?.` — con UN
+  // cierre así en el historial, "Ver detalle" tumbaba toda la app
+  // (TypeError: Cannot read properties of undefined, reading 'tarjeta').
+  const cierre: CierreDetalle = {
+    ...cierreProp,
+    desglose: {
+      efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0,
+      ...cierreProp.desglose,
+    },
+  };
 
   const cfg = getCfgEmpresa();
   const nombreEmpresa = cfg.nombreComercial || cfg.razonSocial || 'MI NEGOCIO';
@@ -133,14 +150,19 @@ export default function ModalDetalleCierre({ open, onClose, cierre, darkMode }: 
     catch { return '—'; }
   })();
 
-  const efectivoEsperado = cierre.totalFinal ?? (cierre.baseInicial + cierre.desglose.efectivo - (cierre.gastosEfectivo || 0) - (cierre.devoluciones || 0));
+  const efectivoEsperado = cierre.totalFinal ?? (cierre.baseInicial + cierre.desglose.efectivo - (cierre.gastosEfectivo || 0) - (cierre.devoluciones || 0) + (cierre.abonosCarteraEfectivo || 0));
   const totalElectronico = cierre.desglose.tarjeta + cierre.desglose.nequi + cierre.desglose.daviplata + cierre.desglose.transferencia + (cierre.desglose.rappi || 0);
 
   const estadoInfo = {
     cuadrado: { color: 'emerald', text: 'CAJA CUADRADA',   icon: <CheckCircle className="w-5 h-5 text-emerald-500" />,   textClass: 'text-emerald-600', bgClass: darkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200' },
     faltante:  { color: 'red',     text: 'FALTANTE EN CAJA', icon: <XCircle className="w-5 h-5 text-red-500" />,          textClass: 'text-red-600',     bgClass: darkMode ? 'bg-red-500/10 border-red-500/30'     : 'bg-red-50 border-red-200'     },
     sobrante:  { color: 'amber',   text: 'SOBRANTE EN CAJA', icon: <AlertTriangle className="w-5 h-5 text-amber-500" />,  textClass: 'text-amber-600',   bgClass: darkMode ? 'bg-amber-500/10 border-amber-500/30' : 'bg-amber-50 border-amber-200' },
-  }[cierre.estado];
+  }[cierre.estado] || {
+    // Cierres antiguos guardados antes de que existiera este campo (o con un
+    // valor que ya no coincide con ninguno de los tres arriba) — sin esto,
+    // toda la pantalla de Reportes se rompía al abrir el detalle.
+    color: 'slate', text: 'ESTADO NO DISPONIBLE', icon: <AlertTriangle className="w-5 h-5 text-slate-400" />, textClass: 'text-slate-500', bgClass: darkMode ? 'bg-slate-500/10 border-slate-500/30' : 'bg-slate-100 border-slate-300',
+  };
 
   // Reconstruye el mismo objeto de datos que arma ModalCierreCaja en el momento
   // del cierre, a partir de lo persistido en el registro histórico, para que
@@ -157,6 +179,10 @@ export default function ModalDetalleCierre({ open, onClose, cierre, darkMode }: 
     gastosTransferencia: cierre.gastosTransferencia,
     gastosTarjetaBanco: cierre.gastosTarjetaBanco,
     devoluciones: cierre.devoluciones || 0,
+    abonosCarteraEfectivo: cierre.abonosCarteraEfectivo,
+    abonosCarteraTransferencia: cierre.abonosCarteraTransferencia,
+    abonosCarteraTarjetaBanco: cierre.abonosCarteraTarjetaBanco,
+    abonosCarteraDetalle: cierre.abonosCarteraDetalle || [],
     efectivoEsperado,
     transferenciaEsperada: cierre.transferenciaEsperada,
     tarjetaBancoEsperado: cierre.tarjetaBancoEsperado,

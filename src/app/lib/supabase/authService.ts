@@ -8,7 +8,12 @@ export interface EmpleadoSupabase {
   activo: boolean;
   es_staff_codec: boolean;
   permisos?: { modulosHabilitados?: string[] } | null;
+  foto_url?: string | null;
+  fecha_nacimiento?: string | null;
+  telefono?: string | null;
 }
+
+const CAMPOS_EMPLEADO = 'id, cliente_id, nombre_completo, rol, activo, es_staff_codec, permisos, foto_url, fecha_nacimiento, telefono';
 
 /**
  * Verificación ONLINE contra Supabase Auth. Usada para:
@@ -26,7 +31,7 @@ export async function signInSupabase(
   password: string
 ): Promise<{ ok: boolean; empleado?: EmpleadoSupabase; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return { ok: false, error: 'Supabase no configurado' };
+  if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
 
   let email = emailOUsuario;
   if (!email.includes('@')) {
@@ -47,7 +52,7 @@ export async function signInSupabase(
 
   const { data: empleado, error: empError } = await client
     .from('empleados')
-    .select('id, cliente_id, nombre_completo, rol, activo, es_staff_codec, permisos')
+    .select(CAMPOS_EMPLEADO)
     .eq('id', data.user.id)
     .maybeSingle();
 
@@ -58,10 +63,29 @@ export async function signInSupabase(
   return { ok: true, empleado: empleado as EmpleadoSupabase };
 }
 
+/**
+ * Acepta el correo real de staff O un usuario corto (ver migración 0046,
+ * resolver_email_staff) — el usuario SOLO sirve para encontrar el correo;
+ * la contraseña la sigue verificando exclusivamente signInSupabase() más
+ * abajo contra Supabase Auth, sin cambios en esa verificación.
+ */
 export async function verificarAccesoStaff(
-  email: string,
+  emailOUsuario: string,
   password: string
 ): Promise<{ ok: boolean; error?: string }> {
+  let email = emailOUsuario;
+  if (!email.includes('@')) {
+    const client = getSupabaseClient();
+    if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
+    const { data: correoResuelto, error: resolveError } = await client.rpc('resolver_email_staff', {
+      p_username: emailOUsuario,
+    });
+    if (resolveError || !correoResuelto) {
+      return { ok: false, error: 'Usuario o contraseña incorrectos' };
+    }
+    email = correoResuelto as string;
+  }
+
   const resultado = await signInSupabase(email, password);
   if (!resultado.ok) return { ok: false, error: resultado.error };
   if (!resultado.empleado?.es_staff_codec) {
@@ -74,7 +98,7 @@ export async function solicitarRecuperacionPassword(
   email: string
 ): Promise<{ ok: boolean; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return { ok: false, error: 'Supabase no configurado' };
+  if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
 
   const { error } = await client.auth.resetPasswordForEmail(email);
   if (error) return { ok: false, error: error.message };

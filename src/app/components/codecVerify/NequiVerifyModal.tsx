@@ -1,9 +1,12 @@
 /**
- * CODEC POS v2.0 — Modal de Pago Nequi con CODEC Verify
+ * CODEC POS v2.0 — Modal de verificación de pago (Nequi / Daviplata / Transferencia)
  * ✅ Botón confirmar bloqueado hasta recibir verificación
  * ✅ Estado "Esperando pago..." animado
+ * ✅ Verificación real: Supabase Realtime + poll de respaldo sobre
+ *    notificaciones_pago, con match por monto exacto + "reclamo" atómico
+ *    (ver src/app/lib/supabase/codecVerifyService.ts, suscribirPagoEsperado)
  * ✅ Bypass con log obligatorio (quién, cuándo, por qué)
- * ✅ Popup orange premium al recibir el pago
+ * ✅ Popup premium al recibir el pago
  * ✅ Sin CodecVerify → flujo normal
  */
 
@@ -11,14 +14,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, ShieldCheck, Clock, AlertTriangle, FileText,
-  Wifi, WifiOff, Zap, ChevronRight, Lock, Unlock,
+  Wifi, ChevronRight, Lock, Unlock, Landmark,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '../ui/button';
 import { ModalPagoRecibidoNequi, PagoConfirmado } from './ModalPagoRecibidoNequi';
-import { useCodecVerifyWebSocket } from '../../hooks/useCodecVerifyWebSocket';
+import { suscribirPagoEsperado } from '../../lib/supabase/codecVerifyService';
 
 // ─── Clave para logs de bypass ───────────────────────
 const BYPASS_LOG_KEY = 'codec-verify-bypass-log';
@@ -49,12 +52,43 @@ export function guardarBypassLog(entry: Omit<BypassLogEntry, 'id' | 'fecha' | 'h
 }
 
 // ─── Verificar si CODEC Verify está activo ────────────
-function isCodecVerifyActivo(): boolean {
+// 🛡️ FIX: antes leía 'codec_pos_config'.plan==='premium', un interruptor
+// DISTINTO al que realmente prende la suscripción Realtime de pagos
+// (CodecVerifyListener/AlertaPagoEntrante usan 'codecverify_config'.enabled).
+// Si el usuario activaba Codec Verify desde su pantalla real de conexión,
+// este modal seguía pensando que estaba apagado (o viceversa).
+export function isCodecVerifyActivo(): boolean {
   try {
-    const cfg = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
-    return cfg.plan === 'premium';
+    const cfg = JSON.parse(localStorage.getItem('codecverify_config') || '{}');
+    return cfg.enabled === true;
   } catch { return false; }
 }
+
+export type EntidadPago = 'nequi' | 'daviplata' | 'transferencia';
+
+const ENTIDAD_CONFIG: Record<EntidadPago, { label: string; gradientIcon: string; glow: string; accent: string; accentSoft: string }> = {
+  nequi: {
+    label: 'Nequi',
+    gradientIcon: 'linear-gradient(135deg, #c026d3, #7e22ce)',
+    glow: 'rgba(192,38,211,0.45)',
+    accent: '#c026d3',
+    accentSoft: 'rgba(192,38,211,0.4)',
+  },
+  daviplata: {
+    label: 'Daviplata',
+    gradientIcon: 'linear-gradient(135deg, #ef4444, #b91c1c)',
+    glow: 'rgba(239,68,68,0.45)',
+    accent: '#ef4444',
+    accentSoft: 'rgba(239,68,68,0.4)',
+  },
+  transferencia: {
+    label: 'Transferencia',
+    gradientIcon: 'linear-gradient(135deg, #0ea5e9, #0369a1)',
+    glow: 'rgba(14,165,233,0.45)',
+    accent: '#0ea5e9',
+    accentSoft: 'rgba(14,165,233,0.4)',
+  },
+};
 
 // ─── Typing dots ───────────────────────────────────────
 function TypingDots() {
@@ -117,6 +151,8 @@ interface Props {
   darkMode: boolean;
   cajeroNombre: string;
   numeroFactura?: string;
+  /** Qué método de pago se está verificando — cambia texto/color, no la lógica. */
+  entidad?: EntidadPago;
   onCancelar: () => void;
   onConfirmar: () => void;
 }
@@ -125,9 +161,10 @@ interface Props {
 //  COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════
 export function NequiVerifyModal({
-  visible, monto, darkMode, cajeroNombre, numeroFactura, onCancelar, onConfirmar,
+  visible, monto, darkMode, cajeroNombre, numeroFactura, entidad = 'nequi', onCancelar, onConfirmar,
 }: Props) {
   const codecActivo = isCodecVerifyActivo();
+  const config = ENTIDAD_CONFIG[entidad];
 
   // Estados de verificación
   const [estado, setEstado] = useState<'esperando' | 'verificado' | 'bypass'>('esperando');
@@ -141,56 +178,41 @@ export function NequiVerifyModal({
   const [errorBypass, setErrorBypass] = useState('');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Clave única de esta espera de pago (no depende de `numeroFactura`, que
+  // puede venir vacío) — se regenera cada vez que el modal se abre.
+  const claveEsperaRef = useRef<string>('');
+  const desuscribirRef = useRef<(() => void) | null>(null);
 
-  // WebSocket de CODEC Verify
-  const { connected, lastMessage } = useCodecVerifyWebSocket();
+  const recibirPago = useCallback((pago: PagoConfirmado) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setPagoConfirmado(pago);
+    setEstado('verificado');
+    setShowPagoRecibido(true);
+    try { window.navigator.vibrate?.([100, 50, 100]); } catch {}
+  }, []);
 
-  // Escuchar mensajes WebSocket de pago
+  // Suscripción real a Supabase (Realtime + poll de respaldo) mientras se
+  // espera el pago — ver suscribirPagoEsperado en codecVerifyService.ts.
   useEffect(() => {
-    if (!lastMessage || !codecActivo || !visible || estado !== 'esperando') return;
+    if (!visible || !codecActivo || estado !== 'esperando') return;
 
-    const tipo = lastMessage.type || lastMessage.evento;
-    if (tipo === 'pago_verificado' || tipo === 'payment_received') {
-      const payload = lastMessage.payload || lastMessage;
-      const banco = (payload.banco || payload.bank || 'nequi').toLowerCase();
-      if (banco === 'nequi' || banco === 'all') {
-        recibirPago({
-          monto: Number(payload.monto || payload.amount || monto),
-          banco: 'Nequi',
-          remitente: payload.remitente || payload.sender,
-          referencia: payload.referencia || payload.reference,
-          timestamp: new Date(),
-        });
-      }
-    }
-  }, [lastMessage]);
+    const cancelar = suscribirPagoEsperado(monto, claveEsperaRef.current, (row) => {
+      recibirPago({
+        monto: Number(row.monto) || monto,
+        banco: config.label,
+        remitente: row.referencia || undefined,
+        referencia: row.referencia || undefined,
+        timestamp: new Date(row.created_at),
+      });
+    });
+    desuscribirRef.current = cancelar;
 
-  // Escuchar CustomEvent del sistema (CodecVerifyListener lo despacha)
-  useEffect(() => {
-    if (!codecActivo || !visible) return;
-
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail) return;
-      const banco = (detail.banco || '').toLowerCase();
-      if (banco === 'nequi' || banco === 'all' || !banco) {
-        recibirPago({
-          monto: Number(detail.monto || monto),
-          banco: 'Nequi',
-          remitente: detail.remitente,
-          referencia: detail.referencia,
-          timestamp: new Date(),
-        });
-      }
-    };
-
-    window.addEventListener('codecverify:pago_nequi', handler);
-    window.addEventListener('codecverify:pago_recibido', handler);
     return () => {
-      window.removeEventListener('codecverify:pago_nequi', handler);
-      window.removeEventListener('codecverify:pago_recibido', handler);
+      cancelar?.();
+      desuscribirRef.current = null;
     };
-  }, [visible, codecActivo, monto]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, codecActivo, estado, monto]);
 
   // Cronómetro de espera
   useEffect(() => {
@@ -206,6 +228,7 @@ export function NequiVerifyModal({
   // Reset al abrir
   useEffect(() => {
     if (visible) {
+      claveEsperaRef.current = `VERIF-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       setEstado('esperando');
       setPagoConfirmado(null);
       setShowPagoRecibido(false);
@@ -213,17 +236,11 @@ export function NequiVerifyModal({
       setRazonBypass('');
       setErrorBypass('');
       setSegundosEspera(0);
+    } else {
+      desuscribirRef.current?.();
+      desuscribirRef.current = null;
     }
   }, [visible]);
-
-  const recibirPago = useCallback((pago: PagoConfirmado) => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    setPagoConfirmado(pago);
-    setEstado('verificado');
-    setShowPagoRecibido(true);
-    // Sonido / vibración opcional
-    try { window.navigator.vibrate?.([100, 50, 100]); } catch {}
-  }, []);
 
   const handleBypassSubmit = () => {
     if (razonBypass.trim().length < 10) {
@@ -253,7 +270,7 @@ export function NequiVerifyModal({
 
   return (
     <>
-      {/* ── MODAL NEQUI ── */}
+      {/* ── MODAL DE VERIFICACIÓN ── */}
       <AnimatePresence>
         {visible && (
           <motion.div
@@ -292,23 +309,27 @@ export function NequiVerifyModal({
               </button>
 
               <div className="relative z-10 p-7">
-                {/* Header Nequi */}
+                {/* Header */}
                 <div className="flex flex-col items-center text-center mb-6">
                   <div
                     className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3"
-                    style={{ background: 'linear-gradient(135deg, #c026d3, #7e22ce)', boxShadow: '0 0 24px rgba(192,38,211,0.45)' }}
+                    style={{ background: config.gradientIcon, boxShadow: `0 0 24px ${config.glow}` }}
                   >
-                    <svg className="w-9 h-9 text-white" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z" />
-                    </svg>
+                    {entidad === 'nequi' ? (
+                      <svg className="w-9 h-9 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z" />
+                      </svg>
+                    ) : (
+                      <Landmark className="w-9 h-9 text-white" />
+                    )}
                   </div>
                   <h3 className="font-black text-2xl mb-1" style={{ color: darkMode ? '#fff' : '#0f172a' }}>
-                    Pago con Nequi
+                    Pago con {config.label}
                   </h3>
                   <p className="text-sm" style={{ color: darkMode ? '#64748b' : '#94a3b8' }}>
                     Total a cobrar
                   </p>
-                  <div className="mt-2 font-black text-4xl" style={{ color: '#c026d3', textShadow: '0 0 24px rgba(192,38,211,0.4)' }}>
+                  <div className="mt-2 font-black text-4xl" style={{ color: config.accent, textShadow: `0 0 24px ${config.accentSoft}` }}>
                     ${monto.toLocaleString('es-CO')}
                   </div>
                 </div>
@@ -350,9 +371,6 @@ export function NequiVerifyModal({
                       </div>
                       <div className="flex items-center gap-2">
                         {estado === 'esperando' && <CronometroEspera segundos={segundosEspera} />}
-                        {connected
-                          ? <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-                          : <WifiOff className="w-3.5 h-3.5 text-slate-600" />}
                       </div>
                     </div>
 
@@ -363,13 +381,11 @@ export function NequiVerifyModal({
                           <RadarWave />
                           <div className="text-center">
                             <p className="font-bold text-sm flex items-center justify-center gap-1" style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                              Esperando notificación de pago
+                              Esperando el pago
                               <TypingDots />
                             </p>
                             <p className="text-xs mt-1" style={{ color: darkMode ? '#475569' : '#94a3b8' }}>
-                              {connected
-                                ? 'CODEC Verify está escuchando en tiempo real'
-                                : 'Sin conexión al servidor · Modo demo'}
+                              CODEC Verify está escuchando en tiempo real
                             </p>
                           </div>
 
@@ -382,18 +398,6 @@ export function NequiVerifyModal({
                             <Unlock className="w-3.5 h-3.5" />
                             Apagar verificación (requiere justificación)
                           </button>
-
-                          {/* Demo: simular pago */}
-                          {!connected && (
-                            <button
-                              onClick={() => recibirPago({ monto, banco: 'Nequi', remitente: 'Simulación', referencia: `SIM-${Date.now()}`, timestamp: new Date() })}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
-                              style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', color: '#f97316' }}
-                            >
-                              <Zap className="w-3.5 h-3.5" />
-                              Simular pago recibido (demo)
-                            </button>
-                          )}
                         </div>
                       )}
 

@@ -1,96 +1,238 @@
 /**
- * Hook para gestionar restricciones de plan (BÁSICO vs PREMIUM)
+ * Hook de restricciones de plan - CODEC POS v2.0
+ *
+ * Lee las capacidades reales del cliente desde el motor comercial central
+ * (Supabase, migración 0047: `licencias` + `entitlements`), vía las RPCs
+ * `mi_licencia_vigente()` y `mis_entitlements()` -- ambas resuelven contra
+ * `current_cliente_id()` en el backend, así que nunca reciben ni confían en
+ * nada que venga del cliente.
+ *
+ * Reemplaza dos hooks previos (`usePlanRestrictions.ts` y `.tsx`, ambos
+ * import-ambiguos entre sí) que leían un mock local en
+ * `localStorage['codecpos_dev_clientes']`. Ese mock tenía dos fallas de
+ * seguridad reales: un usuario con username 'Admin' obtenía Premium
+ * ilimitado sin licencia, y cualquier usuario no encontrado en el mock caía
+ * por defecto en PREMIUM en vez de Básico. Ninguna decisión de plan debe
+ * salir de aquí sin pasar por el backend.
  */
 
+import { useState, useEffect } from 'react';
+import { getSupabaseClient } from '../lib/supabase/config';
 import { useAuth } from '../contexts/AuthContext';
-import { useMemo } from 'react';
+
+export type PlanTipo = 'BASICO' | 'PREMIUM' | null;
+
+export type FeatureName =
+  | 'dashboard'
+  | 'codec_verify'
+  | 'personalizacion_tirilla'
+  | 'configuracion_iva'
+  | 'reportes_avanzados'
+  | 'analytics'
+  | 'multi_usuario_5'
+  | 'inventario_20k'
+  | 'historial_3_meses';
 
 export interface PlanInfo {
-  plan: 'BASICO' | 'PREMIUM';
+  plan: PlanTipo;
+  modalidad: string | null;
+  estado: string | null;
+  enPrueba: boolean;
+  diasPruebaRestantes: number;
+  // No existe todavía un entitlement de límite de productos/historial en el
+  // motor comercial (Fase 3) -- son valores de referencia fijos por plan,
+  // no un límite realmente vigente desde el backend. Cuando se defina ese
+  // entitlement, reemplazar aquí por su valor real vía mis_entitlements().
   maxProductos: number;
-  maxUsuarios: number;
-  historialMeses: number;
+  mesesHistorial: number;
+  maxUsuarios: number | null; // entitlement real MAX_USUARIOS -- null = ilimitado
+  tieneCodecVerify: boolean;
+  // Tampoco existe un entitlement propio para "personalización" ni
+  // "dashboard" -- se mapean a Premium hasta que el catálogo los defina.
+  tienePersonalizacion: boolean;
+  tieneDashboard: boolean;
+  tieneAppMovil: boolean;
+  tieneFacturacionElectronica: boolean;
+  tieneReportesAvanzados: boolean;
+  tieneMultiTienda: boolean;
 }
 
+// Fail-closed a propósito: mientras carga o si algo falla, el plan es
+// Básico (el más restrictivo), nunca Premium. Antes uno de los dos hooks
+// viejos hacía lo contrario ("por defecto PREMIUM para desarrollo"), lo que
+// regalaba funciones pagas a cualquier usuario que la consulta no lograra
+// resolver a tiempo.
+const PLAN_INFO_BASICO_POR_DEFECTO: PlanInfo = {
+  plan: 'BASICO',
+  modalidad: null,
+  estado: null,
+  enPrueba: false,
+  diasPruebaRestantes: 0,
+  maxProductos: 5000,
+  mesesHistorial: 3,
+  maxUsuarios: 5,
+  tieneCodecVerify: false,
+  tienePersonalizacion: false,
+  tieneDashboard: false,
+  tieneAppMovil: false,
+  tieneFacturacionElectronica: false,
+  tieneReportesAvanzados: false,
+  tieneMultiTienda: false,
+};
+
+const MAX_PRODUCTOS_PREMIUM = 999999999;
+
 export function usePlanRestrictions() {
-  const { user, usuarioActual } = useAuth();
+  const { usuarioActual } = useAuth();
+  const [planInfo, setPlanInfo] = useState<PlanInfo>(PLAN_INFO_BASICO_POR_DEFECTO);
+  const [cargando, setCargando] = useState(true);
 
-  // ✅ FIX: Usar useMemo para evitar recalcular en cada render
-  const planInfo = useMemo((): PlanInfo => {
-    try {
-      const clientesStr = localStorage.getItem('codecpos_dev_clientes');
-      if (clientesStr) {
-        const clientes = JSON.parse(clientesStr);
-        
-        // Buscar el cliente del usuario actual
-        const clienteActual = clientes.find((c: any) => 
-          c.usuario === usuarioActual?.username || c.usuario === user?.username
-        );
-        
-        if (clienteActual) {
-          const isPremium = clienteActual.plan === 'PREMIUM';
-          return {
-            plan: isPremium ? 'PREMIUM' : 'BASICO',
-            maxProductos: isPremium ? 20000 : 500,
-            maxUsuarios: isPremium ? 5 : 2,
-            historialMeses: isPremium ? 3 : 1,
-          };
+  useEffect(() => {
+    let cancelado = false;
+
+    async function cargar() {
+      setCargando(true);
+      const client = getSupabaseClient();
+      if (!client || !usuarioActual) {
+        if (!cancelado) {
+          setPlanInfo(PLAN_INFO_BASICO_POR_DEFECTO);
+          setCargando(false);
         }
+        return;
       }
-    } catch (error) {
-      console.error('Error obteniendo plan:', error);
+
+      try {
+        const [{ data: licenciaRows, error: errorLicencia }, { data: entitlementRows, error: errorEntitlements }] =
+          await Promise.all([
+            client.rpc('mi_licencia_vigente'),
+            client.rpc('mis_entitlements'),
+          ]);
+
+        if (errorLicencia) throw new Error(errorLicencia.message);
+        if (errorEntitlements) throw new Error(errorEntitlements.message);
+
+        const licencia = licenciaRows?.[0] ?? null;
+        const entitlements = new Map<string, any>((entitlementRows ?? []).map((e: any) => [e.codigo, e.valor]));
+
+        const habilitado = (codigo: string) => entitlements.get(codigo)?.habilitado === true;
+        const limite = (codigo: string): number | null => {
+          const v = entitlements.get(codigo)?.limite;
+          return v === undefined ? null : v;
+        };
+
+        const plan: PlanTipo = licencia?.plan_codigo ?? null;
+        const esPremium = plan === 'PREMIUM';
+        const enPrueba = licencia?.estado === 'TRIAL';
+
+        let diasPruebaRestantes = 0;
+        if (enPrueba && licencia?.fecha_fin_periodo_actual) {
+          const msRestantes = new Date(licencia.fecha_fin_periodo_actual).getTime() - Date.now();
+          diasPruebaRestantes = Math.max(0, Math.ceil(msRestantes / (1000 * 60 * 60 * 24)));
+        }
+
+        const nuevo: PlanInfo = {
+          plan,
+          modalidad: licencia?.modalidad ?? null,
+          estado: licencia?.estado ?? null,
+          enPrueba,
+          diasPruebaRestantes,
+          maxProductos: esPremium ? MAX_PRODUCTOS_PREMIUM : 5000,
+          mesesHistorial: esPremium ? 12 : 3,
+          maxUsuarios: limite('MAX_USUARIOS'),
+          tieneCodecVerify: habilitado('CODEC_VERIFY'),
+          tienePersonalizacion: esPremium,
+          tieneDashboard: esPremium,
+          tieneAppMovil: habilitado('MOBILE_APP'),
+          tieneFacturacionElectronica: habilitado('ELECTRONIC_INVOICING'),
+          tieneReportesAvanzados: habilitado('ADVANCED_REPORTS'),
+          tieneMultiTienda: habilitado('MULTI_BRANCH'),
+        };
+
+        if (!cancelado) setPlanInfo(nuevo);
+      } catch (error) {
+        console.error('usePlanRestrictions: error consultando el motor comercial, se aplica Básico por defecto:', error);
+        if (!cancelado) setPlanInfo(PLAN_INFO_BASICO_POR_DEFECTO);
+      } finally {
+        if (!cancelado) setCargando(false);
+      }
     }
 
-    // Por defecto, retornar PREMIUM para desarrollo
-    return {
-      plan: 'PREMIUM',
-      maxProductos: 20000,
-      maxUsuarios: 5,
-      historialMeses: 3,
+    cargar();
+    return () => {
+      cancelado = true;
     };
-  }, [usuarioActual?.username, user?.username]); // ✅ Solo recalcular si cambia el usuario
+  }, [usuarioActual?.id]);
 
-  // Verificar si tiene acceso a una feature
-  const hasFeature = (feature: 'dashboard' | 'codec_verify' | 'reportes_avanzados'): boolean => {
-    // En plan PREMIUM, todo está disponible
-    if (planInfo.plan === 'PREMIUM') return true;
+  const hasFeature = (feature: FeatureName): boolean => {
+    if (planInfo.enPrueba) return true;
 
-    // En plan BÁSICO, solo features básicas
-    return false;
-  };
-
-  // Verificar si puede agregar más productos
-  const canAddProduct = (): boolean => {
-    try {
-      const productosStr = localStorage.getItem('codecpos_productos');
-      if (!productosStr) return true;
-
-      const productos = JSON.parse(productosStr);
-      return productos.length < planInfo.maxProductos;
-    } catch (error) {
-      console.error('Error verificando productos:', error);
-      return true;
+    switch (feature) {
+      case 'dashboard':
+        return planInfo.tieneDashboard;
+      case 'codec_verify':
+        return planInfo.tieneCodecVerify;
+      case 'personalizacion_tirilla':
+      case 'configuracion_iva':
+        return planInfo.tienePersonalizacion;
+      case 'reportes_avanzados':
+      case 'analytics':
+        return planInfo.tieneReportesAvanzados || planInfo.plan === 'PREMIUM';
+      case 'multi_usuario_5':
+        return planInfo.maxUsuarios === null || planInfo.maxUsuarios >= 5;
+      case 'inventario_20k':
+        return planInfo.maxProductos >= 20000;
+      case 'historial_3_meses':
+        return planInfo.mesesHistorial >= 3;
+      default:
+        return false;
     }
   };
 
-  // Verificar si puede agregar más usuarios
-  const canAddUser = (): boolean => {
-    try {
-      const usuariosStr = localStorage.getItem('codecpos_usuarios');
-      if (!usuariosStr) return true;
+  const canAddProduct = (currentCount: number): boolean => currentCount < planInfo.maxProductos;
 
-      const usuarios = JSON.parse(usuariosStr);
-      return usuarios.length < planInfo.maxUsuarios;
-    } catch (error) {
-      console.error('Error verificando usuarios:', error);
-      return true;
+  const canAddUser = (currentCount: number): boolean =>
+    planInfo.maxUsuarios === null || currentCount < planInfo.maxUsuarios;
+
+  const getRestrictionMessage = (feature: FeatureName): string => {
+    switch (feature) {
+      case 'dashboard':
+        return 'El Dashboard Ejecutivo está disponible únicamente en el Plan Premium';
+      case 'codec_verify':
+        return 'Codec Verify PRO requiere el Plan Premium para funcionar';
+      case 'personalizacion_tirilla':
+        return 'La personalización de tirillas es exclusiva del Plan Premium';
+      case 'configuracion_iva':
+        return 'La configuración de IVA personalizado requiere Plan Premium';
+      case 'reportes_avanzados':
+        return 'Los reportes avanzados están disponibles en el Plan Premium';
+      case 'analytics':
+        return 'Las analíticas en tiempo real requieren el Plan Premium';
+      case 'multi_usuario_5':
+        return planInfo.plan === 'PREMIUM'
+          ? 'Tu plan Premium permite usuarios ilimitados'
+          : 'Tu plan Básico permite hasta 5 usuarios. Actualiza a Premium para usuarios ilimitados';
+      case 'inventario_20k':
+        return planInfo.plan === 'PREMIUM'
+          ? 'Tu plan Premium permite productos ilimitados'
+          : 'Tu plan Básico permite hasta 5,000 productos. Actualiza a Premium para productos ilimitados';
+      case 'historial_3_meses':
+        return planInfo.plan === 'PREMIUM'
+          ? 'Tu plan Premium guarda 12 meses de historial'
+          : 'Tu plan Básico guarda 3 meses de historial. Actualiza a Premium para 12 meses';
+      default:
+        return 'Esta funcionalidad requiere el Plan Premium';
     }
   };
 
   return {
     planInfo,
+    cargando,
     hasFeature,
     canAddProduct,
     canAddUser,
+    getRestrictionMessage,
+    isPremium: planInfo.plan === 'PREMIUM',
+    isBasico: planInfo.plan === 'BASICO',
+    isTrial: planInfo.enPrueba,
   };
 }

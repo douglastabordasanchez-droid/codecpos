@@ -15,7 +15,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePOS } from '../../contexts/POSContext';
 import { electronStore } from '../../lib/electronStore';
 import { cajaDiariaService } from '../../lib/cajaDiariaService';
-import { dispararEvento } from '../../lib/webhookService';
+import { onGastoRegistrado } from '../../lib/integracionesService';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
 import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
 import {
@@ -214,6 +214,11 @@ export default function GastosPage() {
 
   useEffect(() => {
     cargarGastos();
+
+    // ☁️ Un gasto registrado desde la PWA llega acá vía syncService.ts
+    // (pullGastosRemotos) — se refresca sin esperar a recargar la página.
+    window.addEventListener('codecpos:gastos-sincronizados', cargarGastos);
+    return () => window.removeEventListener('codecpos:gastos-sincronizados', cargarGastos);
   }, []);
 
   useEffect(() => {
@@ -343,7 +348,7 @@ export default function GastosPage() {
     guardarGastos([gastoConfirmado, ...gastos]);
     toast.success(`✅ Gasto registrado y vinculado a la sesión ${sesionActivaGasto.id}`);
 
-    dispararEvento('gasto_registrado', {
+    onGastoRegistrado({
       monto: gastoConfirmado.monto,
       categoria: gastoConfirmado.categoria,
       categoriaConcepto: gastoConfirmado.categoriaConcepto,

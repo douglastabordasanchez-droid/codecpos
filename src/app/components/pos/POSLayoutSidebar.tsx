@@ -6,7 +6,7 @@ import {
   ShoppingCart, Package, Receipt, RotateCcw, BarChart3, Calculator,
   FileText, Wallet, Settings, Monitor, Users, User, Bell, Gift,
   TrendingUp, Tag, Building2, Barcode, Zap, Shield, ChevronLeft, ChevronRight,
-  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Webhook, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff,
+  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff, Palette, PartyPopper,
 } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -369,18 +369,25 @@ export default function POSLayoutSidebar() {
       moduloId: ModuloPOS.CODIGOS_BARRAS,
     },
     {
-      path: '/integraciones',
-      icon: Webhook,
-      label: 'Integraciones',
-      color: 'violet',
-      moduloId: ModuloPOS.INTEGRACIONES,
-    },
-    {
       path: '/taller',
       icon: Wrench,
       label: 'Taller de Reparaciones',
       color: 'blue',
       moduloId: ModuloPOS.TALLER_REPARACIONES,
+    },
+    {
+      path: '/artes-graficas',
+      icon: Palette,
+      label: 'Artes Gráficas',
+      color: 'fuchsia',
+      moduloId: ModuloPOS.ARTES_GRAFICAS,
+    },
+    {
+      path: '/papeleria-pinateria',
+      icon: PartyPopper,
+      label: 'Papelería y Piñatería',
+      color: 'rose',
+      moduloId: ModuloPOS.PAPELERIA_PINATERIA,
     },
     {
       path: '/codec-verify',
@@ -399,10 +406,15 @@ export default function POSLayoutSidebar() {
       color: 'cyan',
       moduloId: ModuloPOS.MONITOREO_TERMINALES,
     },
-    // 🔐 Visible para cualquier super_usuario (no solo tras pasar ya el login
-    // de staff) — /developer se encarga de pedir esas credenciales si hacen
-    // falta. Sin esto no había forma de descubrir la pantalla la primera vez.
-    ...(hasDeveloperPanelAccess || esSuperUsuario ? [{
+    // 🔒 FIX: esto era visible para CUALQUIER super_usuario — es decir, el
+    // dueño de cualquier negocio cliente veía el botón "Panel de
+    // Desarrollador" en su propio sidebar (aunque StaffLoginGate le
+    // impidiera entrar). El picaporte real para descubrir la pantalla es el
+    // atajo Ctrl+Shift+D (useDeveloperShortcut.ts, activo en login y en
+    // ProtectedLayout, sin depender del rol) — así que este botón puede
+    // exigir `hasDeveloperPanelAccess` de verdad y quedar oculto para todos
+    // los demás.
+    ...(hasDeveloperPanelAccess ? [{
       path: '/developer',
       icon: Shield,
       label: 'Panel de Desarrollador',
@@ -982,14 +994,11 @@ export default function POSLayoutSidebar() {
           </div>
         )}
 
-        {/* 🛡️ FIX: antes este botón solo aparecía cuando `hasDeveloperPanelAccess`
-            ya era true — pero esa bandera SOLO se activa DESPUÉS de pasar el
-            login de staff en /developer. Resultado: no había ninguna forma de
-            descubrir/llegar a esa pantalla desde el sidebar, un candado sin
-            picaporte. Ahora se muestra a cualquier super_usuario (el dueño del
-            negocio) y navega a la ruta completa /developer — StaffLoginGate ya
-            se encarga de pedir las credenciales de staff ahí mismo. */}
-        {(hasDeveloperPanelAccess || esSuperUsuario) && (
+        {/* 🔒 FIX: mismo problema que el ítem del menú de arriba — este botón
+            se mostraba a cualquier super_usuario. Solo debe verse una vez ya
+            autenticado como staff Codec Studio; para llegar ahí desde cero
+            existe Ctrl+Shift+D (useDeveloperShortcut.ts). */}
+        {hasDeveloperPanelAccess && (
           <div className="flex-shrink-0 px-3 pb-1 pt-2">
             <button
               onClick={() => navigate('/developer')}

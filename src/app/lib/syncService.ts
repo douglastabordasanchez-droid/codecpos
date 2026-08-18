@@ -43,8 +43,22 @@ function sincronizarProductoEnLocalStorage(producto: Producto): void {
       aplicaIVA: producto.iva > 0,
       activo: producto.activo,
       imagenUrl: producto.imagenUrl,
+      fotosUrls: producto.fotosUrls,
       pesable: idx >= 0 ? lista[idx].pesable : false,
       tipoInventario: producto.tipoInventario || (idx >= 0 ? lista[idx].tipoInventario : 'directo'),
+      // 🎈 Papelería y Piñatería — ver migración 0035.
+      esPapeleriaPinateria: producto.esPapeleriaPinateria,
+      categoriaEspecifica: producto.categoriaEspecifica,
+      tematica: producto.tematica,
+      calibreGlobo: producto.calibreGlobo,
+      colorAcabado: producto.colorAcabado,
+      marca: producto.marca,
+      esDulceria: producto.esDulceria,
+      permitirFraccion: producto.permitirFraccion,
+      componentesCombo: producto.componentesCombo,
+      unidadesPorBolsa: producto.unidadesPorBolsa,
+      ventaPorUnidad: producto.ventaPorUnidad,
+      lote: producto.lote,
       // 🛡️ Este producto ya viene DE Supabase (pull) — marcarlo evita que
       // pushProductosLocalStorage lo reinterprete como "nuevo local" y cree
       // una fila duplicada en vez de actualizar la misma.
@@ -121,9 +135,13 @@ class SyncService {
     const clienteId = getLinkedClienteId();
 
     if (!client || !clienteId) {
+      // ⚡ Antes se reportaba como 'error' (ícono y color de alarma en la
+      // pantalla de venta principal) — pero para un negocio que nunca
+      // configuró la nube esto no es un error, es simplemente el estado
+      // normal. Estado neutral propio para no alarmar innecesariamente.
       this.notifyListeners({
-        status: 'error',
-        message: 'Esta instalación no está vinculada a un negocio en Supabase (Configuración > Sincronización)',
+        status: 'unlinked',
+        message: 'Esperando conexión con app',
         lastSync: null,
       });
       return;
@@ -141,11 +159,15 @@ class SyncService {
     const pasos: Array<[string, () => Promise<void>]> = [
       ['pull_productos', () => this.pullProductosRemotos(client, clienteId)],
       ['pull_ventas', () => this.pullVentasRemotas(client, clienteId)],
+      ['pull_gastos', () => this.pullGastosRemotos(client, clienteId)],
+      ['pull_cierres', () => this.pullCierresRemotos(client, clienteId)],
+      ['pull_devoluciones', () => this.pullDevolucionesRemotas(client, clienteId)],
       ['push_productos', () => this.pushProductosPendientes(client, clienteId)],
       ['push_productos_localstorage', () => this.pushProductosLocalStorage(client, clienteId)],
       ['push_gastos', () => this.pushGastosLocalStorage(client, clienteId)],
       ['push_ventas', () => this.pushVentasPendientes(client, clienteId)],
       ['push_cierres', () => this.pushCierresPendientes(client, clienteId)],
+      ['push_devoluciones', () => this.pushDevolucionesLocalStorage(client, clienteId)],
       ['push_heartbeat', () => this.pushSesionActivaHeartbeat(client, clienteId)],
     ];
 
@@ -220,8 +242,21 @@ class SyncService {
         iva: remote.iva != null ? Number(remote.iva) : local.iva,
         activo: remote.activo,
         imagenUrl: remote.foto_url || local.imagenUrl,
+        fotosUrls: remote.fotos_urls || local.fotosUrls,
         proveedor: remote.proveedor || local.proveedor,
         fechaVencimiento: remote.fecha_vencimiento || local.fechaVencimiento,
+        esPapeleriaPinateria: remote.es_papeleria_pinateria ?? local.esPapeleriaPinateria,
+        categoriaEspecifica: remote.categoria_especifica || local.categoriaEspecifica,
+        tematica: remote.tematica || local.tematica,
+        calibreGlobo: remote.calibre_globo || local.calibreGlobo,
+        colorAcabado: remote.color_acabado || local.colorAcabado,
+        marca: remote.marca || local.marca,
+        esDulceria: remote.es_dulceria ?? local.esDulceria,
+        permitirFraccion: remote.permitir_fraccion ?? local.permitirFraccion,
+        componentesCombo: remote.componentes_combo || local.componentesCombo,
+        unidadesPorBolsa: remote.unidades_por_bolsa ?? local.unidadesPorBolsa,
+        ventaPorUnidad: remote.venta_por_unidad ?? local.ventaPorUnidad,
+        lote: remote.lote || local.lote,
         supabaseId: remote.id,
         updatedAt: remoteUpdatedAt,
         syncStatus: 'synced',
@@ -243,8 +278,21 @@ class SyncService {
         iva: Number(remote.iva || 0),
         activo: remote.activo,
         imagenUrl: remote.foto_url || undefined,
+        fotosUrls: remote.fotos_urls || undefined,
         proveedor: remote.proveedor || undefined,
         fechaVencimiento: remote.fecha_vencimiento || undefined,
+        esPapeleriaPinateria: remote.es_papeleria_pinateria || undefined,
+        categoriaEspecifica: remote.categoria_especifica || undefined,
+        tematica: remote.tematica || undefined,
+        calibreGlobo: remote.calibre_globo || undefined,
+        colorAcabado: remote.color_acabado || undefined,
+        marca: remote.marca || undefined,
+        esDulceria: remote.es_dulceria || undefined,
+        permitirFraccion: remote.permitir_fraccion || undefined,
+        componentesCombo: remote.componentes_combo || undefined,
+        unidadesPorBolsa: remote.unidades_por_bolsa ?? undefined,
+        ventaPorUnidad: remote.venta_por_unidad ?? undefined,
+        lote: remote.lote || undefined,
         supabaseId: remote.id,
         createdAt: new Date(remote.created_at).getTime(),
         updatedAt: remoteUpdatedAt,
@@ -344,6 +392,197 @@ class SyncService {
     window.dispatchEvent(new CustomEvent('codecpos:ventas-sincronizadas'));
   }
 
+  /**
+   * 🛡️ Antes push_gastos_local subía gastos, pero no existía el camino de
+   * regreso: un gasto registrado desde la PWA (GastosPage.tsx, escribe
+   * directo en Supabase) nunca aparecía en 'pos-gastos' de Electron. Mismo
+   * criterio que ventas: `local_id IS NULL` = lo creó otro dispositivo.
+   */
+  private async pullGastosRemotos(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const lastPull = await dbManager.getConfig('lastPullGastos');
+
+    let query = client
+      .from('gastos')
+      .select('id, fecha, descripcion, categoria, monto, medio_pago, registrado_por_nombre, notas, comprobante, created_at')
+      .eq('cliente_id', clienteId)
+      .is('local_id', null);
+    if (lastPull) query = query.gt('created_at', lastPull);
+
+    const { data: remotos, error } = await query;
+    if (error) throw error;
+
+    if (remotos && remotos.length > 0) {
+      let gastosLocales: any[];
+      try {
+        gastosLocales = JSON.parse(localStorage.getItem('pos-gastos') || '[]');
+      } catch {
+        gastosLocales = [];
+      }
+      if (!Array.isArray(gastosLocales)) gastosLocales = [];
+
+      const yaExisten = new Set(gastosLocales.map((g) => g.id));
+      let nuevos = 0;
+      for (const r of remotos) {
+        if (yaExisten.has(r.id)) continue;
+        gastosLocales.push({
+          id: r.id,
+          fecha: r.fecha,
+          descripcion: r.descripcion,
+          concepto: r.descripcion,
+          categoria: r.categoria || 'otros',
+          monto: Number(r.monto) || 0,
+          metodoPago: r.medio_pago || 'efectivo',
+          medioPagoEgreso: r.medio_pago || 'efectivo',
+          comprobante: r.comprobante || undefined,
+          registradoPor: r.registrado_por_nombre || 'App móvil',
+          notas: r.notas || undefined,
+          _supabaseSynced: true,
+        });
+        nuevos++;
+      }
+
+      if (nuevos > 0) {
+        localStorage.setItem('pos-gastos', JSON.stringify(gastosLocales));
+        await dbManager.addLog('pull_gastos_movil', `${nuevos} gastos de la app móvil bajados a la caja`);
+        window.dispatchEvent(new CustomEvent('codecpos:gastos-sincronizados'));
+      }
+    }
+
+    await dbManager.setConfig('lastPullGastos', new Date().toISOString());
+  }
+
+  /**
+   * 🛡️ La PWA tiene su PROPIA caja independiente (terminal_id='PWA',
+   * CierreCajaPage.tsx) que Electron nunca veía. No se intenta fusionar
+   * "sesión activa" entre dispositivos (son cajas físicamente distintas) —
+   * solo se hace visible en el historial de Electron, marcado como cierre
+   * "app móvil", una vez que la PWA ya lo cerró (`fecha_cierre` no nulo).
+   */
+  private async pullCierresRemotos(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const lastPull = await dbManager.getConfig('lastPullCierres');
+
+    let query = client
+      .from('cierres_caja')
+      .select('id, terminal_id, fecha_apertura, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia, detalle, created_at')
+      .eq('cliente_id', clienteId)
+      .is('local_id', null)
+      .not('fecha_cierre', 'is', null);
+    if (lastPull) query = query.gt('created_at', lastPull);
+
+    const { data: remotos, error } = await query;
+    if (error) throw error;
+
+    if (remotos && remotos.length > 0) {
+      let cierresLocales: any[];
+      try {
+        cierresLocales = JSON.parse(localStorage.getItem('pos-cierres-caja') || '[]');
+      } catch {
+        cierresLocales = [];
+      }
+      if (!Array.isArray(cierresLocales)) cierresLocales = [];
+
+      const yaExisten = new Set(cierresLocales.map((c) => c.id));
+      let nuevos = 0;
+      for (const r of remotos) {
+        if (yaExisten.has(r.id)) continue;
+        cierresLocales.push({
+          id: r.id,
+          fecha: r.fecha_cierre,
+          fechaApertura: r.fecha_apertura,
+          cajero: (r.detalle as any)?.cajero_nombre || 'App móvil',
+          baseInicial: Number(r.monto_apertura) || 0,
+          totalSistema: Number(r.ventas_total) || 0,
+          totalFinal: Number(r.monto_cierre) || 0,
+          diferencia: Number(r.diferencia) || 0,
+          origen: 'pwa',
+          terminalId: r.terminal_id,
+          _supabaseSynced: true,
+        });
+        nuevos++;
+      }
+
+      if (nuevos > 0) {
+        localStorage.setItem('pos-cierres-caja', JSON.stringify(cierresLocales));
+        await dbManager.addLog('pull_cierres_movil', `${nuevos} cierres de la app móvil visibles en el historial`);
+        window.dispatchEvent(new CustomEvent('codecpos:cierres-sincronizados'));
+      }
+    }
+
+    await dbManager.setConfig('lastPullCierres', new Date().toISOString());
+  }
+
+  /**
+   * 🛡️ Devoluciones eran dos sistemas totalmente aislados: Electron 100%
+   * local ('codecpos_devoluciones'), PWA 100% en Supabase — ni se enteraban
+   * una de la otra. Unificado con el mismo patrón local_id que productos,
+   * incluyendo sus líneas (`devolucion_items`).
+   */
+  private async pullDevolucionesRemotas(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const lastPull = await dbManager.getConfig('lastPullDevoluciones');
+
+    let query = client
+      .from('devoluciones')
+      .select('id, venta_id, numero_factura, total_devolucion, metodo_pago, procesado_por_nombre, observaciones, created_at')
+      .eq('cliente_id', clienteId)
+      .is('local_id', null);
+    if (lastPull) query = query.gt('created_at', lastPull);
+
+    const { data: remotos, error } = await query;
+    if (error) throw error;
+
+    if (remotos && remotos.length > 0) {
+      let devolucionesLocales: any[];
+      try {
+        devolucionesLocales = JSON.parse(localStorage.getItem('codecpos_devoluciones') || '[]');
+      } catch {
+        devolucionesLocales = [];
+      }
+      if (!Array.isArray(devolucionesLocales)) devolucionesLocales = [];
+
+      const ventas = await dbManager.getAllVentas();
+      const idMapVenta = new Map(ventas.filter((v) => v.supabaseId).map((v) => [v.supabaseId as string, v.id]));
+
+      const yaExisten = new Set(devolucionesLocales.map((d) => d.id));
+      let nuevos = 0;
+      for (const r of remotos) {
+        if (yaExisten.has(r.id)) continue;
+
+        const { data: itemsRemotos } = await client
+          .from('devolucion_items')
+          .select('producto_id, nombre, cantidad, precio_unitario, motivo')
+          .eq('devolucion_id', r.id);
+
+        devolucionesLocales.push({
+          id: r.id,
+          fecha: r.created_at,
+          ventaId: (r.venta_id && idMapVenta.get(r.venta_id)) || r.venta_id || undefined,
+          numeroFactura: r.numero_factura || undefined,
+          totalDevolucion: Number(r.total_devolucion) || 0,
+          metodoPago: r.metodo_pago || undefined,
+          procesadoPor: r.procesado_por_nombre || 'App móvil',
+          observaciones: r.observaciones || undefined,
+          items: (itemsRemotos || []).map((it: any) => ({
+            productoId: it.producto_id || '',
+            nombreProducto: it.nombre,
+            cantidadDevuelta: Number(it.cantidad) || 0,
+            precioUnitario: Number(it.precio_unitario) || 0,
+            motivo: it.motivo || undefined,
+          })),
+          _supabaseSynced: true,
+        });
+        nuevos++;
+      }
+
+      if (nuevos > 0) {
+        localStorage.setItem('codecpos_devoluciones', JSON.stringify(devolucionesLocales));
+        await dbManager.addLog('pull_devoluciones_movil', `${nuevos} devoluciones de la app móvil bajadas a la caja`);
+        window.dispatchEvent(new CustomEvent('codecpos:devoluciones-sincronizadas'));
+      }
+    }
+
+    await dbManager.setConfig('lastPullDevoluciones', new Date().toISOString());
+  }
+
   // ==================== PUSH ====================
 
   private async pushProductosPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
@@ -397,6 +636,19 @@ class SyncService {
    * por lo tanto para la PWA) sin que nada fallara ni avisara. Este puente
    * cierra ese hueco leyendo directamente de 'pos-productos'.
    */
+  /**
+   * 🛡️ Hallazgo crítico: `_supabaseSynced` solo lo pone en `true` este mismo
+   * método — y NINGÚN otro de los ~20 sitios que editan 'pos-productos'
+   * (venta, devolución, edición manual, importación CSV, taller, proveedores,
+   * combos...) lo resetea a `false` después de cambiar algo. En la práctica,
+   * un producto sincronizado una vez dejaba de subir CUALQUIER cambio
+   * posterior (precio, stock por venta o devolución, etc.) para siempre —
+   * confirmado revisando cada escritura a esa clave. En vez de perseguir 20
+   * sitios (y confiar en que ninguno nuevo se le olvide), se compara un hash
+   * de los campos que de verdad importan contra el último hash subido
+   * (guardado aparte, en dbManager): cualquier cambio real se sube solo,
+   * sin depender de que alguien recuerde marcar una bandera.
+   */
   private async pushProductosLocalStorage(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
     let productos: any[];
     try {
@@ -406,11 +658,34 @@ class SyncService {
     }
     if (!Array.isArray(productos) || productos.length === 0) return;
 
-    const pendientes = productos.filter((p) => !p._supabaseSynced);
+    const firma = (p: any) =>
+      JSON.stringify([
+        p.codigo, p.nombre, p.categoria, p.precio, p.costo, p.stock, p.minStock ?? p.stockMinimo,
+        p.aplicaIVA, p.fechaVencimiento, p.imagenUrl, p.activo,
+        p.esPapeleriaPinateria, p.categoriaEspecifica, p.tematica, p.calibreGlobo, p.colorAcabado,
+        p.marca, p.esDulceria, p.permitirFraccion, p.componentesCombo, p.unidadesPorBolsa,
+        p.ventaPorUnidad, p.lote, p.fotosUrls,
+      ]);
+
+    const hashesPrevios: Record<string, string> = (await dbManager.getConfig('productosPushHash')) || {};
+    const pendientes = productos.filter((p) => p?.id && firma(p) !== hashesPrevios[p.id]);
     if (pendientes.length === 0) return;
 
+    const hashesNuevos: Record<string, string> = { ...hashesPrevios };
+
+    // 🛡️ FIX: `pushVentasPendientes` necesita saber el UUID de Supabase de
+    // cada producto vendido para poner `venta_items.producto_id` — pero
+    // hasta ahora sacaba ese mapa de `dbManager.getAllProductos()`
+    // (IndexedDB), un almacén DISTINTO y desactualizado frente al que de
+    // verdad usa la caja (`pos-productos`, este mismo array). Resultado:
+    // `producto_id` casi siempre quedaba `null`, y cualquier cálculo de
+    // utilidad que dependa de esa columna (Dashboard de la PWA) veía costo
+    // $0 aunque el producto sí tuviera costo registrado. Se guarda aquí,
+    // en el mismo punto donde se conoce el UUID real recién asignado.
+    const mapaIdSupabase: Record<string, string> = { ...((await dbManager.getConfig('productosIdMap')) || {}) };
+
     for (const p of pendientes) {
-      const { error } = await client.from('productos').upsert(
+      const { data: filaSubida, error } = await client.from('productos').upsert(
         {
           cliente_id: clienteId,
           local_id: p.id,
@@ -423,20 +698,38 @@ class SyncService {
           stock_minimo: p.minStock ?? p.stockMinimo ?? null,
           iva: p.aplicaIVA ? 19 : 0,
           fecha_vencimiento: p.fechaVencimiento || null,
-          foto_url: p.imagenUrl || null,
+          foto_url: p.imagenUrl || (Array.isArray(p.fotosUrls) ? p.fotosUrls[0] : null) || null,
+          fotos_urls: p.fotosUrls || null,
           activo: p.activo !== false,
+          es_papeleria_pinateria: !!p.esPapeleriaPinateria,
+          categoria_especifica: p.categoriaEspecifica || null,
+          tematica: p.tematica || null,
+          calibre_globo: p.calibreGlobo || null,
+          color_acabado: p.colorAcabado || null,
+          marca: p.marca || null,
+          es_dulceria: !!p.esDulceria,
+          permitir_fraccion: !!p.permitirFraccion,
+          componentes_combo: p.componentesCombo || null,
+          unidades_por_bolsa: p.unidadesPorBolsa ?? null,
+          venta_por_unidad: p.ventaPorUnidad !== false,
+          lote: p.lote || null,
+          updated_at: new Date().toISOString(),
         },
         { onConflict: 'cliente_id,local_id' }
-      );
+      ).select('id').single();
 
       if (error) {
         console.error(`[sync] Error subiendo producto local ${p.nombre}:`, error.message);
         continue;
       }
       p._supabaseSynced = true;
+      hashesNuevos[p.id] = firma(p);
+      if (filaSubida?.id) mapaIdSupabase[p.id] = filaSubida.id;
     }
 
     localStorage.setItem('pos-productos', JSON.stringify(productos));
+    await dbManager.setConfig('productosPushHash', hashesNuevos);
+    await dbManager.setConfig('productosIdMap', mapaIdSupabase);
     await dbManager.addLog('push_productos_local', `${pendientes.length} productos (inventario local) subidos`);
   }
 
@@ -485,13 +778,83 @@ class SyncService {
     await dbManager.addLog('push_gastos_local', `${pendientes.length} gastos subidos`);
   }
 
+  /** Sube devoluciones registradas en Electron (`codecpos_devoluciones`) — mismo puente que gastos/productos, con sus líneas en `devolucion_items`. */
+  private async pushDevolucionesLocalStorage(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    let devoluciones: any[];
+    try {
+      devoluciones = JSON.parse(localStorage.getItem('codecpos_devoluciones') || '[]');
+    } catch {
+      return;
+    }
+    if (!Array.isArray(devoluciones) || devoluciones.length === 0) return;
+
+    const pendientes = devoluciones.filter((d) => !d._supabaseSynced);
+    if (pendientes.length === 0) return;
+
+    const ventas = await dbManager.getAllVentas();
+    const idMapVenta = new Map(ventas.filter((v) => v.supabaseId).map((v) => [v.id, v.supabaseId as string]));
+
+    for (const d of pendientes) {
+      const { data: devRow, error } = await client
+        .from('devoluciones')
+        .upsert(
+          {
+            cliente_id: clienteId,
+            local_id: d.id,
+            venta_id: (d.ventaId && idMapVenta.get(d.ventaId)) || null,
+            numero_factura: d.numeroFactura || d.ventaId || null,
+            total_devolucion: d.totalDevolucion ?? 0,
+            metodo_pago: d.metodoPago || null,
+            procesado_por_nombre: d.procesadoPor || null,
+            observaciones: d.observaciones || d.motivo || null,
+          },
+          { onConflict: 'cliente_id,local_id' }
+        )
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error(`[sync] Error subiendo devolución ${d.id}:`, error.message);
+        continue;
+      }
+
+      const items = Array.isArray(d.items) ? d.items : [];
+      if (items.length > 0) {
+        await client.from('devolucion_items').delete().eq('devolucion_id', devRow.id);
+        await client.from('devolucion_items').insert(
+          items.map((it: any) => ({
+            devolucion_id: devRow.id,
+            producto_id: null, // el id local de producto no es un uuid válido de Supabase; se referencia por nombre
+            nombre: it.nombreProducto || it.nombre || 'Producto',
+            cantidad: it.cantidadDevuelta ?? it.cantidad ?? 0,
+            precio_unitario: it.precioUnitario ?? it.precio ?? 0,
+            motivo: it.motivo || null,
+          }))
+        );
+      }
+
+      d._supabaseSynced = true;
+    }
+
+    localStorage.setItem('codecpos_devoluciones', JSON.stringify(devoluciones));
+    await dbManager.addLog('push_devoluciones_local', `${pendientes.length} devoluciones subidas`);
+  }
+
   private async pushVentasPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
     const ventas = await dbManager.getAllVentas();
     const pendientes = ventas.filter((v) => v.syncStatus === 'pending');
     if (pendientes.length === 0) return;
 
+    // Fuente principal: el mapa que `pushProductosLocalStorage` acaba de
+    // llenar/actualizar en este mismo ciclo (local_id de `pos-productos` →
+    // uuid real en Supabase). Se complementa con IndexedDB por si algún
+    // producto viejo solo quedó registrado ahí.
+    const mapaGuardado = (await dbManager.getConfig('productosIdMap')) as Record<string, string> | null;
+    const idMap = new Map<string, string>(Object.entries(mapaGuardado || {}));
     const productos = await dbManager.getAllProductos();
-    const idMap = new Map(productos.filter((p) => p.supabaseId).map((p) => [p.id, p.supabaseId as string]));
+    for (const p of productos) {
+      if (p.supabaseId && !idMap.has(p.id)) idMap.set(p.id, p.supabaseId);
+    }
 
     for (const v of pendientes) {
       const { data: ventaRow, error } = await client
@@ -661,8 +1024,57 @@ class SyncService {
   }
 }
 
+/**
+ * 🛡️ Hallazgo crítico: eliminar un producto (uno o "vaciar todo") en
+ * ProductosPage.tsx solo tocaba `localStorage['pos-productos']` — nunca le
+ * avisaba a Supabase. `pushProductosLocalStorage` sube lo que SÍ está en ese
+ * array; nunca detecta lo que dejó de estar, así que la fila remota se
+ * quedaba `activo:true` para siempre y la PWA (que lee directo de Supabase)
+ * seguía mostrando el producto "eliminado" como si nada. Estas funciones
+ * cierran ese hueco: se llaman justo después de borrar localmente.
+ *
+ * Es desactivación (`activo:false`), no borrado físico — mismo criterio que
+ * ya usa la PWA (`handleDesactivar` en ProductoFormPage.tsx) y que preserva
+ * la integridad de ventas históricas que referencian ese producto.
+ */
+export async function desactivarProductoEnNube(localId: string): Promise<void> {
+  try {
+    await dbManager.deleteProducto(localId);
+  } catch { /* IndexedDB puede no tener el registro — no es un error real */ }
+
+  const client = getSupabaseClient();
+  const clienteId = getLinkedClienteId();
+  if (!client || !clienteId) return;
+
+  try {
+    await client.from('productos').update({ activo: false, updated_at: new Date().toISOString() })
+      .eq('cliente_id', clienteId).eq('local_id', localId);
+  } catch (e) {
+    console.warn('[sync] No se pudo desactivar el producto en la nube (quedará desactualizado hasta reconectar):', e);
+  }
+}
+
+/** "Vaciar inventario" — desactiva TODO lo del negocio en Supabase de una vez. */
+export async function desactivarTodosLosProductosEnNube(): Promise<void> {
+  try {
+    const locales = await dbManager.getAllProductos();
+    await Promise.all(locales.map((p) => dbManager.deleteProducto(p.id).catch(() => {})));
+  } catch { /* no crítico */ }
+
+  const client = getSupabaseClient();
+  const clienteId = getLinkedClienteId();
+  if (!client || !clienteId) return;
+
+  try {
+    await client.from('productos').update({ activo: false, updated_at: new Date().toISOString() })
+      .eq('cliente_id', clienteId);
+  } catch (e) {
+    console.warn('[sync] No se pudo vaciar el inventario en la nube (quedará desactualizado hasta reconectar):', e);
+  }
+}
+
 export interface SyncStatus {
-  status: 'syncing' | 'success' | 'error' | 'offline';
+  status: 'syncing' | 'success' | 'error' | 'offline' | 'unlinked';
   message: string;
   lastSync: string | null;
 }

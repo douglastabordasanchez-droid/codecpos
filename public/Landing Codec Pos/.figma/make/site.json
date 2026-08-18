@@ -1,0 +1,10 @@
+{
+  "description": "Creates visually striking, tech-inspired landing pages with light and dark themes and animations tailored for POS system businesses to attract users.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

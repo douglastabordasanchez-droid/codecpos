@@ -12,7 +12,7 @@ import { LanProvider } from '../../contexts/LanContext';
  */
 export default function ProtectedLayout() {
   const navigate = useNavigate();
-  const { estaAutenticado, configuracionInicial } = useAuth();
+  const { estaAutenticado } = useAuth();
 
   // ⚡ ATAJO DE TECLADO: Ctrl+Shift+D para Panel de Desarrollador
   useDeveloperShortcut();
@@ -22,23 +22,17 @@ export default function ProtectedLayout() {
   // instalación no está vinculada a la nube.
   useSyncModulosNube();
 
-  console.log('🔐 ProtectedLayout - Estado:', { estaAutenticado, configuracionInicial });
-
   // Redirigir si no está autenticado
   useEffect(() => {
     // ✅ SIEMPRE redirigir al login si no está autenticado
     // Ya no verificamos configuracionInicial porque está SIEMPRE en false
     if (!estaAutenticado) {
-      console.log('🚫 Usuario no autenticado - Redirigiendo al login...');
       navigate('/login', { replace: true });
-    } else {
-      console.log('✅ Usuario autenticado - Mostrando layout');
     }
   }, [estaAutenticado, navigate]);
 
   // Si no está autenticado, mostrar loading mientras redirige
   if (!estaAutenticado) {
-    console.log('⏳ Esperando autenticación...');
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
         <div className="text-center">
@@ -48,8 +42,6 @@ export default function ProtectedLayout() {
       </div>
     );
   }
-
-  console.log('✅ Renderizando POSLayoutSidebar...');
 
   // Si está autenticado, renderizar el layout
   // ✅ CodecVerifyListener ACTIVADO con optimizaciones

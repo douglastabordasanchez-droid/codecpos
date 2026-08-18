@@ -17,6 +17,7 @@ import {
   NotificacionPagoRow,
 } from '../../lib/supabase/codecVerifyService';
 import { isLinked } from '../../lib/supabase/tenantLink';
+import { anunciarPagoRecibido } from '../../lib/voz';
 
 export interface PagoEntrante {
   id: string;
@@ -192,6 +193,10 @@ export function useCodecVerify() {
       remitente: row.referencia || 'Sin referencia',
       timestamp: new Date().toLocaleTimeString('es-CO'),
     };
+
+    // 🔊 Anuncio de voz: se dice en voz alta apenas llega la confirmación de
+    // pago al celular vinculado, sin importar si es manual o automático.
+    anunciarPagoRecibido(pago.monto, pago.banco);
 
     // 🔗 Puente para consumidores existentes (p. ej. NequiVerifyModal en el
     // checkout), que ya escuchaban este evento esperando una infraestructura

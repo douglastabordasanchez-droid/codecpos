@@ -76,7 +76,7 @@ export function VinculacionNubeCard() {
       <CardHeader>
         <CardTitle className={`flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
           {linked ? <Cloud className="w-5 h-5 text-emerald-500" /> : <CloudOff className="w-5 h-5 text-slate-500" />}
-          Vinculación con Supabase
+          Vinculación con nuestra base de datos
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

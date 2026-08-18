@@ -34,6 +34,8 @@ import { electronStore } from '../../lib/electronStore';
 import { esModuloActivoGlobal, ModuloPOS } from '../../lib/permissions';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
 import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
+import { type CuentaCartera, obtenerCuentaCartera } from '../../lib/carteraService';
+import { ModalDetalleCuentaCartera } from './ModalDetalleCuentaCartera';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -252,16 +254,19 @@ export default function ContabilidadPage() {
   // ── Navegación por pestañas: centro de control financiero ──────────────
   const [tabActiva, setTabActiva] = useState<'resumen' | 'cobrar' | 'rentabilidad' | 'flujo' | 'reportes'>('resumen');
 
-  // ── Cuentas por cobrar: se arma cruzando Taller (saldoPendiente) y
-  // Apartados (saldo) — el POS normal no tiene ventas "fiadas", así que no
-  // se inventa esa fuente. Un solo listado unificado por cliente.
+  // ── Cuentas por cobrar: se arma cruzando Taller (saldoPendiente),
+  // Apartados (saldo) y Cartera (venta a crédito, ver carteraService.ts).
+  // Un solo listado unificado por cliente.
   interface CuentaPorCobrar {
-    id: string; origen: 'taller' | 'apartado'; cliente: string; telefono: string;
+    id: string; origen: 'taller' | 'apartado' | 'cartera'; cliente: string; telefono: string;
     valorPendiente: number; referencia: string; fechaReferencia: string;
     diasAtraso: number; estado: 'al_dia' | 'proximo' | 'vencido';
+    carteraCuentaId?: string;
   }
   const [cuentasPorCobrar, setCuentasPorCobrar] = useState<CuentaPorCobrar[]>([]);
   const [cargandoCobrar, setCargandoCobrar] = useState(false);
+  const [cuentaCarteraSeleccionada, setCuentaCarteraSeleccionada] = useState<CuentaCartera | null>(null);
+  const [modalCarteraAbierto, setModalCarteraAbierto] = useState(false);
 
   useEffect(() => {
     let cancelado = false;
@@ -299,9 +304,34 @@ export default function ContabilidadPage() {
         }))
       .catch(() => [] as CuentaPorCobrar[]);
 
-    Promise.all([cargarTaller, cargarApartados]).then(([taller, apartados]) => {
+    // Días de anticipación configurables (Configuración → Cartera / Crédito a
+    // clientes) para marcar una cuenta como "próxima a vencer" antes de que
+    // realmente venza.
+    const diasAnticipacionCartera = (() => {
+      try {
+        const cfg = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+        return Number(cfg.carteraDiasAnticipacionRecordatorio) || 3;
+      } catch { return 3; }
+    })();
+
+    const cargarCartera = import('../../lib/carteraService').then(({ listarCuentasCartera }) => listarCuentasCartera({ soloConSaldo: true }))
+      .then((cuentas) => cuentas
+        .filter((c) => c.estado !== 'pagada')
+        .map((c): CuentaPorCobrar => {
+          const dias = Math.floor((hoyMs - new Date(c.fechaVencimiento).getTime()) / 86400000);
+          return {
+            id: `cartera_${c.id}`, origen: 'cartera', cliente: c.clienteNombre || 'Sin nombre', telefono: c.clienteTelefono || '',
+            valorPendiente: c.saldo, referencia: `Cartera ${c.numeroFactura}`, fechaReferencia: c.fechaVencimiento,
+            diasAtraso: Math.max(0, dias),
+            estado: dias >= 0 ? 'vencido' : dias >= -diasAnticipacionCartera ? 'proximo' : 'al_dia',
+            carteraCuentaId: c.id,
+          };
+        }))
+      .catch(() => [] as CuentaPorCobrar[]);
+
+    Promise.all([cargarTaller, cargarApartados, cargarCartera]).then(([taller, apartados, cartera]) => {
       if (cancelado) return;
-      setCuentasPorCobrar([...taller, ...apartados].sort((a, b) => b.valorPendiente - a.valorPendiente));
+      setCuentasPorCobrar([...taller, ...apartados, ...cartera].sort((a, b) => b.valorPendiente - a.valorPendiente));
       setCargandoCobrar(false);
     });
 
@@ -1370,11 +1400,22 @@ export default function ContabilidadPage() {
                         <p className={`font-bold ${txt}`}>{c.cliente}</p>
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${colorEstado}20`, color: colorEstado }}>{labelEstado}</span>
                       </div>
-                      <p className={`text-xs ${sub}`}>{c.referencia} · {c.origen === 'taller' ? 'Taller' : 'Apartado'} · {c.diasAtraso > 0 ? `${c.diasAtraso} días` : 'hoy'}</p>
+                      <p className={`text-xs ${sub}`}>{c.referencia} · {c.origen === 'taller' ? 'Taller' : c.origen === 'apartado' ? 'Apartado' : 'Cartera'} · {c.diasAtraso > 0 ? `${c.diasAtraso} días` : 'hoy'}</p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className={`text-lg font-extrabold tabular-nums ${txt}`}>{fmt(c.valorPendiente)}</p>
                     </div>
+                    {c.origen === 'cartera' && c.carteraCuentaId && (
+                      <button
+                        onClick={async () => {
+                          const cuenta = await obtenerCuentaCartera(c.carteraCuentaId!);
+                          if (cuenta) { setCuentaCarteraSeleccionada(cuenta); setModalCarteraAbierto(true); }
+                        }}
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-orange-500 to-amber-600 text-white hover:from-orange-600 hover:to-amber-700"
+                      >
+                        <Wallet className="w-3.5 h-3.5" /> Abonar
+                      </button>
+                    )}
                     <button
                       onClick={() => enviarRecordatorio(c)}
                       className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700"
@@ -1744,6 +1785,25 @@ export default function ContabilidadPage() {
           </motion.div>
         </div>
       )}
+
+      <ModalDetalleCuentaCartera
+        isOpen={modalCarteraAbierto}
+        onClose={() => setModalCarteraAbierto(false)}
+        cuenta={cuentaCarteraSeleccionada}
+        darkMode={darkMode}
+        usuarioActual={usuarioActual}
+        onCuentaActualizada={(actualizada) => {
+          setCuentaCarteraSeleccionada(actualizada);
+          setCuentasPorCobrar((prev) => {
+            if (actualizada.saldo <= 0) {
+              return prev.filter((c) => c.carteraCuentaId !== actualizada.id);
+            }
+            return prev.map((c) => c.carteraCuentaId === actualizada.id
+              ? { ...c, valorPendiente: actualizada.saldo }
+              : c);
+          });
+        }}
+      />
     </div>
   );
 }

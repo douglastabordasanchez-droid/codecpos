@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   X, User, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
   Settings, LogOut, Sun, Moon, Crown, Zap, ShieldAlert, Wrench, Coffee,
+  LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper,
 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -64,6 +65,17 @@ export function SideMenu({ open, onClose }: Props) {
   const modulos: ItemMenu[] = [
     { icon: Coffee, label: 'Alimentos y Bebidas', subtitulo: 'Mesas, comandas y pedidos del salón', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
     { icon: Wrench, label: 'Taller', subtitulo: 'Órdenes de reparación y estados', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
+    { icon: Palette, label: 'Artes Gráficas', subtitulo: 'Catálogo por escalas y facturas dinámicas', path: '/artes-graficas', modulo: ModuloPOS.ARTES_GRAFICAS },
+    { icon: PartyPopper, label: 'Papelería y Piñatería', subtitulo: 'Globos, dulcería, juguetería y fiestas', path: '/papeleria-pinateria', modulo: ModuloPOS.PAPELERIA_PINATERIA },
+    { icon: Tag, label: 'Promociones', subtitulo: 'Descuentos y combos vigentes', path: '/promociones', modulo: ModuloPOS.PROMOCIONES },
+    { icon: Truck, label: 'Proveedores', subtitulo: 'Contacto y saldo pendiente', path: '/proveedores', modulo: ModuloPOS.PROVEEDORES },
+    { icon: Store, label: 'Multi-Tienda', subtitulo: 'Directorio de sucursales', path: '/multitienda', modulo: ModuloPOS.MULTITIENDA },
+  ];
+
+  const analisis: ItemMenu[] = [
+    { icon: LayoutDashboard, label: 'Dashboard', subtitulo: 'Ventas, utilidad y tendencia', path: '/dashboard', modulo: ModuloPOS.DASHBOARD },
+    { icon: FileBarChart, label: 'Reportes', subtitulo: 'Exportar ventas y gastos a PDF/Excel', path: '/reportes', modulo: ModuloPOS.REPORTES },
+    { icon: Calculator, label: 'Contabilidad', subtitulo: 'Ingresos extra y gastos del periodo', path: '/contabilidad', modulo: ModuloPOS.CONTABILIDAD },
   ];
 
   const herramientas: ItemMenu[] = [
@@ -71,9 +83,12 @@ export function SideMenu({ open, onClose }: Props) {
     { icon: Wallet, label: 'Gastos', subtitulo: 'Gastos operativos registrados', path: '/gastos', modulo: ModuloPOS.GASTOS },
     { icon: RotateCcw, label: 'Devoluciones', subtitulo: 'Procesar devolución de una venta', path: '/devoluciones', modulo: ModuloPOS.DEVOLUCIONES },
     { icon: ScanLine, label: 'Escáner', subtitulo: 'Buscar producto por código de barras', path: '/escaner', modulo: ModuloPOS.PRODUCTOS },
+    { icon: Barcode, label: 'Códigos de Barras', subtitulo: 'Generar y asignar códigos a productos', path: '/codigos-barras', modulo: ModuloPOS.CODIGOS_BARRAS },
+    { icon: Award, label: 'Fidelización', subtitulo: 'Consultar puntos de un cliente', path: '/fidelizacion', modulo: ModuloPOS.FIDELIZACION },
   ];
 
   const administracion: ItemMenu[] = [
+    { icon: Users, label: 'Personal', subtitulo: 'Equipo con acceso a la app', path: '/personal', soloAdmin: true, modulo: ModuloPOS.USUARIOS },
     { icon: Settings, label: 'Configuración', subtitulo: 'Datos del negocio y módulos', path: '/configuracion', soloAdmin: true },
   ];
 
@@ -130,6 +145,13 @@ export function SideMenu({ open, onClose }: Props) {
                 <>
                   <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Módulos</p>
                   {modulos.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} />)}
+                </>
+              )}
+
+              {analisis.some(visible) && (
+                <>
+                  <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Análisis</p>
+                  {analisis.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} />)}
                 </>
               )}
 

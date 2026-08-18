@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Outlet, Navigate } from 'react-router';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CloudOff } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { BottomNav } from './BottomNav';
 import { TopBar } from './TopBar';
 import { DesktopLayout } from './DesktopLayout';
 import { useIsDesktop } from '../hooks/useIsDesktop';
+import { useModulosActivos } from '../hooks/useModulosActivos';
 
 /**
  * Mismo enlace, misma app, mismo login — en pantallas ≥1024px (12" en
@@ -15,6 +16,7 @@ import { useIsDesktop } from '../hooks/useIsDesktop';
  */
 export function PwaLayout() {
   const { empleado, cargando } = usePwaAuth();
+  const { appHabilitada } = useModulosActivos();
   const esEscritorio = useIsDesktop();
   const [navInferiorVisible, setNavInferiorVisible] = useState(true);
 
@@ -28,6 +30,22 @@ export function PwaLayout() {
 
   if (!empleado) {
     return <Navigate to="/login" replace />;
+  }
+
+  // 📱 Gate de pago: el negocio del empleado no tiene la app móvil activada.
+  // `appHabilitada === null` mientras carga — no bloquear con datos viejos.
+  if (appHabilitada === false) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-slate-900/70 border border-slate-800 flex items-center justify-center mb-4 shadow-sm">
+          <CloudOff className="w-6 h-6 text-amber-400" />
+        </div>
+        <h1 className="text-white font-bold text-lg mb-1">Esperando conexión con app</h1>
+        <p className="text-slate-400 text-sm max-w-xs">
+          Tu negocio todavía no tiene la app móvil activada. Contacta a Codec Studio para activarla.
+        </p>
+      </div>
+    );
   }
 
   if (esEscritorio) {

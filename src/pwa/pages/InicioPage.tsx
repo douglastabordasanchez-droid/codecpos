@@ -81,6 +81,8 @@ export default function InicioPage() {
   const navigate = useNavigate();
   const [ventasPeriodo, setVentasPeriodo] = useState<VentaFila[]>([]);
   const [ventasPeriodoAnterior, setVentasPeriodoAnterior] = useState<VentaFila[]>([]);
+  const [utilidadNeta, setUtilidadNeta] = useState(0);
+  const [devolucionesTotal, setDevolucionesTotal] = useState(0);
   const [alertasCount, setAlertasCount] = useState(0);
   const [productosConMinimo, setProductosConMinimo] = useState(0);
   const [sesiones, setSesiones] = useState<SesionFila[]>([]);
@@ -102,7 +104,7 @@ export default function InicioPage() {
 
       const { inicio, fin, inicioAnterior, finAnterior } = calcularRangos(rango, customDesde, customHasta);
 
-      const [{ data: periodoData }, { data: anteriorData }, { data: stockData }, { data: sesionesData }] = await Promise.all([
+      const [{ data: periodoData }, { data: anteriorData }, { data: stockData }, { data: sesionesData }, { data: gastosData }, { data: devolucionesData }] = await Promise.all([
         client.from('ventas').select('id, total, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
           .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString()),
@@ -116,15 +118,48 @@ export default function InicioPage() {
           ? client.from('sesiones_activas').select('id, terminal_nombre, terminal_id, cajero_nombre, ultima_actividad, activa')
               .eq('cliente_id', empleado.cliente_id).order('ultima_actividad', { ascending: false })
           : Promise.resolve({ data: [] as any[] }),
+        esAdmin
+          ? client.from('gastos').select('monto, fecha').eq('cliente_id', empleado.cliente_id)
+              .gte('fecha', inicio.toISOString()).lt('fecha', fin.toISOString())
+          : Promise.resolve({ data: [] as any[] }),
+        client.from('devoluciones').select('total_devolucion, created_at').eq('cliente_id', empleado.cliente_id)
+          .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString()),
       ]);
 
       if (cancelado) return;
-      setVentasPeriodo((periodoData as VentaFila[]) || []);
+      const ventasLista = (periodoData as VentaFila[]) || [];
+      setVentasPeriodo(ventasLista);
       setVentasPeriodoAnterior((anteriorData as VentaFila[]) || []);
       const productos = ((stockData as any[]) || []).filter((p) => p.stock_minimo != null);
       setProductosConMinimo(productos.length);
       setAlertasCount(productos.filter((p) => p.stock <= p.stock_minimo).length);
       setSesiones((sesionesData as SesionFila[]) || []);
+      const devTotal = ((devolucionesData as { total_devolucion: number }[]) || []).reduce((a, d) => a + Number(d.total_devolucion), 0);
+      setDevolucionesTotal(devTotal);
+
+      // 🛡️ FIX: coincidir con el Dashboard de Electron — ahí la utilidad neta
+      // resta también los gastos del período (no solo el costo de lo
+      // vendido), y "ventas" se muestra neto de devoluciones. Antes esta
+      // pantalla omitía ambas restas, así que los números nunca cuadraban
+      // con Electron aunque fueran el mismo negocio y el mismo período.
+      if (esAdmin && ventasLista.length > 0) {
+        const ventaIds = ventasLista.map((v) => v.id);
+        const { data: itemsData } = await client.from('venta_items').select('producto_id, cantidad').in('venta_id', ventaIds);
+        const items = (itemsData as { producto_id: string | null; cantidad: number }[]) || [];
+        const productoIds = Array.from(new Set(items.map((i) => i.producto_id).filter(Boolean))) as string[];
+        const costosPorProducto = new Map<string, number>();
+        if (productoIds.length > 0) {
+          const { data: prodsData } = await client.from('productos').select('id, costo').in('id', productoIds);
+          for (const p of (prodsData as { id: string; costo: number }[]) || []) costosPorProducto.set(p.id, Number(p.costo) || 0);
+        }
+        const costoTotal = items.reduce((a, i) => a + (costosPorProducto.get(i.producto_id || '') || 0) * Number(i.cantidad), 0);
+        const gastosTotal = ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0);
+        const totalVentas = ventasLista.reduce((a, v) => a + Number(v.total), 0);
+        if (!cancelado) setUtilidadNeta(totalVentas - devTotal - costoTotal - gastosTotal);
+      } else if (esAdmin) {
+        setUtilidadNeta(0);
+      }
+
       setCargando(false);
     };
 
@@ -135,13 +170,17 @@ export default function InicioPage() {
 
   const stats = useMemo(() => {
     const totalPeriodo = ventasPeriodo.reduce((a, v) => a + Number(v.total), 0);
+    // Neto de devoluciones — así el anillo de "Ventas" coincide con el
+    // número que Electron llama "Ingresos Netos" (bruto - devoluciones),
+    // en vez de mostrar el bruto sin más.
+    const totalPeriodoNeto = totalPeriodo - devolucionesTotal;
     const totalAnterior = ventasPeriodoAnterior.reduce((a, v) => a + Number(v.total), 0);
     const ticketProm = ventasPeriodo.length ? totalPeriodo / ventasPeriodo.length : 0;
     const pctVentasVsAnterior = totalAnterior > 0 ? Math.min(100, (totalPeriodo / totalAnterior) * 100) : totalPeriodo > 0 ? 100 : 0;
     const pctTransaccionesVsAnterior = ventasPeriodoAnterior.length > 0 ? Math.min(100, (ventasPeriodo.length / ventasPeriodoAnterior.length) * 100) : ventasPeriodo.length > 0 ? 100 : 0;
     const pctInventarioSano = productosConMinimo > 0 ? ((productosConMinimo - alertasCount) / productosConMinimo) * 100 : 100;
-    return { totalPeriodo, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano };
-  }, [ventasPeriodo, ventasPeriodoAnterior, productosConMinimo, alertasCount]);
+    return { totalPeriodo, totalPeriodoNeto, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano };
+  }, [ventasPeriodo, ventasPeriodoAnterior, productosConMinimo, alertasCount, devolucionesTotal]);
 
   const etiquetaVentas = rango === 'hoy' ? 'Ventas hoy' : rango === '3d' ? 'Ventas 3 días' : rango === '7d' ? 'Ventas 7 días' : 'Ventas del periodo';
   const etiquetaTransacciones = rango === 'hoy' ? 'Transacciones' : 'Transacciones periodo';
@@ -209,11 +248,20 @@ export default function InicioPage() {
 
           <div className="grid grid-cols-2 gap-x-2 gap-y-5">
             <RingStat
+              label="Utilidad neta"
+              value={`$${Math.round(utilidadNeta).toLocaleString('es-CO')}`}
+              pct={100}
+              colorFrom={utilidadNeta >= 0 ? '#34d399' : '#f87171'}
+              colorTo={utilidadNeta >= 0 ? '#059669' : '#dc2626'}
+              size={108}
+              onClick={() => navigate('/dashboard')}
+            />
+            <RingStat
               label={etiquetaVentas}
-              value={`$${stats.totalPeriodo.toLocaleString('es-CO')}`}
+              value={`$${Math.round(stats.totalPeriodoNeto).toLocaleString('es-CO')}`}
               pct={stats.pctVentasVsAnterior}
-              colorFrom="#34d399"
-              colorTo="#059669"
+              colorFrom="#38bdf8"
+              colorTo="#0284c7"
               size={108}
               onClick={() => navigate('/ventas')}
             />
@@ -221,15 +269,6 @@ export default function InicioPage() {
               label={etiquetaTransacciones}
               value={String(stats.cantidadPeriodo)}
               pct={stats.pctTransaccionesVsAnterior}
-              colorFrom="#38bdf8"
-              colorTo="#0284c7"
-              size={108}
-              onClick={() => navigate('/ventas')}
-            />
-            <RingStat
-              label="Ticket promedio"
-              value={`$${Math.round(stats.ticketProm).toLocaleString('es-CO')}`}
-              pct={100}
               colorFrom="#a78bfa"
               colorTo="#7c3aed"
               size={108}

@@ -60,7 +60,7 @@ function filaANota(fila: NotaRow, tipo: TipoNotaAjuste): NotaAjusteDian {
 
 export async function crearNotaAjuste(nota: NotaAjusteDian): Promise<NotaAjusteDian> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const { data, error } = await client
     .from(tabla(nota.tipo))
@@ -96,7 +96,7 @@ export async function actualizarEstadoNota(
   extra: Partial<{ cude: string; xml: string; respuestaDian: Record<string, unknown> }> = {}
 ): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const payload: Record<string, unknown> = { estado, updated_at: new Date().toISOString() };
   if (extra.cude !== undefined) payload.cude = extra.cude;

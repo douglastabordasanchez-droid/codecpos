@@ -6,7 +6,7 @@
  * Actualización en tiempo real con listeners
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -40,7 +40,6 @@ import { Card, CardContent } from '../ui/card';
 import { toast } from 'sonner';
 import { electronStore, Venta } from '../../lib/electronStore';
 import { usePOS } from '../../contexts/POSContext';
-import { useLicense } from '../../contexts/LicenseContext';
 import { PremiumButton } from '../licencia/PremiumFeature';
 import { descargarReporteVentasPDF, descargarFacturaPDF, enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
 import { descargarReporteVentasExcel } from '../../lib/excelGenerator';
@@ -49,11 +48,11 @@ import ModalImprimirFactura from './ModalImprimirFactura';
 type FiltroFecha = 'hoy' | 'ayer' | 'semana' | 'mes' | 'todos' | 'personalizado';
 type OrdenVentas = 'fecha_desc' | 'fecha_asc' | 'total_desc';
 
+const VENTAS_POR_PAGINA = 50;
+
 export default function VentasPage() {
   const { darkMode } = usePOS();
-  useLicense();
   const [ventas, setVentas] = useState<Venta[]>([]);
-  const [ventasFiltradas, setVentasFiltradas] = useState<Venta[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>('hoy');
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,13 +61,14 @@ export default function VentasPage() {
   const [fechaFinPersonalizada, setFechaFinPersonalizada] = useState('');
   const [ventaSeleccionada, setVentaSeleccionada] = useState<Venta | null>(null);
   const [ventaParaImprimir, setVentaParaImprimir] = useState<Venta | null>(null);
+  const [paginaActual, setPaginaActual] = useState(1);
 
   // 🔄 Cargar ventas desde ElectronStore
   const cargarVentas = async () => {
     try {
       setLoading(true);
       const ventasData = await electronStore.obtenerVentas();
-      
+
       // ✅ Asegurar que todos los números son numéricos
       const ventasNormalizadas = ventasData.map(venta => ({
         ...venta,
@@ -85,14 +85,6 @@ export default function VentasPage() {
       }));
 
       setVentas(ventasNormalizadas);
-      aplicarFiltros(
-        ventasNormalizadas,
-        filtroFecha,
-        searchTerm,
-        ordenVentas,
-        fechaInicioPersonalizada,
-        fechaFinPersonalizada
-      );
     } catch (error) {
       console.error('❌ Error cargando ventas:', error);
       toast.error('Error al cargar las ventas');
@@ -101,16 +93,11 @@ export default function VentasPage() {
     }
   };
 
-  // 📊 Aplicar filtros de fecha y búsqueda
-  const aplicarFiltros = (
-    ventasBase: Venta[],
-    filtro: FiltroFecha,
-    busqueda: string,
-    orden: OrdenVentas,
-    fechaInicioCustom: string,
-    fechaFinCustom: string
-  ) => {
-    let resultado = [...ventasBase];
+  // 📊 Filtrar + ordenar — derivado con useMemo en vez de estado propio +
+  // efecto: evita recalcular sobre TODO el historial y re-renderizar en cada
+  // tecla del buscador; solo se recalcula cuando alguna dependencia cambia.
+  const ventasFiltradas = useMemo(() => {
+    let resultado = ventas;
 
     // Filtro por fecha
     const ahora = new Date();
@@ -124,8 +111,8 @@ export default function VentasPage() {
 
     resultado = resultado.filter(venta => {
       const fechaVenta = new Date(venta.fecha);
-      
-      switch (filtro) {
+
+      switch (filtroFecha) {
         case 'hoy':
           return fechaVenta >= hoy;
         case 'ayer':
@@ -140,11 +127,11 @@ export default function VentasPage() {
       }
     });
 
-    if (filtro === 'personalizado') {
+    if (filtroFecha === 'personalizado') {
       resultado = resultado.filter(venta => {
         const fechaVenta = new Date(venta.fecha);
-        const inicio = fechaInicioCustom ? new Date(`${fechaInicioCustom}T00:00:00`) : null;
-        const fin = fechaFinCustom ? new Date(`${fechaFinCustom}T23:59:59`) : null;
+        const inicio = fechaInicioPersonalizada ? new Date(`${fechaInicioPersonalizada}T00:00:00`) : null;
+        const fin = fechaFinPersonalizada ? new Date(`${fechaFinPersonalizada}T23:59:59`) : null;
 
         if (inicio && fechaVenta < inicio) return false;
         if (fin && fechaVenta > fin) return false;
@@ -153,8 +140,8 @@ export default function VentasPage() {
     }
 
     // Filtro por búsqueda
-    if (busqueda.trim()) {
-      const termino = busqueda.toLowerCase();
+    if (searchTerm.trim()) {
+      const termino = searchTerm.toLowerCase();
       resultado = resultado.filter(venta =>
         venta.id.toLowerCase().includes(termino) ||
         venta.cajero.toLowerCase().includes(termino) ||
@@ -163,20 +150,34 @@ export default function VentasPage() {
       );
     }
 
-    resultado.sort((a, b) => {
-      if (orden === 'total_desc') {
+    resultado = [...resultado].sort((a, b) => {
+      if (ordenVentas === 'total_desc') {
         return Number(b.total) - Number(a.total);
       }
 
-      if (orden === 'fecha_asc') {
+      if (ordenVentas === 'fecha_asc') {
         return new Date(a.fecha).getTime() - new Date(b.fecha).getTime();
       }
 
       return new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
     });
 
-    setVentasFiltradas(resultado);
-  };
+    return resultado;
+  }, [ventas, filtroFecha, searchTerm, ordenVentas, fechaInicioPersonalizada, fechaFinPersonalizada]);
+
+  // Volver a la página 1 cuando cambia cualquier filtro
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [filtroFecha, searchTerm, ordenVentas, fechaInicioPersonalizada, fechaFinPersonalizada]);
+
+  const totalPaginas = Math.max(1, Math.ceil(ventasFiltradas.length / VENTAS_POR_PAGINA));
+  const ventasPaginadas = useMemo(
+    () => ventasFiltradas.slice((paginaActual - 1) * VENTAS_POR_PAGINA, paginaActual * VENTAS_POR_PAGINA),
+    [ventasFiltradas, paginaActual]
+  );
+  const irAPagina = useCallback((pagina: number) => {
+    setPaginaActual(prev => Math.max(1, Math.min(pagina, totalPaginas)) || prev);
+  }, [totalPaginas]);
 
   // 🎯 Efecto inicial y listener en tiempo real
   useEffect(() => {
@@ -189,22 +190,17 @@ export default function VentasPage() {
 
     electronStore.onVentaNueva(handleVentaNueva);
 
+    // ☁️ syncService.ts ya baja las ventas hechas desde la PWA a IndexedDB y
+    // dispara este evento — pero antes nadie lo escuchaba, así que una venta
+    // móvil solo aparecía acá tras recargar. Se refresca igual que una venta
+    // nueva local.
+    window.addEventListener('codecpos:ventas-sincronizadas', handleVentaNueva as EventListener);
+
     return () => {
       electronStore.offVentaNueva(handleVentaNueva);
+      window.removeEventListener('codecpos:ventas-sincronizadas', handleVentaNueva as EventListener);
     };
   }, []);
-
-  // 🔄 Actualizar filtros cuando cambien
-  useEffect(() => {
-    aplicarFiltros(
-      ventas,
-      filtroFecha,
-      searchTerm,
-      ordenVentas,
-      fechaInicioPersonalizada,
-      fechaFinPersonalizada
-    );
-  }, [filtroFecha, searchTerm, ordenVentas, fechaInicioPersonalizada, fechaFinPersonalizada, ventas]);
 
   // 📊 Calcular estadísticas
   const totalVentas = ventasFiltradas.length;
@@ -820,6 +816,7 @@ export default function VentasPage() {
                 </Button>
                 
                 <PremiumButton
+                  feature="reportes_avanzados"
                   onClick={exportarExcel}
                   className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={ventasFiltradas.length === 0}
@@ -887,7 +884,7 @@ export default function VentasPage() {
                       </td>
                     </tr>
                   ) : (
-                    ventasFiltradas.map((venta, index) => (
+                    ventasPaginadas.map((venta, index) => (
                       <motion.tr
                         key={venta.id}
                         initial={{ opacity: 0, y: 20 }}
@@ -942,6 +939,7 @@ export default function VentasPage() {
                             venta.metodoPago === 'daviplata' ? 'bg-red-500/20 text-red-600' :
                             venta.metodoPago === 'transferencia' ? 'bg-cyan-500/20 text-cyan-600' :
                             venta.metodoPago === 'rappi' ? 'bg-orange-500/20 text-orange-600' :
+                            venta.metodoPago === 'cartera' ? 'bg-orange-600/20 text-orange-700' :
                             'bg-amber-500/20 text-amber-600'
                           }`}>
                             {venta.metodoPago.toUpperCase()}
@@ -997,6 +995,64 @@ export default function VentasPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Paginación */}
+      {totalPaginas > 1 && (
+        <div className="flex items-center justify-between py-2">
+          <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            {ventasFiltradas.length} ventas · Página {paginaActual} de {totalPaginas}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => irAPagina(1)}
+              disabled={paginaActual === 1}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 ${
+                darkMode ? 'bg-slate-700 hover:bg-slate-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >«</button>
+            <button
+              onClick={() => irAPagina(paginaActual - 1)}
+              disabled={paginaActual === 1}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 ${
+                darkMode ? 'bg-slate-700 hover:bg-slate-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >‹</button>
+
+            {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+              const offset = Math.max(0, Math.min(paginaActual - 3, totalPaginas - 5));
+              const pagina = i + 1 + offset;
+              return (
+                <button
+                  key={pagina}
+                  onClick={() => irAPagina(pagina)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    pagina === paginaActual
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : darkMode
+                      ? 'bg-slate-700 hover:bg-slate-600 text-gray-300'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >{pagina}</button>
+              );
+            })}
+
+            <button
+              onClick={() => irAPagina(paginaActual + 1)}
+              disabled={paginaActual === totalPaginas}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 ${
+                darkMode ? 'bg-slate-700 hover:bg-slate-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >›</button>
+            <button
+              onClick={() => irAPagina(totalPaginas)}
+              disabled={paginaActual === totalPaginas}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 ${
+                darkMode ? 'bg-slate-700 hover:bg-slate-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >»</button>
+          </div>
+        </div>
+      )}
 
       {/* Modal de Detalle de Venta */}
       <AnimatePresence>

@@ -5,7 +5,7 @@
 
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { Save, Building, FileText, Printer, DollarSign, Shield, Settings, MapPin, Phone, Mail, ImageIcon, Upload, Receipt, AlertCircle, Key, Lock, CheckCircle, Monitor, Zap, Crown, Check, X, Infinity, TrendingUp, Users, BarChart3, Smartphone, Database, Copy, ChevronDown, ChevronUp, Store, Webhook, Sparkles, Download, HardDrive, Wrench, Power, Loader2 } from 'lucide-react';
+import { Save, Building, FileText, Printer, DollarSign, Shield, Settings, MapPin, Phone, Mail, ImageIcon, Upload, Receipt, AlertCircle, Key, Lock, CheckCircle, Monitor, Zap, Crown, Check, X, Infinity, TrendingUp, Users, BarChart3, Smartphone, Database, Copy, ChevronDown, ChevronUp, Store, Webhook, Sparkles, Download, HardDrive, Wrench, Power, Loader2, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { useLicense } from '../../contexts/LicenseContext';
+import { getRealMachineUUID } from '../../utils/machineId';
 import { SyncStatusCard } from '../electron/SyncStatusCard';
 import { VinculacionNubeCard } from '../electron/VinculacionNubeCard';
 import { ModulosAppWebCard } from '../electron/ModulosAppWebCard';
@@ -65,7 +65,11 @@ interface ConfiguracionEmpresa {
   ivaHabilitado: boolean;
   porcentajeIVA: number;
   regimenFiscal: 'simplificado' | 'comun' | 'gran_contribuyente';
-  
+
+  // Cartera (venta a crédito, ver src/app/lib/carteraService.ts)
+  carteraDiasCredito: number;
+  carteraDiasAnticipacionRecordatorio: number;
+
   // Facturación Electrónica
   facturacionElectronicaHabilitada: boolean;
   /** Cuál integración usa el negocio — el stub de proveedor externo (legado,
@@ -104,8 +108,9 @@ const WORKSPACE_MODULE_OPTIONS: Array<{ id: ModuloPOS; nombre: string; descripci
   { id: ModuloPOS.PROVEEDORES, nombre: 'Proveedores', descripcion: 'Compras y seguimiento de abastecimiento.' },
   { id: ModuloPOS.PROMOCIONES, nombre: 'Promociones', descripcion: 'Campañas y descuentos activos.' },
   { id: ModuloPOS.MULTITIENDA, nombre: 'Multi-Tienda', descripcion: 'Administración de sucursales.' },
-  { id: ModuloPOS.INTEGRACIONES, nombre: 'Integraciones', descripcion: 'Conexiones con servicios externos.' },
   { id: ModuloPOS.TALLER_REPARACIONES, nombre: 'Taller de Reparaciones', descripcion: 'Órdenes y soporte técnico.' },
+  { id: ModuloPOS.ARTES_GRAFICAS, nombre: 'Artes Gráficas', descripcion: 'Catálogo por escalas y factura dinámica con abono.' },
+  { id: ModuloPOS.PAPELERIA_PINATERIA, nombre: 'Papelería y Piñatería', descripcion: 'Globos, dulcería, juguetería y carga masiva por plantillas.' },
   { id: ModuloPOS.CODEC_VERIFY, nombre: 'Codec Verify', descripcion: 'Verificación avanzada y seguridad.' },
   { id: ModuloPOS.MONITOREO_TERMINALES, nombre: 'Monitoreo de Terminales', descripcion: 'Estado de terminales en red local.' },
 ];
@@ -203,7 +208,18 @@ function AccordionSection({
 export default function ConfiguracionPage() {
   const { darkMode } = usePOS();
   const { esSuperUsuario, usuarioActual } = useAuth();
-  const { licenseInfo, machineId, isLoadingMachineId } = useLicense();
+  const [machineId, setMachineId] = useState('');
+  const [isLoadingMachineId, setIsLoadingMachineId] = useState(true);
+  useEffect(() => {
+    let cancelado = false;
+    getRealMachineUUID().then((id) => {
+      if (!cancelado) {
+        setMachineId(id);
+        setIsLoadingMachineId(false);
+      }
+    });
+    return () => { cancelado = true; };
+  }, []);
   const [saving, setSaving] = useState(false);
   const [reseteandoSistema, setReseteandoSistema] = useState(false);
   const [descargandoBackup, setDescargandoBackup] = useState(false);
@@ -225,6 +241,7 @@ export default function ConfiguracionPage() {
     mensajes: false,
     machineId: false,
     iva: false,
+    cartera: false,
     margenAutomatico: false,
     workspaceModules: false,
     facturacionElectronica: false,
@@ -269,6 +286,8 @@ export default function ConfiguracionPage() {
       ivaHabilitado: false, // 🆕 DESACTIVADO POR DEFECTO
       porcentajeIVA: 19,
       regimenFiscal: 'simplificado',
+      carteraDiasCredito: 30,
+      carteraDiasAnticipacionRecordatorio: 3,
       // Facturación Electrónica
       facturacionElectronicaHabilitada: false,
       modoFacturacionElectronica: 'ninguna',
@@ -1659,6 +1678,54 @@ export default function ConfiguracionPage() {
           </div>
         </AccordionSection>
 
+        {/* 5️⃣B CARTERA / CRÉDITO A CLIENTES */}
+        <AccordionSection
+          id="cartera"
+          title="Cartera / Crédito a clientes"
+          description="Días de crédito por defecto y anticipación de recordatorios"
+          icon={<Wallet className="w-6 h-6 text-orange-500" />}
+          isOpen={sectionsOpen.cartera}
+          onToggle={() => toggleSection('cartera')}
+          darkMode={darkMode}
+          gradient="from-orange-900/20 to-amber-900/20"
+          borderColor="border-orange-700/40"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="carteraDiasCredito" className={darkMode ? 'text-gray-300' : ''}>
+                Días de crédito por defecto
+              </Label>
+              <Input
+                id="carteraDiasCredito"
+                type="number"
+                min="1"
+                value={config.carteraDiasCredito ?? 30}
+                onChange={(e) => handleChange('carteraDiasCredito', parseInt(e.target.value) || 30)}
+                className={darkMode ? 'bg-slate-700 border-slate-600 text-white' : ''}
+              />
+              <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                Plazo sugerido al vender a Cartera; se puede ajustar en cada venta
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="carteraDiasAnticipacion" className={darkMode ? 'text-gray-300' : ''}>
+                Días de anticipación para recordatorio
+              </Label>
+              <Input
+                id="carteraDiasAnticipacion"
+                type="number"
+                min="1"
+                value={config.carteraDiasAnticipacionRecordatorio ?? 3}
+                onChange={(e) => handleChange('carteraDiasAnticipacionRecordatorio', parseInt(e.target.value) || 3)}
+                className={darkMode ? 'bg-slate-700 border-slate-600 text-white' : ''}
+              />
+              <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                Cuántos días antes del vencimiento se marca la cuenta como "próxima a vencer" en Contabilidad → Por Cobrar
+              </p>
+            </div>
+          </div>
+        </AccordionSection>
+
         {/* 6️⃣ FACTURACIÓN ELECTRÓNICA */}
         <AccordionSection
           id="facturacionElectronica"
@@ -2033,7 +2100,7 @@ export default function ConfiguracionPage() {
         <AccordionSection
           id="sincronizacionNube"
           title="Sincronización con la Nube"
-          description="Vincula esta caja con tu negocio en Supabase y monitorea el estado de sincronización"
+          description="Vincula esta caja con tu negocio en nuestra base de datos y monitorea el estado de sincronización"
           icon={<HardDrive className="w-6 h-6 text-cyan-500" />}
           isOpen={sectionsOpen.sincronizacionNube}
           onToggle={() => toggleSection('sincronizacionNube')}

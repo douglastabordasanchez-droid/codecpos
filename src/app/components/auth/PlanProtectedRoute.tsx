@@ -22,19 +22,28 @@ export function PlanProtectedRoute({
   featureName,
   featureDescription,
 }: PlanProtectedRouteProps) {
-  const { hasFeature } = usePlanRestrictions();
+  const { hasFeature, cargando } = usePlanRestrictions();
   const { modoAdminTemporalActivo } = useAuth();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
 
   useEffect(() => {
+    // Mientras se resuelve la licencia real contra el motor comercial, no
+    // decidir todavía -- evita bloquear por un instante a un cliente
+    // Premium legítimo antes de que la consulta a Supabase responda.
+    if (cargando) return;
+
     const access = hasFeature(requiredFeature) || modoAdminTemporalActivo;
     setHasAccess(access);
-    
+
     if (!access) {
       setShowUpgradeModal(true);
     }
-  }, [requiredFeature, hasFeature, modoAdminTemporalActivo]);
+  }, [requiredFeature, hasFeature, modoAdminTemporalActivo, cargando]);
+
+  if (cargando) {
+    return null;
+  }
 
   if (!hasAccess) {
     return (

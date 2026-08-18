@@ -147,6 +147,18 @@ const STORAGE_KEYS = {
   PAGOS: 'codec_pos_pagos_proveedores',
 };
 
+/**
+ * ☁️ Espeja el catálogo de proveedores en la nube para que la PWA lo pueda
+ * ver (antes vivía 100% en localStorage, invisible fuera de la caja) —
+ * best-effort: si no hay internet o el negocio no está vinculado, no pasa
+ * nada, el proveedor ya quedó guardado localmente como siempre.
+ */
+function publicarEnLaNube(proveedores: Proveedor[]): void {
+  import('./supabase/promocionesProveedoresSyncService')
+    .then(({ publicarProveedores }) => publicarProveedores(proveedores))
+    .catch(() => {});
+}
+
 // ==================== FUNCIONES DE PROVEEDORES ====================
 
 /**
@@ -191,7 +203,8 @@ export async function crearProveedor(data: Partial<Proveedor>): Promise<Proveedo
     
     proveedores.push(nuevoProveedor);
     localStorage.setItem(STORAGE_KEYS.PROVEEDORES, JSON.stringify(proveedores));
-    
+    publicarEnLaNube([nuevoProveedor]);
+
     return nuevoProveedor;
   } catch (error) {
     console.error('Error creando proveedor:', error);
@@ -244,7 +257,8 @@ export async function actualizarProveedor(id: string, cambios: Partial<Proveedor
   };
   
   localStorage.setItem(STORAGE_KEYS.PROVEEDORES, JSON.stringify(proveedores));
-  
+  publicarEnLaNube([proveedores[index]]);
+
   return proveedores[index];
 }
 

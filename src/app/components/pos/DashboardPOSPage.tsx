@@ -1121,7 +1121,7 @@ export default function DashboardPOSPage() {
             (acc as any)[venta.metodoPago] += total;
           }
           return acc;
-        }, { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0, mixto: 0, bonos: 0 });
+        }, { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0, mixto: 0, bonos: 0, cartera: 0 });
 
         // Crear objeto de estadísticas compatible
         const statsNorm: EstadisticasDia = {

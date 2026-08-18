@@ -101,7 +101,7 @@ function filaAFactura(fila: FacturaRow): FacturaElectronicaDian {
  */
 export async function crearFacturaDian(factura: FacturaElectronicaDian): Promise<FacturaElectronicaDian> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   if (!factura.perfilFiscalId) throw new Error('La factura no tiene perfilFiscalId — no se puede emitir sin un perfil fiscal activo');
 
   const { data, error } = await client
@@ -150,7 +150,7 @@ export async function actualizarEstadoFactura(
   extra: Partial<{ cufe: string; xml: string; respuestaDian: Record<string, unknown>; motivoRechazo: string; fechaValidacion: string }> = {}
 ): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const payload: Record<string, unknown> = { estado, updated_at: new Date().toISOString() };
   if (extra.cufe !== undefined) payload.cufe = extra.cufe;

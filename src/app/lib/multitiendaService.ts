@@ -110,6 +110,11 @@ function crearTiendaPrincipalDefault(): Tienda {
 
 function saveTiendas(tiendas: Tienda[]) {
   localStorage.setItem(KEY_TIENDAS, JSON.stringify(tiendas));
+  // ☁️ Espeja el directorio de tiendas en la nube para que la PWA lo pueda
+  // ver — best-effort, ver tiendasSyncService.ts.
+  import('./supabase/tiendasSyncService')
+    .then(({ publicarTiendas }) => publicarTiendas(tiendas))
+    .catch(() => {});
 }
 
 export function crearTienda(datos: Omit<Tienda, 'id' | 'esPrincipal' | 'fechaCreacion' | 'activo'>): Tienda {

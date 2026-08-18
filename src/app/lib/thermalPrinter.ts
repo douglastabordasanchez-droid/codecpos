@@ -124,6 +124,14 @@ export interface TallerTicketInput {
   condicionFisica?: string;
 }
 
+export interface ComandaTicketInput {
+  mesaNombre: string;
+  meseroNombre?: string;
+  nota?: string;
+  hora: string;
+  items: { nombre: string; cantidad: number; nota?: string }[];
+}
+
 export interface CierreCajaTicketInput {
   cajero: string;
   fecha: string;
@@ -616,6 +624,55 @@ export class ThermalPrinter {
     }
   }
 
+  /** Tiquete de comanda para cocina/bar — solo ítems + mesa, sin precios. */
+  async printComandaTicket(data: ComandaTicketInput): Promise<boolean> {
+    try {
+      const bytes: number[] = [];
+      bytes.push(...this.commands.init());
+
+      bytes.push(...this.commands.fontBold());
+      bytes.push(...this.addLine('COMANDA', 'center'));
+      bytes.push(...this.commands.fontNormal());
+      bytes.push(...this.addSeparator('='));
+
+      bytes.push(...this.commands.boldOn());
+      bytes.push(...this.addLine(`MESA: ${data.mesaNombre}`, 'center'));
+      bytes.push(...this.commands.boldOff());
+      bytes.push(...this.addLine(`Hora: ${data.hora}`));
+      if (data.meseroNombre) {
+        bytes.push(...this.addLine(`Mesero: ${data.meseroNombre}`));
+      }
+      bytes.push(...this.addSeparator());
+
+      bytes.push(...this.commands.fontBold());
+      data.items.forEach((item) => {
+        this.wrapText(`${item.cantidad}x ${item.nombre}`, this.maxChars).forEach((line) => bytes.push(...this.addLine(line)));
+        if (item.nota) {
+          bytes.push(...this.commands.fontNormal());
+          this.wrapText(`  Nota: ${item.nota}`, this.maxChars).forEach((line) => bytes.push(...this.addLine(line)));
+          bytes.push(...this.commands.fontBold());
+        }
+      });
+      bytes.push(...this.commands.fontNormal());
+      bytes.push(...this.addSeparator());
+
+      if (data.nota) {
+        bytes.push(...this.commands.boldOn());
+        bytes.push(...this.addLine('NOTA GENERAL'));
+        bytes.push(...this.commands.boldOff());
+        this.wrapText(data.nota, this.maxChars).forEach((line) => bytes.push(...this.addLine(line)));
+      }
+
+      bytes.push(...this.commands.feed(3));
+      bytes.push(...this.commands.cut());
+
+      return await this.sendToPrinter(bytes);
+    } catch (error) {
+      console.error('Error imprimiendo comanda:', error);
+      return false;
+    }
+  }
+
   async printCashClosureTicket(data: CierreCajaTicketInput): Promise<boolean> {
     try {
       const bytes: number[] = [];
@@ -942,6 +999,15 @@ export async function printWorkshopReceipt(
   const printer = createPrinter(resolveDefaultPrinterPort(), resolveTicketWidthFromConfig(ancho), resolvePrinterForSection(section) || resolveFacturasPrinterName());
   const cfg = readTirillaConfig();
   return printer.printWorkshopTicket(data, cfg);
+}
+
+export async function printComandaReceipt(
+  data: ComandaTicketInput,
+  ancho: 58 | 80 = 80,
+  section: PrintSection = 'comanda_cocina'
+): Promise<boolean> {
+  const printer = createPrinter(resolveDefaultPrinterPort(), resolveTicketWidthFromConfig(ancho), resolvePrinterForSection(section) || resolveFacturasPrinterName());
+  return printer.printComandaTicket(data);
 }
 
 export async function printCashClosureReceipt(

@@ -38,16 +38,17 @@ export function StaffLoginGate() {
           <h1 className="font-bold text-lg">Acceso Staff Codec Studio</h1>
         </div>
         <p className="text-slate-400 text-xs">
-          Cuenta interna de soporte, verificada contra Supabase. Requiere conexión a internet.
+          Cuenta interna de soporte, verificada contra nuestra base de datos. Requiere conexión a internet.
         </p>
 
         <input
-          type="email"
+          type="text"
           required
           autoFocus
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email de staff"
+          placeholder="Usuario o email de staff"
+          autoCapitalize="none"
           className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white text-sm outline-none focus:border-amber-500"
         />
         <input

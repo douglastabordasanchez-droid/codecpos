@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-electron
+dist-pwa
+release
+*.log
+
+Codecpos2.0 modulo servicio tecnico/
+
+docs/electronic-invoicing/dian-sources/
+
+.claude

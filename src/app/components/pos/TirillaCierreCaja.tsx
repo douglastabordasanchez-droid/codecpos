@@ -32,6 +32,15 @@ export interface CierreDataModal {
   gastosTransferencia?: number;
   gastosTarjetaBanco?: number;
   devoluciones: number;
+  abonosCarteraEfectivo?: number;
+  abonosCarteraTransferencia?: number;
+  abonosCarteraTarjetaBanco?: number;
+  abonosCarteraDetalle?: Array<{
+    descripcion: string;
+    concepto?: string;
+    monto: number;
+    medioPago?: string;
+  }>;
   efectivoEsperado: number;
   transferenciaEsperada?: number;
   tarjetaBancoEsperado?: number;
@@ -225,6 +234,9 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
             {data.gastosEfectivo > 0 && (
               <tr><td>- Gastos:</td><td style={{ textAlign: 'right' }}>-{fmt(data.gastosEfectivo)}</td></tr>
             )}
+            {!!data.abonosCarteraEfectivo && data.abonosCarteraEfectivo > 0 && (
+              <tr><td>+ Abonos Cartera:</td><td style={{ textAlign: 'right' }}>+{fmt(data.abonosCarteraEfectivo)}</td></tr>
+            )}
             <tr><td colSpan={2}><div style={{ borderTop: '1px solid #000', marginTop: 2, marginBottom: 2 }} /></td></tr>
             <tr style={{ fontWeight: 'bold' }}>
               <td>Efect. esperado:</td>
@@ -258,6 +270,26 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
           </>
         )}
 
+        {(data.abonosCarteraDetalle || []).length > 0 && (
+          <>
+            <div style={{ fontWeight: 'bold', marginTop: 8, marginBottom: 4 }}>DETALLE DE ABONOS DE CARTERA</div>
+            <div>{LINE}</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {(data.abonosCarteraDetalle || []).slice(0, 12).map((abono, idx) => (
+                  <tr key={`${idx}-${abono.descripcion}`}>
+                    <td style={{ maxWidth: 190, overflow: 'hidden' }}>
+                      {idx + 1}. {(abono.descripcion || '').slice(0, 50)}
+                    </td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt(abono.monto)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div>{LINE}</div>
+          </>
+        )}
+
         {(data.transferenciaEsperada || data.tarjetaBancoEsperado || data.totalEsperadoAnalitico) && (
           <>
             <div style={{ fontWeight: 'bold', marginTop: 8, marginBottom: 4 }}>ANÁLISIS POR CANAL</div>
@@ -276,6 +308,12 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
                     <td style={{ textAlign: 'right' }}>-{fmt(data.gastosTransferencia)}</td>
                   </tr>
                 )}
+                {!!data.abonosCarteraTransferencia && data.abonosCarteraTransferencia > 0 && (
+                  <tr>
+                    <td>Abonos Cartera (transf.):</td>
+                    <td style={{ textAlign: 'right' }}>+{fmt(data.abonosCarteraTransferencia)}</td>
+                  </tr>
+                )}
                 {typeof data.tarjetaBancoEsperado === 'number' && (
                   <tr>
                     <td>Tarjeta/Banco neto:</td>
@@ -286,6 +324,12 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
                   <tr>
                     <td>Egresos tarj/banco:</td>
                     <td style={{ textAlign: 'right' }}>-{fmt(data.gastosTarjetaBanco)}</td>
+                  </tr>
+                )}
+                {!!data.abonosCarteraTarjetaBanco && data.abonosCarteraTarjetaBanco > 0 && (
+                  <tr>
+                    <td>Abonos Cartera (tarj/banco):</td>
+                    <td style={{ textAlign: 'right' }}>+{fmt(data.abonosCarteraTarjetaBanco)}</td>
                   </tr>
                 )}
                 {typeof data.totalEsperadoAnalitico === 'number' && (

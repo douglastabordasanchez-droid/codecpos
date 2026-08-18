@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
-import { Camera, Loader2, Save, Trash2, X, Check } from 'lucide-react';
+import { Camera, ImagePlus, Loader2, Save, Trash2, X, Check, Plus } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
@@ -11,6 +11,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 
 const UNIDADES = ['unidad', 'kg', 'g', 'lb', 'l', 'ml', 'paquete'];
+const MAX_FOTOS = 6;
 
 interface FormState {
   nombre: string;
@@ -22,12 +23,12 @@ interface FormState {
   stock_minimo: string;
   unidad: string;
   iva: string;
-  foto_url: string;
+  fotos: string[];
 }
 
 const VACIO: FormState = {
   nombre: '', codigo_barras: '', categoria: '', precio_venta: '', costo: '',
-  stock: '', stock_minimo: '', unidad: 'unidad', iva: '0', foto_url: '',
+  stock: '', stock_minimo: '', unidad: 'unidad', iva: '0', fotos: [],
 };
 
 function createImage(url: string): Promise<HTMLImageElement> {
@@ -53,6 +54,16 @@ async function recortarImagen(imageSrc: string, pixelCrop: Area): Promise<Blob> 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.92));
 }
 
+/** Sube un blob ya listo (recortado o no) y devuelve su URL pública. */
+async function subirFotoProducto(clienteId: string, blob: Blob): Promise<string> {
+  const client = getSupabaseClient()!;
+  const nombreArchivo = `${clienteId}/${crypto.randomUUID()}.jpg`;
+  const { error } = await client.storage.from('productos-fotos').upload(nombreArchivo, blob, { contentType: 'image/jpeg' });
+  if (error) throw new Error(error.message);
+  const { data: pub } = client.storage.from('productos-fotos').getPublicUrl(nombreArchivo);
+  return pub.publicUrl;
+}
+
 export default function ProductoFormPage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -63,14 +74,18 @@ export default function ProductoFormPage() {
   const [form, setForm] = useState<FormState>(VACIO);
   const [cargando, setCargando] = useState(!esNuevo);
   const [guardando, setGuardando] = useState(false);
+  const [categoriasExistentes, setCategoriasExistentes] = useState<string[]>([]);
+  const [categoriaNueva, setCategoriaNueva] = useState(false);
 
   const [imagenOriginal, setImagenOriginal] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [areaRecorte, setAreaRecorte] = useState<Area | null>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const camaraInputRef = useRef<HTMLInputElement>(null);
+  const galeriaInputRef = useRef<HTMLInputElement>(null);
 
+  // 📷 Cámara: cada foto se recorta antes de subir — la primera define la portada.
   useEffect(() => {
     if (esNuevo) {
       const codigoPrellenado = (location.state as { codigoBarras?: string } | null)?.codigoBarras;
@@ -85,6 +100,9 @@ export default function ProductoFormPage() {
       .single()
       .then(({ data }) => {
         if (data) {
+          const fotos: string[] = Array.isArray(data.fotos_urls) && data.fotos_urls.length > 0
+            ? data.fotos_urls
+            : (data.foto_url ? [data.foto_url] : []);
           setForm({
             nombre: data.nombre || '',
             codigo_barras: data.codigo_barras || '',
@@ -95,15 +113,35 @@ export default function ProductoFormPage() {
             stock_minimo: String(data.stock_minimo ?? ''),
             unidad: data.unidad || 'unidad',
             iva: String(data.iva ?? '0'),
-            foto_url: data.foto_url || '',
+            fotos,
           });
         }
         setCargando(false);
       });
   }, [id, esNuevo]);
 
-  const handleSeleccionarFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 🔗 Categorías: se leen del MISMO inventario que administra Electron —
+  // no una lista aparte — así el vendedor elige de lo que el negocio ya usa
+  // en vez de escribir variantes del mismo nombre ("Dulces"/"dulceria"...).
+  useEffect(() => {
+    if (!empleado) return;
+    const client = getSupabaseClient();
+    client
+      ?.from('productos')
+      .select('categoria')
+      .eq('cliente_id', empleado.cliente_id)
+      .not('categoria', 'is', null)
+      .limit(3000)
+      .then(({ data }) => {
+        const unicas = [...new Set((data || []).map((r: { categoria: string }) => r.categoria).filter(Boolean))] as string[];
+        unicas.sort((a, b) => a.localeCompare(b));
+        setCategoriasExistentes(unicas);
+      });
+  }, [empleado?.cliente_id]);
+
+  const handleSeleccionarCamara = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => setImagenOriginal(reader.result as string);
@@ -116,31 +154,46 @@ export default function ProductoFormPage() {
     try {
       const blobRecortado = await recortarImagen(imagenOriginal, areaRecorte);
       const blobComprimido = await imageCompression(blobRecortado as File, {
-        maxSizeMB: 0.4,
-        maxWidthOrHeight: 800,
-        useWebWorker: true,
-        initialQuality: 0.8,
+        maxSizeMB: 0.4, maxWidthOrHeight: 800, useWebWorker: true, initialQuality: 0.8,
       });
-
-      const client = getSupabaseClient()!;
-      const nombreArchivo = `${empleado.cliente_id}/${crypto.randomUUID()}.jpg`;
-      const { error: uploadError } = await client.storage
-        .from('productos-fotos')
-        .upload(nombreArchivo, blobComprimido, { contentType: 'image/jpeg' });
-
-      if (uploadError) {
-        toast.error('Error subiendo la foto', { description: uploadError.message });
-        return;
-      }
-
-      const { data: pub } = client.storage.from('productos-fotos').getPublicUrl(nombreArchivo);
-      setForm((f) => ({ ...f, foto_url: pub.publicUrl }));
+      const url = await subirFotoProducto(empleado.cliente_id, blobComprimido);
+      setForm((f) => ({ ...f, fotos: [...f.fotos, url].slice(0, MAX_FOTOS) }));
       setImagenOriginal(null);
-      toast.success('Foto lista');
+      toast.success('Foto agregada');
+    } catch (e) {
+      toast.error('Error subiendo la foto', { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSubiendoFoto(false);
     }
   };
+
+  // 🖼️ Galería: selección múltiple, sin recorte uno por uno (con hasta 6
+  // fotos sería tedioso) — se comprimen y suben tal cual, respetando el cupo.
+  const handleSeleccionarGaleria = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0 || !empleado) return;
+    const cupo = MAX_FOTOS - form.fotos.length;
+    if (cupo <= 0) { toast.error(`Ya tienes el máximo de ${MAX_FOTOS} fotos`); return; }
+    const aSubir = files.slice(0, cupo);
+    setSubiendoFoto(true);
+    try {
+      const urls: string[] = [];
+      for (const file of aSubir) {
+        const comprimido = await imageCompression(file, { maxSizeMB: 0.4, maxWidthOrHeight: 800, useWebWorker: true, initialQuality: 0.8 });
+        urls.push(await subirFotoProducto(empleado.cliente_id, comprimido));
+      }
+      setForm((f) => ({ ...f, fotos: [...f.fotos, ...urls].slice(0, MAX_FOTOS) }));
+      toast.success(`${urls.length} foto(s) agregada(s)`);
+      if (files.length > cupo) toast.info(`Solo se subieron ${cupo} — llegaste al máximo de ${MAX_FOTOS}`);
+    } catch (e) {
+      toast.error('Error subiendo fotos', { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setSubiendoFoto(false);
+    }
+  };
+
+  const quitarFoto = (idx: number) => setForm((f) => ({ ...f, fotos: f.fotos.filter((_, i) => i !== idx) }));
 
   const handleGuardar = async () => {
     if (!empleado) return;
@@ -162,7 +215,8 @@ export default function ProductoFormPage() {
       stock_minimo: form.stock_minimo ? Number(form.stock_minimo) : null,
       unidad: form.unidad,
       iva: Number(form.iva) || 0,
-      foto_url: form.foto_url || null,
+      foto_url: form.fotos[0] || null,
+      fotos_urls: form.fotos.length > 0 ? form.fotos : null,
       updated_by: empleado.id,
     };
 
@@ -208,27 +262,50 @@ export default function ProductoFormPage() {
       </div>
 
       <div className="px-5 space-y-4">
-        {/* Foto */}
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-28 h-28 rounded-2xl bg-slate-900/70 border-2 border-dashed border-slate-700 flex items-center justify-center overflow-hidden"
-          >
-            {form.foto_url ? (
-              <img src={form.foto_url} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <Camera className="w-7 h-7 text-slate-600" />
+        {/* Fotos — hasta 6, portada = la primera */}
+        <div className="space-y-2">
+          <Label className="text-slate-400 text-xs">Fotos ({form.fotos.length}/{MAX_FOTOS})</Label>
+          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+            {form.fotos.map((url, i) => (
+              <div key={url + i} className="relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border border-slate-800">
+                <img src={url} alt="" className="w-full h-full object-cover" />
+                {i === 0 && (
+                  <span className="absolute bottom-0 left-0 right-0 bg-amber-500/90 text-slate-950 text-[8px] font-black text-center py-0.5">PORTADA</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => quitarFoto(i)}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center"
+                >
+                  <X className="w-3 h-3 text-white" />
+                </button>
+              </div>
+            ))}
+            {form.fotos.length < MAX_FOTOS && (
+              <div className="flex gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => camaraInputRef.current?.click()}
+                  disabled={subiendoFoto}
+                  className="w-20 h-20 rounded-xl bg-slate-900/70 border-2 border-dashed border-slate-700 flex flex-col items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  {subiendoFoto ? <Loader2 className="w-5 h-5 text-slate-500 animate-spin" /> : <Camera className="w-5 h-5 text-slate-500" />}
+                  <span className="text-[9px] text-slate-500 font-semibold">Cámara</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galeriaInputRef.current?.click()}
+                  disabled={subiendoFoto}
+                  className="w-20 h-20 rounded-xl bg-slate-900/70 border-2 border-dashed border-slate-700 flex flex-col items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  <ImagePlus className="w-5 h-5 text-slate-500" />
+                  <span className="text-[9px] text-slate-500 font-semibold">Galería</span>
+                </button>
+              </div>
             )}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handleSeleccionarFoto}
-          />
+          </div>
+          <input ref={camaraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleSeleccionarCamara} />
+          <input ref={galeriaInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleSeleccionarGaleria} />
         </div>
 
         <div className="space-y-1.5">
@@ -242,8 +319,29 @@ export default function ProductoFormPage() {
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-slate-400 text-xs">Categoría</Label>
-          <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} className="h-12 bg-slate-900/70 border-slate-800 text-white" />
+          <div className="flex items-center justify-between">
+            <Label className="text-slate-400 text-xs">Categoría</Label>
+            {categoriasExistentes.length > 0 && (
+              <button type="button" onClick={() => setCategoriaNueva((v) => !v)} className="text-[11px] text-amber-400 font-bold flex items-center gap-1">
+                <Plus className="w-3 h-3" /> {categoriaNueva ? 'Elegir existente' : 'Nueva categoría'}
+              </button>
+            )}
+          </div>
+          {categoriasExistentes.length === 0 || categoriaNueva ? (
+            <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} placeholder="Escribe la categoría" className="h-12 bg-slate-900/70 border-slate-800 text-white" />
+          ) : (
+            <select
+              value={categoriasExistentes.includes(form.categoria) ? form.categoria : ''}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+              className="w-full h-12 rounded-lg px-3 text-sm bg-slate-900/70 border border-slate-800 text-white"
+            >
+              <option value="">Sin categoría</option>
+              {categoriasExistentes.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+          <p className="text-slate-600 text-[10px]">
+            Estas son las categorías que ya usa tu inventario en el computador — elige una o crea una nueva.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -298,7 +396,7 @@ export default function ProductoFormPage() {
         )}
       </div>
 
-      {/* Modal de recorte */}
+      {/* Modal de recorte (solo para la cámara) */}
       {imagenOriginal && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
           <div className="relative flex-1">

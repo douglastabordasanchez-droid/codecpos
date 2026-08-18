@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Download, MessageCircle, Mail, Send } from 'lucide-react';
 import { Button } from '../ui/button';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -7,6 +7,7 @@ import logoImage from '/logo.png';
 import { printSaleReceipt } from '../../lib/thermalPrinter';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
+import { enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
 
 interface ItemVenta {
   productoId: string;
@@ -63,6 +64,10 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
   const { usuarioActual } = useAuth();
   const ticketRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<any>({});
+  const [panelCompartir, setPanelCompartir] = useState<'whatsapp' | 'email' | null>(null);
+  const [telefono, setTelefono] = useState('');
+  const [emailDestino, setEmailDestino] = useState('');
+  const [enviando, setEnviando] = useState<'whatsapp' | 'email' | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
 
   // Cargar configuración SOLO UNA VEZ (sin interval pesado)
@@ -332,6 +337,63 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
 
     doc.save(`Factura-${venta.numeroFactura}.pdf`);
     toast.success('PDF generado', { description: `Factura ${venta.numeroFactura}` });
+  };
+
+  /** Datos compartidos por WhatsApp/Correo — usa el generador de factura "de página completa", más legible para el cliente que el ticket angosto de 80mm. */
+  function datosParaCompartir() {
+    return {
+      venta: {
+        numeroFactura: venta!.numeroFactura,
+        fecha: venta!.fecha,
+        items: venta!.items.map((i) => ({ nombre: i.nombre, cantidad: i.cantidad, precio: i.precio, subtotal: i.subtotal })),
+        subtotal: venta!.subtotal ?? venta!.total,
+        iva: venta!.iva ?? 0,
+        total: venta!.total,
+        metodoPago: venta!.metodoPago,
+        cajero: cajeroDisplay,
+        mesa: venta!.mesa,
+        referencia_mesa: mesaDisplay ?? undefined,
+      },
+      config: {
+        nombreComercial: config.nombreComercial || 'CODEC POS',
+        razonSocial: config.razonSocial || '',
+        nit: config.nit || '',
+        direccion: config.direccion || '',
+        telefono: config.telefono || '',
+        email: config.email || '',
+        ciudad: config.ciudad || '',
+      },
+    };
+  }
+
+  const handleWhatsApp = async () => {
+    if (!telefono.trim()) { toast.error('Ingresa el número de WhatsApp del cliente'); return; }
+    setEnviando('whatsapp');
+    try {
+      const { venta: v, config: c } = datosParaCompartir();
+      await enviarFacturaPorWhatsApp(v, c, telefono.trim());
+      toast.success('PDF descargado — WhatsApp se abrió con el mensaje listo, solo adjunta el archivo');
+      setPanelCompartir(null);
+    } catch {
+      toast.error('No se pudo preparar el envío por WhatsApp');
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  const handleEmail = async () => {
+    if (!emailDestino.trim()) { toast.error('Ingresa el correo del cliente'); return; }
+    setEnviando('email');
+    try {
+      const { venta: v, config: c } = datosParaCompartir();
+      await enviarFacturaPorEmail(v, c, emailDestino.trim());
+      toast.success('PDF descargado — tu cliente de correo se abrió con el mensaje listo, solo adjunta el archivo');
+      setPanelCompartir(null);
+    } catch {
+      toast.error('No se pudo preparar el envío por correo');
+    } finally {
+      setEnviando(null);
+    }
   };
 
   const fechaVenta = new Date(venta.fecha);
@@ -645,6 +707,70 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
           Descargar
         </Button>
       </div>
+
+      {/* Compartir */}
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <Button
+          onClick={() => setPanelCompartir(panelCompartir === 'whatsapp' ? null : 'whatsapp')}
+          variant="outline"
+          className={`rounded-2xl ${panelCompartir === 'whatsapp' ? 'border-emerald-500' : ''}`}
+        >
+          <MessageCircle className="w-5 h-5 mr-2 text-emerald-500" />
+          WhatsApp
+        </Button>
+        <Button
+          onClick={() => setPanelCompartir(panelCompartir === 'email' ? null : 'email')}
+          variant="outline"
+          className={`rounded-2xl ${panelCompartir === 'email' ? 'border-sky-500' : ''}`}
+        >
+          <Mail className="w-5 h-5 mr-2 text-sky-500" />
+          Correo
+        </Button>
+      </div>
+
+      {panelCompartir === 'whatsapp' && (
+        <div className="flex gap-2 mt-3">
+          <input
+            type="tel"
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            placeholder="300 000 0000"
+            className={`flex-1 min-w-0 h-11 rounded-xl px-3 text-sm border ${darkMode ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-500' : 'bg-white border-gray-300'}`}
+          />
+          <button
+            onClick={handleWhatsApp}
+            disabled={enviando === 'whatsapp'}
+            className="shrink-0 w-11 h-11 rounded-xl bg-emerald-600 flex items-center justify-center disabled:opacity-60"
+          >
+            {enviando === 'whatsapp' ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="w-4 h-4 text-white" />}
+          </button>
+        </div>
+      )}
+
+      {panelCompartir === 'email' && (
+        <div className="flex gap-2 mt-3">
+          <input
+            type="email"
+            value={emailDestino}
+            onChange={(e) => setEmailDestino(e.target.value)}
+            placeholder="cliente@correo.com"
+            className={`flex-1 min-w-0 h-11 rounded-xl px-3 text-sm border ${darkMode ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-500' : 'bg-white border-gray-300'}`}
+          />
+          <button
+            onClick={handleEmail}
+            disabled={enviando === 'email'}
+            className="shrink-0 w-11 h-11 rounded-xl bg-sky-600 flex items-center justify-center disabled:opacity-60"
+          >
+            {enviando === 'email' ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="w-4 h-4 text-white" />}
+          </button>
+        </div>
+      )}
+
+      {panelCompartir && (
+        <p className={`text-[10px] leading-snug mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          El PDF se descarga automáticamente y {panelCompartir === 'whatsapp' ? 'WhatsApp' : 'tu correo'} se abre con el mensaje listo — solo falta adjuntar el archivo descargado.
+        </p>
+      )}
     </>
   );
 }

@@ -45,6 +45,12 @@ export interface Venta {
   facturacionElectronica?: boolean;
   mesa?: string;
   referencia_mesa?: string;
+
+  // ── Cartera (venta a crédito, ver src/app/lib/carteraService.ts) ──
+  clienteId?: string;
+  carteraCuentaId?: string;
+  carteraSaldoPendiente?: number;
+  carteraFechaVencimiento?: string;
 }
 
 export interface VentaItem {
@@ -107,7 +113,7 @@ interface InventoryValidationResult {
   }>;
 }
 
-export type MetodoPago = 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'rappi' | 'mixto' | 'bonos';
+export type MetodoPago = 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'rappi' | 'mixto' | 'bonos' | 'cartera';
 
 export interface PagoMixtoDetalle {
   efectivo?: number;
@@ -646,6 +652,11 @@ class ElectronStoreService {
     let utilidadProductos = 0;
     let utilidadVentasDevueltas = 0;
     let ventasSinCostoBaseCantidad = 0;
+    // 🛡️ 'cartera' se mantiene como bucket aislado a propósito: la venta
+    // completa cuenta aquí para reportes, pero NUNCA debe sumarse a
+    // efectivo/tarjeta/transferencia — el dinero que realmente entra a caja
+    // por un abono de cartera se registra aparte (ver carteraService.ts +
+    // CierreCajaPage.calcularAbonosCarteraDelDia).
     const ventasPorMetodo: Record<MetodoPago, number> = {
       efectivo: 0,
       tarjeta: 0,
@@ -655,6 +666,7 @@ class ElectronStoreService {
       rappi: 0,
       mixto: 0,
       bonos: 0,
+      cartera: 0,
     };
     const ventasPorCajero: Record<string, number> = {};
 

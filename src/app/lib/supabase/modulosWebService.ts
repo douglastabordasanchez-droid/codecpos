@@ -42,6 +42,17 @@ export const MODULOS_DISPONIBLES_EN_WEB: ModuloPOS[] = [
   ModuloPOS.CODEC_VERIFY,
   ModuloPOS.TALLER_REPARACIONES,
   ModuloPOS.PANADERIA_ONCES,
+  ModuloPOS.DASHBOARD,
+  ModuloPOS.REPORTES,
+  ModuloPOS.CODIGOS_BARRAS,
+  ModuloPOS.PROMOCIONES,
+  ModuloPOS.PROVEEDORES,
+  ModuloPOS.USUARIOS,
+  ModuloPOS.FIDELIZACION,
+  ModuloPOS.CONTABILIDAD,
+  ModuloPOS.MULTITIENDA,
+  ModuloPOS.ARTES_GRAFICAS,
+  ModuloPOS.PAPELERIA_PINATERIA,
 ];
 
 export function estaDisponibleEnWeb(modulo: ModuloPOS): boolean {
@@ -78,7 +89,7 @@ export async function obtenerEstadoModulosWeb(): Promise<EstadoModulosWeb | null
  */
 export async function guardarModulosWeb(modulos: ModuloPOS[]): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const { error } = await client.rpc('actualizar_modulos_web', {
     p_modulos: Array.from(new Set(modulos)),

@@ -1,6 +1,6 @@
 import {
   Home, ShoppingCart, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
-  DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee,
+  DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee, Palette, PartyPopper,
 } from 'lucide-react';
 import { ModuloPOS } from '../../app/lib/permissions';
 
@@ -31,6 +31,8 @@ export const NAV_PRINCIPAL: ItemNavSidebar[] = [
 export const NAV_MODULOS: ItemNavSidebar[] = [
   { icon: Coffee, label: 'Alimentos y Bebidas', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
   { icon: Wrench, label: 'Taller', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
+  { icon: Palette, label: 'Artes Gráficas', path: '/artes-graficas', modulo: ModuloPOS.ARTES_GRAFICAS },
+  { icon: PartyPopper, label: 'Papelería y Piñatería', path: '/papeleria-pinateria', modulo: ModuloPOS.PAPELERIA_PINATERIA },
 ];
 
 export const NAV_HERRAMIENTAS: ItemNavSidebar[] = [

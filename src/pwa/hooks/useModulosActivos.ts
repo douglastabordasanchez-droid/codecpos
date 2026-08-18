@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
+import { MenuInferiorConfig, MENU_INFERIOR_DEFAULT, normalizarMenuInferior } from '../../app/lib/menuInferiorCatalogo';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 
 const REFRESH_MS = 60000;
@@ -25,6 +26,14 @@ export function useModulosActivos() {
   const { empleado } = usePwaAuth();
   const [modulos, setModulos] = useState<Set<ModuloPOS> | null>(null);
   const [cargando, setCargando] = useState(true);
+  // 📱 Gate de pago de la app entera (independiente de qué módulos vea) —
+  // ver migración 0026 y el toggle en Panel Desarrollador > Clientes.
+  // `null` mientras carga o si no hay respuesta: no bloquear de más.
+  const [appHabilitada, setAppHabilitada] = useState<boolean | null>(null);
+  // 🧭 Menú inferior — editable SOLO desde Panel Desarrollador (ver
+  // migración 0027). Empieza en el default para no mostrar un menú vacío
+  // mientras carga.
+  const [menuInferior, setMenuInferior] = useState<MenuInferiorConfig>(MENU_INFERIOR_DEFAULT);
 
   useEffect(() => {
     if (!empleado) return;
@@ -39,7 +48,7 @@ export function useModulosActivos() {
 
       const { data } = await client
         .from('clientes_pos')
-        .select('plan, modulos_activos, modulos_web')
+        .select('plan, modulos_activos, modulos_web, app_movil_habilitada, menu_inferior')
         .eq('id', empleado.cliente_id)
         .maybeSingle();
 
@@ -49,7 +58,12 @@ export function useModulosActivos() {
         plan: string | null;
         modulos_activos: string[] | null;
         modulos_web: string[] | null;
+        app_movil_habilitada: boolean | null;
+        menu_inferior: unknown;
       } | null;
+
+      setAppHabilitada(row?.app_movil_habilitada !== false);
+      if (row?.menu_inferior) setMenuInferior(normalizarMenuInferior(row.menu_inferior));
 
       let modulosNegocio: ModuloPOS[];
       if (row?.modulos_activos) {
@@ -91,5 +105,5 @@ export function useModulosActivos() {
 
   const tieneModulo = (modulo: ModuloPOS): boolean => (modulos === null ? true : modulos.has(modulo));
 
-  return { tieneModulo, cargando };
+  return { tieneModulo, cargando, appHabilitada, menuInferior };
 }

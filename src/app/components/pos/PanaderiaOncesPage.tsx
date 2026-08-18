@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { electronStore, IngredienteInventarioItem, RecetaItem, RecetaIngredienteItem, ComboOncesItem, InventarioProductoItem } from '../../lib/electronStore';
+import type { Comanda, EstadoComanda } from '../../lib/supabase/panaderiaSyncService';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from 'sonner';
@@ -65,9 +66,9 @@ const isColorLight = (hex: string) => {
 };
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
-type SectionId = 'dashboard' | 'pos_tactil' | 'mesas' | 'ingredientes' | 'recetas' | 'mermas' | 'combos';
+type SectionId = 'dashboard' | 'pos_tactil' | 'mesas' | 'cocina' | 'ingredientes' | 'recetas' | 'mermas' | 'combos';
 
-const DEFAULT_ORDER: SectionId[] = ['dashboard', 'pos_tactil', 'mesas', 'ingredientes', 'recetas', 'mermas', 'combos'];
+const DEFAULT_ORDER: SectionId[] = ['dashboard', 'pos_tactil', 'mesas', 'cocina', 'ingredientes', 'recetas', 'mermas', 'combos'];
 
 interface MesaConfig { id: string; nombre: string; activa: boolean; }
 interface ProductoMesa { id: string; codigo: string; nombre: string; precio: number; stock: number; categoria: string; costo: number; pesable?: boolean; aplicaIVA?: boolean; tipoInventario?: 'directo' | 'receta'; recipeId?: string; }
@@ -206,6 +207,37 @@ export default function PanaderiaOncesPage() {
   const [cantidadMesa, setCantidadMesa] = useState('1');
   const [showAgregarMesaDropdown, setShowAgregarMesaDropdown] = useState(false);
 
+  // 🍳 Comandas de Cocina/Bar — cargadas + en vivo vía Supabase Realtime.
+  // Solo funciona si esta caja está vinculada a la nube (mismo requisito que
+  // el resto de la sincronización de Alimentos y Bebidas).
+  const [comandas, setComandas] = useState<Comanda[]>([]);
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let activo = true;
+
+    Promise.all([
+      import('../../lib/supabase/tenantLink'),
+      import('../../lib/supabase/panaderiaSyncService'),
+    ]).then(([{ getLinkedClienteId }, { obtenerComandasActivas, suscribirComandas }]) => {
+      const clienteId = getLinkedClienteId();
+      if (!clienteId || !activo) return;
+
+      obtenerComandasActivas(clienteId).then((iniciales) => { if (activo) setComandas(iniciales); }).catch(() => {});
+
+      unsubscribe = suscribirComandas(clienteId, (comanda) => {
+        setComandas((prev) => {
+          if (comanda.estado === 'entregado' || comanda.estado === 'cancelado') {
+            return prev.filter((c) => c.id !== comanda.id);
+          }
+          const existe = prev.some((c) => c.id === comanda.id);
+          return existe ? prev.map((c) => (c.id === comanda.id ? comanda : c)) : [...prev, comanda];
+        });
+      });
+    }).catch(() => {});
+
+    return () => { activo = false; unsubscribe?.(); };
+  }, []);
+
   const STORAGE_MESAS = 'codecpos_mesas_config';
   const STORAGE_CUENTAS_MESAS = 'codecpos_mesas_cuentas';
   const STORAGE_TRANSFER_CART = 'codecpos_carrito_transferido';
@@ -317,6 +349,71 @@ export default function PanaderiaOncesPage() {
       }
       navigate('/pos');
     } catch (error) { console.error('Error transfiriendo cuenta a POS:', error); toast.error('Error al transferir al POS. Intenta de nuevo.'); }
+  };
+
+  // 🍳 Envía el pedido actual de la mesa a la pantalla de Cocina/Bar — a
+  // diferencia de persistirCuentas() (que solo espeja el estado de la
+  // cuenta), esto crea un tiquete de comanda nuevo con su propio estado
+  // (pendiente → preparando → listo) para que cocina sepa qué preparar.
+  const enviarMesaACocina = async (mesa: MesaConfig) => {
+    const items = cuentasMesas[mesa.id] || [];
+    if (items.length === 0) { toast.error('No hay productos en la mesa para enviar'); return; }
+
+    try {
+      const [{ getLinkedClienteId }, { enviarComanda }] = await Promise.all([
+        import('../../lib/supabase/tenantLink'),
+        import('../../lib/supabase/panaderiaSyncService'),
+      ]);
+      const clienteId = getLinkedClienteId();
+      if (!clienteId) {
+        toast.error('Esta caja no está vinculada a la nube', { description: 'Ve a Configuración > Sincronización para activar Cocina/Bar' });
+        return;
+      }
+      await enviarComanda(
+        clienteId,
+        mesa.id,
+        mesa.nombre,
+        items.map((it) => ({ nombre: it.producto.nombre, cantidad: Number(it.cantidad) || 0 })),
+        usuarioActual?.nombreCompleto || usuarioActual?.username
+      );
+      toast.success(`Pedido de ${mesa.nombre} enviado a Cocina/Bar`);
+    } catch (error) {
+      console.error('Error enviando comanda:', error);
+      toast.error('Error al enviar el pedido a Cocina/Bar');
+    }
+  };
+
+  const avanzarEstadoComanda = async (comanda: Comanda, nuevoEstado: EstadoComanda) => {
+    try {
+      const { actualizarEstadoComanda } = await import('../../lib/supabase/panaderiaSyncService');
+      await actualizarEstadoComanda(comanda.id, nuevoEstado);
+      setComandas((prev) =>
+        nuevoEstado === 'entregado' || nuevoEstado === 'cancelado'
+          ? prev.filter((c) => c.id !== comanda.id)
+          : prev.map((c) => (c.id === comanda.id ? { ...c, estado: nuevoEstado } : c))
+      );
+    } catch (error) {
+      console.error('Error actualizando estado de comanda:', error);
+      toast.error('No se pudo actualizar el pedido');
+    }
+  };
+
+  const imprimirComanda = async (comanda: Comanda) => {
+    try {
+      const { printComandaReceipt } = await import('../../lib/thermalPrinter');
+      const ok = await printComandaReceipt({
+        mesaNombre: comanda.mesaNombre || comanda.mesaLocalId,
+        meseroNombre: comanda.meseroNombre,
+        nota: comanda.nota,
+        hora: new Date(comanda.createdAt).toLocaleTimeString('es-CO'),
+        items: comanda.items.map((it) => ({ nombre: it.nombre, cantidad: it.cantidad, nota: it.nota })),
+      });
+      if (ok) toast.success('Comanda enviada a imprimir');
+      else toast.error('No se pudo imprimir la comanda — revisa la impresora asignada a Cocina/Bar');
+    } catch (error) {
+      console.error('Error imprimiendo comanda:', error);
+      toast.error('Error al imprimir la comanda');
+    }
   };
 
   const transferirCarritoAuxiliarAMesa = (mesaId: string, mesaNombre: string) => {
@@ -757,6 +854,7 @@ export default function PanaderiaOncesPage() {
     dashboard:     { label: 'Panel de Control',     icon: <BarChart3 className="w-5 h-5" />,    gradient: 'from-violet-600 to-purple-700'   },
     pos_tactil:    { label: 'Alimentos y Bebidas',     icon: <Croissant className="w-5 h-5" />,    gradient: 'from-amber-500 to-orange-600'    },
     mesas:         { label: 'Cuentas por Mesa',     icon: <Armchair className="w-5 h-5" />,     gradient: 'from-emerald-500 to-teal-600'    },
+    cocina:        { label: 'Cocina / Bar',         icon: <Flame className="w-5 h-5" />,        gradient: 'from-orange-500 to-red-600'      },
     ingredientes:  { label: 'Ingredientes',         icon: <Package2 className="w-5 h-5" />,     gradient: 'from-green-600 to-emerald-700'   },
     recetas:       { label: 'Recetas',              icon: <BookOpen className="w-5 h-5" />,     gradient: 'from-sky-500 to-cyan-600'        },
     mermas:        { label: 'Historial de Mermas',  icon: <Trash2 className="w-5 h-5" />,       gradient: 'from-rose-500 to-red-600'        },
@@ -1160,6 +1258,66 @@ export default function PanaderiaOncesPage() {
           </div>
         );
 
+      // ── Cocina / Bar ─────────────────────────────────────────────────────────
+      case 'cocina': {
+        const ESTADO_INFO: Record<EstadoComanda, { label: string; color: string }> = {
+          pendiente:  { label: 'Pendiente',  color: darkMode ? 'border-amber-500/50 bg-amber-900/20' : 'border-amber-300 bg-amber-50' },
+          preparando: { label: 'Preparando', color: darkMode ? 'border-sky-500/50 bg-sky-900/20' : 'border-sky-300 bg-sky-50' },
+          listo:      { label: 'Listo',      color: darkMode ? 'border-emerald-500/50 bg-emerald-900/20' : 'border-emerald-300 bg-emerald-50' },
+          entregado:  { label: 'Entregado',  color: '' },
+          cancelado:  { label: 'Cancelado',  color: '' },
+        };
+        const SIGUIENTE_ESTADO: Partial<Record<EstadoComanda, EstadoComanda>> = {
+          pendiente: 'preparando',
+          preparando: 'listo',
+          listo: 'entregado',
+        };
+
+        return (
+          <div className="space-y-4">
+            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+              Pedidos enviados desde las mesas — envía uno con el botón "Enviar a Cocina" en el detalle de una mesa.
+            </p>
+            {comandas.length === 0 ? (
+              <div className={`rounded-2xl border p-10 text-center ${darkMode ? 'border-slate-700 bg-slate-800/40 text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-400'}`}>
+                <Flame className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                Sin pedidos pendientes en este momento
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {comandas.map((c) => (
+                  <div key={c.id} className={`rounded-2xl border-2 p-4 space-y-2.5 ${ESTADO_INFO[c.estado].color}`}>
+                    <div className="flex items-center justify-between">
+                      <p className="font-black text-base">{c.mesaNombre || c.mesaLocalId}</p>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-600'}`}>
+                        {ESTADO_INFO[c.estado].label}
+                      </span>
+                    </div>
+                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      {new Date(c.createdAt).toLocaleTimeString('es-CO')}{c.meseroNombre ? ` · ${c.meseroNombre}` : ''}
+                    </p>
+                    <ul className="text-sm space-y-1">
+                      {c.items.map((it, idx) => (
+                        <li key={idx} className="font-semibold">{it.cantidad}x {it.nombre}</li>
+                      ))}
+                    </ul>
+                    {c.nota && <p className={`text-xs italic ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Nota: {c.nota}</p>}
+                    <div className="flex gap-2 pt-1">
+                      <Button variant="outline" className="h-9 text-xs px-3 flex-1" onClick={() => imprimirComanda(c)}>Imprimir</Button>
+                      {SIGUIENTE_ESTADO[c.estado] && (
+                        <Button className="h-9 text-xs px-3 flex-1 bg-orange-600 hover:bg-orange-700 font-bold text-white" onClick={() => avanzarEstadoComanda(c, SIGUIENTE_ESTADO[c.estado]!)}>
+                          {ESTADO_INFO[SIGUIENTE_ESTADO[c.estado]!].label}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
       // ── Ingredientes ──────────────────────────────────────────────────────────
       case 'ingredientes':
         return (
@@ -1479,9 +1637,14 @@ export default function PanaderiaOncesPage() {
 
             <div className="flex items-center justify-between gap-3 pt-1">
               <p className="text-lg font-black">Total: <span className="text-emerald-600">${totalMesa(mesaSeleccionada.id).toLocaleString('es-CO')}</span></p>
-              <Button className="h-11 bg-amber-600 hover:bg-amber-700 font-bold px-6" onClick={() => abrirMesaEnPOS(mesaSeleccionada)}>
-                Facturar en POS
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" className="h-11 font-bold px-6 border-orange-400 text-orange-600 hover:bg-orange-50" onClick={() => enviarMesaACocina(mesaSeleccionada)}>
+                  <Flame className="w-4 h-4 mr-2" />Enviar a Cocina
+                </Button>
+                <Button className="h-11 bg-amber-600 hover:bg-amber-700 font-bold px-6" onClick={() => abrirMesaEnPOS(mesaSeleccionada)}>
+                  Facturar en POS
+                </Button>
+              </div>
             </div>
           </div>
         </div>

@@ -28,6 +28,14 @@ import {
 } from '../../lib/supabase/modulosWebService';
 import { sincronizarPanaderiaDesdeLocal } from '../../lib/supabase/panaderiaSyncService';
 import { pushOrdenesTaller } from '../../lib/supabase/tallerSyncService';
+import { publicarPromociones, publicarCombos, publicarProveedores } from '../../lib/supabase/promocionesProveedoresSyncService';
+import { publicarClientesFidelizacion, publicarIngresosExtra } from '../../lib/supabase/fidelizacionContabilidadSyncService';
+import { publicarTiendas } from '../../lib/supabase/tiendasSyncService';
+import { listarPromociones, listarCombos } from '../../lib/promocionesService';
+import { listarProveedores } from '../../lib/proveedoresService';
+import { listarClientes as listarClientesFidelizacion } from '../../lib/fidelizacionService';
+import { obtenerIngresosExtra } from '../../lib/contabilidadService';
+import { listarTiendas } from '../../lib/multitiendaService';
 import { tallerService } from '../../services/tallerService';
 
 export function ModulosAppWebCard() {
@@ -115,9 +123,39 @@ export function ModulosAppWebCard() {
         resumen.push(`Taller: ${n} órdenes`);
       }
 
+      if (seleccion.has(ModuloPOS.PROMOCIONES)) {
+        const [promos, combos] = await Promise.all([listarPromociones(), listarCombos()]);
+        await Promise.all([publicarPromociones(promos), publicarCombos(combos)]);
+        resumen.push(`Promociones: ${promos.length} promociones, ${combos.length} combos`);
+      }
+
+      if (seleccion.has(ModuloPOS.PROVEEDORES)) {
+        const proveedores = await listarProveedores();
+        await publicarProveedores(proveedores);
+        resumen.push(`Proveedores: ${proveedores.length}`);
+      }
+
+      if (seleccion.has(ModuloPOS.FIDELIZACION)) {
+        const clientes = await listarClientesFidelizacion(false);
+        await publicarClientesFidelizacion(clientes);
+        resumen.push(`Fidelización: ${clientes.length} clientes`);
+      }
+
+      if (seleccion.has(ModuloPOS.CONTABILIDAD)) {
+        const ingresos = obtenerIngresosExtra();
+        await publicarIngresosExtra(ingresos);
+        resumen.push(`Contabilidad: ${ingresos.length} ingresos extra`);
+      }
+
+      if (seleccion.has(ModuloPOS.MULTITIENDA)) {
+        const tiendas = listarTiendas();
+        await publicarTiendas(tiendas);
+        resumen.push(`Multi-Tienda: ${tiendas.length} tiendas`);
+      }
+
       if (resumen.length === 0) {
         toast.info('Nada que sincronizar', {
-          description: 'Activa Alimentos y Bebidas o Taller para publicar sus datos en la nube.',
+          description: 'Activa Alimentos y Bebidas, Taller, Promociones, Proveedores, Fidelización, Contabilidad o Multi-Tienda para publicar sus datos en la nube.',
         });
       } else {
         toast.success('Datos publicados en la nube', { description: resumen.join(' · ') });

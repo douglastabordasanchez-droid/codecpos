@@ -6,10 +6,11 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router';
 import {
   X, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Loader2,
   Download, Info, Zap, ArrowRight, Check, FileCheck,
-  ShoppingBag, ChevronDown,
+  ShoppingBag, ChevronDown, Palette, PartyPopper,
   Store, Shirt, Pill, Hammer, Pencil, ChefHat, Scissors,
   UtensilsCrossed, Wine, Laptop, Sparkles, PawPrint, Star, Trophy, BookOpen,
   type LucideIcon,
@@ -26,6 +27,21 @@ import { usePOS } from '../../contexts/POSContext';
 import { useBusinessContext } from '../../contexts/BusinessContext';
 import { usePlanRestrictions } from '../../hooks/usePlanRestrictions';
 import { TIPOS_NEGOCIO } from '../../../data/tipos-negocio';
+import { descargarPlantillaExcelArtesGraficas } from '../../lib/supabase/artesGraficasService';
+import { PLANTILLAS_PAPELERIA, descargarPlantillaPapeleria } from '../../lib/importers/papeleriaPinateriaTemplates';
+
+/**
+ * Artes Gráficas y Papelería y Piñatería son MÓDULOS (con sus propias
+ * plantillas Excel multi-hoja, ya construidas en sus páginas dedicadas) —
+ * no "tipos de negocio" con una plantilla CSV genérica como el resto de
+ * este selector. Se listan aquí también, como pidió el dueño, para que
+ * aparezcan a descargar desde el mismo lugar donde ya se gestiona todo el
+ * inventario, pero la carga real (con chunking, progreso y tolerancia a
+ * fallos) sigue viviendo en la página de cada módulo — duplicar ese motor
+ * aquí sería repetir lógica ya probada, no ayudar al usuario.
+ */
+const MODULOS_CON_PLANTILLA_PROPIA = ['artes_graficas_modulo', 'papeleria_pinateria_modulo'] as const;
+type ModuloConPlantillaPropia = typeof MODULOS_CON_PLANTILLA_PROPIA[number];
 
 interface ImportMasivaCSVProps {
   isOpen: boolean;
@@ -70,6 +86,7 @@ const PLANTILLAS_CSV: Record<string, { headers: string[]; ejemplos: string[][] }
 };
 
 export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMasivaCSVProps) {
+  const navigate = useNavigate();
   const { darkMode } = usePOS();
   const { tipoNegocio: tipoNegocioGlobal } = useBusinessContext();
   const { planInfo } = usePlanRestrictions();
@@ -494,53 +511,106 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
                           <div className="text-xs font-semibold">{tipo.nombre}</div>
                         </button>
                       ))}
+                      <button
+                        onClick={() => setSelectedTipoNegocio('artes_graficas_modulo')}
+                        className={`p-3 rounded-xl text-left transition-all ${
+                          selectedTipoNegocio === 'artes_graficas_modulo'
+                            ? 'bg-fuchsia-500 text-white shadow-lg scale-105'
+                            : darkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-white text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <Palette className="w-6 h-6 mb-1" />
+                        <div className="text-xs font-semibold">Artes Gráficas</div>
+                      </button>
+                      <button
+                        onClick={() => setSelectedTipoNegocio('papeleria_pinateria_modulo')}
+                        className={`p-3 rounded-xl text-left transition-all ${
+                          selectedTipoNegocio === 'papeleria_pinateria_modulo'
+                            ? 'bg-rose-500 text-white shadow-lg scale-105'
+                            : darkMode ? 'bg-slate-700 text-gray-300 hover:bg-slate-600' : 'bg-white text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <PartyPopper className="w-6 h-6 mb-1" />
+                        <div className="text-xs font-semibold">Papelería y Piñatería</div>
+                      </button>
                     </div>
                   </div>
                 </div>
 
-                <Button
-                  onClick={() => descargarPlantilla(selectedTipoNegocio)}
-                  className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 rounded-xl"
-                >
-                  <Download className="w-5 h-5 mr-2" />
-                  Descargar Plantilla {TIPOS_NEGOCIO[selectedTipoNegocio]?.nombre || 'Minimercado'}
-                </Button>
+                {(MODULOS_CON_PLANTILLA_PROPIA as readonly string[]).includes(selectedTipoNegocio) ? (
+                  <div className="space-y-2">
+                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Este módulo tiene su propio catálogo con atributos especiales — descarga la(s) plantilla(s) aquí,
+                      pero súbela desde su página dedicada (tiene barra de progreso y tolera archivos grandes).
+                    </p>
+                    {selectedTipoNegocio === 'artes_graficas_modulo' ? (
+                      <Button onClick={() => descargarPlantillaExcelArtesGraficas()} className="w-full bg-gradient-to-r from-fuchsia-500 to-pink-600 rounded-xl">
+                        <Download className="w-5 h-5 mr-2" /> Descargar Plantilla Artes Gráficas
+                      </Button>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {PLANTILLAS_PAPELERIA.map((p) => (
+                          <Button key={p.tipo} variant="outline" size="sm" onClick={() => descargarPlantillaPapeleria(p.tipo)} className="justify-start">
+                            <Download className="w-4 h-4 mr-2 shrink-0" /> <span className="truncate">{p.titulo}</span>
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      onClick={() => { onClose(); navigate(selectedTipoNegocio === 'artes_graficas_modulo' ? '/artes-graficas' : '/papeleria-pinateria'); }}
+                      className="w-full rounded-xl"
+                    >
+                      <ArrowRight className="w-4 h-4 mr-2" /> Ir al módulo para subir el archivo
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => descargarPlantilla(selectedTipoNegocio)}
+                    className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 rounded-xl"
+                  >
+                    <Download className="w-5 h-5 mr-2" />
+                    Descargar Plantilla {TIPOS_NEGOCIO[selectedTipoNegocio]?.nombre || 'Minimercado'}
+                  </Button>
+                )}
               </Card>
             )}
 
-            {/* Zona de carga de archivos */}
-            <div
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all ${
-                dragActive
-                  ? 'border-purple-500 bg-purple-500/10 scale-105'
-                  : darkMode
-                  ? 'border-slate-600 bg-slate-800/30 hover:border-purple-500/50'
-                  : 'border-gray-300 bg-gray-50 hover:border-purple-500/50'
-              }`}
-            >
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleInputChange}
-                className="hidden"
-                id="file-upload"
-              />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <Upload className={`w-16 h-16 mx-auto mb-4 ${
-                  dragActive ? 'text-purple-500' : darkMode ? 'text-gray-600' : 'text-gray-400'
-                }`} />
-                <p className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {fileName || 'Arrastra tu archivo CSV aquí'}
-                </p>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  o haz clic para seleccionar
-                </p>
-              </label>
-            </div>
+            {/* Zona de carga de archivos — oculta para los módulos con su propio motor de carga (ver arriba) */}
+            {!(MODULOS_CON_PLANTILLA_PROPIA as readonly string[]).includes(selectedTipoNegocio) && (
+              <div
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all ${
+                  dragActive
+                    ? 'border-purple-500 bg-purple-500/10 scale-105'
+                    : darkMode
+                    ? 'border-slate-600 bg-slate-800/30 hover:border-purple-500/50'
+                    : 'border-gray-300 bg-gray-50 hover:border-purple-500/50'
+                }`}
+              >
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleInputChange}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label htmlFor="file-upload" className="cursor-pointer">
+                  <Upload className={`w-16 h-16 mx-auto mb-4 ${
+                    dragActive ? 'text-purple-500' : darkMode ? 'text-gray-600' : 'text-gray-400'
+                  }`} />
+                  <p className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {fileName || 'Arrastra tu archivo CSV aquí'}
+                  </p>
+                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    o haz clic para seleccionar
+                  </p>
+                </label>
+              </div>
+            )}
 
             {/* Preview de productos */}
             {preview.length > 0 && (

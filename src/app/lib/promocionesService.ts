@@ -130,6 +130,18 @@ const STORAGE_KEYS = {
   APLICACIONES: 'codec_pos_aplicaciones_promociones',
 };
 
+/** ☁️ Espeja promociones/combos en la nube para que la PWA los pueda ver — best-effort, ver proveedoresService.ts. */
+function publicarPromocionesEnLaNube(promociones: Promocion[]): void {
+  import('./supabase/promocionesProveedoresSyncService')
+    .then(({ publicarPromociones }) => publicarPromociones(promociones))
+    .catch(() => {});
+}
+function publicarCombosEnLaNube(combos: Combo[]): void {
+  import('./supabase/promocionesProveedoresSyncService')
+    .then(({ publicarCombos }) => publicarCombos(combos))
+    .catch(() => {});
+}
+
 // ==================== HELPERS INTERNOS ====================
 
 /** Genera un código de barras EAN-8 único para promociones/combos */
@@ -192,7 +204,8 @@ export async function crearPromocion(data: Partial<Promocion>): Promise<Promocio
     
     promociones.push(nuevaPromocion);
     localStorage.setItem(STORAGE_KEYS.PROMOCIONES, JSON.stringify(promociones));
-    
+    publicarPromocionesEnLaNube([nuevaPromocion]);
+
     return nuevaPromocion;
   } catch (error) {
     console.error('Error creando promoción:', error);
@@ -238,7 +251,8 @@ export async function crearCombo(data: Partial<Combo>): Promise<Combo> {
   
   combos.push(nuevoCombo);
   localStorage.setItem(STORAGE_KEYS.COMBOS, JSON.stringify(combos));
-  
+  publicarCombosEnLaNube([nuevoCombo]);
+
   return nuevoCombo;
 }
 
@@ -312,7 +326,8 @@ export async function actualizarPromocion(id: string, cambios: Partial<Promocion
   };
   
   localStorage.setItem(STORAGE_KEYS.PROMOCIONES, JSON.stringify(promociones));
-  
+  publicarPromocionesEnLaNube([promociones[index]]);
+
   return promociones[index];
 }
 

@@ -56,6 +56,25 @@ interface Props {
 
 const fmt = (v: number) => `$${Math.round(Number(v) || 0).toLocaleString('es-CO')}`;
 
+/**
+ * 🛡️ FIX: `format(new Date(x), ...)` de date-fns LANZA una excepción
+ * (RangeError: Invalid time value) cuando `x` es undefined o una fecha
+ * corrupta — sin try/catch alrededor, ese throw escapaba hasta el
+ * ErrorBoundary de nivel raíz y tumbaba TODA la app con la pantalla roja
+ * "Error en la Aplicación". Bastaba con UN registro viejo (gasto, venta o
+ * devolución) sin `fecha` válida para romper el detalle de cualquier KPI.
+ * Esta envoltura nunca lanza: si la fecha es inválida, muestra un guión.
+ */
+function formatoSeguro(fecha: unknown, patron: string): string {
+  const d = new Date(fecha as string);
+  if (Number.isNaN(d.getTime())) return '—';
+  try {
+    return format(d, patron, { locale: es });
+  } catch {
+    return '—';
+  }
+}
+
 const METODO_COLOR: Record<string, string> = {
   efectivo: '#10b981',
   tarjeta: '#3b82f6',
@@ -98,7 +117,11 @@ export default function ModalDetalleKPI({ open, onClose, darkMode, tipo, titulo,
   // plantilla que se pueda desalinear.
   const [ventaParaImprimir, setVentaParaImprimir] = useState<Venta | null>(null);
 
-  const necesitaLista = tipo === 'ventas' || tipo === 'ticket_promedio' || tipo === 'gastos' || tipo === 'devoluciones' || tipo === 'stock';
+  // 🛡️ FIX: "Ingresos" también renderiza listaVentas(ventas) más abajo, pero
+  // no estaba en esta lista — el efecto de carga nunca corría para ese tipo,
+  // así que el modal de Ingresos siempre mostraba "Aún no hay ventas" aunque
+  // sí las hubiera.
+  const necesitaLista = tipo === 'ventas' || tipo === 'ingresos' || tipo === 'ticket_promedio' || tipo === 'gastos' || tipo === 'devoluciones' || tipo === 'stock';
 
   useEffect(() => {
     if (!open || !necesitaLista) return;
@@ -232,8 +255,8 @@ export default function ModalDetalleKPI({ open, onClose, darkMode, tipo, titulo,
             <div key={v.id || i} className={`flex items-center justify-between p-3 rounded-xl ${card}`}>
               <div className="flex items-center gap-3 min-w-0">
                 <div className="flex flex-col shrink-0">
-                  <span className={`text-xs font-semibold ${txt}`}>{format(new Date(v.fecha), 'dd/MM', { locale: es })}</span>
-                  <span className={`text-[10px] ${sub}`}>{format(new Date(v.fecha), 'HH:mm', { locale: es })}</span>
+                  <span className={`text-xs font-semibold ${txt}`}>{formatoSeguro(v.fecha, 'dd/MM')}</span>
+                  <span className={`text-[10px] ${sub}`}>{formatoSeguro(v.fecha, 'HH:mm')}</span>
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -282,7 +305,7 @@ export default function ModalDetalleKPI({ open, onClose, darkMode, tipo, titulo,
               <div className="min-w-0">
                 <p className={`text-xs font-semibold truncate ${txt}`}>{g.concepto || g.categoriaConcepto || g.descripcion || 'Gasto operativo'}</p>
                 <p className={`text-[10px] ${sub}`}>
-                  {format(new Date(g.fecha), "dd/MM/yyyy HH:mm", { locale: es })} · {g.registradoPor || g.cajero || g.usuarioNombre || 'Sin registrar'}
+                  {formatoSeguro(g.fecha, "dd/MM/yyyy HH:mm")} · {g.registradoPor || g.cajero || g.usuarioNombre || 'Sin registrar'}
                 </p>
               </div>
               <span className="text-sm font-bold shrink-0 ml-2 text-red-500">-{fmt(g.monto)}</span>
@@ -306,7 +329,7 @@ export default function ModalDetalleKPI({ open, onClose, darkMode, tipo, titulo,
               <div className="min-w-0">
                 <p className={`text-xs font-semibold truncate ${txt}`}>Factura {d.numeroFactura || d.ventaId || '—'}</p>
                 <p className={`text-[10px] ${sub}`}>
-                  {format(new Date(d.fecha), "dd/MM/yyyy HH:mm", { locale: es })} · {d.procesadoPor || 'Sin registrar'}
+                  {formatoSeguro(d.fecha, "dd/MM/yyyy HH:mm")} · {d.procesadoPor || 'Sin registrar'}
                 </p>
               </div>
               <span className="text-sm font-bold shrink-0 ml-2 text-red-500">-{fmt(d.totalDevolucion)}</span>

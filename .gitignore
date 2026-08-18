@@ -5,8 +5,13 @@ node_modules/
 dist/
 dist-electron/
 dist-pwa/
+dist-admin/
 release/
 *.log
+
+# Backups locales de migraciones (snapshots de seguridad antes de aplicar
+# cambios en Supabase, no forman parte del código fuente)
+_backups/
 
 # Copia anidada duplicada del proyecto (housekeeping pendiente, no forma parte del repo)
 /Codecpos2.0 modulo servicio tecnico/
@@ -32,3 +37,9 @@ docs/electronic-invoicing/dian-sources/
 
 # Ajustes locales de Claude Code (permisos personales, no del equipo)
 .claude/settings.local.json
+
+# Modelo de voz Piper (~114MB) — supera el límite de 100MB de GitHub.
+# Se descarga automáticamente en el build vía scripts/download-piper-voice.js
+# (hook "predownload:voz" antes de electron-builder). El resto del motor
+# Piper (binarios + espeak-ng-data recortado, ~11MB) sí va en el repo.
+electron/resources/piper/voices/*.onnx

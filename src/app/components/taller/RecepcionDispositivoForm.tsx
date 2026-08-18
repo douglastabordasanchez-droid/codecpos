@@ -211,7 +211,14 @@ export default function RecepcionDispositivoForm({ onClose, onSuccess }: Recepci
         // Canal TCP principal (también guarda en cola si el técnico está offline)
         emitLanEvent('NUEVA_REPARACION_REGISTRADA', lanPayload, ordenData.tecnicoAsignadoId);
 
-        // HTTP push directo + feedback de entrega (no bloquea la UI)
+        // HTTP push directo + feedback de entrega (no bloquea la UI). Solo la
+        // terminal que actúa como servidor LAN puede hacer este push instantáneo
+        // (es la única con el socket abierto hacia el técnico) — en modo cliente
+        // el IPC devuelve techOnline=false sin haber intentado nada, así que ese
+        // caso NO significa "no se entregó": la entrega real ya quedó garantizada
+        // arriba, por `NUEVA_REPARACION_REGISTRADA` (cola LAN) y por la nube
+        // (tallerSyncService, ver useSyncModulosNube). El toast solo debe
+        // prometer lo que esta llamada puntual realmente confirmó.
         const el = (window as any).electron;
         if (el?.lan?.pushTallerOrden) {
           el.lan.pushTallerOrden({
@@ -221,7 +228,7 @@ export default function RecepcionDispositivoForm({ onClose, onSuccess }: Recepci
             if (result?.techOnline) {
               toast.success(`Técnico ${ordenData.tecnicoAsignado} notificado en tiempo real`);
             } else {
-              toast.info(`Orden en cola — ${ordenData.tecnicoAsignado} recibirá la notificación al conectarse`);
+              toast.info(`${ordenData.tecnicoAsignado} verá la orden en su panel de Taller en cuanto se conecte`);
             }
           }).catch(() => {});
         }

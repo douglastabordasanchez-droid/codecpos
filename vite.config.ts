@@ -76,8 +76,11 @@ export default defineConfig({
     // ⚡ NO sourcemaps = 50% menos peso
     sourcemap: false,
     
-    // ⚡ CSS en mismo archivo = menos requests HTTP
-    cssCodeSplit: false,
+    // ⚡ CSS dividido por chunk: cada módulo lazy trae solo su propio CSS
+    // en vez de forzar a TODA la app a descargar y parsear un único CSS de
+    // ~390KB (facturación, taller, panadería, fidelización, etc juntos)
+    // antes del primer render, incluso en la pantalla de login.
+    cssCodeSplit: true,
     
     // ⚡ Inline assets pequeños = menos requests
     assetsInlineLimit: 8192, // 8KB (antes 4KB)

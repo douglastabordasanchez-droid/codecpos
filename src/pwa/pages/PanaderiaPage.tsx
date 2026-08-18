@@ -19,19 +19,31 @@ import {
 } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
+import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import {
   guardarCuentaMesa,
   obtenerCatalogoPanaderia,
   obtenerCuentasMesa,
   suscribirCuentasMesa,
+  enviarComanda,
+  obtenerComandasActivas,
+  suscribirComandas,
   type CuentaMesa,
   type ItemCuenta,
+  type ItemComanda,
+  type Comanda,
   type PanaderiaCategoria,
   type PanaderiaMesa,
   type PanaderiaProducto,
 } from '../../app/lib/supabase/panaderiaSyncService';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+
+const ESTADO_COMANDA_LABEL: Record<string, string> = {
+  pendiente: '🕓 En cola',
+  preparando: '🍳 Preparando',
+  listo: '✅ Listo',
+};
 
 const money = (n: number) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`;
 
@@ -49,6 +61,9 @@ export default function PanaderiaPage() {
   const [cuentas, setCuentas] = useState<Record<string, CuentaMesa>>({});
 
   const [mesaAbierta, setMesaAbierta] = useState<PanaderiaMesa | null>(null);
+  // 🍳 Comanda más reciente por mesa — para que el mesero vea sin preguntar
+  // si cocina/bar ya la está preparando o ya está lista para servir.
+  const [comandasPorMesa, setComandasPorMesa] = useState<Record<string, Comanda>>({});
 
   const cargar = useCallback(async () => {
     if (!empleado) return;
@@ -82,13 +97,43 @@ export default function PanaderiaPage() {
     });
   }, [empleado?.cliente_id]);
 
-  const guardar = async (mesaLocalId: string, items: ItemCuenta[]) => {
+  // 🍳 Estado de la comanda en vivo — avisa cuando cocina/bar la marca lista.
+  useEffect(() => {
     if (!empleado) return;
+    let cancelado = false;
+
+    obtenerComandasActivas(empleado.cliente_id).then((iniciales) => {
+      if (cancelado) return;
+      setComandasPorMesa(Object.fromEntries(iniciales.map((c) => [c.mesaLocalId, c])));
+    }).catch(() => {});
+
+    const unsubscribe = suscribirComandas(empleado.cliente_id, (comanda) => {
+      setComandasPorMesa((prev) => {
+        if (comanda.estado === 'entregado' || comanda.estado === 'cancelado') {
+          const { [comanda.mesaLocalId]: _omitida, ...resto } = prev;
+          return resto;
+        }
+        if (comanda.estado === 'listo' && prev[comanda.mesaLocalId]?.estado !== 'listo') {
+          toast.success(`✅ ${comanda.mesaNombre || 'Pedido'} listo para servir`);
+        }
+        return { ...prev, [comanda.mesaLocalId]: comanda };
+      });
+    });
+
+    return () => { cancelado = true; unsubscribe?.(); };
+  }, [empleado?.cliente_id]);
+
+  const guardar = async (mesa: PanaderiaMesa, items: ItemCuenta[]) => {
+    if (!empleado) return;
+    // El delta de comanda se calcula ANTES de sobrescribir `cuentas` con el
+    // estado optimista, porque compara contra lo que ya estaba guardado.
+    const enviarComandaPromise = enviarComandaMesa(mesa, items);
+
     // Optimista: la comandera debe sentirse instantánea aunque la red esté lenta.
     setCuentas((prev) => ({
       ...prev,
-      [mesaLocalId]: {
-        mesaLocalId,
+      [mesa.id]: {
+        mesaLocalId: mesa.id,
         items,
         total: totalDeItems(items),
         abierta: items.length > 0,
@@ -98,11 +143,29 @@ export default function PanaderiaPage() {
       },
     }));
     try {
-      await guardarCuentaMesa(empleado.cliente_id, mesaLocalId, items, 'pwa', empleado.nombre_completo);
+      await Promise.all([
+        guardarCuentaMesa(empleado.cliente_id, mesa.id, items, 'pwa', empleado.nombre_completo),
+        enviarComandaPromise,
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo enviar el pedido');
       cargar();
     }
+  };
+
+  // 🍳 Delta de ítems nuevos/aumentados desde la última cuenta conocida de la
+  // mesa — así "Enviar a Cocina" no vuelve a mandar lo que ya se preparó.
+  const enviarComandaMesa = async (mesa: PanaderiaMesa, nuevos: ItemCuenta[]) => {
+    if (!empleado) return;
+    const anteriores = cuentas[mesa.id]?.items ?? [];
+    const delta: ItemComanda[] = nuevos.reduce<ItemComanda[]>((acc, it) => {
+      const previo = anteriores.find((p) => p.producto.id === it.producto.id);
+      const diferencia = it.cantidad - (previo?.cantidad || 0);
+      if (diferencia > 0) acc.push({ nombre: it.producto.nombre, cantidad: diferencia });
+      return acc;
+    }, []);
+    if (delta.length === 0) return;
+    await enviarComanda(empleado.cliente_id, mesa.id, mesa.nombre, delta, empleado.nombre_completo).catch(() => {});
   };
 
   const mesasOcupadas = mesas.filter((m) => (cuentas[m.id]?.items?.length ?? 0) > 0).length;
@@ -168,6 +231,7 @@ export default function PanaderiaPage() {
               const cuenta = cuentas[mesa.id];
               const items = cuenta?.items ?? [];
               const ocupada = items.length > 0;
+              const comanda = comandasPorMesa[mesa.id];
               return (
                 <motion.button
                   key={mesa.id}
@@ -175,12 +239,19 @@ export default function PanaderiaPage() {
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: Math.min(i * 0.03, 0.3) }}
                   onClick={() => setMesaAbierta(mesa)}
-                  className={`aspect-square rounded-2xl p-3 flex flex-col items-center justify-center gap-1 border transition-all active:scale-95 ${
-                    ocupada
+                  className={`relative aspect-square rounded-2xl p-3 flex flex-col items-center justify-center gap-1 border transition-all active:scale-95 ${
+                    comanda?.estado === 'listo'
+                      ? 'bg-gradient-to-br from-emerald-500/20 to-teal-600/20 border-emerald-500/50'
+                      : ocupada
                       ? 'bg-gradient-to-br from-amber-500/20 to-orange-600/20 border-amber-500/50'
                       : 'bg-slate-900/70 border-slate-800'
                   }`}
                 >
+                  {comanda && (
+                    <span className="absolute top-1.5 right-1.5 text-[8px] font-black uppercase bg-slate-950/80 text-white px-1.5 py-0.5 rounded-full">
+                      {ESTADO_COMANDA_LABEL[comanda.estado] || comanda.estado}
+                    </span>
+                  )}
                   <Users className={`w-5 h-5 ${ocupada ? 'text-amber-400' : 'text-slate-600'}`} />
                   <p className={`text-xs font-bold text-center leading-tight ${ocupada ? 'text-white' : 'text-slate-400'}`}>
                     {mesa.nombre}
@@ -225,7 +296,7 @@ export default function PanaderiaPage() {
                 categorias={categorias}
                 productos={productos}
                 onCerrar={() => setMesaAbierta(null)}
-                onGuardar={(items) => guardar(mesaAbierta.id, items)}
+                onGuardar={(items) => guardar(mesaAbierta, items)}
               />
             </motion.div>
           </motion.div>
@@ -447,10 +518,10 @@ function CuentaDeMesa({
           className="w-full h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50"
         >
           {enviando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
-          {enviando ? 'Enviando…' : sucio ? 'Enviar a la caja' : 'Sin cambios'}
+          {enviando ? 'Enviando…' : sucio ? 'Enviar a caja y cocina' : 'Sin cambios'}
         </Button>
         <p className="text-slate-600 text-[11px] text-center mt-2">
-          La caja recibe el pedido al instante y lo cobra desde el computador.
+          La caja ve el pedido al instante y Cocina/Bar recibe lo nuevo para preparar.
         </p>
       </div>
     </>

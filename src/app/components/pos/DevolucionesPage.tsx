@@ -37,7 +37,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { dispararEvento } from '../../lib/webhookService';
+import { onDevolucionRegistrada } from '../../lib/integracionesService';
 import { toast } from 'sonner';
 import { electronStore } from '../../lib/electronStore';
 
@@ -106,6 +106,11 @@ export default function DevolucionesPage() {
   useEffect(() => {
     cargarDevoluciones();
     cargarVentas();
+
+    // ☁️ Una devolución registrada desde la PWA llega acá vía syncService.ts
+    // (pullDevolucionesRemotas) — se refresca sin esperar a recargar.
+    window.addEventListener('codecpos:devoluciones-sincronizadas', cargarDevoluciones);
+    return () => window.removeEventListener('codecpos:devoluciones-sincronizadas', cargarDevoluciones);
   }, []);
 
   const cargarDevoluciones = () => {
@@ -323,8 +328,8 @@ export default function DevolucionesPage() {
         description: `Total devuelto: $${nuevaDevolucion.totalDevolucion.toLocaleString('es-CO')}`,
       });
 
-      // 🔔 Notificar webhooks
-      dispararEvento('devolucion_registrada', {
+      // 🔔 Notificar integraciones
+      onDevolucionRegistrada({
         monto: nuevaDevolucion.totalDevolucion,
         motivo: nuevaDevolucion.items.map(i => i.motivo).filter(Boolean).join(', ') || 'No especificado',
         factura: nuevaDevolucion.ventaId,

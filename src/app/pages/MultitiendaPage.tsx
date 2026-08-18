@@ -99,17 +99,18 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={onClose} />
       <div className="relative w-full max-w-lg animate-in fade-in zoom-in-95 duration-200">
-        <div className="relative overflow-hidden rounded-3xl shadow-2xl border border-white/10"
+        <div className="relative rounded-3xl shadow-2xl border border-white/10 max-h-[90vh] flex flex-col"
           style={{ background: 'linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(20,30,60,0.97) 100%)' }}>
 
-          {/* Destellos */}
-          <div className="absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none"
-            style={{ background: `${form.color}20` }} />
-
-          {/* Header */}
-          <div className="relative p-6 flex items-center justify-between border-b border-white/10"
+          {/* Header (con overflow-hidden propio: antes lo recortaba el
+              contenedor exterior, pero ese ya no puede tener overflow-hidden
+              porque el cuerpo de abajo necesita poder hacer scroll) */}
+          <div className="relative p-6 flex items-center justify-between border-b border-white/10 rounded-t-3xl shrink-0 overflow-hidden"
             style={{ background: `linear-gradient(135deg, ${form.color}30, ${form.color}10)` }}>
-            <div className="flex items-center gap-3">
+            {/* Destello */}
+            <div className="absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none"
+              style={{ background: `${form.color}20` }} />
+            <div className="relative flex items-center gap-3">
               <div className="text-4xl">{form.emoji}</div>
               <div>
                 <h2 className="text-xl font-bold text-white">
@@ -123,8 +124,10 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
             </button>
           </div>
 
-          {/* Body */}
-          <div className="p-6 space-y-5">
+          {/* Body — con scroll propio: antes el popup no cabía en pantallas
+              bajas (o con teclado abierto) y no había forma de llegar a los
+              botones de abajo, porque nada en este modal tenía overflow. */}
+          <div className="p-6 space-y-5 overflow-y-auto flex-1 min-h-0">
             {/* Nombre */}
             <div>
               <label className="block text-sm font-semibold text-white/80 mb-2">

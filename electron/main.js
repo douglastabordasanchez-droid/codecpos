@@ -1011,6 +1011,17 @@ ipcMain.handle('get-os-info', async () => ({
 // para detectar si el arranque actual es justo después de una actualización.
 ipcMain.handle('app:get-version', async () => app.getVersion());
 
+// Fase 4, punto 20: información de runtime para la pantalla "Acerca del
+// sistema" del panel técnico y para soporte. Handler nuevo y separado del
+// de arriba a propósito -- no se toca `app:get-version` porque
+// backupService depende de su forma actual (string plano).
+ipcMain.handle('system:get-runtime-versions', async () => ({
+  appVersion: app.getVersion(),
+  electron: process.versions.electron,
+  chrome: process.versions.chrome,
+  node: process.versions.node,
+}));
+
 ipcMain.handle('save-backup', async (_, { fileName, data }) => {
   try {
     const folder = path.join(app.getPath('documents'), 'CODEC_POS_Backups');
@@ -1241,6 +1252,109 @@ async function getFreeDiskSpace(drive = 'C') {
 ipcMain.handle('system:get-disk-space', async () => {
   const info = await getFreeDiskSpace('C');
   return info || { freeBytes: null, usedBytes: null, drive: 'C' };
+});
+
+// ── Voz embebida (Piper TTS) ─────────────────────────────────────────────
+// Anuncios de Codec Verify ("Pago recibido...") con una voz latina real y
+// consistente, en vez de depender de lo que Windows tenga instalado (que en
+// la mayoría de equipos es solo español de España). Motor Piper corre como
+// proceso hijo persistente en modo --json-input: se manda una línea JSON por
+// cada frase y se lee de vuelta el .wav que escribe a disco — así el modelo
+// se carga una sola vez (~1.5s) y no en cada anuncio.
+let piperProceso = null;
+let piperColaSintesis = Promise.resolve();
+
+function resolverRutaPiper() {
+  const base = app.isPackaged
+    ? path.join(process.resourcesPath, 'piper')
+    : path.join(__dirname, 'resources', 'piper');
+  return {
+    exe: path.join(base, 'piper.exe'),
+    modelo: path.join(base, 'voices', 'es_AR-daniela-high.onnx'),
+    espeakData: path.join(base, 'espeak-ng-data'),
+  };
+}
+
+function piperDisponible() {
+  const { exe, modelo } = resolverRutaPiper();
+  return fs.existsSync(exe) && fs.existsSync(modelo);
+}
+
+function asegurarPiperActivo() {
+  if (piperProceso && !piperProceso.killed) return true;
+  if (!piperDisponible()) return false;
+  const { exe, modelo, espeakData } = resolverRutaPiper();
+  try {
+    piperProceso = spawn(
+      exe,
+      ['--model', modelo, '--espeak_data', espeakData, '--json-input', '--quiet'],
+      { windowsHide: true }
+    );
+    piperProceso.on('exit', () => { piperProceso = null; });
+    piperProceso.on('error', (error) => {
+      fileLogger.writeLog('WARN', 'Piper TTS: error de proceso', { error: error.message });
+      piperProceso = null;
+    });
+    piperProceso.stdout?.on('data', () => {}); // sin salida relevante en modo --quiet
+    piperProceso.stderr?.on('data', () => {});
+    return true;
+  } catch (error) {
+    fileLogger.writeLog('WARN', 'Piper TTS: no se pudo iniciar', { error: error.message });
+    piperProceso = null;
+    return false;
+  }
+}
+
+function sintetizarConPiper(texto) {
+  return new Promise((resolve) => {
+    if (!asegurarPiperActivo()) return resolve(null);
+
+    const nombreArchivo = `codecpos_voz_${Date.now()}_${Math.round(Math.random() * 1e6)}.wav`;
+    const rutaSalida = path.join(app.getPath('temp'), nombreArchivo).replace(/\\/g, '/');
+    const linea = JSON.stringify({ text: texto, output_file: rutaSalida }) + '\n';
+
+    let resuelto = false;
+    const terminar = (resultado) => {
+      if (resuelto) return;
+      resuelto = true;
+      clearInterval(intervalo);
+      resolve(resultado);
+    };
+
+    const inicio = Date.now();
+    const intervalo = setInterval(() => {
+      if (fs.existsSync(rutaSalida)) {
+        // Pequeña espera para que termine de escribirse el archivo antes de leerlo.
+        setTimeout(() => {
+          try {
+            const buffer = fs.readFileSync(rutaSalida);
+            fs.unlink(rutaSalida, () => {});
+            terminar(buffer.toString('base64'));
+          } catch {
+            terminar(null);
+          }
+        }, 80);
+      } else if (Date.now() - inicio > 10000) {
+        terminar(null);
+      }
+    }, 60);
+
+    try {
+      piperProceso.stdin.write(linea);
+    } catch (error) {
+      terminar(null);
+    }
+  });
+}
+
+ipcMain.handle('voz:disponible', async () => piperDisponible());
+
+ipcMain.handle('voz:sintetizar', async (_, texto) => {
+  if (!texto || typeof texto !== 'string') return null;
+  const solicitud = piperColaSintesis.then(() => sintetizarConPiper(texto.slice(0, 300)));
+  // Encolar siempre resuelve (nunca rechaza), así una falla no traba la cola.
+  piperColaSintesis = solicitud.catch(() => null);
+  return solicitud;
 });
 
 ipcMain.handle('show-notification', async (_, { title, body, urgency }) => {
@@ -2172,6 +2286,10 @@ app.whenReady().then(() => {
   // Crear ventana principal en paralelo (splash cubre el inicio)
   createWindow();
 
+  // Precalentar Piper TTS en segundo plano: así el modelo ya está cargado
+  // (~1.5s) cuando llegue el primer anuncio de Codec Verify, no en ese momento.
+  setTimeout(() => { try { asegurarPiperActivo(); } catch { /* no-op */ } }, 3000);
+
   // 🛡️ FIX: la inicialización de hardware (USB/seriales) se difiere hasta
   // DESPUÉS de mostrar la ventana. La detección de hotplug de la librería
   // 'usb' (usb.on('attach'/'detach')) puede tardar varios segundos en
@@ -2237,6 +2355,9 @@ app.on('will-quit', () => {
   } catch (error) {
     console.error('⚠️ Error durante cleanup de deviceManager en will-quit:', error);
   }
+  try {
+    if (piperProceso && !piperProceso.killed) piperProceso.kill();
+  } catch { /* no-op */ }
 });
 
 // 🛡️ INSTRUMENTACIÓN DE DIAGNÓSTICO: cierre inesperado del proceso completo.

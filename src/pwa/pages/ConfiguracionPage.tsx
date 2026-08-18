@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
-import { Store, Save, Loader2, Layers, Crown, Zap, ShieldCheck, Eye, EyeOff, Copy, Check, RefreshCw, ChevronDown, Mail, Smartphone, PanelLeft, FileText, ChevronRight } from 'lucide-react';
+import { Store, Save, Loader2, Layers, Crown, Zap, ShieldCheck, Eye, EyeOff, Copy, Check, RefreshCw, ChevronDown, Mail, Smartphone, PanelLeft, FileText, ChevronRight, Download, Share, SquarePlus, MoreVertical } from 'lucide-react';
 import { Link } from 'react-router';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
@@ -31,7 +31,7 @@ export default function ConfiguracionPage() {
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
   const [mostrarToken, setMostrarToken] = useState(false);
   const [generandoToken, setGenerandoToken] = useState(false);
-  const [copiado, setCopiado] = useState<'token' | 'url' | 'script' | null>(null);
+  const [copiado, setCopiado] = useState<'token' | 'url' | 'script' | 'gscript_link' | 'macrodroid_link' | null>(null);
   const [mostrarGuia, setMostrarGuia] = useState(false);
   const [, forceUpdateSidebar] = useState(0);
 
@@ -70,16 +70,13 @@ export default function ConfiguracionPage() {
     setGuardando(true);
     setMensaje(null);
     const client = getSupabaseClient();
-    const { error } = await client!
-      .from('clientes_pos')
-      .update({
-        nombre_negocio: form.nombre_negocio,
-        nit: form.nit,
-        contacto: form.contacto,
-        telefono: form.telefono,
-        email: form.email,
-      })
-      .eq('id', empleado.cliente_id);
+    const { error } = await client!.rpc('actualizar_perfil_negocio', {
+      p_nombre_negocio: form.nombre_negocio,
+      p_nit: form.nit,
+      p_contacto: form.contacto,
+      p_telefono: form.telefono,
+      p_email: form.email,
+    });
     setGuardando(false);
     if (error) {
       setMensaje({ tipo: 'error', texto: error.message });
@@ -102,11 +99,14 @@ export default function ConfiguracionPage() {
     setMostrarToken(true);
   };
 
-  const copiarTexto = (texto: string, cual: 'token' | 'url' | 'script') => {
+  const copiarTexto = (texto: string, cual: 'token' | 'url' | 'script' | 'gscript_link' | 'macrodroid_link') => {
     navigator.clipboard.writeText(texto);
     setCopiado(cual);
     setTimeout(() => setCopiado(null), 2000);
   };
+
+  const MACRODROID_URL = 'https://play.google.com/store/apps/details?id=com.arlosoft.macrodroid';
+  const GOOGLE_SCRIPT_URL = 'https://script.google.com';
 
   const publicConfig = getSupabasePublicConfig();
   const webhookUrl = publicConfig ? `${publicConfig.url}/rest/v1/rpc/registrar_pago_automatico` : '';
@@ -162,6 +162,8 @@ export default function ConfiguracionPage() {
       ) : (
         <>
           <div className="px-5 space-y-4">
+            <SeccionDescargarApp />
+
             <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Store className="w-4 h-4 text-amber-400" />
@@ -348,7 +350,15 @@ export default function ConfiguracionPage() {
                           <p className="text-white text-sm font-semibold">Por correo (Gmail) — sin instalar nada</p>
                         </div>
                         <ol className="text-slate-400 text-xs space-y-1 list-decimal list-inside mb-3">
-                          <li>Abre <span className="text-slate-300">script.google.com</span> con el Gmail donde llegan los correos de Nequi</li>
+                          <li className="flex items-center gap-1.5 flex-wrap">
+                            <span>Abre <span className="text-slate-300">script.google.com</span> con el Gmail donde llegan los correos de Nequi</span>
+                            <button
+                              onClick={() => copiarTexto(GOOGLE_SCRIPT_URL, 'gscript_link')}
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-slate-700 bg-slate-800 text-slate-300 shrink-0"
+                            >
+                              {copiado === 'gscript_link' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />} Copiar link
+                            </button>
+                          </li>
                           <li>Crea un proyecto nuevo, pega el código de abajo</li>
                           <li>En "Activadores" (reloj), agrega uno cada 5 minutos para esta función</li>
                         </ol>
@@ -369,7 +379,15 @@ export default function ConfiguracionPage() {
                           <p className="text-white text-sm font-semibold">Por SMS (Tasker / MacroDroid)</p>
                         </div>
                         <ol className="text-slate-400 text-xs space-y-1 list-decimal list-inside">
-                          <li>Instala Tasker o MacroDroid en el celular donde llegan los SMS de pago</li>
+                          <li className="flex items-center gap-1.5 flex-wrap">
+                            <span>Instala Tasker o MacroDroid en el celular donde llegan los SMS de pago</span>
+                            <button
+                              onClick={() => copiarTexto(MACRODROID_URL, 'macrodroid_link')}
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-slate-700 bg-slate-800 text-slate-300 shrink-0"
+                            >
+                              {copiado === 'macrodroid_link' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />} Copiar link MacroDroid
+                            </button>
+                          </li>
                           <li>Crea una automatización: "Cuando llegue un SMS que contenga 'Nequi'"</li>
                           <li>Acción: HTTP Request POST a la URL de arriba, header <span className="text-slate-300 font-mono">apikey</span> con la anon key del proyecto</li>
                           <li>Cuerpo JSON: <span className="text-slate-300 font-mono">{'{"p_token":"...","p_monto":<extraído del SMS>,"p_entidad":"nequi"}'}</span></li>
@@ -398,6 +416,103 @@ export default function ConfiguracionPage() {
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Descargar / instalar la app ─────────────────────────────────────────────
+
+/**
+ * Android (Chrome) muestra solo, tarde o temprano, su propio banner
+ * "Instalar app" — pero iOS Safari NUNCA lo hace: instalar ahí es un flujo
+ * manual (Compartir → Agregar a inicio) que además solo existe en Safari,
+ * no en Chrome/otros navegadores de iPhone. Sin instrucciones visibles, un
+ * usuario de iPhone no tiene forma de encontrar ese camino solo.
+ */
+function detectarPlataforma(): 'ios' | 'android' | 'otro' {
+  if (typeof navigator === 'undefined') return 'otro';
+  const ua = navigator.userAgent || '';
+  if (/iphone|ipad|ipod/i.test(ua)) return 'ios';
+  if (/android/i.test(ua)) return 'android';
+  return 'otro';
+}
+
+function esSafariIOS(): boolean {
+  const ua = navigator.userAgent || '';
+  return /iphone|ipad|ipod/i.test(ua) && /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
+}
+
+function SeccionDescargarApp() {
+  const [plataforma] = useState(detectarPlataforma);
+  const yaInstalada = typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches;
+
+  if (yaInstalada) {
+    return (
+      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center gap-3">
+        <Smartphone className="w-5 h-5 text-emerald-400 shrink-0" />
+        <p className="text-emerald-300 text-sm font-semibold">Ya tienes la app instalada en este dispositivo.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Download className="w-4 h-4 text-amber-400" />
+        <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Descargar la app en este celular</span>
+      </div>
+
+      {plataforma === 'ios' ? (
+        <div className="space-y-3">
+          {!esSafariIOS() && (
+            <p className="text-amber-400 text-xs bg-amber-500/10 border border-amber-500/25 rounded-lg p-2.5">
+              Abre este enlace en <b>Safari</b> — en iPhone, instalar solo funciona desde Safari (no desde Chrome ni otros navegadores).
+            </p>
+          )}
+          <ol className="space-y-2.5">
+            <li className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+              <p className="text-slate-300 text-sm flex items-center gap-1.5 flex-wrap">
+                Toca el ícono <Share className="w-4 h-4 text-sky-400 inline" /> <b>Compartir</b> en la barra inferior de Safari
+              </p>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+              <p className="text-slate-300 text-sm flex items-center gap-1.5 flex-wrap">
+                Busca y toca <SquarePlus className="w-4 h-4 text-slate-400 inline" /> <b>Agregar a inicio</b> (puede estar más abajo en la lista)
+              </p>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+              <p className="text-slate-300 text-sm">Confirma tocando <b>Agregar</b> — el ícono de CODEC POS aparece en tu pantalla de inicio</p>
+            </li>
+          </ol>
+        </div>
+      ) : plataforma === 'android' ? (
+        <div className="space-y-3">
+          <ol className="space-y-2.5">
+            <li className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+              <p className="text-slate-300 text-sm flex items-center gap-1.5 flex-wrap">
+                Toca <MoreVertical className="w-4 h-4 text-slate-400 inline" /> el menú de tres puntos, arriba a la derecha de Chrome
+              </p>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+              <p className="text-slate-300 text-sm">Toca <b>Instalar aplicación</b> (o "Agregar a pantalla de inicio")</p>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+              <p className="text-slate-300 text-sm">Confirma — el ícono queda en tu pantalla de inicio como una app normal</p>
+            </li>
+          </ol>
+          <p className="text-slate-500 text-xs">A veces Chrome te lo ofrece solo, con un aviso "Instalar app" abajo de la pantalla.</p>
+        </div>
+      ) : (
+        <p className="text-slate-400 text-sm">
+          Abre esta página desde el navegador de tu celular (Safari en iPhone, Chrome en Android) para ver los pasos de instalación.
+        </p>
       )}
     </div>
   );

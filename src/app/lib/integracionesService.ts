@@ -821,6 +821,64 @@ export async function onCierreCaja(cierre: {
   );
 }
 
+// ⚡ Migrados desde webhookService.ts (motor de webhooks separado y
+// solapado — su evento estrella `venta_completada` nunca llegó a dispararse
+// desde ningún lugar del checkout real). Estos cubren los eventos que sí
+// estaban conectados en la práctica, ahora sobre el motor real de
+// notificaciones (Telegram/Slack/WhatsApp/Zapier/n8n/Make/Sheets).
+export async function onProductoVencido(producto: {
+  producto: string; diasParaVencer: number; fechaVencimiento?: string;
+}): Promise<void> {
+  await notificarCanalesActivos(
+    'producto_vencido',
+    '🗓️ Producto por vencer',
+    `Producto: ${producto.producto} | Vence en ${producto.diasParaVencer} día(s)${producto.fechaVencimiento ? ` (${producto.fechaVencimiento})` : ''}`,
+    producto,
+  );
+}
+
+export async function onUsuarioCreado(usuario: { nombre: string; rol: string }): Promise<void> {
+  await notificarCanalesActivos(
+    'usuario_creado',
+    '👤 Usuario Creado',
+    `Nombre: ${usuario.nombre} | Rol: ${usuario.rol}`,
+    usuario,
+  );
+}
+
+export async function onGastoRegistrado(gasto: Record<string, unknown> & {
+  monto: number; categoria?: string; descripcion?: string;
+}): Promise<void> {
+  await notificarCanalesActivos(
+    'gasto_registrado',
+    '💸 Gasto Registrado',
+    `Monto: ${formatCOP(gasto.monto)}${gasto.categoria ? ` | Categoría: ${gasto.categoria}` : ''}${gasto.descripcion ? ` | ${gasto.descripcion}` : ''}`,
+    gasto,
+  );
+}
+
+export async function onIngresoExtraRegistrado(ingreso: Record<string, unknown> & {
+  monto: number; categoria?: string; concepto?: string;
+}): Promise<void> {
+  await notificarCanalesActivos(
+    'ingreso_extra_registrado',
+    '💰 Ingreso Extra Registrado',
+    `Monto: ${formatCOP(ingreso.monto)}${ingreso.categoria ? ` | Categoría: ${ingreso.categoria}` : ''}${ingreso.concepto ? ` | ${ingreso.concepto}` : ''}`,
+    ingreso,
+  );
+}
+
+export async function onDevolucionRegistrada(devolucion: Record<string, unknown> & {
+  monto: number; factura?: string; motivo?: string;
+}): Promise<void> {
+  await notificarCanalesActivos(
+    'devolucion_registrada',
+    '↩️ Devolución Registrada',
+    `Monto: ${formatCOP(devolucion.monto)}${devolucion.factura ? ` | Factura: ${devolucion.factura}` : ''}${devolucion.motivo ? ` | Motivo: ${devolucion.motivo}` : ''}`,
+    devolucion,
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // 19. MAPA DE FUNCIONES DE TEST — para el UI
 // ─────────────────────────────────────────────────────────────

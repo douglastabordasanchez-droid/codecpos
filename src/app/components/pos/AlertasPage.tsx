@@ -6,8 +6,7 @@ import { Card, CardContent } from '../ui/card';
 import { usePOS } from '../../contexts/POSContext';
 import { toast } from 'sonner';
 import { electronStore } from '../../lib/electronStore';
-import { onStockBajo } from '../../lib/integracionesService';
-import { dispararEvento } from '../../lib/webhookService';
+import { onStockBajo, onProductoVencido } from '../../lib/integracionesService';
 
 interface Producto {
   id: string;
@@ -67,7 +66,6 @@ export default function AlertasPage() {
           const criticos = parsed.filter((p: Producto) => p.stock <= (p.minStock || 5) && p.stock <= 3);
           criticos.slice(0, 3).forEach((p: Producto) => {
             onStockBajo({ nombre: p.nombre, stock: p.stock, minimo: p.minStock || 5 }).catch(() => {});
-            dispararEvento('stock_bajo', { producto: p.nombre, stock: p.stock, minimo: p.minStock || 5, timestamp: new Date().toISOString() }).catch(() => {});
           });
           const vencidos = parsed.filter((p: Producto) => {
             const dias = p.fechaVencimiento ? Math.ceil((new Date(p.fechaVencimiento).getTime() - Date.now()) / 86400000) : null;
@@ -75,7 +73,7 @@ export default function AlertasPage() {
           });
           vencidos.slice(0, 3).forEach((p: Producto) => {
             const dias = Math.ceil((new Date(p.fechaVencimiento!).getTime() - Date.now()) / 86400000);
-            dispararEvento('producto_vencido', { producto: p.nombre, diasParaVencer: dias, fechaVencimiento: p.fechaVencimiento, timestamp: new Date().toISOString() }).catch(() => {});
+            onProductoVencido({ producto: p.nombre, diasParaVencer: dias, fechaVencimiento: p.fechaVencimiento }).catch(() => {});
           });
           if (criticos.length > 0 || vencidos.length > 0) sessionStorage.setItem(yaNotificadosKey, '1');
         }

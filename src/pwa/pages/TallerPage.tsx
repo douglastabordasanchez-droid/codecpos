@@ -13,17 +13,19 @@
  * Toda escritura pasa por tallerPwaService, que marca `actualizado_en: 'pwa'`
  * para que Electron sepa qué bajar sin hacer eco de su propio push.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import {
   Wrench, X, Loader2, Search, Phone, Clock, Plus, ChevronRight,
   MessageSquarePlus, CheckCircle2, AlertCircle, DollarSign, Receipt,
-  UserCog, Tag,
+  UserCog, Tag, UserCheck,
 } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { playTallerAlertSound } from '../../app/lib/tallerAlertSound';
 import {
   ESTADOS_ORDEN, PRIORIDADES, TIPOS_DISPOSITIVO,
   type EstadoOrden, type Prioridad, type TipoDispositivo,
@@ -62,6 +64,7 @@ export default function TallerPage() {
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoOrden | 'todas'>('todas');
+  const [soloMias, setSoloMias] = useState(false);
   const [seleccionada, setSeleccionada] = useState<FilaOrdenTaller | null>(null);
   const [creando, setCreando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +72,15 @@ export default function TallerPage() {
   const autor = empleado
     ? { clienteId: empleado.cliente_id, nombre: empleado.nombre_completo }
     : null;
+
+  // Nombre completo normalizado del técnico logueado — es lo único que viaja
+  // hoy en `tecnico_asignado` desde cualquier origen (Electron u otra caja).
+  const miNombre = (empleado?.nombre_completo || '').trim().toLowerCase();
+
+  // Recuerda qué orden estaba asignada a quién en la última pasada, para
+  // avisar SOLO cuando algo cambia (orden nueva o reasignada a mí) — no en
+  // cada recarga. `null` = primera carga, todavía sin línea base.
+  const asignacionConocidaRef = useRef<Map<string, string> | null>(null);
 
   const cargar = useCallback(async () => {
     if (!empleado) return;
@@ -82,9 +94,29 @@ export default function TallerPage() {
       .order('fecha_recepcion', { ascending: false })
       .limit(200);
     if (e) setError(e.message);
-    setOrdenes((data as FilaOrdenTaller[]) || []);
+    const filas = (data as FilaOrdenTaller[]) || [];
+    setOrdenes(filas);
     setCargando(false);
-  }, [empleado?.cliente_id]);
+
+    const conocidas = asignacionConocidaRef.current;
+    const actuales = new Map(filas.map((o) => [o.id, (o.tecnico_asignado || '').trim().toLowerCase()]));
+    if (conocidas && miNombre) {
+      for (const o of filas) {
+        const antes = conocidas.get(o.id);
+        const ahora = actuales.get(o.id) || '';
+        const esNueva = antes === undefined;
+        const meLaAsignaronAhora = ahora === miNombre && antes !== miNombre;
+        if (ahora === miNombre && (esNueva || meLaAsignaronAhora)) {
+          playTallerAlertSound();
+          toast.success(`🔧 ${esNueva ? 'Nueva reparación asignada a ti' : 'Te asignaron una reparación'} — ${o.numero_orden}`, {
+            description: [o.dispositivo_marca, o.dispositivo_modelo].filter(Boolean).join(' ') || undefined,
+            duration: 8000,
+          });
+        }
+      }
+    }
+    asignacionConocidaRef.current = actuales;
+  }, [empleado?.cliente_id, miNombre]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -100,7 +132,12 @@ export default function TallerPage() {
         () => { cargar(); }
       )
       .subscribe();
-    return () => { client.removeChannel(canal); };
+
+    // 🛡️ Red de seguridad: por si el canal realtime se cae sin avisar, igual
+    // que el pull periódico del lado Electron (useSyncModulosNube.ts).
+    const intervalo = window.setInterval(cargar, 30000);
+
+    return () => { client.removeChannel(canal); window.clearInterval(intervalo); };
   }, [empleado?.cliente_id, cargar]);
 
   /** Refleja en la lista y en la hoja abierta la fila que devolvió el servidor. */
@@ -112,12 +149,18 @@ export default function TallerPage() {
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return ordenes.filter((o) => {
+      if (soloMias && miNombre && (o.tecnico_asignado || '').trim().toLowerCase() !== miNombre) return false;
       if (filtroEstado !== 'todas' && o.estado !== filtroEstado) return false;
       if (!q) return true;
       return [o.numero_orden, o.cliente_nombre, o.dispositivo_marca, o.dispositivo_modelo, o.cliente_telefono]
         .some((v) => String(v || '').toLowerCase().includes(q));
     });
-  }, [ordenes, busqueda, filtroEstado]);
+  }, [ordenes, busqueda, filtroEstado, soloMias, miNombre]);
+
+  const misOrdenesCount = useMemo(
+    () => (miNombre ? ordenes.filter((o) => (o.tecnico_asignado || '').trim().toLowerCase() === miNombre).length : 0),
+    [ordenes, miNombre]
+  );
 
   const activas = ordenes.filter((o) => !['entregado', 'cancelado'].includes(o.estado)).length;
   const porCobrar = ordenes.reduce((s, o) => s + (Number(o.saldo_pendiente) || 0), 0);
@@ -176,6 +219,21 @@ export default function TallerPage() {
           />
         </div>
       </div>
+
+      {/* ── Mis órdenes ── */}
+      {miNombre && (
+        <div className="px-5 mb-3">
+          <button
+            onClick={() => setSoloMias((v) => !v)}
+            className={`w-full h-11 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold border transition-all active:scale-[0.99] ${
+              soloMias ? 'bg-cyan-500 border-transparent text-white' : 'bg-slate-900 border-slate-800 text-slate-300'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            {soloMias ? `Viendo solo mis órdenes (${misOrdenesCount})` : `Ver solo mis órdenes (${misOrdenesCount})`}
+          </button>
+        </div>
+      )}
 
       {/* ── Filtro por estado ── */}
       <div className="px-5 mb-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">

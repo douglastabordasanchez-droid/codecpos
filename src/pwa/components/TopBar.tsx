@@ -38,7 +38,7 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
   }, [verifyActivo, empleado?.cliente_id]);
 
   const toggleVerify = () => {
-    const nuevo = alternarCodecVerifyPwa();
+    const nuevo = alternarCodecVerifyPwa(empleado?.id);
     setVerifyActivo(nuevo);
     toast.success(nuevo ? 'Codec Verify activado en este celular' : 'Codec Verify desactivado');
   };

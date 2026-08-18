@@ -28,6 +28,7 @@ import { useMultitienda } from '../../contexts/MultitiendaContext';
 import { productosConStockDeTienda } from '../../lib/multitiendaService';
 import { useAuth } from '../../contexts/AuthContext';
 import { ModuloPOS, esModuloActivoGlobal } from '../../lib/permissions';
+import { desactivarProductoEnNube, desactivarTodosLosProductosEnNube } from '../../lib/syncService';
 
 interface Producto {
   id: string;
@@ -249,11 +250,16 @@ export default function ProductosPage() {
     try {
       setDeletingId(productoId);
       console.log('🗑️ Eliminando producto:', productoId);
-      
+
       const updated = productos.filter(p => p.id !== productoId);
       localStorage.setItem('pos-productos', JSON.stringify(updated));
       setProductos(updated);
-      
+
+      // 🛡️ FIX: esto solo tocaba localStorage — la fila en Supabase se
+      // quedaba `activo:true` para siempre y la PWA (que lee directo de la
+      // nube) seguía mostrando el producto "eliminado". Ver syncService.ts.
+      desactivarProductoEnNube(productoId).catch(() => {});
+
       toast.success('✅ Producto eliminado');
       triggerRefresh();
     } catch (error) {
@@ -270,6 +276,10 @@ export default function ProductosPage() {
       localStorage.removeItem('pos-productos');
       setProductos([]);
       setShowDeleteAllModal(false);
+
+      // 🛡️ Mismo fix que arriba, para el vaciado masivo.
+      desactivarTodosLosProductosEnNube().catch(() => {});
+
       toast.success('✅ Inventario vaciado');
       triggerRefresh();
     } catch (error) {

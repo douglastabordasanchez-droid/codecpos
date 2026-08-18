@@ -11,7 +11,7 @@ const DB_NAME = 'CodecPOS_DB';
 // primero en casi toda la app), IndexedDB la rechaza con VersionError y esa
 // capa de respaldo de usuarios queda muerta sin que nadie se entere. Ahora
 // usuariosStorage.ts importa esta misma constante en vez de tener la suya.
-export const DB_VERSION = 6; // ✅ 'codigo' de productos ya no es índice único (ver onupgradeneeded)
+export const DB_VERSION = 7; // ✅ agrega store CARTERA (ventas a crédito, ver onupgradeneeded)
 
 // Definición de stores
 export const STORES = {
@@ -33,6 +33,7 @@ export const STORES = {
   PROMOCIONES: 'promociones',
   COMBOS: 'combos',
   APARTADOS: 'apartados',
+  CARTERA: 'cartera',
   CODIGOS_GENERADOS: 'codigosGenerados',
   PLANTILLAS_ETIQUETAS: 'plantillasEtiquetas',
   // ✅ Nuevas stores WhatsApp y ML
@@ -76,6 +77,21 @@ export interface Producto {
   recipeId?: string;
   esInsumo?: boolean;
   esVendible?: boolean;
+  // 🎈 Papelería y Piñatería (Fiestas, Dulcería y Juguetería) — ver migración 0035.
+  esPapeleriaPinateria?: boolean;
+  categoriaEspecifica?: string;
+  tematica?: string;
+  calibreGlobo?: string;
+  colorAcabado?: string;
+  marca?: string;
+  esDulceria?: boolean;
+  permitirFraccion?: boolean;
+  componentesCombo?: Array<{ productoId: string; nombre: string; cantidad: number }>;
+  unidadesPorBolsa?: number;
+  ventaPorUnidad?: boolean;
+  lote?: string;
+  /** Hasta 6 fotos — `imagenUrl` sigue siendo la portada (primera foto). */
+  fotosUrls?: string[];
 }
 
 export interface IngredienteInventario {
@@ -160,6 +176,15 @@ export interface Venta {
   /** id de la fila en Supabase facturas_electronicas, una vez creada/sincronizada */
   dianFacturaId?: string;
   dianEstado?: 'draft' | 'pending' | 'signing' | 'sent' | 'accepted' | 'rejected' | 'error' | 'contingency' | 'cancelled';
+
+  // ── Cartera (venta a crédito, ver src/app/lib/carteraService.ts) ──
+  /** id del cliente en la store `clientes` (fidelizacionService), cuando la venta queda ligada a uno */
+  clienteId?: string;
+  /** id de la CuentaCartera creada para esta venta, si metodoPago === 'cartera' */
+  carteraCuentaId?: string;
+  /** saldo que quedó pendiente al momento de la venta (el total ya vendido incluye este saldo) */
+  carteraSaldoPendiente?: number;
+  carteraFechaVencimiento?: string;
 }
 
 export interface SyncQueueItem {
@@ -369,6 +394,15 @@ class IndexedDBManager {
           apartadosStore.createIndex('fecha', 'fecha', { unique: false });
           apartadosStore.createIndex('estado', 'estado', { unique: false });
           console.log('✅ Store APARTADOS creado');
+        }
+
+        // Store de Cartera (ventas a crédito)
+        if (!db.objectStoreNames.contains(STORES.CARTERA)) {
+          const carteraStore = db.createObjectStore(STORES.CARTERA, { keyPath: 'id' });
+          carteraStore.createIndex('clienteId', 'clienteId', { unique: false });
+          carteraStore.createIndex('estado', 'estado', { unique: false });
+          carteraStore.createIndex('fechaVencimiento', 'fechaVencimiento', { unique: false });
+          console.log('✅ Store CARTERA creado');
         }
 
         // Store de Códigos Generados

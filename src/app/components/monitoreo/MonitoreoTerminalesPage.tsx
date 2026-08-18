@@ -134,7 +134,7 @@ function ConnectionTypeBadge({ wifiSsid, dark, transport }: { wifiSsid?: string 
   // Tercera vía: la terminal no está en esta red — llega por el relay de
   // Supabase (otra sede, datos móviles, otro Wi-Fi). Ver cloudRelayService.ts.
   if (transport === 'cloud') return (
-    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${dark ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-50 text-violet-700'}`} title="Conectada por internet (Supabase), fuera de esta red local">
+    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${dark ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-50 text-violet-700'}`} title="Conectada por internet (nuestra base de datos), fuera de esta red local">
       <Cloud className="w-2.5 h-2.5" />
       Nube
     </span>

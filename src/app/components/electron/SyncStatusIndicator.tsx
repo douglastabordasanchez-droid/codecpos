@@ -48,6 +48,8 @@ export function SyncStatusIndicator() {
         return <Check className="w-4 h-4" />;
       case 'error':
         return <AlertCircle className="w-4 h-4" />;
+      case 'unlinked':
+        return <CloudOff className="w-4 h-4" />;
       default:
         return <Wifi className="w-4 h-4" />;
     }
@@ -55,7 +57,7 @@ export function SyncStatusIndicator() {
 
   const getStatusColor = () => {
     if (!isOnline) return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
-    
+
     switch (syncStatus.status) {
       case 'syncing':
         return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
@@ -63,6 +65,8 @@ export function SyncStatusIndicator() {
         return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
       case 'error':
         return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'unlinked':
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
       default:
         return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
@@ -224,6 +228,29 @@ export function SyncStatusIndicator() {
                   <div className="text-xs text-red-200">
                     <p className="font-medium mb-1">Error de Sincronización</p>
                     <p className="text-red-300/80">{syncStatus.message}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Sin vincular — estado normal, no es un error */}
+          <AnimatePresence>
+            {syncStatus.status === 'unlinked' && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/30"
+              >
+                <div className="flex items-start gap-2">
+                  <CloudOff className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-slate-300">
+                    <p className="font-medium mb-1">Esperando conexión con app</p>
+                    <p className="text-slate-400">
+                      Esta caja aún no está vinculada a la app móvil. Si tu negocio tiene ese plan, actívalo en
+                      Configuración → Sincronización con la Nube.
+                    </p>
                   </div>
                 </div>
               </motion.div>

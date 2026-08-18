@@ -1,7 +1,13 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
-import { LogOut, User, Settings, ChevronRight, Crown, Zap, Users, Plus, X, Loader2, ShieldCheck, Check } from 'lucide-react';
+import Cropper, { Area } from 'react-easy-crop';
+import imageCompression from 'browser-image-compression';
+import { toast } from 'sonner';
+import {
+  LogOut, User, Settings, ChevronRight, Crown, Zap, Users, Plus, X, Loader2, ShieldCheck, Check,
+  Pencil, Camera, Cake, Phone as PhoneIcon,
+} from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
@@ -10,6 +16,29 @@ import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
 import logo from '/logo.png';
+
+function createImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener('load', () => resolve(image));
+    image.addEventListener('error', reject);
+    image.src = url;
+  });
+}
+
+async function recortarImagen(imageSrc: string, pixelCrop: Area): Promise<Blob> {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  ctx.drawImage(
+    image,
+    pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height,
+    0, 0, pixelCrop.width, pixelCrop.height
+  );
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.92));
+}
 
 interface EmpleadoFila {
   id: string;
@@ -32,6 +61,7 @@ export default function PerfilPage() {
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
   const { tieneModulo } = useModulosActivos();
 
+  const [editandoPerfil, setEditandoPerfil] = useState(false);
   const [plan, setPlan] = useState<string | null>(null);
   const [equipo, setEquipo] = useState<EmpleadoFila[]>([]);
   const [cargandoEquipo, setCargandoEquipo] = useState(true);
@@ -143,13 +173,42 @@ export default function PerfilPage() {
         transition={{ duration: 0.35 }}
         className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 flex items-center gap-4 mb-4 shadow-sm"
       >
-        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center overflow-hidden shadow-lg shadow-orange-500/20">
-          {empleado ? <User className="w-7 h-7 text-white" /> : <img src={logo} alt="CODEC" className="w-8 h-8 object-contain" />}
+        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center overflow-hidden shrink-0 shadow-lg shadow-orange-500/20">
+          {empleado?.foto_url ? (
+            <img src={empleado.foto_url} alt={empleado.nombre_completo} className="w-full h-full object-cover" />
+          ) : empleado ? (
+            <User className="w-7 h-7 text-white" />
+          ) : (
+            <img src={logo} alt="CODEC" className="w-8 h-8 object-contain" />
+          )}
         </div>
-        <div>
-          <p className="text-white font-bold">{empleado?.nombre_completo}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-white font-bold truncate">{empleado?.nombre_completo}</p>
           <p className="text-slate-400 text-xs capitalize">{empleado?.rol}</p>
+          {(empleado?.telefono || empleado?.fecha_nacimiento) && (
+            <div className="flex items-center gap-3 mt-1">
+              {empleado?.telefono && (
+                <span className="flex items-center gap-1 text-slate-500 text-[11px]">
+                  <PhoneIcon className="w-3 h-3" /> {empleado.telefono}
+                </span>
+              )}
+              {empleado?.fecha_nacimiento && (
+                <span className="flex items-center gap-1 text-slate-500 text-[11px]">
+                  <Cake className="w-3 h-3" /> {new Date(empleado.fecha_nacimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                </span>
+              )}
+            </div>
+          )}
         </div>
+        {empleado && (
+          <button
+            onClick={() => setEditandoPerfil(true)}
+            aria-label="Editar perfil"
+            className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 active:scale-95 transition-transform"
+          >
+            <Pencil className="w-3.5 h-3.5 text-slate-300" />
+          </button>
+        )}
       </motion.div>
 
       {plan && (
@@ -339,6 +398,183 @@ export default function PerfilPage() {
           </div>
         </div>
       )}
+
+      {editandoPerfil && empleado && (
+        <EditarPerfilSheet onCerrar={() => setEditandoPerfil(false)} />
+      )}
+    </div>
+  );
+}
+
+// ── Editar mi perfil ─────────────────────────────────────────────────────────
+
+function EditarPerfilSheet({ onCerrar }: { onCerrar: () => void }) {
+  const { empleado, actualizarEmpleadoLocal } = usePwaAuth();
+
+  const [nombre, setNombre] = useState(empleado?.nombre_completo || '');
+  const [telefono, setTelefono] = useState(empleado?.telefono || '');
+  const [fechaNacimiento, setFechaNacimiento] = useState(empleado?.fecha_nacimiento || '');
+  const [fotoUrl, setFotoUrl] = useState(empleado?.foto_url || '');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [imagenOriginal, setImagenOriginal] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [areaRecorte, setAreaRecorte] = useState<Area | null>(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+
+  const handleSeleccionarFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImagenOriginal(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const confirmarRecorte = async () => {
+    if (!imagenOriginal || !areaRecorte || !empleado) return;
+    setSubiendoFoto(true);
+    try {
+      const blobRecortado = await recortarImagen(imagenOriginal, areaRecorte);
+      const blobComprimido = await imageCompression(blobRecortado as File, {
+        maxSizeMB: 0.3,
+        maxWidthOrHeight: 500,
+        useWebWorker: true,
+        initialQuality: 0.85,
+      });
+
+      const client = getSupabaseClient()!;
+      // Ruta determinística (no aleatoria): cada vez que cambia la foto se
+      // sobreescribe la misma, en vez de acumular archivos huérfanos.
+      const nombreArchivo = `${empleado.cliente_id}/${empleado.id}.jpg`;
+      const { error: uploadError } = await client.storage
+        .from('empleados-fotos')
+        .upload(nombreArchivo, blobComprimido, { contentType: 'image/jpeg', upsert: true });
+
+      if (uploadError) {
+        toast.error('Error subiendo la foto', { description: uploadError.message });
+        return;
+      }
+
+      const { data: pub } = client.storage.from('empleados-fotos').getPublicUrl(nombreArchivo);
+      // Cache-bust: la URL pública es la misma de siempre para esta persona,
+      // así que sin esto el navegador seguiría mostrando la foto vieja.
+      setFotoUrl(`${pub.publicUrl}?t=${Date.now()}`);
+      setImagenOriginal(null);
+      toast.success('Foto lista');
+    } finally {
+      setSubiendoFoto(false);
+    }
+  };
+
+  const guardar = async () => {
+    if (!empleado) return;
+    if (!nombre.trim()) { setError('El nombre no puede quedar vacío'); return; }
+    setGuardando(true);
+    setError(null);
+    const client = getSupabaseClient()!;
+    const cambios = {
+      nombre_completo: nombre.trim(),
+      telefono: telefono.trim() || null,
+      fecha_nacimiento: fechaNacimiento || null,
+      foto_url: fotoUrl || null,
+    };
+    const { error: e } = await client.from('empleados').update(cambios).eq('id', empleado.id);
+    setGuardando(false);
+    if (e) { setError(e.message); return; }
+    actualizarEmpleadoLocal(cambios);
+    toast.success('Perfil actualizado');
+    onCerrar();
+  };
+
+  // ── Recorte de foto en curso: pantalla completa dedicada ──
+  if (imagenOriginal) {
+    return (
+      <div className="fixed inset-0 bg-black z-[60] flex flex-col">
+        <div className="relative flex-1">
+          <Cropper
+            image={imagenOriginal}
+            crop={crop}
+            zoom={zoom}
+            aspect={1}
+            cropShape="round"
+            showGrid={false}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onCropComplete={(_, area) => setAreaRecorte(area)}
+          />
+        </div>
+        <div className="p-5 space-y-3 bg-slate-950 shrink-0">
+          <input
+            type="range" min={1} max={3} step={0.01} value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+            className="w-full"
+          />
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImagenOriginal(null)}
+              className="flex-1 h-12 border-slate-700 text-slate-300 bg-slate-900">
+              Cancelar
+            </Button>
+            <Button onClick={confirmarRecorte} disabled={subiendoFoto}
+              className="flex-1 h-12 bg-gradient-to-r from-amber-500 to-orange-600">
+              {subiendoFoto ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              {subiendoFoto ? 'Subiendo...' : 'Usar foto'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
+      <div className="w-full bg-slate-950 rounded-t-3xl border-t border-slate-800 max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 className="text-white font-bold text-lg">Editar perfil</h2>
+          <button onClick={onCerrar} className="text-slate-400"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="px-5 pb-8 space-y-4">
+          <div className="flex justify-center py-2">
+            <label className="relative cursor-pointer">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center overflow-hidden shadow-lg shadow-orange-500/20">
+                {fotoUrl ? (
+                  <img src={fotoUrl} alt={nombre} className="w-full h-full object-cover" />
+                ) : (
+                  <User className="w-10 h-10 text-white" />
+                )}
+              </div>
+              <div className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-slate-800 border-2 border-slate-950 flex items-center justify-center">
+                <Camera className="w-4 h-4 text-white" />
+              </div>
+              <input type="file" accept="image/*" className="hidden" onChange={handleSeleccionarFoto} />
+            </label>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-slate-400 text-xs">Nombre completo</Label>
+            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} className="h-12 bg-slate-900 border-slate-700 text-white" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-slate-400 text-xs">Teléfono</Label>
+            <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} type="tel" inputMode="tel"
+              placeholder="300 000 0000" className="h-12 bg-slate-900 border-slate-700 text-white" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-slate-400 text-xs">Fecha de cumpleaños</Label>
+            <Input value={fechaNacimiento} onChange={(e) => setFechaNacimiento(e.target.value)} type="date"
+              className="h-12 bg-slate-900 border-slate-700 text-white" />
+          </div>
+
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+
+          <Button onClick={guardar} disabled={guardando} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600">
+            {guardando && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {guardando ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

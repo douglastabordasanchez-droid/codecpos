@@ -7,6 +7,7 @@
  * autenticado, así que basta con tener sesión (ver StaffLoginGate).
  */
 import { getSupabaseClient } from './config';
+import { MenuInferiorConfig, MENU_INFERIOR_DEFAULT, normalizarMenuInferior } from '../menuInferiorCatalogo';
 
 export type PlanCliente = 'BASICO' | 'PREMIUM';
 export type DuracionCliente = '1_MES' | '3_MESES' | '1_ANO' | 'VITALICIA';
@@ -30,6 +31,8 @@ export interface ClienteAdmin {
   enPrueba: boolean;
   diasPruebaRestantes: number;
   modulosActivos: string[] | null;
+  appMovilHabilitada: boolean;
+  menuInferior: MenuInferiorConfig;
 }
 
 interface ClientePosRow {
@@ -48,6 +51,8 @@ interface ClientePosRow {
   en_prueba: boolean | null;
   dias_prueba_restantes: number | null;
   modulos_activos: string[] | null;
+  app_movil_habilitada: boolean | null;
+  menu_inferior: unknown;
 }
 
 interface UsuarioClienteRow {
@@ -77,6 +82,8 @@ function mapCliente(row: ClientePosRow, credencial: UsuarioClienteRow | undefine
     enPrueba: row.en_prueba || false,
     diasPruebaRestantes: row.dias_prueba_restantes || 0,
     modulosActivos: row.modulos_activos,
+    appMovilHabilitada: row.app_movil_habilitada !== false,
+    menuInferior: row.menu_inferior ? normalizarMenuInferior(row.menu_inferior) : MENU_INFERIOR_DEFAULT,
   };
 }
 
@@ -122,7 +129,7 @@ interface DatosClienteForm {
 
 export async function crearClienteAdmin(datos: DatosClienteForm): Promise<ClienteAdmin> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const { data: clienteRow, error: e1 } = await client
     .from('clientes_pos')
@@ -179,7 +186,7 @@ export async function crearClienteAdmin(datos: DatosClienteForm): Promise<Client
 /** Provisiona (o re-sincroniza la contraseña de) el acceso móvil del dueño, usando las credenciales de licencia actuales — útil para clientes creados antes de esta función, o tras cambiar la contraseña. */
 export async function crearAccesoMovilDueno(cliente: ClienteAdmin): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.rpc('provisionar_dueno_pwa', {
     p_cliente_id: cliente.id,
     p_usuario_licencia: cliente.usuario,
@@ -191,7 +198,7 @@ export async function crearAccesoMovilDueno(cliente: ClienteAdmin): Promise<void
 
 export async function actualizarClienteAdmin(id: string, datos: DatosClienteForm): Promise<ClienteAdmin> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const { data: clienteRow, error: e1 } = await client
     .from('clientes_pos')
@@ -258,7 +265,7 @@ export async function actualizarClienteAdmin(id: string, datos: DatosClienteForm
 
 export async function eliminarClienteAdmin(id: string): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   await client.from('usuarios_clientes').delete().eq('cliente_id', id);
   const { error } = await client.from('clientes_pos').delete().eq('id', id);
@@ -279,8 +286,37 @@ export async function obtenerModulosClienteAdmin(clienteId: string): Promise<str
 
 export async function actualizarModulosClienteAdmin(clienteId: string, modulosActivos: string[]): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.from('clientes_pos').update({ modulos_activos: modulosActivos }).eq('id', clienteId);
+  if (error) throw new Error(error.message);
+}
+
+/** Activa/desactiva el acceso a la app móvil (PWA) para este cliente — gate de pago, ver migración 0026. */
+export async function actualizarAppMovilClienteAdmin(clienteId: string, habilitada: boolean): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { error } = await client.from('clientes_pos').update({ app_movil_habilitada: habilitada }).eq('id', clienteId);
+  if (error) throw new Error(error.message);
+}
+
+/** Lee el menú inferior configurado para este cliente (o el default si nunca se ha tocado). */
+export async function obtenerMenuInferiorClienteAdmin(clienteId: string): Promise<MenuInferiorConfig> {
+  const client = getSupabaseClient();
+  if (!client) return MENU_INFERIOR_DEFAULT;
+  const { data } = await client
+    .from('clientes_pos')
+    .select('menu_inferior')
+    .eq('id', clienteId)
+    .maybeSingle();
+  const row = data as { menu_inferior: unknown } | null;
+  return row?.menu_inferior ? normalizarMenuInferior(row.menu_inferior) : MENU_INFERIOR_DEFAULT;
+}
+
+/** Configura el menú inferior de la PWA para este cliente — solo editable desde Panel Desarrollador, ver migración 0027. */
+export async function actualizarMenuInferiorClienteAdmin(clienteId: string, config: MenuInferiorConfig): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { error } = await client.from('clientes_pos').update({ menu_inferior: config }).eq('id', clienteId);
   if (error) throw new Error(error.message);
 }
 
@@ -291,7 +327,7 @@ export async function cambiarEstadoClienteAdmin(
   fechaExpiracion?: string
 ): Promise<void> {
   const client = getSupabaseClient();
-  if (!client) throw new Error('Supabase no configurado');
+  if (!client) throw new Error('nuestra base de datos no está configurada');
 
   const payload: Record<string, unknown> = { estado };
   if (fechaActivacion) payload.fecha_activacion = fechaActivacion;

@@ -1,11 +1,41 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { motion } from 'motion/react';
-import { Lock, Unlock, Loader2, Clock, History } from 'lucide-react';
+import { Lock, Unlock, Loader2, Clock, History, ChevronDown } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+
+interface Desglose {
+  efectivo: number;
+  tarjeta: number;
+  nequi: number;
+  daviplata: number;
+  transferencia: number;
+  rappi: number;
+  mixto: number;
+  otro: number;
+}
+
+const DESGLOSE_VACIO: Desglose = { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0, mixto: 0, otro: 0 };
+
+const METODOS_LABEL: Record<keyof Desglose, string> = {
+  efectivo: 'Efectivo', tarjeta: 'Tarjeta', nequi: 'Nequi', daviplata: 'Daviplata',
+  transferencia: 'Transferencia', rappi: 'Rappi', mixto: 'Mixto', otro: 'Otro',
+};
+
+/** Mismo desglose que ya calcula y guarda Electron (ver syncService.ts → `detalle.desglose`) — así el historial se lee igual en las dos plataformas. */
+function calcularDesglose(ventas: { total: number; metodo_pago: string | null }[]): Desglose {
+  const d = { ...DESGLOSE_VACIO };
+  for (const v of ventas) {
+    const metodo = String(v.metodo_pago || '').toLowerCase();
+    const monto = Number(v.total) || 0;
+    if (metodo in d) d[metodo as keyof Desglose] += monto;
+    else d.otro += monto;
+  }
+  return d;
+}
 
 interface CierreFila {
   id: string;
@@ -15,6 +45,7 @@ interface CierreFila {
   monto_cierre: number;
   ventas_total: number;
   diferencia: number;
+  detalle: { desglose?: Partial<Desglose> } | null;
 }
 
 const TERMINAL_ID = 'PWA';
@@ -34,6 +65,8 @@ export default function CierreCajaPage() {
   const [montoCierre, setMontoCierre] = useState('');
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [desglosePreview, setDesglosePreview] = useState<Desglose | null>(null);
+  const [cierreExpandido, setCierreExpandido] = useState<string | null>(null);
 
   const cargar = async () => {
     if (!empleado) return;
@@ -42,7 +75,7 @@ export default function CierreCajaPage() {
 
     const { data: abierto } = await client
       .from('cierres_caja')
-      .select('id, fecha_apertura, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia')
+      .select('id, fecha_apertura, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia, detalle')
       .eq('cliente_id', empleado.cliente_id)
       .eq('terminal_id', TERMINAL_ID)
       .is('fecha_cierre', null)
@@ -54,7 +87,7 @@ export default function CierreCajaPage() {
     setCargandoHistorial(true);
     const { data: hist } = await client
       .from('cierres_caja')
-      .select('id, fecha_apertura, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia')
+      .select('id, fecha_apertura, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia, detalle')
       .eq('cliente_id', empleado.cliente_id)
       .not('fecha_cierre', 'is', null)
       .order('fecha_cierre', { ascending: false })
@@ -62,6 +95,26 @@ export default function CierreCajaPage() {
     setHistorial((hist as CierreFila[]) || []);
     setCargandoHistorial(false);
   };
+
+  // Vista previa del desglose por método de pago mientras la caja está
+  // abierta — mismo desglose que Electron muestra antes de confirmar el
+  // cierre (ModalCierreCaja.tsx), para que el cajero vea lo mismo.
+  useEffect(() => {
+    if (!empleado || !cierreAbierto) { setDesglosePreview(null); return; }
+    const client = getSupabaseClient();
+    if (!client) return;
+    let cancelado = false;
+    client
+      .from('ventas')
+      .select('total, metodo_pago')
+      .eq('cliente_id', empleado.cliente_id)
+      .eq('estado', 'completada')
+      .gte('created_at', cierreAbierto.fecha_apertura || new Date().toISOString())
+      .then(({ data }) => {
+        if (!cancelado) setDesglosePreview(calcularDesglose((data as any[]) || []));
+      });
+    return () => { cancelado = true; };
+  }, [empleado?.cliente_id, cierreAbierto?.id, cierreAbierto?.fecha_apertura]);
 
   useEffect(() => {
     cargar();
@@ -100,12 +153,14 @@ export default function CierreCajaPage() {
 
     const { data: ventas } = await client
       .from('ventas')
-      .select('total')
+      .select('total, metodo_pago')
       .eq('cliente_id', empleado.cliente_id)
       .eq('estado', 'completada')
       .gte('created_at', cierreAbierto.fecha_apertura || new Date().toISOString());
 
-    const ventasTotal = (ventas || []).reduce((s: number, v: any) => s + Number(v.total), 0);
+    const ventasLista = ventas || [];
+    const ventasTotal = ventasLista.reduce((s: number, v: any) => s + Number(v.total), 0);
+    const desglose = calcularDesglose(ventasLista as any[]);
     const montoContado = Number(montoCierre) || 0;
     const esperado = cierreAbierto.monto_apertura + ventasTotal;
     const diferencia = montoContado - esperado;
@@ -117,6 +172,8 @@ export default function CierreCajaPage() {
         monto_cierre: montoContado,
         ventas_total: ventasTotal,
         diferencia,
+        // Mismo shape que usa Electron (detalle.desglose) — ver syncService.ts.
+        detalle: { desglose },
       })
       .eq('id', cierreAbierto.id);
 
@@ -187,6 +244,26 @@ export default function CierreCajaPage() {
               Desde {cierreAbierto.fecha_apertura ? new Date(cierreAbierto.fecha_apertura).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
             </div>
             <p className="text-slate-400 text-sm">Base de apertura: <span className="text-white font-bold">${cierreAbierto.monto_apertura.toLocaleString('es-CO')}</span></p>
+
+            {desglosePreview && (
+              <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3">
+                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wide mb-2">Ventas por método de pago</p>
+                <div className="space-y-1">
+                  {(Object.keys(DESGLOSE_VACIO) as (keyof Desglose)[])
+                    .filter((m) => desglosePreview[m] > 0)
+                    .map((m) => (
+                      <div key={m} className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">{METODOS_LABEL[m]}</span>
+                        <span className="text-white font-bold">${desglosePreview[m].toLocaleString('es-CO')}</span>
+                      </div>
+                    ))}
+                  {Object.values(desglosePreview).every((v) => v === 0) && (
+                    <p className="text-slate-600 text-xs">Sin ventas todavía en este turno.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label className="text-slate-400 text-xs">Monto contado al cerrar</Label>
               <Input
@@ -215,28 +292,57 @@ export default function CierreCajaPage() {
           {!cargandoHistorial && historial.length === 0 && (
             <p className="text-slate-500 text-sm text-center py-4">Sin cierres registrados</p>
           )}
-          {historial.map((c, i) => (
-            <motion.div
-              key={c.id}
-              custom={i}
-              initial="hidden"
-              animate="show"
-              variants={fadeUp}
-              className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-white font-semibold text-sm">
-                  {c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                </p>
-                <span className={`text-xs font-bold ${Math.abs(c.diferencia) < 1 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {c.diferencia >= 0 ? '+' : ''}{c.diferencia.toLocaleString('es-CO')}
-                </span>
-              </div>
-              <p className="text-slate-500 text-xs">
-                Ventas: ${c.ventas_total.toLocaleString('es-CO')} · Contado: ${c.monto_cierre.toLocaleString('es-CO')}
-              </p>
-            </motion.div>
-          ))}
+          {historial.map((c, i) => {
+            const desglose = c.detalle?.desglose;
+            const tieneDesglose = desglose && Object.values(desglose).some((v) => Number(v) > 0);
+            const expandido = cierreExpandido === c.id;
+            return (
+              <motion.div
+                key={c.id}
+                custom={i}
+                initial="hidden"
+                animate="show"
+                variants={fadeUp}
+                className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => tieneDesglose && setCierreExpandido(expandido ? null : c.id)}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-white font-semibold text-sm">
+                      {c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                    </p>
+                    <span className={`text-xs font-bold ${Math.abs(c.diferencia) < 1 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {c.diferencia >= 0 ? '+' : ''}{c.diferencia.toLocaleString('es-CO')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-slate-500 text-xs">
+                      Ventas: ${c.ventas_total.toLocaleString('es-CO')} · Contado: ${c.monto_cierre.toLocaleString('es-CO')}
+                    </p>
+                    {tieneDesglose && (
+                      <ChevronDown className={`w-3.5 h-3.5 text-slate-600 shrink-0 transition-transform ${expandido ? 'rotate-180' : ''}`} />
+                    )}
+                  </div>
+                </button>
+
+                {expandido && desglose && (
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-800 space-y-1">
+                    {(Object.keys(DESGLOSE_VACIO) as (keyof Desglose)[])
+                      .filter((m) => Number(desglose[m]) > 0)
+                      .map((m) => (
+                        <div key={m} className="flex items-center justify-between text-xs">
+                          <span className="text-slate-400">{METODOS_LABEL[m]}</span>
+                          <span className="text-white font-semibold">${Number(desglose[m]).toLocaleString('es-CO')}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
         </div>
       </div>
     </div>

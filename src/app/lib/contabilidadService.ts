@@ -11,8 +11,15 @@
  * clave, ya que no existía antes en el sistema.
  */
 
-import { dispararEvento } from './webhookService';
+import { onIngresoExtraRegistrado, onGastoRegistrado } from './integracionesService';
 import { cajaDiariaService } from './cajaDiariaService';
+
+/** ☁️ Espeja el ingreso extra en la nube para que la PWA lo pueda ver — best-effort. */
+function publicarIngresoEnLaNube(ingreso: IngresoExtra): void {
+  import('./supabase/fidelizacionContabilidadSyncService')
+    .then(({ publicarIngresosExtra }) => publicarIngresosExtra([ingreso]))
+    .catch(() => {});
+}
 
 // ── Log de auditoría (protección contra fraude en ediciones/eliminaciones) ──
 // Se escribe en el archivo físico C:/CodecStudio/CODECPOS/logs/ a través del
@@ -252,6 +259,7 @@ export function guardarIngresoExtra(datos: Omit<IngresoExtra, 'id' | 'fecha'> & 
   else ingresos.unshift(ingreso);
 
   guardarIngresos(ingresos);
+  publicarIngresoEnLaNube(ingreso);
 
   if (anterior && anterior.monto !== ingreso.monto) {
     registrarAuditoria(
@@ -265,7 +273,7 @@ export function guardarIngresoExtra(datos: Omit<IngresoExtra, 'id' | 'fecha'> & 
     );
   }
 
-  dispararEvento('ingreso_extra_registrado', {
+  onIngresoExtraRegistrado({
     monto: ingreso.monto,
     categoria: ingreso.categoria,
     concepto: ingreso.concepto,
@@ -357,7 +365,7 @@ export function crearGasto(
 
   guardarGastosStorage([gasto, ...leerGastos()]);
 
-  dispararEvento('gasto_registrado', {
+  onGastoRegistrado({
     monto: gasto.monto,
     categoria: gasto.categoria,
     categoriaConcepto: gasto.categoriaConcepto,

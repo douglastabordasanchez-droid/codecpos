@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld('electron', {
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
 
   /**
+   * Versiones de runtime (Electron/Chrome/Node) -- pantalla "Acerca del
+   * sistema" del panel técnico, Fase 4 punto 20.
+   */
+  getRuntimeVersions: () => ipcRenderer.invoke('system:get-runtime-versions'),
+
+  /**
    * Guardar backup en disco (ruta antigua, Documents/CODEC_POS_Backups)
    */
   saveBackup: (data) => ipcRenderer.invoke('save-backup', data),
@@ -62,6 +68,18 @@ contextBridge.exposeInMainWorld('electron', {
    * Cuadro de diálogo nativo
    */
   showMessageBox: (opts) => ipcRenderer.invoke('show-message-box', opts),
+
+  /**
+   * Voz embebida (Piper TTS, es_AR-daniela-high). true si el motor y el
+   * modelo están presentes en este build.
+   */
+  vozEmbebidaDisponible: () => ipcRenderer.invoke('voz:disponible'),
+
+  /**
+   * Sintetiza `texto` con la voz embebida. Devuelve el audio WAV en base64,
+   * o null si el motor no está disponible o falló la síntesis.
+   */
+  sintetizarVoz: (texto) => ipcRenderer.invoke('voz:sintetizar', texto),
 
   /**
    * Control de pantalla completa

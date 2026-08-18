@@ -43,6 +43,8 @@ import {
 } from '../../hooks/usePeripherals';
 import { SyncStatusIndicator } from '../electron/SyncStatusIndicator';
 import { PagoMixtoModal } from './PagoMixtoModal';
+import { ModalVentaCartera, type DatosVentaCartera } from './ModalVentaCartera';
+import { crearCuentaCartera } from '../../lib/carteraService';
 import { electronStore, PagoMixtoDetalle } from '../../lib/electronStore';
 import { logger } from '../../lib/logger';
 import { useAuth } from '../../contexts/AuthContext';
@@ -51,7 +53,7 @@ import { NotificacionesAntiFraude } from '../notifications/NotificacionesAntiFra
 import { MultiFacturasInline } from './MultiFacturasInline';
 import ProductoNuevoAutoModal from './ProductoNuevoAutoModal';
 import { onVentaCompletada } from '../../lib/integracionesService';
-import { NequiVerifyModal } from '../codecVerify/NequiVerifyModal';
+import { NequiVerifyModal, type EntidadPago } from '../codecVerify/NequiVerifyModal';
 import { cajaDiariaService } from '../../lib/cajaDiariaService';
 import { openCashDrawer } from '../../lib/thermalPrinter';
 import { ModuloPOS, esModuloActivoGlobal } from '../../lib/permissions';
@@ -208,8 +210,14 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [pagoMixtoDetalles, setPagoMixtoDetalles] = useState<PagoMixtoDetalle[]>([]);
   const [pagoMixtoTotal, setPagoMixtoTotal] = useState(0);
   const [showPagoMixtoModal, setShowPagoMixtoModal] = useState(false);
-  const [metodoPagoSimple, setMetodoPagoSimple] = useState<'tarjeta' | 'transferencia' | 'nequi' | 'daviplata' | 'rappi' | null>(null);
-  const [showNequiVerifyModal, setShowNequiVerifyModal] = useState(false);
+  const [showVentaCarteraModal, setShowVentaCarteraModal] = useState(false);
+  const [metodoPagoSimple, setMetodoPagoSimple] = useState<'tarjeta' | 'rappi' | null>(null);
+  // Modal de verificación de pago (Nequi/Daviplata/Transferencia) — cuando
+  // Codec Verify está activo, espera la confirmación real del pago antes de
+  // habilitar "Confirmar Pago"; cuando está inactivo, se comporta como un
+  // modal de confirmación normal (ver NequiVerifyModal.tsx).
+  const [showVerificacionPagoModal, setShowVerificacionPagoModal] = useState(false);
+  const [entidadVerificacion, setEntidadVerificacion] = useState<EntidadPago>('nequi');
   const [tiempoInicioSesion] = useState<number>(Date.now()); // Contador de tiempo de conexión
   const [showProductoNuevoModal, setShowProductoNuevoModal] = useState(false);
   const [codigoNoEncontrado, setCodigoNoEncontrado] = useState<string>('');
@@ -302,6 +310,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     { id: 'rappi',         label: 'Rappi',          enabled: true,  color: '#ff6b35', tipo: 'rappi' },
     { id: 'bonos',         label: 'Bonos',          enabled: false, color: '#10b981', tipo: 'bonos' },
     { id: 'fidelizacion',  label: 'Puntos/Fidelidad', enabled: true, color: '#8b5cf6', tipo: 'fidelizacion' },
+    { id: 'cartera',       label: 'Cartera',        enabled: true,  color: '#f97316', tipo: 'cartera' },
   ];
   // Solo `enabled`, `label` y `color` son personalizables desde el panel de
   // configuración (ver más abajo, `showPagoConfig`) — `tipo`/`id` son cableado
@@ -556,12 +565,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       console.error('Error cargando configuración de empresa:', error);
     }
     
-    // 🔐 Iniciar sistema de escucha anti-fraude
-    antiFraudeService.iniciarEscucha();
-    
+    // ⚡ NOTA: se removió el polling de antiFraudeService.iniciarEscucha() —
+    // hacía fetch cada 5s a http://localhost:3001/confirmaciones-pendientes,
+    // un servidor que nunca existió en el proyecto (nadie lo implementó),
+    // así que era ruido de red constante en la pantalla de venta sin ningún
+    // efecto real (confirmarTransaccion() solo se llamaba desde ahí). La
+    // confirmación de pago real hoy corre por Codec Verify (Supabase
+    // Realtime, ver CodecVerifyListener).
+
     return () => {
-      // Detener escucha al desmontar componente
-      antiFraudeService.detenerEscucha();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };
@@ -650,18 +662,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const loadProductos = async () => {
     try {
       setLoading(true);
-      
-      try {
-        const response = await fetch('http://localhost:3001/productos');
-        if (response.ok) {
-          const data = await response.json();
-          setProductos(data);
-          return;
-        }
-      } catch (error) {
-        console.log('Servidor no disponible, cargando productos locales');
-      }
-      
+
+      // ⚡ Antes intentaba primero un fetch a http://localhost:3001/productos
+      // (un servidor que nunca existió en el proyecto) y solo caía a
+      // localStorage cuando fallaba — es decir, siempre esperaba un fetch
+      // condenado a fallar antes de cargar el catálogo real. Se quitó: se
+      // lee directo de localStorage.
       const productosLocal = localStorage.getItem('pos-productos');
       if (productosLocal) {
         let productosParsed: any[] = [];
@@ -1617,7 +1623,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 total,
               }).catch(() => {});
             } else {
-              console.warn('[DIAN] Negocio no vinculado a la nube — no se puede emitir factura DIAN directa (necesita cliente_id de Supabase).');
+              console.warn('[DIAN] Negocio no vinculado a la nube — no se puede emitir factura DIAN directa (necesita cliente_id de nuestra base de datos).');
             }
           }
 
@@ -1628,14 +1634,6 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             productos: carrito.reduce((s, i) => s + i.cantidad, 0),
             cajero: usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero',
           }).catch(() => {});
-
-          try {
-            await fetch('http://localhost:3001/ventas', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(venta),
-            });
-          } catch { /* servidor externo no disponible */ }
 
           // 🔐 SISTEMA ANTI-FRAUDE
           if (metodoPago === 'nequi' || metodoPago === 'daviplata' || metodoPago === 'transferencia') {
@@ -1901,14 +1899,6 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             });
           }
 
-          try {
-            await fetch('http://localhost:3001/ventas', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(venta),
-            });
-          } catch { /* servidor externo no disponible */ }
-
           // 🔐 SISTEMA ANTI-FRAUDE
           for (const detalle of detalles) {
             if (detalle.metodo === 'nequi' || detalle.metodo === 'daviplata' || detalle.metodo === 'transferencia') {
@@ -1936,6 +1926,231 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       toast.error('No se pudo procesar el pago mixto. Intenta de nuevo; si el problema persiste, contacta a soporte.');
       logger.critical(
         'Error inesperado (no manejado previamente) en handlePagoMixto()',
+        error as Error,
+        { usuario: usuarioActual?.nombreCompleto || usuarioActual?.username }
+      );
+    } finally {
+      procesandoPagoRef.current = false;
+      setProcesandoPago(false);
+    }
+  };
+
+  // Venta a Cartera (crédito a cliente) — mismo patrón que handlePagoMixto:
+  // función propia en vez de reusar procesarVenta(), porque necesita datos
+  // extra (cliente, abono inicial, días de crédito) que no aplican a los
+  // demás métodos de pago.
+  const handleVentaCartera = async (datosCartera: DatosVentaCartera) => {
+    if (procesandoPagoRef.current) return;
+    procesandoPagoRef.current = true;
+    setProcesandoPago(true);
+
+    if (carrito.length === 0) {
+      toast.error('El carrito está vacío');
+      procesandoPagoRef.current = false;
+      setProcesandoPago(false);
+      return;
+    }
+
+    try {
+      const total = calcularTotal();
+      const fechaOperativa = getFechaLocalISO();
+      const sesionCajaActiva = cajaDiariaService.getSesionActiva(usuarioActual?.id, fechaOperativa);
+      const esAdmin = usuarioActual?.rol === 'super_usuario';
+      let config: any = {};
+      try { config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}'); } catch { config = {}; }
+      const ultimaFacturaLS = parseInt(localStorage.getItem('pos-ultima-factura') || '0') || 0;
+      let ultimoNumeroDB = 0;
+      try { ultimoNumeroDB = await electronStore.getUltimoNumeroVenta(); } catch { /* usar solo localStorage si falla */ }
+      const numeroFactura = Math.max(ultimaFacturaLS, ultimoNumeroDB) + 1;
+      const prefijoFactura = config.prefijoFactura || 'FAC';
+      const numeroFacturaCompleto = `${prefijoFactura}${numeroFactura.toString().padStart(6, '0')}`;
+
+      if (!sesionCajaActiva) {
+        if (esAdmin) {
+          toast.info('Venta a Cartera procesada en modo Administrador (Sin apertura de caja activa).');
+        } else if (!skipCajaCheckRef.current) {
+          continuarSinCajaRef.current = () => { skipCajaCheckRef.current = true; handleVentaCartera(datosCartera); };
+          setShowSinCajaModal(true);
+          return;
+        }
+      }
+      skipCajaCheckRef.current = false;
+
+      const subtotal = calcularSubtotal();
+      const iva = calcularIVA();
+      const configIVA = obtenerConfigIVA();
+
+      const itemsVenta = carrito.map(item => ({
+        ...(function() {
+          const extraMods = (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.precioVenta) || 0), 0);
+          const cantidadVenta = item.producto.pesable ? (item.peso || 0) : item.cantidad;
+          const precioFinal = (Number(item.producto.precio) || 0) + extraMods;
+          return {
+            id: item.producto.id,
+            codigo: item.producto.codigo,
+            nombre: item.producto.nombre,
+            cantidad: cantidadVenta,
+            precio: item.producto.precio,
+            precioVenta: precioFinal,
+            precioCompra: item.producto.costo || 0,
+            subtotal: precioFinal * cantidadVenta,
+            categoria: item.producto.categoria,
+            costo: (item.producto.costo || 0) + (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.costo) || 0), 0),
+            productoTipo: item.producto.tipoInventario || 'directo',
+            recipeId: item.producto.recipeId,
+            comboComponents: item.producto.comboComponents,
+            modifiers: (item.modifiersSeleccionados || []).map(mod => ({
+              modifierOptionId: mod.modifierOptionId,
+              nombre: mod.nombre,
+              cantidad: 1,
+              precioVenta: Number(mod.precioVenta || 0),
+              costo: Number(mod.costo || 0),
+              ingredientId: mod.ingredientId,
+              consumoInventario: Number(mod.consumoInventario || 0),
+              unidadInventario: mod.unidadInventario,
+            })),
+          };
+        })(),
+      }));
+
+      try {
+        const validacionInventario = await electronStore.validarDisponibilidadVenta(itemsVenta as any);
+        if (!validacionInventario.ok && validacionInventario.faltantes.length > 0) {
+          const faltante = validacionInventario.faltantes[0];
+          toast.warning(`Stock bajo: ${faltante.nombre} (disponible: ${faltante.disponible} ${faltante.unidad || ''})`, {
+            description: 'La venta se registrará igualmente.',
+          });
+        }
+      } catch { /* validación no crítica — continuar */ }
+
+      try { localStorage.setItem('pos-ultima-factura', numeroFactura.toString()); } catch { /* storage lleno */ }
+
+      const fechaVencimientoCartera = new Date();
+      fechaVencimientoCartera.setDate(fechaVencimientoCartera.getDate() + datosCartera.diasCredito);
+      const carteraCuentaId = `CART-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const saldoPendiente = Math.max(0, total - datosCartera.montoAbonoInicial);
+
+      toast.success('¡Venta a Cartera registrada!', {
+        description: `Factura ${numeroFacturaCompleto} - Saldo pendiente: $${saldoPendiente.toLocaleString('es-CO')}`,
+      });
+
+      const ventaParaTicket = {
+        numeroFactura: numeroFacturaCompleto,
+        items: itemsVenta,
+        subtotal: configIVA.ivaHabilitado ? subtotal : undefined,
+        iva: configIVA.ivaHabilitado ? iva : undefined,
+        porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : undefined,
+        total,
+        metodoPago: 'cartera' as any,
+        fecha: new Date().toISOString(),
+        cliente: datosCartera.clienteNombre,
+        cajero: usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero',
+        mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
+        referencia_mesa: referenciaMesaTransfer ?? undefined,
+      };
+
+      try { setVentaActual(ventaParaTicket); setMostrarTicket(true); } catch { /* UI no crítica */ }
+      setShowVentaCarteraModal(false);
+      setCarrito([]);
+      try { guardarCarritoMesa(mesaActivaId, []); } catch { /* mesa no crítica */ }
+      setEfectivoRecibido('');
+      try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
+      try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
+      setMostrarPago(false);
+
+      // 💾 PERSISTENCIA CRÍTICA — ver comentario equivalente en procesarVenta().
+      if (usuarioActual) {
+        try {
+          await electronStore.registrarVenta({
+            id: numeroFacturaCompleto,
+            numero: numeroFactura,
+            numeroFactura: numeroFacturaCompleto,
+            fecha: new Date().toISOString(),
+            fechaOperativa,
+            sesionCajaId: sesionCajaActiva?.id,
+            items: itemsVenta,
+            subtotal: configIVA.ivaHabilitado ? subtotal : total,
+            iva: configIVA.ivaHabilitado ? iva : 0,
+            porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
+            descuento: 0,
+            total,
+            metodoPago: 'cartera',
+            cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
+            cajeroId: usuarioActual.id || 'user-1',
+            sincronizado: false,
+            puntoVentaId: 'POS-001',
+            createdAt: Date.now(),
+            syncStatus: 'pending',
+            cliente: datosCartera.clienteNombre,
+            clienteId: datosCartera.clienteId,
+            carteraCuentaId,
+            carteraSaldoPendiente: saldoPendiente,
+            carteraFechaVencimiento: fechaVencimientoCartera.toISOString(),
+            mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
+            referencia_mesa: referenciaMesaTransfer ?? undefined,
+          });
+
+          // La cuenta de cartera es lo que hace cobrable el saldo — si esto
+          // falla, la venta ya quedó guardada pero SIN forma de cobrarla
+          // después, así que se marca como crítico igual que un fallo de
+          // persistencia de la venta misma.
+          try {
+            await crearCuentaCartera({
+              id: carteraCuentaId,
+              ventaId: numeroFacturaCompleto,
+              numeroFactura: numeroFacturaCompleto,
+              clienteId: datosCartera.clienteId,
+              clienteNombre: datosCartera.clienteNombre,
+              clienteTelefono: datosCartera.clienteTelefono,
+              clienteDocumento: datosCartera.clienteDocumento,
+              total,
+              abonoInicial: datosCartera.montoAbonoInicial,
+              metodoAbonoInicial: datosCartera.metodoAbonoInicial,
+              diasCredito: datosCartera.diasCredito,
+              sesionCajaId: sesionCajaActiva?.id,
+              usuarioCreador: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
+            });
+          } catch (carteraError) {
+            logger.critical(
+              `Venta ${numeroFacturaCompleto} se guardó pero la cuenta de Cartera no se pudo crear`,
+              carteraError as Error,
+              { numeroFactura: numeroFacturaCompleto, cliente: datosCartera.clienteNombre, total, saldoPendiente }
+            );
+            toast.error('La venta se guardó pero hubo un error creando la cuenta de cartera — repórtalo a soporte.');
+          }
+        } catch (persistError) {
+          logger.critical(
+            `Venta a Cartera ${numeroFacturaCompleto} no se pudo persistir en la base de datos`,
+            persistError as Error,
+            { numeroFactura: numeroFacturaCompleto, total, metodoPago: 'cartera', cajero: usuarioActual.nombreCompleto || usuarioActual.username }
+          );
+        }
+      }
+
+      // 🚀 TAREAS EN SEGUNDO PLANO — ver comentario equivalente en procesarVenta().
+      (async () => {
+        try {
+          if (usuarioActual) {
+            try { await electronStore.calcularEstadisticasDelDia(); } catch { /* estadísticas no críticas */ }
+            emitLanEvent('VENTA_NUEVA', {
+              total,
+              metodoPago: 'cartera',
+              cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
+              items: carrito.length,
+              numeroFactura: numeroFacturaCompleto,
+            });
+          }
+          try { await loadProductos(); } catch { /* refresco no crítico */ }
+          try { triggerRefresh(); } catch { /* refresh no crítico */ }
+        } catch (bgError) {
+          console.error('Error en tareas en segundo plano de handleVentaCartera:', bgError);
+        }
+      })();
+    } catch (error) {
+      console.error('Error inesperado en handleVentaCartera:', error);
+      toast.error('No se pudo procesar la venta a cartera. Intenta de nuevo; si el problema persiste, contacta a soporte.');
+      logger.critical(
+        'Error inesperado (no manejado previamente) en handleVentaCartera()',
         error as Error,
         { usuario: usuarioActual?.nombreCompleto || usuarioActual?.username }
       );
@@ -2195,18 +2410,40 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                                       <Minus className="w-3 h-3" />
                                     </Button>
                                     
-                                    <span className={`w-10 text-center font-bold ${
-                                      darkMode ? 'text-white' : 'text-gray-900'
-                                    }`}>
-                                      {item.cantidad}
-                                    </span>
-                                    
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      value={item.cantidad}
+                                      onChange={(e) => {
+                                        const soloDigitos = e.target.value.replace(/[^0-9]/g, '');
+                                        const valor = soloDigitos === '' ? 0 : parseInt(soloDigitos, 10);
+                                        setCarrito(carrito.map((c, i) =>
+                                          i === index ? { ...c, cantidad: valor } : c
+                                        ));
+                                      }}
+                                      onBlur={() => {
+                                        const maxima = item.producto.stock;
+                                        const corregida = Math.max(1, Math.min(item.cantidad, maxima));
+                                        if (item.cantidad > maxima) toast.error('Stock insuficiente');
+                                        if (corregida !== item.cantidad) {
+                                          setCarrito(carrito.map((c, i) =>
+                                            i === index ? { ...c, cantidad: corregida } : c
+                                          ));
+                                        }
+                                      }}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                      onFocus={(e) => e.target.select()}
+                                      className={`w-14 text-center font-bold bg-transparent border rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                                        darkMode ? 'text-white border-slate-600' : 'text-gray-900 border-gray-300'
+                                      }`}
+                                    />
+
                                     <Button
                                       size="sm"
                                       variant="outline"
                                       onClick={() => {
                                         if (item.cantidad < item.producto.stock) {
-                                          setCarrito(carrito.map((c, i) => 
+                                          setCarrito(carrito.map((c, i) =>
                                             i === index ? { ...c, cantidad: c.cantidad + 1 } : c
                                           ));
                                         } else {
@@ -3010,7 +3247,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </button>
                   );
                   if (m.id === 'transferencia') return (
-                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setMetodoPagoSimple('transferencia'); }} className={cls}>
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setEntidadVerificacion('transferencia'); setShowVerificacionPagoModal(true); }} className={cls}>
                       <Wallet className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );
@@ -3020,12 +3257,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </button>
                   );
                   if (m.id === 'nequi') return (
-                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setShowNequiVerifyModal(true); }} className={cls}>
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setEntidadVerificacion('nequi'); setShowVerificacionPagoModal(true); }} className={cls}>
                       <DollarSign className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );
                   if (m.id === 'daviplata') return (
-                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setMetodoPagoSimple('daviplata'); }} className={cls}>
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setEntidadVerificacion('daviplata'); setShowVerificacionPagoModal(true); }} className={cls}>
                       <DollarSign className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );
@@ -3052,6 +3289,14 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       }
                       setShowPagoModal(false);
                       procesarVenta('fidelizacion');
+                    }} className={`${cls} disabled:opacity-40`}>
+                      <Wallet className="w-7 h-7 mb-1" />{m.label}
+                    </button>
+                  );
+                  if (m.id === 'cartera') return (
+                    <button key={m.id} style={style} disabled={procesandoPago} onClick={() => {
+                      setShowPagoModal(false);
+                      setShowVentaCarteraModal(true);
                     }} className={`${cls} disabled:opacity-40`}>
                       <Wallet className="w-7 h-7 mb-1" />{m.label}
                     </button>
@@ -3210,29 +3455,6 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </h3>
                   </>
                 )}
-                {metodoPagoSimple === 'transferencia' && (
-                  <>
-                    <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Wallet className="w-10 h-10 text-white" />
-                    </div>
-                    <h3 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                      Confirmar Transferencia
-                    </h3>
-                  </>
-                )}
-
-                {metodoPagoSimple === 'daviplata' && (
-                  <>
-                    <div className="w-20 h-20 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z" />
-                      </svg>
-                    </div>
-                    <h3 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                      Confirmar Pago con Daviplata
-                    </h3>
-                  </>
-                )}
                 {metodoPagoSimple === 'rappi' && (
                   <>
                     <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -3286,17 +3508,18 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         )}
       </AnimatePresence>
 
-      {/* Modal Nequi con CODEC Verify */}
+      {/* Modal de verificación de pago (Nequi/Daviplata/Transferencia) con CODEC Verify */}
       <NequiVerifyModal
-        visible={showNequiVerifyModal}
+        visible={showVerificacionPagoModal}
+        entidad={entidadVerificacion}
         monto={calcularTotal()}
         darkMode={darkMode}
         cajeroNombre={usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero'}
         numeroFactura={facturaId}
-        onCancelar={() => { setShowNequiVerifyModal(false); setShowPagoModal(true); }}
+        onCancelar={() => { setShowVerificacionPagoModal(false); setShowPagoModal(true); }}
         onConfirmar={() => {
-          setShowNequiVerifyModal(false);
-          procesarVenta('nequi');
+          setShowVerificacionPagoModal(false);
+          procesarVenta(entidadVerificacion);
           setShowPagoModal(false);
         }}
       />
@@ -3322,6 +3545,20 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           handlePagoMixto(detallesArray);
           setShowPagoMixtoModal(false);
         }}
+      />
+
+      {/* Modal de Venta a Cartera (crédito a cliente) */}
+      <ModalVentaCartera
+        isOpen={showVentaCarteraModal}
+        onClose={() => setShowVentaCarteraModal(false)}
+        totalVenta={calcularTotal()}
+        diasCreditoDefault={(() => {
+          try {
+            const cfg = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+            return Number(cfg.carteraDiasCredito) || 30;
+          } catch { return 30; }
+        })()}
+        onConfirm={(datos) => { handleVentaCartera(datos); }}
       />
 
       {/* Sistema de Notificaciones Anti-Fraude */}

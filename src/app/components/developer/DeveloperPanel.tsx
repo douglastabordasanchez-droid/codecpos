@@ -3,14 +3,10 @@
  * Acceso exclusivo para gestión de licencias y clientes
  * Solo accesible con credenciales de desarrollador
  *
- * MATRIZ DE PRECIOS INTERNA (NO VISIBLE EN UI):
- * ┌─────────┬──────────┬─────────────┬──────────┬────────────┐
- * │ Plan    │ 1 Mes    │ 3 Meses     │ 1 Año    │ Vitalicio  │
- * ├─────────┼──────────┼─────────────┼──────────┼────────────┤
- * │ BÁSICO  │ $70.000  │ $180.000    │ $450.000 │ $1.950.000 │
- * │ PREMIUM │ $90.000  │ $240.000    │ $850.000 │ $3.200.000 │
- * └─────────┴──────────┴─────────────┴──────────┴────────────┘
- * Mantenimiento: $60.000
+ * Los precios YA NO viven aquí ni en ningún otro archivo -- la fuente
+ * central es el motor comercial (Supabase: tablas `planes`/`precios`/
+ * `promociones_comerciales`, función `precio_modalidad()`). Ver
+ * supabase/migrations/0047_motor_comercial_planes_precios_licencias.sql.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -40,6 +36,7 @@ import {
   TrendingUp,
   ChevronDown,
   ShieldCheck,
+  Smartphone,
   Store,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
@@ -65,6 +62,7 @@ import {
   eliminarClienteAdmin,
   cambiarEstadoClienteAdmin,
   actualizarModulosClienteAdmin,
+  actualizarAppMovilClienteAdmin,
   ClienteAdmin,
 } from '../../lib/supabase/clientesAdminService';
 
@@ -323,6 +321,22 @@ export function DeveloperPanel() {
       }
     } catch (error) {
       toast.error('No se pudo cambiar el estado', { description: error instanceof Error ? error.message : undefined });
+    }
+  };
+
+  // 📱 Gate de pago de la app móvil (PWA) — independiente de suspender la
+  // licencia completa: un cliente puede seguir usando Electron con
+  // normalidad y aun así no tener la app activada hasta que pague por ella.
+  const toggleAppMovil = async (id: string) => {
+    const c = clientes.find(x => x.id === id);
+    if (!c) return;
+    const nuevoValor = !c.appMovilHabilitada;
+    try {
+      await actualizarAppMovilClienteAdmin(id, nuevoValor);
+      setClientes(prev => prev.map(x => x.id === id ? { ...x, appMovilHabilitada: nuevoValor } : x));
+      toast.success(nuevoValor ? 'App móvil activada para este cliente' : 'App móvil desactivada para este cliente');
+    } catch (error) {
+      toast.error('No se pudo cambiar el acceso a la app móvil', { description: error instanceof Error ? error.message : undefined });
     }
   };
 
@@ -768,6 +782,15 @@ export function DeveloperPanel() {
                               </Button>
                               <Button onClick={() => handleEdit(cliente)} variant="outline" size="sm" className={darkMode ? 'border-slate-600 hover:bg-slate-700 h-8 w-8 p-0' : 'h-8 w-8 p-0'} title="Editar cliente">
                                 <Edit className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                onClick={() => toggleAppMovil(cliente.id)}
+                                variant="outline"
+                                size="sm"
+                                className={`h-8 w-8 p-0 ${cliente.appMovilHabilitada ? 'border-emerald-500' : darkMode ? 'border-slate-600 hover:bg-slate-700' : ''}`}
+                                title={cliente.appMovilHabilitada ? 'App móvil activada — clic para desactivar' : 'App móvil desactivada — clic para activar (solo si pagó)'}
+                              >
+                                <Smartphone className={`w-3.5 h-3.5 ${cliente.appMovilHabilitada ? 'text-emerald-500' : 'text-slate-400'}`} />
                               </Button>
                               <Button onClick={() => toggleEstado(cliente.id)} variant="outline" size="sm" className={darkMode ? 'border-slate-600 hover:bg-slate-700 h-8 w-8 p-0' : 'h-8 w-8 p-0'} title={cliente.estado === 'ACTIVA' ? 'Suspender' : 'Activar'}>
                                 {cliente.estado === 'ACTIVA'

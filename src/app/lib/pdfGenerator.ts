@@ -372,6 +372,27 @@ export const descargarReporteVentasPDF = async (
 };
 
 /**
+ * Abre una URL externa (wa.me, mailto:) de la forma correcta según el
+ * contexto: en Electron, `window.open`/`location.href` no garantizan que el
+ * navegador o el cliente de correo del sistema se abran (la ventana principal
+ * intercepta navegaciones); `window.electron.openExternal` usa
+ * `shell.openExternal` de Electron, que sí funciona siempre. Fuera de
+ * Electron (navegador normal) se usa el mecanismo web estándar.
+ */
+function abrirEnlaceExterno(url: string): void {
+  const electronBridge = (window as any).electron;
+  if (electronBridge?.openExternal) {
+    electronBridge.openExternal(url);
+    return;
+  }
+  if (url.startsWith('mailto:')) {
+    window.location.href = url;
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+/**
  * 📱 Enviar factura por WhatsApp
  */
 export const enviarFacturaPorWhatsApp = async (
@@ -406,8 +427,8 @@ export const enviarFacturaPorWhatsApp = async (
     
     // Abrir WhatsApp Web
     const urlWhatsApp = `https://wa.me/${numeroLimpio}?text=${encodeURIComponent(mensaje)}`;
-    window.open(urlWhatsApp, '_blank');
-    
+    abrirEnlaceExterno(urlWhatsApp);
+
     return true;
   } catch (error) {
     console.error('Error enviando por WhatsApp:', error);
@@ -450,8 +471,8 @@ export const enviarFacturaPorEmail = async (
     
     // Abrir cliente de email
     const mailtoLink = `mailto:${emailDestinatario}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo + '\n\n(Por favor adjunta el archivo PDF que se descargó automáticamente)')}`;
-    window.location.href = mailtoLink;
-    
+    abrirEnlaceExterno(mailtoLink);
+
     return true;
   } catch (error) {
     console.error('Error enviando por email:', error);

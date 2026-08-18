@@ -5,7 +5,7 @@ import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { crearVentaMovil, ItemCarritoMovil } from '../lib/ventaMovilService';
+import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil } from '../lib/ventaMovilService';
 import { compartirRecibo, verFactura } from '../lib/compartirFactura';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
@@ -26,7 +26,21 @@ const METODOS_PAGO = [
   { valor: 'daviplata', label: 'Daviplata', emoji: '❤️' },
   { valor: 'tarjeta', label: 'Tarjeta', emoji: '💳' },
   { valor: 'transferencia', label: 'Transferencia', emoji: '🏦' },
+  { valor: 'rappi', label: 'Rappi', emoji: '🛵' },
+  { valor: 'mixto', label: 'Mixto', emoji: '🔀' },
 ];
+
+/** Mismos sub-métodos que el pago mixto de Electron (PagoMixtoModal.tsx). */
+const SUBMETODOS_MIXTO: { valor: keyof MetodosMultiplesMovil; label: string; emoji: string }[] = [
+  { valor: 'efectivo', label: 'Efectivo', emoji: '💵' },
+  { valor: 'tarjeta', label: 'Tarjeta', emoji: '💳' },
+  { valor: 'nequi', label: 'Nequi', emoji: '💜' },
+  { valor: 'daviplata', label: 'Daviplata', emoji: '❤️' },
+  { valor: 'transferencia', label: 'Transferencia', emoji: '🏦' },
+  { valor: 'rappi', label: 'Rappi', emoji: '🛵' },
+];
+
+const money = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
 
 interface VentaCompletada {
   id: string;
@@ -44,6 +58,7 @@ export default function VenderPage() {
   const [mostrarCheckout, setMostrarCheckout] = useState(false);
   const [mostrarScanner, setMostrarScanner] = useState(false);
   const [metodoPago, setMetodoPago] = useState('efectivo');
+  const [montosMixto, setMontosMixto] = useState<Record<string, string>>({});
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ventaCompletada, setVentaCompletada] = useState<VentaCompletada | null>(null);
@@ -93,6 +108,10 @@ export default function VenderPage() {
     });
   };
 
+  const totalMixto = SUBMETODOS_MIXTO.reduce((s, m) => s + (Number(montosMixto[m.valor]) || 0), 0);
+  const diferenciaMixto = totalCarrito - totalMixto;
+  const mixtoValido = metodoPago !== 'mixto' || Math.abs(diferenciaMixto) < 1;
+
   const cambiarCantidad = (productoId: string, delta: number) => {
     setCarrito((prev) => {
       const actual = prev[productoId];
@@ -110,9 +129,20 @@ export default function VenderPage() {
 
   const handleConfirmarVenta = async () => {
     if (!empleado) return;
+    if (metodoPago === 'mixto' && !mixtoValido) {
+      setError(diferenciaMixto > 0 ? `Faltan ${money(diferenciaMixto)} por distribuir` : `Sobran ${money(-diferenciaMixto)} distribuidos de más`);
+      return;
+    }
     setProcesando(true);
     setError(null);
-    const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, itemsCarrito, metodoPago);
+    const metodosMultiples: MetodosMultiplesMovil | undefined = metodoPago === 'mixto'
+      ? SUBMETODOS_MIXTO.reduce((acc, m) => {
+          const v = Number(montosMixto[m.valor]) || 0;
+          if (v > 0) acc[m.valor] = v;
+          return acc;
+        }, {} as MetodosMultiplesMovil)
+      : undefined;
+    const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, itemsCarrito, metodoPago, metodosMultiples);
     setProcesando(false);
 
     if (resultado.ok && resultado.ventaId && resultado.numero) {
@@ -173,6 +203,8 @@ export default function VenderPage() {
   const cerrarTodo = () => {
     setVentaCompletada(null);
     setMostrarCheckout(false);
+    setMetodoPago('efectivo');
+    setMontosMixto({});
   };
 
   // ---- Escáner de cámara integrado (busca y agrega directo al carrito) ----
@@ -407,6 +439,28 @@ export default function VenderPage() {
                       </button>
                     ))}
                   </div>
+
+                  {metodoPago === 'mixto' && (
+                    <div className="mt-3 bg-slate-900/70 border border-slate-800 rounded-xl p-3 space-y-2">
+                      <p className="text-slate-400 text-[11px]">Distribuye el total entre los métodos que uses:</p>
+                      {SUBMETODOS_MIXTO.map((m) => (
+                        <div key={m.valor} className="flex items-center gap-2">
+                          <span className="text-sm w-8 shrink-0 text-center">{m.emoji}</span>
+                          <span className="text-slate-300 text-xs w-24 shrink-0">{m.label}</span>
+                          <Input
+                            type="number" inputMode="numeric" placeholder="0"
+                            value={montosMixto[m.valor] || ''}
+                            onChange={(e) => setMontosMixto((prev) => ({ ...prev, [m.valor]: e.target.value }))}
+                            className="h-10 bg-slate-950 border-slate-700 text-white text-sm"
+                          />
+                        </div>
+                      ))}
+                      <div className={`flex items-center justify-between pt-2 border-t border-slate-800 text-sm ${mixtoValido ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        <span>{mixtoValido ? 'Cuadra ✓' : diferenciaMixto > 0 ? 'Falta distribuir' : 'Sobra distribuido'}</span>
+                        <span className="font-bold">{money(Math.abs(diferenciaMixto))}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="px-5 mb-4">
@@ -440,7 +494,7 @@ export default function VenderPage() {
                 <div className="px-5 pb-8">
                   <Button
                     onClick={handleConfirmarVenta}
-                    disabled={procesando}
+                    disabled={procesando || !mixtoValido}
                     className="w-full h-14 bg-gradient-to-r from-emerald-500 to-emerald-600"
                   >
                     {procesando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}

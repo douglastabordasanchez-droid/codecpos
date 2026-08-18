@@ -52,6 +52,10 @@ interface CierreRaw {
   gastosTransferencia?: number;
   gastosTarjetaBanco?: number;
   devoluciones?: number;
+  abonosCarteraEfectivo?: number;
+  abonosCarteraTransferencia?: number;
+  abonosCarteraTarjetaBanco?: number;
+  abonosCarteraDetalle?: Array<{ descripcion: string; concepto?: string; monto: number; medioPago?: string }>;
   cantidadTransacciones?: number;
   ticketPromedio?: number;
   productosTop?: Array<{ nombre: string; cantidad: number; total: number }>;

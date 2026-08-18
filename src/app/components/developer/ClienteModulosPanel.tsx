@@ -9,14 +9,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Crown, Zap, ChevronDown, RefreshCw, CheckCircle2, XCircle,
   Layers, Shield, ToggleLeft, ToggleRight, Save, Star, Lock, Unlock,
-  Users, Info,
+  Users, Info, Smartphone,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { usePOS } from '../../contexts/POSContext';
 import { MODULOS_CATALOGO, ModuloInfo, ModuloPOS } from '../../lib/permissions';
-import { obtenerModulosClienteAdmin, actualizarModulosClienteAdmin } from '../../lib/supabase/clientesAdminService';
+import { obtenerModulosClienteAdmin, actualizarModulosClienteAdmin, obtenerMenuInferiorClienteAdmin, actualizarMenuInferiorClienteAdmin } from '../../lib/supabase/clientesAdminService';
+import { MENU_INFERIOR_CATALOGO, MENU_INFERIOR_IDS, MENU_INFERIOR_DEFAULT, type MenuInferiorItemId, type MenuInferiorConfig } from '../../lib/menuInferiorCatalogo';
 
 interface Cliente {
   id: string;
@@ -61,10 +62,19 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
 
   const [cargando, setCargando] = useState(true);
 
+  // 🧭 Menú inferior de la PWA — solo el staff edita esto (ver
+  // menuInferiorCatalogo.ts). Las opciones disponibles en cada dropdown se
+  // filtran en vivo contra `modulosActivos` de arriba: si el admin apaga un
+  // módulo que estaba asignado a un slot, ese slot cae al default al guardar.
+  const [menuInferior, setMenuInferiorState] = useState<MenuInferiorConfig>(MENU_INFERIOR_DEFAULT);
+
   useEffect(() => {
     setCargando(true);
-    obtenerModulosClienteAdmin(cliente.id)
-      .then((modulosGuardados) => {
+    Promise.all([
+      obtenerModulosClienteAdmin(cliente.id),
+      obtenerMenuInferiorClienteAdmin(cliente.id),
+    ])
+      .then(([modulosGuardados, menuGuardado]) => {
         if (modulosGuardados) {
           setModulosActivos(new Set(modulosGuardados as ModuloPOS[]));
         } else {
@@ -73,11 +83,29 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
           );
           setModulosActivos(new Set(porDefecto.map((m) => m.id)));
         }
+        setMenuInferiorState(menuGuardado);
       })
       .catch((error) => toast.error('No se pudieron cargar los módulos', { description: error.message }))
       .finally(() => setCargando(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cliente.id, cliente.plan]);
+
+  const opcionesMenuInferior = MENU_INFERIOR_IDS.filter((id) => {
+    const item = MENU_INFERIOR_CATALOGO[id];
+    return !item.moduloRequerido || modulosActivos.has(item.moduloRequerido);
+  });
+
+  const actualizarSlotMenu = (lado: 'izquierda' | 'derecha', indice: 0 | 1, valor: MenuInferiorItemId) => {
+    const nuevo: MenuInferiorConfig = {
+      izquierda: [...menuInferior.izquierda] as MenuInferiorItemId[],
+      derecha: [...menuInferior.derecha] as MenuInferiorItemId[],
+    };
+    nuevo[lado][indice] = valor;
+    setMenuInferiorState(nuevo);
+    actualizarMenuInferiorClienteAdmin(cliente.id, nuevo).catch((error) =>
+      toast.error('No se pudo guardar el menú inferior', { description: error.message })
+    );
+  };
 
   const guardarSet = (set: Set<ModuloPOS>) => {
     actualizarModulosClienteAdmin(cliente.id, Array.from(set)).catch((error) =>
@@ -253,6 +281,64 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
             </p>
           </div>
         )}
+
+        {/* ── MENÚ INFERIOR DE LA PWA ── */}
+        <div className="px-6 pt-4">
+          <Card className={darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white'}>
+            <CardHeader className="py-4 px-5">
+              <div className="flex items-center gap-3">
+                <Smartphone className={`w-5 h-5 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`} />
+                <div>
+                  <CardTitle className={`text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>Menú inferior de la app móvil</CardTitle>
+                  <CardDescription className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                    Inicio y Vender son fijos. Elige qué va en los otros 4 botones — solo aparecen módulos que este cliente tiene activos.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 px-5 pb-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Izquierda</p>
+                  {[0, 1].map((i) => (
+                    <select
+                      key={`izq-${i}`}
+                      value={menuInferior.izquierda[i] || MENU_INFERIOR_DEFAULT.izquierda[i]}
+                      onChange={(e) => actualizarSlotMenu('izquierda', i as 0 | 1, e.target.value as MenuInferiorItemId)}
+                      className={`w-full h-10 rounded-lg border px-2 text-sm ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                    >
+                      {opcionesMenuInferior.map((id) => (
+                        <option key={id} value={id}>{MENU_INFERIOR_CATALOGO[id].label}</option>
+                      ))}
+                    </select>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <p className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Derecha</p>
+                  {[0, 1].map((i) => (
+                    <select
+                      key={`der-${i}`}
+                      value={menuInferior.derecha[i] || MENU_INFERIOR_DEFAULT.derecha[i]}
+                      onChange={(e) => actualizarSlotMenu('derecha', i as 0 | 1, e.target.value as MenuInferiorItemId)}
+                      className={`w-full h-10 rounded-lg border px-2 text-sm ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                    >
+                      {opcionesMenuInferior.map((id) => (
+                        <option key={id} value={id}>{MENU_INFERIOR_CATALOGO[id].label}</option>
+                      ))}
+                    </select>
+                  ))}
+                </div>
+              </div>
+              <p className={`text-xs mt-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                Vista previa: {opcionesMenuInferior.length > 0 ? (
+                  <span className="font-mono">
+                    {(menuInferior.izquierda[0] && MENU_INFERIOR_CATALOGO[menuInferior.izquierda[0]]?.label) || '—'} · {(menuInferior.izquierda[1] && MENU_INFERIOR_CATALOGO[menuInferior.izquierda[1]]?.label) || '—'} · (Vender) · {(menuInferior.derecha[0] && MENU_INFERIOR_CATALOGO[menuInferior.derecha[0]]?.label) || '—'} · {(menuInferior.derecha[1] && MENU_INFERIOR_CATALOGO[menuInferior.derecha[1]]?.label) || '—'}
+                  </span>
+                ) : null}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* ── LISTA DE MÓDULOS ── */}
         <div className="flex-1 overflow-y-auto p-6 space-y-3">

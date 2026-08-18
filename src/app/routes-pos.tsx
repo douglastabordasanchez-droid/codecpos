@@ -6,12 +6,15 @@
 import { createHashRouter, Navigate } from 'react-router';
 import { lazy, Suspense, ReactNode } from 'react';
 
-import ProtectedLayout from './components/pos/ProtectedLayout';
 import { PlanProtectedRoute } from './components/auth/PlanProtectedRoute';
 import { useAuth } from './contexts/AuthContext';
 import { esModuloActivoGlobal, ModuloPOS } from './lib/permissions';
 
 // Lazy loading de componentes
+// ⚡ ProtectedLayout carga el sidebar completo + motion + set grande de
+// íconos — sacarlo del import estático evita que ese peso viaje en el
+// bundle de entrada (se cargaba SIEMPRE, incluso para mostrar el login).
+const ProtectedLayout = lazy(() => import('./components/pos/ProtectedLayout'));
 const POSPage = lazy(() => import('./components/pos/POSPageNew'));
 const ProductosPage = lazy(() => import('./components/pos/ProductosPage'));
 const VentasPage = lazy(() => import('./components/pos/VentasPage'));
@@ -34,8 +37,9 @@ const ProveedoresPage = lazy(() => import('./pages/ProveedoresPage'));
 const PromocionesPage = lazy(() => import('./pages/PromocionesPage'));
 const MultitiendaPage = lazy(() => import('./pages/MultitiendaPage'));
 const CodigosBarrasPage = lazy(() => import('./pages/CodigosBarrasPageFull'));
-const IntegracionesPage = lazy(() => import('./pages/IntegracionesPage'));
 const TallerPage = lazy(() => import('./components/taller/TallerPage'));
+const ArtesGraficasPage = lazy(() => import('./components/artesGraficas/ArtesGraficasPage'));
+const PapeleriaPinateriaPage = lazy(() => import('./components/papeleriaPinateria/PapeleriaPinateriaPage'));
 const PanaderiaOncesPage = lazy(() => import('./components/pos/PanaderiaOncesPage'));
 const MonitoreoTerminalesPage = lazy(() => import('./components/monitoreo/MonitoreoTerminalesPage'));
 const FacturacionElectronicaPage = lazy(() => import('./pages/FacturacionElectronicaPage'));
@@ -109,7 +113,11 @@ export const router = createHashRouter([
   },
   {
     path: '/',
-    element: <ProtectedLayout />,
+    element: (
+      <Suspense fallback={<LoadingFallback />}>
+        <ProtectedLayout />
+      </Suspense>
+    ),
     children: [
       { index: true, element: <Navigate to="/pos" replace /> },
       {
@@ -286,19 +294,31 @@ export const router = createHashRouter([
         ) 
       },
       {
-        path: 'integraciones',
-        element: (
-          <Suspense fallback={<LoadingFallback />}>
-            <IntegracionesPage />
-          </Suspense>
-        )
-      },
-      {
         path: 'taller',
         element: (
           <Suspense fallback={<LoadingFallback />}>
             <ModuleProtectedRoute modulo={ModuloPOS.TALLER_REPARACIONES}>
               <TallerPage />
+            </ModuleProtectedRoute>
+          </Suspense>
+        )
+      },
+      {
+        path: 'artes-graficas',
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <ModuleProtectedRoute modulo={ModuloPOS.ARTES_GRAFICAS}>
+              <ArtesGraficasPage />
+            </ModuleProtectedRoute>
+          </Suspense>
+        )
+      },
+      {
+        path: 'papeleria-pinateria',
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <ModuleProtectedRoute modulo={ModuloPOS.PAPELERIA_PINATERIA}>
+              <PapeleriaPinateriaPage />
             </ModuleProtectedRoute>
           </Suspense>
         )

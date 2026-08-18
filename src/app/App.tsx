@@ -3,7 +3,6 @@ import { router } from './routes-pos';
 import { Toaster } from 'sonner';
 import { POSProvider } from './contexts/POSContext';
 import { AuthProvider } from './contexts/AuthContext';
-import { LicenseProvider } from './contexts/LicenseContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { MultitiendaProvider } from './contexts/MultitiendaContext';
 import { DeviceProvider } from './contexts/DeviceContext';
@@ -204,27 +203,25 @@ function App() {
   try {
     return (
       <ErrorBoundary>
-        <LicenseProvider>
-          <AuthProvider>
-            <BusinessProvider>
-            <POSProvider>
-              <DeviceProvider>
-              <MultitiendaProvider>
-                <RouterProvider router={router} />
-                <Toaster 
-                  position="top-right" 
-                  richColors 
-                  duration={3000}
-                  closeButton
-                  expand={false}
-                  visibleToasts={3}
-                />
-              </MultitiendaProvider>
-              </DeviceProvider>
-            </POSProvider>
-            </BusinessProvider>
-          </AuthProvider>
-        </LicenseProvider>
+        <AuthProvider>
+          <BusinessProvider>
+          <POSProvider>
+            <DeviceProvider>
+            <MultitiendaProvider>
+              <RouterProvider router={router} />
+              <Toaster
+                position="top-right"
+                richColors
+                duration={3000}
+                closeButton
+                expand={false}
+                visibleToasts={3}
+              />
+            </MultitiendaProvider>
+            </DeviceProvider>
+          </POSProvider>
+          </BusinessProvider>
+        </AuthProvider>
       </ErrorBoundary>
     );
   } catch (error) {

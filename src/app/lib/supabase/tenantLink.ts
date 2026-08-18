@@ -59,7 +59,7 @@ export async function vincularNegocio(
   passwordLicencia: string
 ): Promise<{ ok: boolean; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return { ok: false, error: 'Supabase no configurado' };
+  if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
 
   try {
     const syncEmail = `sync+${clienteId}@codecpos.internal`;

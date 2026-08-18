@@ -104,7 +104,7 @@ class CloudRelay {
     const clienteId = getLinkedClienteId();
 
     if (!client) {
-      callbacks.onState('unavailable', 'Supabase no está configurado en esta instalación.');
+      callbacks.onState('unavailable', 'Nuestra base de datos no está configurada en esta instalación.');
       return;
     }
     if (!clienteId) {

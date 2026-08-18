@@ -11,6 +11,7 @@ export const PRINTER_STORAGE_KEYS = {
   barras: 'printer_barras',
   devoluciones: 'printer_devoluciones',
   contabilidad: 'printer_contabilidad',
+  comanda: 'printer_comanda',
   global: 'printer_global',
 } as const;
 
@@ -57,6 +58,7 @@ export function getAllStandardPrinters(): Record<PrinterScopeKey, string> {
     barras: getPrinterByScope('barras'),
     devoluciones: getPrinterByScope('devoluciones'),
     contabilidad: getPrinterByScope('contabilidad'),
+    comanda: getPrinterByScope('comanda'),
     global: getPrinterByScope('global'),
   };
 }

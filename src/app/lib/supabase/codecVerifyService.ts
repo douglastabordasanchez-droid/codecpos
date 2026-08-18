@@ -13,6 +13,8 @@ export interface NotificacionPagoRow {
   cliente_id: string;
   terminal_id: string | null;
   venta_id: string | null;
+  /** Número de factura local (POS/IndexedDB) que "reclamó" esta notificación — ver reclamarNotificacionPago(). */
+  numero_factura_local: string | null;
   monto: number;
   entidad: string | null;
   referencia: string | null;
@@ -60,7 +62,7 @@ export async function marcarNotificacionPago(
   estado: 'confirmado' | 'descartado'
 ): Promise<{ ok: boolean; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return { ok: false, error: 'Supabase no configurado' };
+  if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
 
   const { error } = await client.from('notificaciones_pago').update({ estado }).eq('id', id);
   if (error) return { ok: false, error: error.message };
@@ -102,6 +104,112 @@ export function suscribirNotificacionesPago(
     .subscribe();
 
   return () => {
+    client.removeChannel(channel);
+  };
+}
+
+/**
+ * Intenta "reclamar" atómicamente una notificación de pago para una venta
+ * local específica — UPDATE condicionado a `numero_factura_local is null`,
+ * así que si dos ventas esperan el mismo monto al mismo tiempo, solo una se
+ * queda con la notificación. `true` = la reclamaste tú; `false` = alguien
+ * más ya la reclamó (o hubo un error) — hay que seguir esperando otra.
+ */
+export async function reclamarNotificacionPago(id: string, numeroFacturaLocal: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  try {
+    const { data, error } = await client
+      .from('notificaciones_pago')
+      .update({ numero_factura_local: numeroFacturaLocal })
+      .eq('id', id)
+      .is('numero_factura_local', null)
+      .select('id');
+    if (error) {
+      console.error('Error reclamando notificación de pago:', error);
+      return false;
+    }
+    return Array.isArray(data) && data.length > 0;
+  } catch (error) {
+    console.error('Error reclamando notificación de pago:', error);
+    return false;
+  }
+}
+
+/**
+ * Espera la confirmación de un pago por transferencia (Nequi/Daviplata/
+ * Transferencia) para UNA venta puntual, haciendo match por MONTO EXACTO —
+ * el SMS bancario no trae ningún identificador de venta, así que el monto
+ * es el único dato disponible (ver `reclamarNotificacionPago`). Combina 3
+ * mecanismos para no perder el pago por una condición de carrera:
+ *   1) Consulta inicial de notificaciones ya insertadas (el pago pudo
+ *      llegar en el instante justo antes de suscribirse).
+ *   2) Suscripción Realtime a nuevos INSERT.
+ *   3) Poll de respaldo cada 5s (por si Realtime se cae momentáneamente).
+ * `onMatch` se llama una sola vez, con la fila ya reclamada. Devuelve una
+ * función para cancelar todo (unsubscribe + intervalos) — SIEMPRE debe
+ * llamarse al cerrar/cancelar/desmontar, incluso si ya hubo match.
+ */
+export function suscribirPagoEsperado(
+  monto: number,
+  numeroFacturaLocal: string,
+  onMatch: (row: NotificacionPagoRow) => void
+): (() => void) | null {
+  const client = getSupabaseClient();
+  const clienteId = getLinkedClienteId();
+  if (!client || !clienteId) return null;
+
+  let resuelto = false;
+  const montoRedondeado = Math.round(monto);
+
+  const intentarReclamar = async (row: NotificacionPagoRow) => {
+    if (resuelto) return;
+    if (row.estado !== 'confirmado' || row.numero_factura_local) return;
+    if (Math.round(Number(row.monto)) !== montoRedondeado) return;
+    const reclamada = await reclamarNotificacionPago(row.id, numeroFacturaLocal);
+    if (reclamada && !resuelto) {
+      resuelto = true;
+      onMatch(row);
+    }
+  };
+
+  const revisarCandidatas = async () => {
+    if (resuelto) return;
+    const desde = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { data, error } = await client
+      .from('notificaciones_pago')
+      .select('*')
+      .eq('cliente_id', clienteId)
+      .eq('estado', 'confirmado')
+      .is('numero_factura_local', null)
+      .gte('created_at', desde)
+      .order('created_at', { ascending: true });
+    if (error || !data) return;
+    for (const row of data as NotificacionPagoRow[]) {
+      if (resuelto) return;
+      await intentarReclamar(row);
+    }
+  };
+
+  // 1) Chequeo inicial inmediato (cubre pagos que ya llegaron)
+  revisarCandidatas();
+
+  // 2) Realtime — nuevos pagos mientras se espera
+  const channel: RealtimeChannel = client
+    .channel(`pago-esperado-${clienteId}-${numeroFacturaLocal}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'notificaciones_pago', filter: `cliente_id=eq.${clienteId}` },
+      (payload) => { intentarReclamar(payload.new as NotificacionPagoRow); }
+    )
+    .subscribe();
+
+  // 3) Poll de respaldo
+  const intervalo = setInterval(revisarCandidatas, 5000);
+
+  return () => {
+    resuelto = true;
+    clearInterval(intervalo);
     client.removeChannel(channel);
   };
 }

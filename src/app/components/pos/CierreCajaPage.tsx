@@ -121,6 +121,11 @@ interface CierreCaja {
   gastosTransferencia: number;
   gastosTarjetaBanco: number;
   devoluciones: number;
+  // Abonos de Cartera (venta a crédito) recibidos durante este turno — ver carteraService.ts
+  abonosCarteraEfectivo: number;
+  abonosCarteraTransferencia: number;
+  abonosCarteraTarjetaBanco: number;
+  abonosCarteraDetalle: GastoDetalleCierre[];
   cantidadTransacciones: number;
   ticketPromedio: number;
   productosTop: Array<{ nombre: string; cantidad: number; total: number }>;
@@ -183,6 +188,9 @@ export default function CierreCajaPage() {
   const [gastosTransferenciaDia, setGastosTransferenciaDia] = useState(0);
   const [gastosTarjetaBancoDia, setGastosTarjetaBancoDia] = useState(0);
   const [salidasDevolucionEfectivoDia, setSalidasDevolucionEfectivoDia] = useState(0);
+  const [abonosCarteraEfectivoDia, setAbonosCarteraEfectivoDia] = useState(0);
+  const [abonosCarteraTransferenciaDia, setAbonosCarteraTransferenciaDia] = useState(0);
+  const [abonosCarteraTarjetaBancoDia, setAbonosCarteraTarjetaBancoDia] = useState(0);
 
   // Tab activo: controlado para que cambie automáticamente al cerrar/abrir caja
   const [activeTab, setActiveTab] = useState<string>('apertura');
@@ -343,6 +351,46 @@ export default function CierreCajaPage() {
     return { gastosEfectivo, gastosTransferencia, gastosTarjetaBanco, gastosDetalle, salidasDevolucionEfectivo };
   };
 
+  // Abonos de Cartera (venta a crédito) recibidos hoy — mismo mecanismo que
+  // calcularGastosYDevolucionesDelDia (localStorage + sesionCajaId), pero
+  // SUMANDO en vez de restando: es dinero real que entró a caja hoy, así
+  // haya sido por una venta a crédito registrada otro día. Ver carteraService.ts.
+  const calcularAbonosCarteraDelDia = async (sesionCajaId?: string) => {
+    const abonos = JSON.parse(localStorage.getItem('pos-abonos-cartera') || '[]');
+    const hoy = getFechaLocalISO();
+    const abonosDia = (Array.isArray(abonos) ? abonos : []).filter((a: any) => {
+      const fechaRaw = a?.fecha ? new Date(a.fecha) : new Date();
+      const fecha = getFechaLocalISO(fechaRaw);
+      const sesionAbono = String(a?.sesionCajaId || '');
+      const coincideSesion = sesionCajaId ? (sesionAbono ? sesionAbono === sesionCajaId : true) : true;
+      return fecha === hoy && coincideSesion;
+    });
+
+    const abonosCarteraEfectivo = abonosDia
+      .filter((a: any) => normalizarCanalGasto(String(a?.metodoPago || 'efectivo')) === 'efectivo')
+      .reduce((sum: number, a: any) => sum + (Number(a?.monto) || 0), 0);
+
+    const abonosCarteraTransferencia = abonosDia
+      .filter((a: any) => normalizarCanalGasto(String(a?.metodoPago || 'transferencia')) === 'transferencia')
+      .reduce((sum: number, a: any) => sum + (Number(a?.monto) || 0), 0);
+
+    const abonosCarteraTarjetaBanco = abonosDia
+      .filter((a: any) => normalizarCanalGasto(String(a?.metodoPago || 'tarjeta_banco')) === 'tarjeta_banco')
+      .reduce((sum: number, a: any) => sum + (Number(a?.monto) || 0), 0);
+
+    const abonosCarteraDetalle: GastoDetalleCierre[] = abonosDia
+      .map((a: any) => ({
+        descripcion: `Abono de ${String(a?.clienteNombre || 'cliente')} (Cartera)`,
+        concepto: 'Abono de Cartera',
+        monto: Number(a?.monto) || 0,
+        medioPago: String(a?.metodoPago || '').toUpperCase(),
+      }))
+      .filter((a) => a.monto > 0)
+      .sort((a, b) => b.monto - a.monto);
+
+    return { abonosCarteraEfectivo, abonosCarteraTransferencia, abonosCarteraTarjetaBanco, abonosCarteraDetalle };
+  };
+
   const cargarDatosSistema = async (sesionIdDirecto?: string) => {
     try {
       const sesionCajaId = sesionIdDirecto ?? aperturaActual?.id;
@@ -355,6 +403,8 @@ export default function CierreCajaPage() {
 
       const { gastosEfectivo, gastosTransferencia, gastosTarjetaBanco, salidasDevolucionEfectivo } =
         await calcularGastosYDevolucionesDelDia(sesionCajaId);
+      const { abonosCarteraEfectivo, abonosCarteraTransferencia, abonosCarteraTarjetaBanco } =
+        await calcularAbonosCarteraDelDia(sesionCajaId);
 
       setTotalSistema(stats.totalIngresos);
       setDesgloseSistema({
@@ -369,6 +419,9 @@ export default function CierreCajaPage() {
       setGastosTransferenciaDia(gastosTransferencia);
       setGastosTarjetaBancoDia(gastosTarjetaBanco);
       setSalidasDevolucionEfectivoDia(salidasDevolucionEfectivo);
+      setAbonosCarteraEfectivoDia(abonosCarteraEfectivo);
+      setAbonosCarteraTransferenciaDia(abonosCarteraTransferencia);
+      setAbonosCarteraTarjetaBancoDia(abonosCarteraTarjetaBanco);
     } catch (error) {
       console.error('Error cargando datos del sistema:', error);
       toast.error('Error al cargar datos del sistema');
@@ -467,7 +520,7 @@ export default function CierreCajaPage() {
       desgloseSistema.efectivo,
       gastosEfectivoDia,
       salidasDevolucionEfectivoDia
-    );
+    ) + abonosCarteraEfectivoDia;
 
     // Diferencia = Total Físico Contado - Total Esperado
     return totalContado - totalEsperado;
@@ -528,18 +581,24 @@ export default function CierreCajaPage() {
         gastosDetalle: gastosDetalleActual,
         salidasDevolucionEfectivo: salidasDevolucionEfectivoActual,
       } = await calcularGastosYDevolucionesDelDia(aperturaActual.id);
+      const {
+        abonosCarteraEfectivo: abonosCarteraEfectivoActual,
+        abonosCarteraTransferencia: abonosCarteraTransferenciaActual,
+        abonosCarteraTarjetaBanco: abonosCarteraTarjetaBancoActual,
+        abonosCarteraDetalle: abonosCarteraDetalleActual,
+      } = await calcularAbonosCarteraDelDia(aperturaActual.id);
 
       const totalEsperadoEfectivo = calcularEfectivoEsperado(
         aperturaActual.baseInicial,
         desgloseActual.efectivo,
         gastosEfectivoActual,
         salidasDevolucionEfectivoActual
-      );
+      ) + abonosCarteraEfectivoActual;
       const transferenciaEsperada = Math.max(
         0,
         (desgloseActual.transferencia + desgloseActual.nequi + desgloseActual.daviplata + desgloseActual.rappi) - gastosTransferenciaActual
-      );
-      const tarjetaBancoEsperado = Math.max(0, desgloseActual.tarjeta - gastosTarjetaBancoActual);
+      ) + abonosCarteraTransferenciaActual;
+      const tarjetaBancoEsperado = Math.max(0, desgloseActual.tarjeta - gastosTarjetaBancoActual) + abonosCarteraTarjetaBancoActual;
       const totalEsperadoAnalitico = totalEsperadoEfectivo + transferenciaEsperada + tarjetaBancoEsperado;
       const diferenciaActual = totalContado - totalEsperadoEfectivo;
       const estadoActual: 'cuadrado' | 'faltante' | 'sobrante' =
@@ -570,6 +629,10 @@ export default function CierreCajaPage() {
         gastosTransferencia: gastosTransferenciaActual,
         gastosTarjetaBanco: gastosTarjetaBancoActual,
         devoluciones: salidasDevolucionEfectivoActual,
+        abonosCarteraEfectivo: abonosCarteraEfectivoActual,
+        abonosCarteraTransferencia: abonosCarteraTransferenciaActual,
+        abonosCarteraTarjetaBanco: abonosCarteraTarjetaBancoActual,
+        abonosCarteraDetalle: abonosCarteraDetalleActual,
         cantidadTransacciones,
         ticketPromedio,
         productosTop,
@@ -594,6 +657,10 @@ export default function CierreCajaPage() {
         gastosTransferencia: gastosTransferenciaActual,
         gastosTarjetaBanco: gastosTarjetaBancoActual,
         devoluciones: salidasDevolucionEfectivoActual,
+        abonosCarteraEfectivo: abonosCarteraEfectivoActual,
+        abonosCarteraTransferencia: abonosCarteraTransferenciaActual,
+        abonosCarteraTarjetaBanco: abonosCarteraTarjetaBancoActual,
+        abonosCarteraDetalle: abonosCarteraDetalleActual,
         efectivoEsperado: totalEsperadoEfectivo,
         transferenciaEsperada,
         tarjetaBancoEsperado,
@@ -939,15 +1006,15 @@ export default function CierreCajaPage() {
   const transferenciaEsperada = Math.max(
     0,
     (desgloseSistema.transferencia + desgloseSistema.nequi + desgloseSistema.daviplata + desgloseSistema.rappi) - gastosTransferenciaDia
-  );
-  const tarjetaBancoEsperado = Math.max(0, desgloseSistema.tarjeta - gastosTarjetaBancoDia);
+  ) + abonosCarteraTransferenciaDia;
+  const tarjetaBancoEsperado = Math.max(0, desgloseSistema.tarjeta - gastosTarjetaBancoDia) + abonosCarteraTarjetaBancoDia;
   const totalEsperado = aperturaActual
     ? calcularEfectivoEsperado(
         aperturaActual.baseInicial,
         desgloseSistema.efectivo,
         gastosEfectivoDia,
         salidasDevolucionEfectivoDia
-      )
+      ) + abonosCarteraEfectivoDia
     : 0;
   const totalEsperadoAnalitico = totalEsperado + transferenciaEsperada + tarjetaBancoEsperado;
 
@@ -1512,7 +1579,7 @@ export default function CierreCajaPage() {
 
                   {/* Resumen del Cierre */}
                   <div className="space-y-4 mb-6">
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                       {/* Base Inicial */}
                       {aperturaActual && (
                         <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
@@ -1535,6 +1602,12 @@ export default function CierreCajaPage() {
                       <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
                         <p className={`${darkMode ? 'text-red-300' : 'text-red-600'} text-xs font-semibold mb-1`}>- GASTOS EFECTIVO</p>
                         <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>{formatCurrency(gastosEfectivoDia)}</p>
+                      </div>
+
+                      {/* Abonos de Cartera (crédito a clientes) recibidos hoy */}
+                      <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+                        <p className={`${darkMode ? 'text-orange-300' : 'text-orange-600'} text-xs font-semibold mb-1`}>+ ABONOS CARTERA</p>
+                        <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>{formatCurrency(abonosCarteraEfectivoDia)}</p>
                       </div>
                       <div className="text-center">
                         <p className={`${darkMode ? 'text-amber-300' : 'text-amber-600'} text-xs font-semibold mb-1`}>= EFECTIVO ESPERADO</p>

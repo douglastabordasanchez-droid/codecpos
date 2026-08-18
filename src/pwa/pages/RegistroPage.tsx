@@ -59,7 +59,7 @@ export default function RegistroPage() {
     const client = getSupabaseClient();
     if (!client) {
       setLoading(false);
-      setError('Supabase no configurado');
+      setError('nuestra base de datos no está configurada');
       return;
     }
 

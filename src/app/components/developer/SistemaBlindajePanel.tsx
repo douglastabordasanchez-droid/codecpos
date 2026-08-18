@@ -50,6 +50,16 @@ interface Telemetria {
   logsDir: string;
 }
 
+interface InfoSistema {
+  appVersion: string;
+  electron: string;
+  chrome: string;
+  node: string;
+  platform: string;
+  release: string;
+  arch: string;
+}
+
 interface BackupInfo {
   fileName: string;
   fecha: string;
@@ -89,6 +99,7 @@ const ESTADO_STYLES: Record<EstadoSalud, { icon: typeof CheckCircle2; color: str
 
 export function SistemaBlindajePanel({ darkMode }: { darkMode: boolean }) {
   const [telemetria, setTelemetria] = useState<Telemetria | null>(null);
+  const [infoSistema, setInfoSistema] = useState<InfoSistema | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [diagnostico, setDiagnostico] = useState<DiagnosticoItem[]>([]);
@@ -107,7 +118,7 @@ export function SistemaBlindajePanel({ darkMode }: { darkMode: boolean }) {
       return;
     }
     try {
-      const [tel, logs, listado, salud, disco, lanStatus, printerStatus] = await Promise.all([
+      const [tel, logs, listado, salud, disco, lanStatus, printerStatus, runtimeVersions, osInfo] = await Promise.all([
         window.electron.system.getTelemetry(),
         window.electron.logs?.readRecent(100) ?? Promise.resolve({ success: false, lines: [] as string[] }),
         backupService.listSafeBackups(),
@@ -115,9 +126,22 @@ export function SistemaBlindajePanel({ darkMode }: { darkMode: boolean }) {
         window.electron.system?.getDiskSpace?.() ?? Promise.resolve({ freeBytes: null, usedBytes: null, drive: 'C' }),
         (window as any).electron?.lan?.getStatus?.() ?? Promise.resolve(null),
         (window as any).electron?.printer?.resolveTarget?.() ?? Promise.resolve(null),
+        (window as any).electron?.getRuntimeVersions?.() ?? Promise.resolve(null),
+        (window as any).electron?.getOSInfo?.() ?? Promise.resolve(null),
       ]);
 
       setTelemetria(tel);
+      if (runtimeVersions && osInfo) {
+        setInfoSistema({
+          appVersion: runtimeVersions.appVersion,
+          electron: runtimeVersions.electron,
+          chrome: runtimeVersions.chrome,
+          node: runtimeVersions.node,
+          platform: osInfo.platform,
+          release: osInfo.release,
+          arch: osInfo.arch,
+        });
+      }
       const lineas = logs.success ? logs.lines : [];
       setLogLines(lineas);
       setBackups(listado);
@@ -618,6 +642,32 @@ export function SistemaBlindajePanel({ darkMode }: { darkMode: boolean }) {
           </CardContent>
         </Card>
       </motion.div>
+
+      {infoSistema && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className={darkMode ? 'bg-slate-800/50 border-slate-700' : ''}>
+            <CardHeader>
+              <CardTitle className={`flex items-center gap-2 text-base ${valueCls}`}>
+                <Terminal className="w-4 h-4" />
+                Acerca del sistema
+              </CardTitle>
+              <CardDescription>
+                Información técnica útil para soporte — versión instalada y entorno de ejecución.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div><p className={labelCls}>Codec POS</p><p className={`font-medium ${valueCls}`}>v{infoSistema.appVersion}</p></div>
+                <div><p className={labelCls}>Electron</p><p className={`font-medium ${valueCls}`}>{infoSistema.electron}</p></div>
+                <div><p className={labelCls}>Chrome</p><p className={`font-medium ${valueCls}`}>{infoSistema.chrome}</p></div>
+                <div><p className={labelCls}>Node</p><p className={`font-medium ${valueCls}`}>{infoSistema.node}</p></div>
+                <div><p className={labelCls}>Sistema operativo</p><p className={`font-medium ${valueCls}`}>{infoSistema.platform} {infoSistema.release}</p></div>
+                <div><p className={labelCls}>Arquitectura</p><p className={`font-medium ${valueCls}`}>{infoSistema.arch}</p></div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
     </div>
   );
 }
