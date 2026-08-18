@@ -6,6 +6,9 @@ import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { TIPOS_NEGOCIO } from '../../data/tipos-negocio';
+
+const OPCIONES_TIPO_NEGOCIO = Object.values(TIPOS_NEGOCIO).map((t) => t.nombre);
 
 /**
  * Registro público de un negocio NUEVO (Fase 5) -- distinto de RegistroPage,
@@ -21,8 +24,11 @@ export default function PruebaGratisPage() {
 
   const [nombreCompleto, setNombreCompleto] = useState('');
   const [nombreNegocio, setNombreNegocio] = useState('');
+  const [nit, setNit] = useState('');
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [ciudad, setCiudad] = useState('');
+  const [tipoNegocio, setTipoNegocio] = useState('');
   const [password, setPassword] = useState('');
   const [confirmarPassword, setConfirmarPassword] = useState('');
   const [aceptaTerminos, setAceptaTerminos] = useState(false);
@@ -66,6 +72,9 @@ export default function PruebaGratisPage() {
       p_email: email.trim(),
       p_telefono: telefono.trim(),
       p_password: password,
+      p_nit: nit.trim() || null,
+      p_ciudad: ciudad.trim() || null,
+      p_tipo_negocio: tipoNegocio || null,
     });
 
     if (rpcError) {
@@ -98,8 +107,16 @@ export default function PruebaGratisPage() {
           onClick={() => navigate('/', { replace: true })}
           className="w-full max-w-xs h-12 bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20"
         >
-          Entrar a Codec POS
+          Entrar a Codec POS Web
         </Button>
+        <a
+          href="https://github.com/douglastabordasanchez-droid/codecpos/releases/latest"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full max-w-xs mt-3 h-12 rounded-md flex items-center justify-center text-sm font-medium border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors"
+        >
+          Descargar Codec POS (Windows)
+        </a>
       </div>
     );
   }
@@ -130,6 +147,29 @@ export default function PruebaGratisPage() {
         <div className="space-y-1.5">
           <Label className="text-slate-400 text-xs">Tu teléfono</Label>
           <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} className="h-12 bg-slate-950/60 border-slate-700 text-white" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-slate-400 text-xs">NIT (opcional)</Label>
+            <Input value={nit} onChange={(e) => setNit(e.target.value)} className="h-12 bg-slate-950/60 border-slate-700 text-white" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-slate-400 text-xs">Ciudad</Label>
+            <Input value={ciudad} onChange={(e) => setCiudad(e.target.value)} className="h-12 bg-slate-950/60 border-slate-700 text-white" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-slate-400 text-xs">Tipo de negocio</Label>
+          <select
+            value={tipoNegocio}
+            onChange={(e) => setTipoNegocio(e.target.value)}
+            className="w-full h-12 rounded-lg px-3 text-sm bg-slate-950/60 border border-slate-700 text-white"
+          >
+            <option value="">Selecciona (opcional)...</option>
+            {OPCIONES_TIPO_NEGOCIO.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">

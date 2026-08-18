@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import POSLayoutSidebar from './POSLayoutSidebar';
 import { CodecVerifyListener } from '../codecVerify/CodecVerifyListener';
+import { AutoUpdateListener } from './AutoUpdateListener';
+import { useRegistrarInstalacion } from '../../hooks/useRegistrarInstalacion';
 import { useDeveloperShortcut } from '../../hooks/useDeveloperShortcut';
 import { useSyncModulosNube } from '../../hooks/useSyncModulosNube';
 import { LanProvider } from '../../contexts/LanContext';
@@ -21,6 +23,10 @@ export default function ProtectedLayout() {
   // mesa, cambios de estado de órdenes de taller). No hace nada si esta
   // instalación no está vinculada a la nube.
   useSyncModulosNube();
+
+  // 📡 Registra esta instalación (machine_id + versión) contra su propia
+  // licencia -- Fase 5 ampliada, punto 34. No bloquea nada si falla.
+  useRegistrarInstalacion();
 
   // Redirigir si no está autenticado
   useEffect(() => {
@@ -49,6 +55,7 @@ export default function ProtectedLayout() {
     <LanProvider>
       <POSLayoutSidebar />
       <CodecVerifyListener />
+      <AutoUpdateListener />
     </LanProvider>
   );
 }

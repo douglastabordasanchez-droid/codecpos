@@ -111,6 +111,8 @@ export function SistemaBlindajePanel({ darkMode }: { darkMode: boolean }) {
   const [buscandoUsuario, setBuscandoUsuario] = useState(false);
   const [resultadosBusqueda, setResultadosBusqueda] = useState<Array<{ backupFileName: string; backupFecha: string; usuario: any }> | null>(null);
   const [recuperandoUsuarioId, setRecuperandoUsuarioId] = useState<string | null>(null);
+  const [estadoActualizacion, setEstadoActualizacion] = useState<{ evento: string; version?: string; porcentaje?: number } | null>(null);
+  const [buscandoActualizacion, setBuscandoActualizacion] = useState(false);
 
   const cargarTodo = useCallback(async () => {
     if (!window.electron?.system?.getTelemetry) {
@@ -205,6 +207,29 @@ export function SistemaBlindajePanel({ darkMode }: { darkMode: boolean }) {
     const interval = setInterval(cargarTodo, 30000); // refrescar cada 30s
     return () => clearInterval(interval);
   }, [cargarTodo]);
+
+  useEffect(() => {
+    const desuscribir = (window as any).electron?.onUpdateEvent?.((data: { evento: string; version?: string; porcentaje?: number }) => {
+      setEstadoActualizacion(data);
+      if (data.evento === 'disponible') toast.info(`Nueva versión disponible: v${data.version}. Descargando en segundo plano...`);
+      if (data.evento === 'lista') toast.success(`Versión v${data.version} lista para instalar.`);
+    });
+    return () => desuscribir?.();
+  }, []);
+
+  const handleBuscarActualizacion = async () => {
+    setBuscandoActualizacion(true);
+    try {
+      await (window as any).electron?.checarActualizaciones?.();
+      toast.info('Buscando actualizaciones de Codec POS...');
+    } finally {
+      setTimeout(() => setBuscandoActualizacion(false), 3000);
+    }
+  };
+
+  const handleInstalarActualizacion = async () => {
+    await (window as any).electron?.instalarActualizacionAhora?.();
+  };
 
   const handleReparar = async () => {
     if (!confirm(
@@ -663,6 +688,25 @@ export function SistemaBlindajePanel({ darkMode }: { darkMode: boolean }) {
                 <div><p className={labelCls}>Node</p><p className={`font-medium ${valueCls}`}>{infoSistema.node}</p></div>
                 <div><p className={labelCls}>Sistema operativo</p><p className={`font-medium ${valueCls}`}>{infoSistema.platform} {infoSistema.release}</p></div>
                 <div><p className={labelCls}>Arquitectura</p><p className={`font-medium ${valueCls}`}>{infoSistema.arch}</p></div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-700/50 flex items-center gap-3 flex-wrap">
+                {estadoActualizacion?.evento === 'lista' ? (
+                  <>
+                    <p className="text-sm text-emerald-400">Versión v{estadoActualizacion.version} lista para instalar.</p>
+                    <Button size="sm" onClick={handleInstalarActualizacion} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                      Instalar y reiniciar
+                    </Button>
+                  </>
+                ) : estadoActualizacion?.evento === 'descargando' ? (
+                  <p className="text-sm text-slate-400">Descargando actualización... {estadoActualizacion.porcentaje ?? 0}%</p>
+                ) : estadoActualizacion?.evento === 'disponible' ? (
+                  <p className="text-sm text-slate-400">Nueva versión v{estadoActualizacion.version} disponible, descargando...</p>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={handleBuscarActualizacion} disabled={buscandoActualizacion} className={darkMode ? 'border-slate-600' : ''}>
+                    Buscar actualizaciones
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

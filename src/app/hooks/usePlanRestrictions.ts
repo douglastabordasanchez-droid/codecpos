@@ -39,6 +39,10 @@ export interface PlanInfo {
   estado: string | null;
   enPrueba: boolean;
   diasPruebaRestantes: number;
+  /** Fecha real de fin del período vigente (ISO) -- se guarda para poder
+   *  recalcular diasPruebaRestantes sin conexión durante la ventana de
+   *  tolerancia offline (ver CACHE_KEY más abajo). */
+  fechaFinPeriodoActual: string | null;
   // No existe todavía un entitlement de límite de productos/historial en el
   // motor comercial (Fase 3) -- son valores de referencia fijos por plan,
   // no un límite realmente vigente desde el backend. Cuando se defina ese
@@ -68,6 +72,7 @@ const PLAN_INFO_BASICO_POR_DEFECTO: PlanInfo = {
   estado: null,
   enPrueba: false,
   diasPruebaRestantes: 0,
+  fechaFinPeriodoActual: null,
   maxProductos: 5000,
   mesesHistorial: 3,
   maxUsuarios: 5,
@@ -81,6 +86,61 @@ const PLAN_INFO_BASICO_POR_DEFECTO: PlanInfo = {
 };
 
 const MAX_PRODUCTOS_PREMIUM = 999999999;
+
+/**
+ * Ventana de tolerancia offline (punto 18, Fase 5 ampliada): Electron es
+ * offline-first a propósito -- que se caiga internet no puede significar
+ * "el POS deja de funcionar" para un cliente que ya pagó Premium. Se
+ * guarda el último plan confirmado por el backend y, si una consulta
+ * falla (sin red), se reutiliza mientras no pase de 7 días desde la
+ * última confirmación real. Pasados los 7 días sin poder validar contra
+ * el backend, se cae a Básico (fail-closed) hasta reconectar -- 7 días
+ * cubre un corte de internet largo o un negocio en zona con mala señal
+ * sin dejar una ventana indefinida para seguir usando Premium sin pagar.
+ * Apenas hay conexión, la próxima consulta corrige el estado real de
+ * inmediato (si el plan de verdad venció, se refleja al reconectar).
+ */
+const VENTANA_TOLERANCIA_OFFLINE_MS = 7 * 24 * 60 * 60 * 1000;
+const CACHE_KEY_PREFIJO = 'codecpos_plan_cache_v1_';
+
+interface CachePlan {
+  usuarioId: string;
+  confirmadoEn: number;
+  planInfo: PlanInfo;
+}
+
+function guardarCachePlan(usuarioId: string, planInfo: PlanInfo) {
+  try {
+    const cache: CachePlan = { usuarioId, confirmadoEn: Date.now(), planInfo };
+    localStorage.setItem(CACHE_KEY_PREFIJO + usuarioId, JSON.stringify(cache));
+  } catch {
+    // localStorage no disponible/lleno -- sin caché, simplemente no hay tolerancia offline esta vez.
+  }
+}
+
+function leerCachePlanSiVigente(usuarioId: string | undefined): CachePlan | null {
+  if (!usuarioId) return null;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY_PREFIJO + usuarioId);
+    if (!raw) return null;
+    const cache: CachePlan = JSON.parse(raw);
+    if (cache.usuarioId !== usuarioId) return null;
+    if (Date.now() - cache.confirmadoEn > VENTANA_TOLERANCIA_OFFLINE_MS) return null;
+    return cache;
+  } catch {
+    return null;
+  }
+}
+
+/** Recalcula diasPruebaRestantes con la hora actual del cliente -- el plan
+ *  en sí viene del backend (cacheado), solo el conteo de días se refresca
+ *  para no mostrar un número congelado mientras dura la tolerancia offline. */
+function recalcularDiasRestantes(cache: CachePlan): PlanInfo {
+  const { planInfo } = cache;
+  if (!planInfo.enPrueba || !planInfo.fechaFinPeriodoActual) return planInfo;
+  const msRestantes = new Date(planInfo.fechaFinPeriodoActual).getTime() - Date.now();
+  return { ...planInfo, diasPruebaRestantes: Math.max(0, Math.ceil(msRestantes / (1000 * 60 * 60 * 24))) };
+}
 
 export function usePlanRestrictions() {
   const { usuarioActual } = useAuth();
@@ -136,6 +196,7 @@ export function usePlanRestrictions() {
           estado: licencia?.estado ?? null,
           enPrueba,
           diasPruebaRestantes,
+          fechaFinPeriodoActual: licencia?.fecha_fin_periodo_actual ?? null,
           maxProductos: esPremium ? MAX_PRODUCTOS_PREMIUM : 5000,
           mesesHistorial: esPremium ? 12 : 3,
           maxUsuarios: limite('MAX_USUARIOS'),
@@ -149,9 +210,16 @@ export function usePlanRestrictions() {
         };
 
         if (!cancelado) setPlanInfo(nuevo);
+        guardarCachePlan(usuarioActual!.id, nuevo);
       } catch (error) {
-        console.error('usePlanRestrictions: error consultando el motor comercial, se aplica Básico por defecto:', error);
-        if (!cancelado) setPlanInfo(PLAN_INFO_BASICO_POR_DEFECTO);
+        console.error('usePlanRestrictions: error consultando el motor comercial:', error);
+        const cache = leerCachePlanSiVigente(usuarioActual?.id);
+        if (cache) {
+          console.warn('usePlanRestrictions: sin conexión -- usando el último plan confirmado (ventana de tolerancia offline).');
+          if (!cancelado) setPlanInfo(recalcularDiasRestantes(cache));
+        } else {
+          if (!cancelado) setPlanInfo(PLAN_INFO_BASICO_POR_DEFECTO);
+        }
       } finally {
         if (!cancelado) setCargando(false);
       }

@@ -163,6 +163,26 @@ export function ClienteDetallePage() {
         </SectionCard>
       )}
 
+      <SectionCard title="Instalaciones" className="mb-6">
+        {detalle.instalaciones.length === 0 ? (
+          <p className="text-slate-500 text-sm">Este cliente todavía no ha iniciado sesión desde Electron ni la App.</p>
+        ) : (
+          <div className="space-y-2">
+            {detalle.instalaciones.map((inst, i) => (
+              <div key={i} className="flex items-center justify-between text-sm border-b border-slate-800 last:border-0 pb-2 last:pb-0">
+                <div>
+                  <span className="font-medium">{inst.tipo === 'ELECTRON' ? 'Escritorio (Electron)' : 'App / Web'}</span>
+                  {inst.version && <span className="text-slate-500 ml-2">v{inst.version}</span>}
+                </div>
+                <span className="text-xs text-slate-500">
+                  {inst.ultima_conexion ? `Última conexión: ${formatoFechaHora(inst.ultima_conexion)}` : `Activada: ${formatoFecha(inst.activada_en)}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
       <SectionCard title="Historial comercial">
         {detalle.historial.length === 0 ? (
           <p className="text-slate-500 text-sm">Sin eventos registrados todavía.</p>

@@ -25,6 +25,7 @@ import { lanServer } from './lan/lanServer.js';
 import { lanClient } from './lan/lanClient.js';
 import * as backupManager from './backupManager.js';
 import * as fileLogger from './fileLogger.js';
+import { iniciarAutoUpdater, checarActualizaciones, instalarActualizacionAhora } from './autoUpdater.js';
 import * as dianSecrets from './dianSecrets.js';
 import * as dianSigner from './dianSigner.js';
 import * as dianSoapClient from './dianSoapClient.js';
@@ -1021,6 +1022,13 @@ ipcMain.handle('system:get-runtime-versions', async () => ({
   chrome: process.versions.chrome,
   node: process.versions.node,
 }));
+
+// Fase 5 (ampliación), puntos 12-14: auto-actualización vía GitHub
+// Releases (ver electron/autoUpdater.js). checar-ahora es para un botón
+// manual en Configuración; instalar-ahora solo se habilita en el
+// renderer cuando ya llegó el evento "lista" (update-downloaded).
+ipcMain.handle('updates:checar-ahora', async () => { checarActualizaciones(); return true; });
+ipcMain.handle('updates:instalar-ahora', async () => { instalarActualizacionAhora(); return true; });
 
 ipcMain.handle('save-backup', async (_, { fileName, data }) => {
   try {
@@ -2285,6 +2293,8 @@ app.whenReady().then(() => {
   createSplash();
   // Crear ventana principal en paralelo (splash cubre el inicio)
   createWindow();
+
+  iniciarAutoUpdater(mainWindow);
 
   // Precalentar Piper TTS en segundo plano: así el modelo ya está cargado
   // (~1.5s) cuando llegue el primer anuncio de Codec Verify, no en ese momento.

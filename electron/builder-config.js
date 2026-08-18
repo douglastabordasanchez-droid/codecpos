@@ -156,8 +156,16 @@ const config = {
     main: 'electron/main.js' 
   },
 
-  // Sin auto-updater
-  publish: null,
+  // Auto-actualización vía GitHub Releases (mismo remoto que ya usa el
+  // repo) -- electron-updater lee este feed en runtime. Publicar una
+  // release requiere GH_TOKEN + `electron-builder --publish always`; una
+  // compilación local normal (`npm run compile`) solo empaqueta, no sube
+  // nada a GitHub.
+  publish: {
+    provider: 'github',
+    owner: 'douglastabordasanchez-droid',
+    repo: 'codecpos',
+  },
 };
 
 // Forzar coherencia de branding final para Windows/NSIS

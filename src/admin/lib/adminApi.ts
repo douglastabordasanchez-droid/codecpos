@@ -56,6 +56,7 @@ export async function obtenerDetalleCliente(clienteId: string) {
     usuarios: { total: number; limite: number | null };
     app_movil: boolean;
     addons_activos: { codigo: string; nombre: string; cantidad: number; precio_aplicado: number }[];
+    instalaciones: { tipo: 'ELECTRON' | 'PWA'; version: string | null; estado: string; activada_en: string; ultima_conexion: string | null }[];
     historial: Record<string, any>[];
   };
 }

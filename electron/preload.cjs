@@ -50,6 +50,20 @@ contextBridge.exposeInMainWorld('electron', {
   getRuntimeVersions: () => ipcRenderer.invoke('system:get-runtime-versions'),
 
   /**
+   * Auto-actualización (Fase 5 ampliada, puntos 12-14) -- ver
+   * electron/autoUpdater.js. onUpdateEvent recibe { evento: 'disponible'
+   * | 'descargando' | 'lista', ... } para que la UI muestre un aviso no
+   * bloqueante y deje al usuario decidir cuándo instalar.
+   */
+  checarActualizaciones: () => ipcRenderer.invoke('updates:checar-ahora'),
+  instalarActualizacionAhora: () => ipcRenderer.invoke('updates:instalar-ahora'),
+  onUpdateEvent: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('auto-update:evento', listener);
+    return () => ipcRenderer.removeListener('auto-update:evento', listener);
+  },
+
+  /**
    * Guardar backup en disco (ruta antigua, Documents/CODEC_POS_Backups)
    */
   saveBackup: (data) => ipcRenderer.invoke('save-backup', data),
