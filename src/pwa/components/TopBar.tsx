@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Menu, Bell, ShieldCheck, ShieldOff, PanelBottomClose, PanelBottomOpen } from 'lucide-react';
 import { SideMenu } from './SideMenu';
+import { TiendaSwitcher } from './TiendaSwitcher';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { codecVerifyPwaActivo, alternarCodecVerifyPwa, suscribirNotificacionesPagoPwa } from '../lib/codecVerifyPwa';
-import logo from '/logo.png';
 
 interface Props {
   navInferiorVisible: boolean;
@@ -55,10 +55,7 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2">
-            <img src={logo} alt="CODEC POS" className="w-5 h-5 object-contain" />
-            <span className="text-white text-sm font-black tracking-tight">CODEC POS</span>
-          </div>
+          <TiendaSwitcher />
 
           <div className="flex items-center gap-1">
             <button

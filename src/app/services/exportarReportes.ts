@@ -79,6 +79,33 @@ function fmtCOP(n: number): string {
   return `$${Number(n || 0).toLocaleString('es-CO')}`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Helpers compartidos para los encabezados de PDF "hechos a mano" de
+// GastosPage/ProveedoresPage/DevolucionesPage — antes cada uno reimplementaba
+// por separado exactamente esta misma lectura de config + construcción del
+// texto de NIT + renderizado seguro del logo (con su propio try/catch). Se
+// extrae solo la LÓGICA repetida, no el diseño visual de cada encabezado
+// (colores/posiciones siguen definidos en cada archivo, sin cambios) — así
+// se elimina la duplicación real sin alterar cómo se ve ningún PDF existente.
+// (Deliberadamente separado de `cfgEmpresa()`/`fmtCOP()` de arriba, que son
+// específicos del exportador de Reportes y usan un texto de respaldo
+// distinto — 'CODEC POS' en vez de 'MI NEGOCIO' — no había forma de
+// reutilizarlos sin cambiar el texto que ya se ve en esos tres PDFs.)
+export function leerConfigEmpresaPDF(): { config: any; empresa: string; nit: string } {
+  const config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+  const empresa = config.nombreComercial || config.razonSocial || 'MI NEGOCIO';
+  const nit = config.nit ? `NIT: ${config.nit}${config.digitoVerificacion ? `-${config.digitoVerificacion}` : ''}` : '';
+  return { config, empresa, nit };
+}
+
+export function dibujarLogoPDF(doc: jsPDF, logoUrl: string | undefined | null, x: number, y: number, w: number, h: number): void {
+  if (!logoUrl) return;
+  try {
+    const ext = logoUrl.includes('png') ? 'PNG' : 'JPEG';
+    doc.addImage(logoUrl, ext, x, y, w, h);
+  } catch { /* logo no disponible, se omite igual que antes */ }
+}
+
 function labelMedioEgreso(metodo: string): string {
   const key = String(metodo || '').toLowerCase();
   if (key === 'efectivo') return 'Efectivo';

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { leerConfigEmpresaPDF, dibujarLogoPDF } from '../../services/exportarReportes';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -355,21 +356,14 @@ export default function DevolucionesPage() {
 
   const exportarPDF = () => {
     try {
-      const config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
-      const empresa = config.nombreComercial || config.razonSocial || 'MI NEGOCIO';
-      const nit = config.nit ? `NIT: ${config.nit}${config.digitoVerificacion ? `-${config.digitoVerificacion}` : ''}` : '';
+      const { config, empresa, nit } = leerConfigEmpresaPDF();
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const W = 210;
       const ahora = new Date();
 
       doc.setFillColor(234, 88, 12);
       doc.rect(0, 0, W, 32, 'F');
-      if (config.logoUrl) {
-        try {
-          const ext = config.logoUrl.includes('png') ? 'PNG' : 'JPEG';
-          doc.addImage(config.logoUrl, ext, W - 34, 4, 22, 22);
-        } catch { /* skip */ }
-      }
+      dibujarLogoPDF(doc, config.logoUrl, W - 34, 4, 22, 22);
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(16); doc.setFont('helvetica', 'bold');
       doc.text(empresa, 14, 12);

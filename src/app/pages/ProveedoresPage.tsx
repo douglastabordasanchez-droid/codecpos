@@ -23,6 +23,7 @@ import { ModalProveedor } from '../components/modals/ModalProveedor';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { leerConfigEmpresaPDF, dibujarLogoPDF } from '../services/exportarReportes';
 
 export default function ProveedoresPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
@@ -98,9 +99,7 @@ export default function ProveedoresPage() {
 
   const exportarPDF = () => {
     try {
-      const config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
-      const empresa = config.nombreComercial || 'MI NEGOCIO';
-      const nit = config.nit ? `NIT: ${config.nit}${config.digitoVerificacion ? `-${config.digitoVerificacion}` : ''}` : '';
+      const { config, empresa, nit } = leerConfigEmpresaPDF();
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       const W = 297;
       const ahora = new Date();
@@ -108,12 +107,7 @@ export default function ProveedoresPage() {
       // Header
       doc.setFillColor(37, 99, 235);
       doc.rect(0, 0, W, 32, 'F');
-      if (config.logoUrl) {
-        try {
-          const ext = config.logoUrl.includes('png') ? 'PNG' : 'JPEG';
-          doc.addImage(config.logoUrl, ext, W - 42, 4, 22, 22);
-        } catch { /* skip */ }
-      }
+      dibujarLogoPDF(doc, config.logoUrl, W - 42, 4, 22, 22);
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(18); doc.setFont('helvetica', 'bold');
       doc.text(empresa, 14, 13);

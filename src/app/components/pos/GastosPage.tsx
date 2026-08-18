@@ -61,6 +61,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { descargarReporteGastosExcel } from '../../lib/excelGenerator';
+import { leerConfigEmpresaPDF, dibujarLogoPDF } from '../../services/exportarReportes';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -523,9 +524,7 @@ export default function GastosPage() {
   // 📄 Exportar gastos a PDF
   const exportarGastosPDF = () => {
     try {
-      const config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
-      const empresa = config.nombreComercial || 'MI NEGOCIO';
-      const nit = config.nit ? `NIT: ${config.nit}${config.digitoVerificacion ? `-${config.digitoVerificacion}` : ''}` : '';
+      const { config, empresa, nit } = leerConfigEmpresaPDF();
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const W = 210;
       const ahora = new Date();
@@ -533,12 +532,7 @@ export default function GastosPage() {
       // Header
       doc.setFillColor(15, 23, 42);
       doc.rect(0, 0, W, 35, 'F');
-      if (config.logoUrl) {
-        try {
-          const ext = config.logoUrl.includes('png') ? 'PNG' : 'JPEG';
-          doc.addImage(config.logoUrl, ext, W - 40, 5, 24, 24);
-        } catch { /* skip */ }
-      }
+      dibujarLogoPDF(doc, config.logoUrl, W - 40, 5, 24, 24);
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(16); doc.setFont('helvetica', 'bold');
       doc.text(empresa, 14, 15);

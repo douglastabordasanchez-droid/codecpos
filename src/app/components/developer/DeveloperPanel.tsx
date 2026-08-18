@@ -40,6 +40,7 @@ import {
   TrendingUp,
   ChevronDown,
   ShieldCheck,
+  Store,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
@@ -54,6 +55,7 @@ import ModulosControlPanel from './ModulosControlPanel';
 import { ClienteModulosPanel } from './ClienteModulosPanel';
 import { PersonalAdminSection } from './PersonalAdminSection';
 import { SistemaBlindajePanel } from './SistemaBlindajePanel';
+import { MultiTiendaAdminPanel } from './MultiTiendaAdminPanel';
 import { AnimatePresence } from 'motion/react';
 import { MODULOS_CATALOGO, ModuloPOS } from '../../lib/permissions';
 import {
@@ -103,7 +105,7 @@ export function DeveloperPanel() {
   const { darkMode } = usePOS();
   const { estaAutenticado, esDesarrollador, usuario, usuarioActual } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'clientes' | 'modulos' | 'personal' | 'seguridad' | 'sistema'>('clientes');
+  const [activeTab, setActiveTab] = useState<'clientes' | 'modulos' | 'personal' | 'seguridad' | 'sistema' | 'multitienda'>('clientes');
 
   // Protección de respaldo (el gate real ya ocurrió en DeveloperRouteGuard vía
   // StaffLoginGate + Supabase Auth): si por alguna razón se renderiza este
@@ -472,6 +474,7 @@ export function DeveloperPanel() {
               { id: 'modulos',   icon: Settings,    label: 'Control de Módulos' },
               { id: 'personal',  icon: Shield,      label: 'Personal del Sistema' },
               { id: 'sistema',   icon: ShieldCheck, label: 'Sistema y Blindaje' },
+              { id: 'multitienda', icon: Store,     label: 'Multi-Tienda' },
               { id: 'seguridad', icon: Lock,        label: 'Seguridad' },
             ] as const).map(tab => (
               <button
@@ -800,6 +803,11 @@ export function DeveloperPanel() {
             TAB: SISTEMA Y BLINDAJE
         ══════════════════════════════════════════════════════ */}
         {activeTab === 'sistema' && <SistemaBlindajePanel darkMode={darkMode} />}
+
+        {/* ══════════════════════════════════════════════════════
+            TAB: MULTI-TIENDA
+        ══════════════════════════════════════════════════════ */}
+        {activeTab === 'multitienda' && <MultiTiendaAdminPanel />}
 
         {/* ══════════════════════════════════════════════════════
             TAB: SEGURIDAD
