@@ -20,6 +20,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 interface AndroidCodecVerifyBridge {
   guardarSesion(webhookToken: string, nombreNegocio: string): void;
   cerrarSesion(): void;
+  abrirAjustesNotificaciones(): void;
 }
 
 declare global {
@@ -60,6 +61,20 @@ export async function sincronizarSesionConAndroid(clienteId: string): Promise<vo
 export function cerrarSesionAndroid(): void {
   try {
     getBridge()?.cerrarSesion();
+  } catch {
+    /* no crítico */
+  }
+}
+
+/** true solo cuando esta PWA corre dentro del WebView de la app nativa. */
+export function estaEnAppAndroid(): boolean {
+  return getBridge() !== null;
+}
+
+/** Abre el panel nativo (permisos de notificación + estado del listener) — antes era un ícono flotante aparte. */
+export function abrirAjustesNotificacionesAndroid(): void {
+  try {
+    getBridge()?.abrirAjustesNotificaciones();
   } catch {
     /* no crítico */
   }

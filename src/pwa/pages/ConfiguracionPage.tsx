@@ -11,6 +11,7 @@ import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { NAV_TODOS } from '../lib/sidebarNav';
 import { esRutaOculta, alternarRutaOculta } from '../lib/sidebarPrefs';
+import { estaEnAppAndroid, abrirAjustesNotificacionesAndroid } from '../lib/androidBridge';
 
 interface NegocioForm {
   nombre_negocio: string;
@@ -31,11 +32,12 @@ export default function ConfiguracionPage() {
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
   const [mostrarToken, setMostrarToken] = useState(false);
   const [generandoToken, setGenerandoToken] = useState(false);
-  const [copiado, setCopiado] = useState<'token' | 'url' | 'script' | 'gscript_link' | 'macrodroid_link' | null>(null);
+  const [copiado, setCopiado] = useState<'token' | 'url' | 'script' | 'gscript_link' | null>(null);
   const [mostrarGuia, setMostrarGuia] = useState(false);
   const [, forceUpdateSidebar] = useState(0);
 
   const puedeVer = empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const enAppAndroid = estaEnAppAndroid();
 
   useEffect(() => {
     if (!empleado || !puedeVer) return;
@@ -99,13 +101,12 @@ export default function ConfiguracionPage() {
     setMostrarToken(true);
   };
 
-  const copiarTexto = (texto: string, cual: 'token' | 'url' | 'script' | 'gscript_link' | 'macrodroid_link') => {
+  const copiarTexto = (texto: string, cual: 'token' | 'url' | 'script' | 'gscript_link') => {
     navigator.clipboard.writeText(texto);
     setCopiado(cual);
     setTimeout(() => setCopiado(null), 2000);
   };
 
-  const MACRODROID_URL = 'https://play.google.com/store/apps/details?id=com.arlosoft.macrodroid';
   const GOOGLE_SCRIPT_URL = 'https://script.google.com';
 
   const publicConfig = getSupabasePublicConfig();
@@ -373,25 +374,39 @@ export default function ConfiguracionPage() {
                         </div>
                       </div>
 
-                      <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4">
+                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
                         <div className="flex items-center gap-2 mb-2">
                           <Smartphone className="w-4 h-4 text-emerald-400" />
-                          <p className="text-white text-sm font-semibold">Por SMS (Tasker / MacroDroid)</p>
+                          <p className="text-white text-sm font-semibold">App Android Codec Verify (recomendado)</p>
                         </div>
-                        <ol className="text-slate-400 text-xs space-y-1 list-decimal list-inside">
-                          <li className="flex items-center gap-1.5 flex-wrap">
-                            <span>Instala Tasker o MacroDroid en el celular donde llegan los SMS de pago</span>
+                        {enAppAndroid ? (
+                          <>
+                            <p className="text-slate-400 text-xs mb-3">
+                              Ya estás usando la app — lee las notificaciones de Nequi, Bancolombia y Daviplata en
+                              tiempo real. Revisa aquí los permisos y el estado del listener.
+                            </p>
                             <button
-                              onClick={() => copiarTexto(MACRODROID_URL, 'macrodroid_link')}
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-slate-700 bg-slate-800 text-slate-300 shrink-0"
+                              onClick={abrirAjustesNotificacionesAndroid}
+                              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-emerald-600 text-white"
                             >
-                              {copiado === 'macrodroid_link' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />} Copiar link MacroDroid
+                              <ShieldCheck className="w-3.5 h-3.5" /> Ver permisos y estado
                             </button>
-                          </li>
-                          <li>Crea una automatización: "Cuando llegue un SMS que contenga 'Nequi'"</li>
-                          <li>Acción: HTTP Request POST a la URL de arriba, header <span className="text-slate-300 font-mono">apikey</span> con la anon key del proyecto</li>
-                          <li>Cuerpo JSON: <span className="text-slate-300 font-mono">{'{"p_token":"...","p_monto":<extraído del SMS>,"p_entidad":"nequi"}'}</span></li>
-                        </ol>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-slate-400 text-xs mb-3">
+                              Instala la app en el celular donde llegan los pagos y entra con el mismo usuario y
+                              contraseña de aquí — queda configurada sola, lee las notificaciones de Nequi, Bancolombia
+                              y Daviplata en tiempo real, y ya no depende de MacroDroid ni de ninguna app de terceros.
+                            </p>
+                            <a
+                              href="/download"
+                              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-emerald-600 text-white"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Descargar app Android
+                            </a>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

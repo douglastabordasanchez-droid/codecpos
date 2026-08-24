@@ -3,6 +3,16 @@
   "outputDirectory": "dist-pwa",
   "framework": null,
   "rewrites": [
-    { "source": "/app/((?!assets/|manifest.webmanifest|sw.js|workbox-.*\\.js|registerSW.js|logo.png|icon.ico|mesa.png).*)", "destination": "/app/index.html" }
+    { "source": "/app/((?!assets/|manifest.webmanifest|sw.js|workbox-.*\\.js|registerSW.js|logo.png|icon.ico|mesa.png).*)", "destination": "/app/index.html" },
+    { "source": "/download", "destination": "/descargas/codec-pos-verify.apk" }
+  ],
+  "headers": [
+    {
+      "source": "/descargas/codec-pos-verify.apk",
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+        { "key": "Content-Disposition", "value": "attachment; filename=\"CodecPOS.apk\"" }
+      ]
+    }
   ]
 }

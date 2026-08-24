@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
-  Shield, Globe, WifiOff, CheckCircle2, RefreshCw, QrCode, Smartphone, Zap, Bell, DollarSign, ArrowLeft, Link2, Copy, Check, AlertCircle, BookOpen, Store, Volume2, VolumeX, Users, XCircle, Eye, EyeOff, ChevronDown, Mail, ShieldCheck,
+  Shield, Globe, WifiOff, CheckCircle2, RefreshCw, QrCode, Smartphone, Bell, DollarSign, ArrowLeft, Link2, Copy, Check, AlertCircle, BookOpen, Store, Volume2, VolumeX, Users, XCircle, Eye, EyeOff, ChevronDown, Mail, ShieldCheck,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -16,9 +16,6 @@ import { getSupabaseClient, getSupabasePublicConfig } from '../../lib/supabase/c
 import { verificarPassword } from '../../lib/passwordHash';
 import { isVozActiva, setVozActiva, anunciarPagoRecibido, listarVocesEspanol, getVozSeleccionada, setVozSeleccionada, motorEmbebidoDisponible, PIPER_VOICE_ID } from '../../lib/voz';
 
-// Link oficial para instalar MacroDroid — se ofrece para copiar/enviar al celular
-// desde la sección "Por SMS" de las instrucciones de automatización.
-const MACRODROID_URL = 'https://play.google.com/store/apps/details?id=com.arlosoft.macrodroid';
 const GOOGLE_SCRIPT_URL = 'https://script.google.com';
 
 // URL pública de la PWA — escanear el QR abre esta página en el celular. El
@@ -48,7 +45,7 @@ export default function CodecVerifyConexionPage() {
   const [generandoToken, setGenerandoToken] = useState(false);
   const [mostrarToken, setMostrarToken] = useState(false);
   const [mostrarGuiaToken, setMostrarGuiaToken] = useState(false);
-  const [copiadoToken, setCopiadoToken] = useState<'token' | 'url' | 'script' | 'gscript_link' | 'macrodroid_link' | 'macrodroid_notif_link' | 'json_nequi' | 'json_daviplata' | 'json_bancolombia' | 'apikey' | 'authorization' | null>(null);
+  const [copiadoToken, setCopiadoToken] = useState<'token' | 'url' | 'script' | 'gscript_link' | 'apikey' | 'authorization' | null>(null);
 
   // 🔒 La sección de abajo expone el token de automatización + la clave anon
   // de Supabase — cualquiera con eso puede insertar "pagos confirmados"
@@ -221,7 +218,7 @@ export default function CodecVerifyConexionPage() {
     setMostrarToken(true);
   };
 
-  const copiarTextoToken = (texto: string, cual: 'token' | 'url' | 'script' | 'gscript_link' | 'macrodroid_link' | 'macrodroid_notif_link' | 'json_nequi' | 'json_daviplata' | 'json_bancolombia' | 'apikey' | 'authorization') => {
+  const copiarTextoToken = (texto: string, cual: 'token' | 'url' | 'script' | 'gscript_link' | 'apikey' | 'authorization') => {
     navigator.clipboard.writeText(texto);
     setCopiadoToken(cual);
     toast.success('Copiado al portapapeles');
@@ -230,13 +227,6 @@ export default function CodecVerifyConexionPage() {
 
   const publicConfig = getSupabasePublicConfig();
   const webhookUrl = publicConfig ? `${publicConfig.url}/rest/v1/rpc/registrar_pago_automatico` : '';
-  // Cuerpo JSON listo para copiar/pegar en MacroDroid — ya trae el token real
-  // de ESTE negocio. El valor de p_monto queda vacío a propósito: esa parte
-  // no se puede "pre-llenar" porque es una variable interna de MacroDroid
-  // (Texto de la notificación) que solo se inserta desde su propio selector,
-  // nunca escribiéndola a mano — ver instrucciones junto al bloque.
-  const jsonParaEntidad = (entidad: 'nequi' | 'daviplata' | 'bancolombia') =>
-    `{"p_token":"${webhookToken || 'TU_TOKEN_AQUI'}","p_monto":"","p_entidad":"${entidad}"}`;
   const appsScriptCode = webhookToken
     ? `function revisarPagosNequi() {
   var hilos = GmailApp.search('from:nequi.com.co is:unread newer_than:1d', 0, 5);
@@ -828,147 +818,6 @@ export default function CodecVerifyConexionPage() {
                           </div>
                         </div>
 
-                        <div className={`rounded-xl p-4 border ${darkMode ? 'bg-slate-900/40 border-emerald-700/50' : 'bg-emerald-50/60 border-emerald-300'}`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Zap className="w-4 h-4 text-emerald-500" />
-                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Por notificación push (recomendado — más rápido que el SMS)</p>
-                          </div>
-                          <p className={`text-xs mb-3 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
-                            Nequi, Daviplata y Bancolombia avisan por notificación apenas se confirma el pago — no
-                            dependen de que el operador entregue el SMS. Guía para instalar en MacroDroid, con los
-                            valores de <b>este negocio</b> ya listos para copiar.
-                          </p>
-
-                          <ol className={`text-xs space-y-2 list-decimal list-inside ${darkMode ? 'text-slate-300' : 'text-gray-700'}`}>
-                            <li>
-                              <b>Permiso previo (Android):</b> Ajustes → Aplicaciones → Acceso especial → Acceso a
-                              notificaciones → activa el interruptor para MacroDroid.
-                            </li>
-                            <li className="flex items-center gap-1.5 flex-wrap">
-                              <span>Instala <b>MacroDroid</b> en el celular donde llegan las notificaciones de pago</span>
-                              <button
-                                onClick={() => copiarTextoToken(MACRODROID_URL, 'macrodroid_notif_link')}
-                                className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-emerald-300 text-gray-600'}`}
-                              >
-                                {copiadoToken === 'macrodroid_notif_link' ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />} Copiar link MacroDroid
-                              </button>
-                            </li>
-                            <li>
-                              <b>Disparador:</b> Añadir macro → botón <span className="font-mono">+</span> en Disparadores →
-                              Eventos del dispositivo → Notificación → Notificación recibida → elige <b>solo una app</b>
-                              (crea una macro por separado para cada una — nunca combines varias apps en un mismo disparador).
-                            </li>
-                            <li>
-                              <b>Acción → Solicitud HTTP</b>, pestaña "Configuración": Método <span className="font-mono">POST</span>,
-                              URL (la misma para las tres apps y para cualquier negocio que instales — no cambia nunca):
-                              <div className="flex gap-2 mt-1">
-                                <div className={`flex-1 min-w-0 font-mono text-[10px] p-2 rounded-lg overflow-x-auto whitespace-nowrap ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-white border border-emerald-200 text-gray-800'}`}>
-                                  {webhookUrl}
-                                </div>
-                                <button onClick={() => copiarTextoToken(webhookUrl, 'url')} className={`h-8 w-8 shrink-0 rounded-md flex items-center justify-center ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-emerald-100 text-gray-600'}`}>
-                                  {copiadoToken === 'url' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                                </button>
-                              </div>
-                            </li>
-                            <li>
-                              Pestaña "Cabeceras" (Headers) — dos filas, también universales, iguales siempre:
-                              <div className="grid gap-1.5 mt-1">
-                                <div className="flex gap-2 items-center">
-                                  <span className={`text-[10px] font-mono w-20 shrink-0 ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>apikey</span>
-                                  <div className={`flex-1 min-w-0 font-mono text-[10px] p-2 rounded-lg overflow-x-auto whitespace-nowrap ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-white border border-emerald-200 text-gray-800'}`}>
-                                    {publicConfig?.anonKey || ''}
-                                  </div>
-                                  <button onClick={() => copiarTextoToken(publicConfig?.anonKey || '', 'apikey')} className={`h-8 w-8 shrink-0 rounded-md flex items-center justify-center ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-emerald-100 text-gray-600'}`}>
-                                    {copiadoToken === 'apikey' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                                  </button>
-                                </div>
-                                <div className="flex gap-2 items-center">
-                                  <span className={`text-[10px] font-mono w-20 shrink-0 ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>Authorization</span>
-                                  <div className={`flex-1 min-w-0 font-mono text-[10px] p-2 rounded-lg overflow-x-auto whitespace-nowrap ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-white border border-emerald-200 text-gray-800'}`}>
-                                    Bearer {publicConfig?.anonKey || ''}
-                                  </div>
-                                  <button onClick={() => copiarTextoToken(`Bearer ${publicConfig?.anonKey || ''}`, 'authorization')} className={`h-8 w-8 shrink-0 rounded-md flex items-center justify-center ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-emerald-100 text-gray-600'}`}>
-                                    {copiadoToken === 'authorization' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                                  </button>
-                                </div>
-                              </div>
-                            </li>
-                            <li>
-                              Pestaña "Cuerpo del Contenido": tipo <span className="font-mono">application/json</span>, marca
-                              Texto, y pega uno de estos tres — <b>solo cambia según qué app elegiste en el disparador</b>
-                              (el token ya viene puesto, es el de este negocio):
-                            </li>
-                          </ol>
-
-                          <div className="grid gap-2 mt-2">
-                            {([
-                              { id: 'nequi' as const, nombre: 'Nequi', copyKey: 'json_nequi' as const },
-                              { id: 'daviplata' as const, nombre: 'Daviplata', copyKey: 'json_daviplata' as const },
-                              { id: 'bancolombia' as const, nombre: 'Bancolombia', copyKey: 'json_bancolombia' as const },
-                            ]).map((ent) => (
-                              <div key={ent.id}>
-                                <p className={`text-[10px] font-semibold mb-1 ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>{ent.nombre}</p>
-                                <div className="flex gap-2">
-                                  <div className={`flex-1 min-w-0 font-mono text-[10px] p-2 rounded-lg overflow-x-auto whitespace-nowrap ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-white border border-emerald-200 text-gray-800'}`}>
-                                    {jsonParaEntidad(ent.id)}
-                                  </div>
-                                  <button onClick={() => copiarTextoToken(jsonParaEntidad(ent.id), ent.copyKey)} className={`h-8 w-8 shrink-0 rounded-md flex items-center justify-center ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-emerald-100 text-gray-600'}`}>
-                                    {copiadoToken === ent.copyKey ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          <ol className={`text-xs space-y-2 list-decimal list-inside mt-3 ${darkMode ? 'text-slate-300' : 'text-gray-700'}`} start={7}>
-                            <li>
-                              Con el cursor entre las comillas vacías de <span className="font-mono">"p_monto":""</span>, toca
-                              el botón <span className="font-mono">…</span> junto al cuadro y elige la variable de texto de
-                              la notificación de la lista — <b>nunca la escribas a mano</b>, y no dejes nada de texto suelto
-                              antes o después de las llaves del JSON.
-                            </li>
-                            <li>
-                              En Ajustes de Android → Notificaciones, <b>desactiva "Notificaciones mejoradas"</b> — puede
-                              ocultar montos de dinero por privacidad antes de que MacroDroid los vea.
-                            </li>
-                            <li>
-                              Antes de fijar la palabra del filtro del disparador, ponlo en "Cualquier" y agrega una acción
-                              de "Mostrar notificación" con la misma variable para ver el texto REAL que manda cada app —
-                              luego ajusta el filtro ("Contiene") a esa palabra exacta.
-                            </li>
-                            <li>
-                              En la pestaña "Configuración" de la Solicitud HTTP, activa "Guardar el código de retorno HTTP
-                              en una variable" — así ves en el historial de MacroDroid si Supabase respondió éxito (204)
-                              o error, sin adivinar.
-                            </li>
-                            <li>
-                              Guarda la macro (nómbrala, ej. "Codec Verify - Nequi") y repite los pasos 3-9 para las otras
-                              dos apps, cambiando solo la app del disparador y cuál JSON de arriba pegas.
-                            </li>
-                          </ol>
-                        </div>
-
-                        <div className={`rounded-xl p-4 border ${darkMode ? 'bg-slate-900/40 border-slate-700' : 'bg-purple-50/40 border-purple-200'}`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Smartphone className="w-4 h-4 text-emerald-500" />
-                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Por SMS (Tasker / MacroDroid)</p>
-                          </div>
-                          <ol className={`text-xs space-y-1 list-decimal list-inside ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
-                            <li className="flex items-center gap-1.5 flex-wrap">
-                              <span>Instala Tasker o MacroDroid en el celular donde llegan los SMS de pago</span>
-                              <button
-                                onClick={() => copiarTextoToken(MACRODROID_URL, 'macrodroid_link')}
-                                className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-purple-300 text-gray-600'}`}
-                              >
-                                {copiadoToken === 'macrodroid_link' ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />} Copiar link MacroDroid
-                              </button>
-                            </li>
-                            <li>Crea una automatización: "Cuando llegue un SMS que contenga 'Nequi'"</li>
-                            <li>Acción: HTTP Request POST a la URL de arriba, header <span className={`font-mono ${darkMode ? 'text-slate-300' : 'text-gray-800'}`}>apikey</span> con la anon key del proyecto</li>
-                            <li>Cuerpo JSON: <span className={`font-mono ${darkMode ? 'text-slate-300' : 'text-gray-800'}`}>{'{"p_token":"...","p_monto":<extraído del SMS>,"p_entidad":"nequi"}'}</span></li>
-                          </ol>
-                        </div>
-
                         <div className={`rounded-xl p-4 border ${darkMode ? 'bg-slate-900/40 border-sky-700/40' : 'bg-sky-50/60 border-sky-200'}`}>
                           <div className="flex items-center gap-2 mb-2">
                             <Mail className="w-4 h-4 text-sky-500" />
@@ -996,8 +845,9 @@ export default function CodecVerifyConexionPage() {
                                   reciente y aún inestable en sus primeras versiones; pruébala, pero no la dejes como
                                   único método para cobrar en un negocio todavía.</li>
                                 <li>Camino confiable hoy: un celular Android de respaldo (uno viejo sirve) dedicado solo
-                                  a recibir las notificaciones de Nequi con MacroDroid, mientras el dueño sigue usando
-                                  su iPhone normalmente para todo lo demás.</li>
+                                  a recibir las notificaciones de Nequi con la app <b>Codec Verify</b> (más confiable
+                                  que las automatizaciones de terceros), mientras el dueño sigue usando su iPhone
+                                  normalmente para todo lo demás.</li>
                               </ul>
                             </li>
                           </ol>

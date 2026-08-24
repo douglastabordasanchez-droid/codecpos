@@ -8,3 +8,12 @@
 /captures
 .externalNativeBuild
 .cxx
+
+# Clave de firma de release — NUNCA debe subirse al repo. Si se pierde,
+# las próximas versiones ya no se podrán instalar como "actualización" sobre
+# las que la gente ya tenga instaladas (hay que generar otra y todos
+# desinstalar/reinstalar). Guárdala aparte (gestor de contraseñas / backup).
+keystore/
+*.keystore
+*.jks
+keystore.properties
