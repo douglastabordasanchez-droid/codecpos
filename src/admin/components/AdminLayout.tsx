@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Users, Tag, Percent, Store, UserCog, KeyRound,
-  Headphones, ScrollText, LogOut,
+  Headphones, ScrollText, LogOut, TicketPercent,
 } from 'lucide-react';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/clientes', label: 'Clientes', icon: Users },
   { to: '/planes', label: 'Planes y precios', icon: Tag },
   { to: '/promociones', label: 'Promociones', icon: Percent },
+  { to: '/codigos-descuento', label: 'Códigos de descuento', icon: TicketPercent },
   { to: '/sucursales', label: 'Sucursales', icon: Store },
   { to: '/usuarios', label: 'Usuarios', icon: UserCog },
   { to: '/licencias', label: 'Licencias', icon: KeyRound },

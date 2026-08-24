@@ -132,6 +132,10 @@ Deno.serve(async (req: Request) => {
         // asociada para que quede visible y se pueda activar manualmente.
       } else {
         licenciaId = nuevaLicenciaId as string;
+        if (registro.codigo_descuento_id) {
+          await admin.rpc('registrar_uso_codigo_descuento', { p_codigo_id: registro.codigo_descuento_id })
+            .then(({ error }) => { if (error) console.error('[webhook-mercadopago] No se pudo incrementar el uso del código:', error.message); });
+        }
       }
     }
 

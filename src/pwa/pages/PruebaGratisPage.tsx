@@ -14,8 +14,8 @@ const OPCIONES_TIPO_NEGOCIO = Object.values(TIPOS_NEGOCIO).map((t) => t.nombre);
  * Registro público de un negocio NUEVO (Fase 5) -- distinto de RegistroPage,
  * que es autoservicio de un EMPLEADO de un negocio que ya tiene licencia.
  * Aquí no existe negocio ni licencia todavía: los crea crear_cuenta_prueba()
- * (migración 0055/0063) en una sola transacción, con una licencia TRIAL de 3
- * meses. El backend controla la fecha de vencimiento -- este formulario no
+ * (migración 0055) en una sola transacción, con una licencia TRIAL de 14
+ * días. El backend controla la fecha de vencimiento -- este formulario no
  * decide nada de eso, solo recolecta los datos mínimos.
  */
 export default function PruebaGratisPage() {
@@ -101,7 +101,7 @@ export default function PruebaGratisPage() {
         </div>
         <h1 className="text-white text-2xl font-black mb-2">¡Tu prueba gratuita comenzó!</h1>
         <p className="text-slate-400 text-sm mb-8 max-w-xs">
-          Te quedan 3 meses para probar Codec POS sin restricciones. No necesitas tarjeta ni hacer nada más.
+          Te quedan 14 días para probar Codec POS sin restricciones. No necesitas tarjeta ni hacer nada más.
         </p>
         <Button
           onClick={() => navigate('/', { replace: true })}
@@ -126,7 +126,7 @@ export default function PruebaGratisPage() {
       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-4 shadow-xl shadow-orange-500/30">
         <Sparkles className="w-8 h-8 text-white" />
       </div>
-      <h1 className="text-white text-xl font-black mb-1">Probar 3 meses gratis</h1>
+      <h1 className="text-white text-xl font-black mb-1">Probar 14 días gratis</h1>
       <p className="text-slate-400 text-sm mb-6 text-center max-w-xs">
         Crea tu cuenta y empieza a usar Codec POS ahora mismo, sin tarjeta de crédito.
       </p>

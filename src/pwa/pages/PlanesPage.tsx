@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Crown, Zap, Loader2 } from 'lucide-react';
+import { Check, Crown, Zap, Loader2, Tag, X } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
@@ -43,6 +43,10 @@ export default function PlanesPage() {
   const [planSeleccionado, setPlanSeleccionado] = useState<string | null>(null);
   const [modalidad, setModalidad] = useState<Modalidad>('MENSUAL');
   const [procesandoPago, setProcesandoPago] = useState(false);
+  const [codigoInput, setCodigoInput] = useState('');
+  const [codigoAplicado, setCodigoAplicado] = useState<{ codigo: string; porcentaje: number } | null>(null);
+  const [validandoCodigo, setValidandoCodigo] = useState(false);
+  const [errorCodigo, setErrorCodigo] = useState<string | null>(null);
 
   useEffect(() => {
     const client = getSupabaseClient();
@@ -62,6 +66,37 @@ export default function PlanesPage() {
     return p.precio_vitalicio;
   };
 
+  const handleAplicarCodigo = async () => {
+    if (!codigoInput.trim()) return;
+    setValidandoCodigo(true);
+    setErrorCodigo(null);
+    const client = getSupabaseClient();
+    const { data, error: rpcError } = await client
+      ? await client.rpc('validar_codigo_descuento', { p_codigo: codigoInput.trim() }).maybeSingle()
+      : { data: null, error: null };
+    setValidandoCodigo(false);
+
+    if (rpcError || !data) {
+      setErrorCodigo('No se pudo validar el código');
+      return;
+    }
+    const fila = data as { valido: boolean; porcentaje: number | null; mensaje: string };
+    if (!fila.valido || fila.porcentaje == null) {
+      setErrorCodigo(fila.mensaje || 'Código inválido');
+      return;
+    }
+    setCodigoAplicado({ codigo: codigoInput.trim().toUpperCase(), porcentaje: fila.porcentaje });
+  };
+
+  const quitarCodigo = () => {
+    setCodigoAplicado(null);
+    setCodigoInput('');
+    setErrorCodigo(null);
+  };
+
+  const precioConDescuento = (precio: number): number =>
+    codigoAplicado ? Math.round(precio * (1 - codigoAplicado.porcentaje / 100)) : precio;
+
   const handlePagar = async () => {
     if (!plan) return;
     const precio = precioPorModalidad(plan, modalidad);
@@ -77,7 +112,7 @@ export default function PlanesPage() {
     }
 
     const { data, error: fnError } = await client.functions.invoke('crear-pago-licencia', {
-      body: { planCodigo: plan.plan_codigo, modalidad },
+      body: { planCodigo: plan.plan_codigo, modalidad, codigoDescuento: codigoAplicado?.codigo },
     });
 
     if (fnError || !data?.ok) {
@@ -148,15 +183,51 @@ export default function PlanesPage() {
                 <p className="text-xs text-slate-500 uppercase tracking-wide mb-3">Resumen</p>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-slate-300">{plan.plan_nombre} · {MODALIDADES.find((m) => m.valor === modalidad)?.etiqueta}</span>
-                  <span className="font-bold">
-                    {precioPorModalidad(plan, modalidad) != null
-                      ? formatoMoneda(precioPorModalidad(plan, modalidad)!)
-                      : 'Consultar disponibilidad'}
-                  </span>
+                  {(() => {
+                    const precio = precioPorModalidad(plan, modalidad);
+                    if (precio == null) return <span className="font-bold">Consultar disponibilidad</span>;
+                    if (!codigoAplicado) return <span className="font-bold">{formatoMoneda(precio)}</span>;
+                    return (
+                      <span className="text-right">
+                        <span className="block text-xs text-slate-500 line-through">{formatoMoneda(precio)}</span>
+                        <span className="font-bold text-emerald-400">{formatoMoneda(precioConDescuento(precio))}</span>
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="space-y-1.5 mt-3 text-sm text-slate-400">
                   <p className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Activación inmediata</p>
                   <p className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Cancela cuando quieras</p>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-slate-800">
+                  {codigoAplicado ? (
+                    <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
+                      <span className="flex items-center gap-2 text-sm text-emerald-400">
+                        <Tag className="w-4 h-4" /> {codigoAplicado.codigo} aplicado (-{codigoAplicado.porcentaje}%)
+                      </span>
+                      <button onClick={quitarCodigo} className="text-slate-400 hover:text-white">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        value={codigoInput}
+                        onChange={(e) => { setCodigoInput(e.target.value); setErrorCodigo(null); }}
+                        placeholder="Código de descuento"
+                        className="flex-1 bg-slate-950/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white uppercase outline-none focus:border-amber-500"
+                      />
+                      <button
+                        onClick={handleAplicarCodigo}
+                        disabled={validandoCodigo || !codigoInput.trim()}
+                        className="text-sm font-medium bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-lg px-4"
+                      >
+                        {validandoCodigo ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aplicar'}
+                      </button>
+                    </div>
+                  )}
+                  {errorCodigo && <p className="text-red-400 text-xs mt-2">{errorCodigo}</p>}
                 </div>
               </div>
 

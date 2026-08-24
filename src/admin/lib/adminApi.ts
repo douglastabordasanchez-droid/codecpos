@@ -208,6 +208,38 @@ export async function marcarSolicitudAtendida(id: string) {
   if (error) throw new Error(error.message);
 }
 
+// ---- Códigos de descuento -------------------------------------------------
+export async function listarCodigosDescuento() {
+  const { data, error } = await cliente()
+    .from('codigos_descuento')
+    .select('id, codigo, porcentaje, activo, descripcion, fecha_expiracion, usos_maximos, usos_actuales, created_at')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function crearCodigoDescuento(datos: {
+  codigo: string; porcentaje: number; descripcion?: string; fechaExpiracion?: string; usosMaximos?: number;
+}) {
+  const { error } = await cliente().rpc('admin_crear_codigo_descuento', {
+    p_codigo: datos.codigo,
+    p_porcentaje: datos.porcentaje,
+    p_descripcion: datos.descripcion ?? null,
+    p_fecha_expiracion: datos.fechaExpiracion ?? null,
+    p_usos_maximos: datos.usosMaximos ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function actualizarCodigoDescuento(id: string, cambios: { activo?: boolean; porcentaje?: number }) {
+  const { error } = await cliente().rpc('admin_actualizar_codigo_descuento', {
+    p_id: id,
+    p_activo: cambios.activo ?? null,
+    p_porcentaje: cambios.porcentaje ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
 // ---- Auditoría ----------------------------------------------------------
 export async function listarAuditoria(limite = 100) {
   const { data, error } = await cliente()

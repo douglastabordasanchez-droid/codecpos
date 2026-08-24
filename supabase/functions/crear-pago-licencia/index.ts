@@ -28,6 +28,7 @@ const corsHeaders = {
 interface Body {
   planCodigo?: string;
   modalidad?: string;
+  codigoDescuento?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -83,7 +84,28 @@ Deno.serve(async (req: Request) => {
     if (precio == null || Number(precio) <= 0) {
       return json({ ok: false, error: `No hay un precio configurado para ${planCodigo} / ${modalidad} todavía` }, 400);
     }
-    const monto = Number(precio);
+    const montoOriginal = Number(precio);
+    let monto = montoOriginal;
+
+    // 3.1) Código de descuento (opcional) -- el porcentaje SIEMPRE se valida
+    //      y aplica en el servidor, nunca se confía en un monto ya
+    //      descontado que mande el frontend.
+    const codigoDescuento = (body.codigoDescuento || '').trim().toUpperCase();
+    let codigoId: string | null = null;
+    let descuentoPorcentaje: number | null = null;
+
+    if (codigoDescuento) {
+      const { data: validacion, error: validacionError } = await admin
+        .rpc('validar_codigo_descuento', { p_codigo: codigoDescuento })
+        .single();
+
+      if (validacionError || !validacion?.valido) {
+        return json({ ok: false, error: (validacion as any)?.mensaje || 'Código de descuento inválido' }, 400);
+      }
+      descuentoPorcentaje = Number((validacion as any).porcentaje);
+      codigoId = (validacion as any).codigo_id;
+      monto = Math.round(montoOriginal * (1 - descuentoPorcentaje / 100));
+    }
 
     // 4) Datos del negocio para el título del ítem / referencia -------------
     const { data: cliente } = await admin
@@ -100,6 +122,10 @@ Deno.serve(async (req: Request) => {
         plan_codigo: planCodigo,
         modalidad,
         monto,
+        monto_original: montoOriginal,
+        codigo_descuento: codigoDescuento || null,
+        codigo_descuento_id: codigoId,
+        descuento_porcentaje: descuentoPorcentaje,
         estado: 'PENDIENTE',
         creado_por: userData.user.id,
       })

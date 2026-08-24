@@ -9,6 +9,7 @@ import { ClientesPage } from './pages/ClientesPage';
 import { ClienteDetallePage } from './pages/ClienteDetallePage';
 import { PlanesPage } from './pages/PlanesPage';
 import { PromocionesPage } from './pages/PromocionesPage';
+import { CodigosDescuentoPage } from './pages/CodigosDescuentoPage';
 import { SucursalesPage } from './pages/SucursalesPage';
 import { UsuariosPage } from './pages/UsuariosPage';
 import { LicenciasPage } from './pages/LicenciasPage';
@@ -53,6 +54,7 @@ function RutasAdmin() {
       <Route path="/clientes/:id" element={<RutaProtegida><ClienteDetallePage /></RutaProtegida>} />
       <Route path="/planes" element={<RutaProtegida><PlanesPage /></RutaProtegida>} />
       <Route path="/promociones" element={<RutaProtegida><PromocionesPage /></RutaProtegida>} />
+      <Route path="/codigos-descuento" element={<RutaProtegida><CodigosDescuentoPage /></RutaProtegida>} />
       <Route path="/sucursales" element={<RutaProtegida><SucursalesPage /></RutaProtegida>} />
       <Route path="/usuarios" element={<RutaProtegida><UsuariosPage /></RutaProtegida>} />
       <Route path="/licencias" element={<RutaProtegida><LicenciasPage /></RutaProtegida>} />
