@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Crown, Sparkles, XCircle, Plus } from 'lucide-react';
-import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente } from '../lib/adminApi';
+import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw } from 'lucide-react';
+import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import {
   PageHeader, SectionCard, LoadingState, ErrorState, EstadoBadge, PlanBadge,
   formatoMoneda, formatoFecha, formatoFechaHora,
 } from '../components/ui';
+
+const MODALIDADES = ['MENSUAL', 'TRIMESTRAL', 'ANUAL', 'VITALICIA'];
 
 const EVENTO_LABEL: Record<string, string> = {
   CREACION_LICENCIA: 'Licencia creada',
@@ -36,12 +38,21 @@ export function ClienteDetallePage() {
   const [detalle, setDetalle] = useState<Awaited<ReturnType<typeof obtenerDetalleCliente>> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [procesando, setProcesando] = useState(false);
+  const [planes, setPlanes] = useState<Awaited<ReturnType<typeof listarPlanesConPrecios>> | null>(null);
+  const [mostrarCambioPlan, setMostrarCambioPlan] = useState(false);
+  const [nuevoPlan, setNuevoPlan] = useState({ planCodigo: '', modalidad: 'MENSUAL' });
 
   const cargar = () => {
     if (id) obtenerDetalleCliente(id).then(setDetalle).catch((e) => setError(e.message));
   };
 
   useEffect(cargar, [id]);
+  useEffect(() => {
+    listarPlanesConPrecios().then((p) => {
+      setPlanes(p);
+      if (p.length > 0) setNuevoPlan((f) => ({ ...f, planCodigo: p[0].plan_codigo }));
+    }).catch(() => {});
+  }, []);
 
   const handleCancelar = async () => {
     if (!id || !detalle?.licencia_vigente) return;
@@ -59,6 +70,22 @@ export function ClienteDetallePage() {
     } catch (e: any) {
       await registrarAuditoria('CANCELAR_LICENCIA', id, 'ERROR', { error: e.message });
       alert('No se pudo cancelar: ' + e.message);
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const handleCambiarPlan = async () => {
+    if (!id || !nuevoPlan.planCodigo) return;
+    setProcesando(true);
+    try {
+      await registrarLicencia({ clienteId: id, planCodigo: nuevoPlan.planCodigo, modalidad: nuevoPlan.modalidad, motivo: 'Cambio de plan desde Admin Web' });
+      await registrarAuditoria('CAMBIAR_PLAN', id, 'EXITO', { plan: nuevoPlan.planCodigo, modalidad: nuevoPlan.modalidad });
+      setMostrarCambioPlan(false);
+      cargar();
+    } catch (e: any) {
+      await registrarAuditoria('CAMBIAR_PLAN', id, 'ERROR', { error: e.message });
+      alert('No se pudo cambiar el plan: ' + e.message);
     } finally {
       setProcesando(false);
     }
@@ -96,8 +123,15 @@ export function ClienteDetallePage() {
       <PageHeader
         title={detalle.cliente.nombre_negocio}
         actions={
-          !soloLectura && lic ? (
+          !soloLectura ? (
             <div className="flex gap-2">
+              <button
+                onClick={() => setMostrarCambioPlan((v) => !v)}
+                disabled={procesando}
+                className="flex items-center gap-1.5 text-sm bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 rounded-lg px-3 py-2 disabled:opacity-50"
+              >
+                <RefreshCw className="w-4 h-4" /> {lic ? 'Cambiar plan' : 'Activar licencia'}
+              </button>
               <button
                 onClick={handleAgregarSucursal}
                 disabled={procesando}
@@ -105,19 +139,55 @@ export function ClienteDetallePage() {
               >
                 <Plus className="w-4 h-4" /> Agregar sucursal
               </button>
-              <button
-                onClick={handleCancelar}
-                disabled={procesando}
-                className="flex items-center gap-1.5 text-sm bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 rounded-lg px-3 py-2 disabled:opacity-50"
-              >
-                <XCircle className="w-4 h-4" /> Cancelar licencia
-              </button>
+              {lic && (
+                <button
+                  onClick={handleCancelar}
+                  disabled={procesando}
+                  className="flex items-center gap-1.5 text-sm bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 rounded-lg px-3 py-2 disabled:opacity-50"
+                >
+                  <XCircle className="w-4 h-4" /> Cancelar licencia
+                </button>
+              )}
             </div>
-          ) : soloLectura ? (
+          ) : (
             <span className="text-xs text-slate-400 self-center">Modo solo lectura</span>
-          ) : undefined
+          )
         }
       />
+
+      {mostrarCambioPlan && (
+        <SectionCard className="mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            <div className="flex-1">
+              <p className="text-slate-300 text-xs mb-1">Plan</p>
+              <select
+                value={nuevoPlan.planCodigo}
+                onChange={(e) => setNuevoPlan((f) => ({ ...f, planCodigo: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-500"
+              >
+                {(planes ?? []).map((p) => <option key={p.plan_codigo} value={p.plan_codigo}>{p.plan_nombre}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <p className="text-slate-300 text-xs mb-1">Modalidad</p>
+              <select
+                value={nuevoPlan.modalidad}
+                onChange={(e) => setNuevoPlan((f) => ({ ...f, modalidad: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-500"
+              >
+                {MODALIDADES.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <button
+              onClick={handleCambiarPlan}
+              disabled={procesando}
+              className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-semibold rounded-lg px-4 py-2 text-sm"
+            >
+              Confirmar
+            </button>
+          </div>
+        </SectionCard>
+      )}
 
       {esVitalicio && (
         <div className="flex items-center gap-2 bg-violet-500/10 border border-violet-500/30 text-violet-300 rounded-lg px-4 py-3 mb-5 text-sm">

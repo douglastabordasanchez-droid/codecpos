@@ -62,6 +62,27 @@ export async function obtenerDetalleCliente(clienteId: string) {
   };
 }
 
+// ---- Clientes: alta manual desde staff -----------------------------------
+/** Crea la cuenta base (auth + clientes_pos + empleado dueño), SIN licencia
+ *  -- llamar `registrarLicencia` justo después para asignarle un plan real. */
+export async function crearClienteBase(datos: {
+  nombreNegocio: string; nombreCompleto: string; email: string; telefono: string; password: string;
+  nit?: string; ciudad?: string; tipoNegocio?: string;
+}): Promise<string> {
+  const { data, error } = await cliente().rpc('admin_crear_cliente_base', {
+    p_nombre_negocio: datos.nombreNegocio,
+    p_nombre_completo: datos.nombreCompleto,
+    p_email: datos.email,
+    p_telefono: datos.telefono,
+    p_password: datos.password,
+    p_nit: datos.nit ?? null,
+    p_ciudad: datos.ciudad ?? null,
+    p_tipo_negocio: datos.tipoNegocio ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
 // ---- Planes y precios -----------------------------------------------------
 export async function listarPlanesConPrecios() {
   const { data, error } = await cliente().rpc('plan_catalogo_publico');
@@ -113,6 +134,15 @@ export async function listarUsuarios() {
     .order('nombre_completo', { ascending: true });
   if (error) throw new Error(error.message);
   return data;
+}
+
+export async function actualizarEmpleadoAdmin(empleadoId: string, cambios: { activo?: boolean; rol?: string }) {
+  const { error } = await cliente().rpc('admin_actualizar_empleado', {
+    p_empleado_id: empleadoId,
+    p_activo: cambios.activo ?? null,
+    p_rol: cambios.rol ?? null,
+  });
+  if (error) throw new Error(error.message);
 }
 
 // ---- Licencias --------------------------------------------------------
