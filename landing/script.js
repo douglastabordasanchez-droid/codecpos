@@ -236,7 +236,7 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 
 /* ── Botones de prueba gratis ──
    Llevan al registro público real (Fase 5, migración 0052: crea cuenta +
-   empresa + administrador + licencia TRIAL de 14 días en una transacción).
+   empresa + administrador + licencia TRIAL de 3 meses en una transacción).
    En producción, landing y PWA se sirven desde el mismo dominio
    (vercel.json copia esta landing en la raíz y la PWA bajo /app/ -- ver
    vite.config.pwa.ts), así que basta una ruta relativa a /app/. En local,

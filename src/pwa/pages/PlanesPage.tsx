@@ -12,6 +12,7 @@ interface PlanCatalogo {
   precio_mensual: number | null;
   precio_trimestral: number | null;
   precio_anual: number | null;
+  precio_vitalicio: number | null;
   promocion_activa: boolean;
   precio_promocional_mensual: number | null;
 }
@@ -27,11 +28,13 @@ const formatoMoneda = (valor: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(valor);
 
 /**
- * Checkout PREPARATORIO (Fase 5, punto 32) -- elegir plan -> modalidad ->
- * resumen -> pagar. El botón de pago queda deshabilitado a propósito: la
- * integración real de Mercado Pago es una fase posterior (punto 31). Los
- * precios vienen siempre de plan_catalogo_publico() (motor comercial real,
- * mismo cálculo que usan la landing y el Admin Web), nunca hardcodeados aquí.
+ * Elegir plan -> modalidad -> resumen -> pagar con Mercado Pago (Checkout
+ * Pro). El botón solo crea la preferencia y redirige -- el precio real lo
+ * calcula el servidor (crear-pago-licencia, nunca confía en lo que se
+ * muestra acá) y la licencia solo se activa cuando el webhook confirma el
+ * pago contra la API de Mercado Pago (ver webhook-mercadopago). Los precios
+ * vienen siempre de plan_catalogo_publico() (motor comercial real, mismo
+ * cálculo que usan la landing y el Admin Web), nunca hardcodeados aquí.
  */
 export default function PlanesPage() {
   const { empleado } = usePwaAuth();
@@ -39,6 +42,7 @@ export default function PlanesPage() {
   const [error, setError] = useState<string | null>(null);
   const [planSeleccionado, setPlanSeleccionado] = useState<string | null>(null);
   const [modalidad, setModalidad] = useState<Modalidad>('MENSUAL');
+  const [procesandoPago, setProcesandoPago] = useState(false);
 
   useEffect(() => {
     const client = getSupabaseClient();
@@ -55,7 +59,34 @@ export default function PlanesPage() {
     if (m === 'MENSUAL') return p.promocion_activa && p.precio_promocional_mensual != null ? p.precio_promocional_mensual : p.precio_mensual;
     if (m === 'TRIMESTRAL') return p.precio_trimestral;
     if (m === 'ANUAL') return p.precio_anual;
-    return null; // Vitalicio: sin precio configurado todavía (ver configuracion_comercial.precio_vitalicio_premium)
+    return p.precio_vitalicio;
+  };
+
+  const handlePagar = async () => {
+    if (!plan) return;
+    const precio = precioPorModalidad(plan, modalidad);
+    if (precio == null) return;
+
+    setProcesandoPago(true);
+    setError(null);
+    const client = getSupabaseClient();
+    if (!client) {
+      setProcesandoPago(false);
+      setError('nuestra base de datos no está configurada');
+      return;
+    }
+
+    const { data, error: fnError } = await client.functions.invoke('crear-pago-licencia', {
+      body: { planCodigo: plan.plan_codigo, modalidad },
+    });
+
+    if (fnError || !data?.ok) {
+      setProcesandoPago(false);
+      setError(data?.error || fnError?.message || 'No se pudo iniciar el pago. Intenta de nuevo.');
+      return;
+    }
+
+    window.location.href = data.initPoint;
   };
 
   if (error) return <div className="min-h-screen bg-slate-950 text-white p-6">{error}</div>;
@@ -129,11 +160,19 @@ export default function PlanesPage() {
                 </div>
               </div>
 
-              <Button disabled className="w-full h-12 opacity-60 cursor-not-allowed">
-                Pagar -- próximamente
+              {error && (
+                <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 mb-3">{error}</p>
+              )}
+              <Button
+                onClick={handlePagar}
+                disabled={procesandoPago || precioPorModalidad(plan, modalidad) == null}
+                className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50"
+              >
+                {procesandoPago ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                {precioPorModalidad(plan, modalidad) == null ? 'No disponible todavía' : 'Pagar con Mercado Pago'}
               </Button>
               <p className="text-center text-xs text-slate-500 mt-3">
-                El pago en línea (Mercado Pago) se habilita en una fase posterior. Mientras tanto, escríbenos a soporte para activar tu plan.
+                Serás redirigido a Mercado Pago para completar el pago de forma segura.
               </p>
             </>
           )}

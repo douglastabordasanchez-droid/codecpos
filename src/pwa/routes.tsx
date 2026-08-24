@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import RegistroPage from './pages/RegistroPage';
 import PruebaGratisPage from './pages/PruebaGratisPage';
 import InicioPage from './pages/InicioPage';
+import PagoResultadoPage from './pages/PagoResultadoPage';
 
 // ⚡ Antes cada página se importaba de forma estática: TODO (recharts,
 // jspdf, xlsx, zxing para el escáner, etc.) viajaba en un único bundle de
@@ -62,6 +63,9 @@ export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/registro', element: <RegistroPage /> },
   { path: '/prueba-gratis', element: <PruebaGratisPage /> },
+  { path: '/pago/exitoso', element: <PagoResultadoPage /> },
+  { path: '/pago/pendiente', element: <PagoResultadoPage /> },
+  { path: '/pago/fallido', element: <PagoResultadoPage /> },
   {
     path: '/',
     element: <PwaLayout />,

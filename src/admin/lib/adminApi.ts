@@ -89,7 +89,7 @@ export async function listarPlanesConPrecios() {
   if (error) throw new Error(error.message);
   return data as {
     plan_codigo: string; plan_nombre: string; precio_mensual: number | null;
-    precio_trimestral: number | null; precio_anual: number | null;
+    precio_trimestral: number | null; precio_anual: number | null; precio_vitalicio: number | null;
     promocion_activa: boolean; precio_promocional_mensual: number | null;
   }[];
 }
