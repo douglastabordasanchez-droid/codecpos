@@ -63,6 +63,17 @@ export function DashboardPage() {
             <StatCard label="Clientes con soporte activo" value={datos.soporte.clientes_con_soporte_activo} />
           </div>
         </SectionCard>
+
+        <SectionCard title="Instalaciones" className="md:col-span-2 xl:col-span-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+            <StatCard label="Total" value={datos.instalaciones.total} />
+            <StatCard label="Escritorio (Electron)" value={datos.instalaciones.electron} />
+            <StatCard label="App / Web (PWA)" value={datos.instalaciones.pwa} />
+            <StatCard label="Activas (7 días)" value={datos.instalaciones.activas_7d} />
+            <StatCard label="Clientes con instalación" value={datos.instalaciones.clientes_con_instalacion} />
+            <StatCard label="Nuevas (30 días)" value={datos.instalaciones.nuevas_30d} />
+          </div>
+        </SectionCard>
       </div>
     </div>
   );

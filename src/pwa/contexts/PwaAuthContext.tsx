@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback 
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { signInSupabase, EmpleadoSupabase } from '../../app/lib/supabase/authService';
 import { sincronizarSesionConAndroid, cerrarSesionAndroid } from '../lib/androidBridge';
+import { registrarInstalacionPwa } from '../lib/registrarInstalacion';
 
 export interface TiendaDisponible {
   clienteId: string;
@@ -94,6 +95,7 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
         // pasa el webhook_token del negocio para que el listener de
         // notificaciones quede configurado solo, sin ningún paso aparte.
         sincronizarSesionConAndroid(empleadoCargado.cliente_id);
+        registrarInstalacionPwa();
       }
       setCargando(false);
     });
@@ -105,6 +107,7 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
       setEmpleadoReal(resultado.empleado);
       await cargarTiendasDisponibles(resultado.empleado.cliente_id);
       sincronizarSesionConAndroid(resultado.empleado.cliente_id);
+      registrarInstalacionPwa();
       return { ok: true };
     }
     return { ok: false, error: resultado.error };

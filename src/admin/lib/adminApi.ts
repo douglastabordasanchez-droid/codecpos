@@ -25,6 +25,7 @@ export async function obtenerDashboardResumen() {
     sucursales: { total: number; activas: number; adicionales_contratadas: number };
     licencias: { activas: number; vencidas: number; suspendidas: number };
     soporte: { solicitudes_totales: number; pendientes: number; atendidas: number; clientes_con_soporte_activo: number };
+    instalaciones: { total: number; electron: number; pwa: number; activas_7d: number; clientes_con_instalacion: number; nuevas_30d: number };
   };
 }
 

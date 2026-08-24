@@ -114,7 +114,7 @@ export function ClienteDetallePage() {
               </button>
             </div>
           ) : soloLectura ? (
-            <span className="text-xs text-slate-500 self-center">Modo solo lectura</span>
+            <span className="text-xs text-slate-400 self-center">Modo solo lectura</span>
           ) : undefined
         }
       />
@@ -129,15 +129,15 @@ export function ClienteDetallePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <SectionCard title="Licencia" className="lg:col-span-2">
           {!lic ? (
-            <p className="text-slate-500 text-sm">Este cliente no tiene una licencia vigente.</p>
+            <p className="text-slate-400 text-sm">Este cliente no tiene una licencia vigente.</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-              <div><p className="text-slate-500 text-xs mb-1">Plan</p><PlanBadge plan={lic.plan_codigo} /></div>
-              <div><p className="text-slate-500 text-xs mb-1">Modalidad</p>{esVitalicio ? <span className="inline-flex items-center gap-1 text-violet-300"><Sparkles className="w-3.5 h-3.5" />Vitalicio</span> : <span>{lic.modalidad}</span>}</div>
-              <div><p className="text-slate-500 text-xs mb-1">Estado</p><EstadoBadge estado={esVitalicio ? 'VITALICIA' : lic.estado} /></div>
-              <div><p className="text-slate-500 text-xs mb-1">Precio efectivo</p><span className="font-semibold">{lic.precio_efectivo != null ? formatoMoneda(lic.precio_efectivo) + '/mes' : 'No configurado'}</span></div>
-              <div><p className="text-slate-500 text-xs mb-1">Inicio</p>{formatoFecha(lic.fecha_inicio)}</div>
-              <div><p className="text-slate-500 text-xs mb-1">Próxima renovación</p>{lic.fecha_fin_periodo_actual ? formatoFecha(lic.fecha_fin_periodo_actual) : '—'}</div>
+              <div><p className="text-slate-300 text-xs mb-1">Plan</p><PlanBadge plan={lic.plan_codigo} /></div>
+              <div><p className="text-slate-300 text-xs mb-1">Modalidad</p>{esVitalicio ? <span className="inline-flex items-center gap-1 text-violet-300"><Sparkles className="w-3.5 h-3.5" />Vitalicio</span> : <span>{lic.modalidad}</span>}</div>
+              <div><p className="text-slate-300 text-xs mb-1">Estado</p><EstadoBadge estado={esVitalicio ? 'VITALICIA' : lic.estado} /></div>
+              <div><p className="text-slate-300 text-xs mb-1">Precio efectivo</p><span className="font-semibold">{lic.precio_efectivo != null ? formatoMoneda(lic.precio_efectivo) + '/mes' : 'No configurado'}</span></div>
+              <div><p className="text-slate-300 text-xs mb-1">Inicio</p>{formatoFecha(lic.fecha_inicio)}</div>
+              <div><p className="text-slate-300 text-xs mb-1">Próxima renovación</p>{lic.fecha_fin_periodo_actual ? formatoFecha(lic.fecha_fin_periodo_actual) : '—'}</div>
             </div>
           )}
         </SectionCard>
@@ -146,7 +146,7 @@ export function ClienteDetallePage() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between"><span className="text-slate-400">Sucursales</span><span className="font-medium tabular-nums">{detalle.sucursales.total} / {detalle.sucursales.limite ?? '∞'}</span></div>
             <div className="flex justify-between"><span className="text-slate-400">Usuarios</span><span className="font-medium tabular-nums">{detalle.usuarios.total} / {detalle.usuarios.limite ?? '∞'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-400">App móvil</span><span className={detalle.app_movil ? 'text-emerald-400' : 'text-slate-500'}>{detalle.app_movil ? 'Sí' : 'No'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">App móvil</span><span className={detalle.app_movil ? 'text-emerald-400' : 'text-slate-400'}>{detalle.app_movil ? 'Sí' : 'No'}</span></div>
           </div>
         </SectionCard>
       </div>
@@ -165,16 +165,16 @@ export function ClienteDetallePage() {
 
       <SectionCard title="Instalaciones" className="mb-6">
         {detalle.instalaciones.length === 0 ? (
-          <p className="text-slate-500 text-sm">Este cliente todavía no ha iniciado sesión desde Electron ni la App.</p>
+          <p className="text-slate-400 text-sm">Este cliente todavía no ha iniciado sesión desde Electron ni la App.</p>
         ) : (
           <div className="space-y-2">
             {detalle.instalaciones.map((inst, i) => (
               <div key={i} className="flex items-center justify-between text-sm border-b border-slate-800 last:border-0 pb-2 last:pb-0">
                 <div>
                   <span className="font-medium">{inst.tipo === 'ELECTRON' ? 'Escritorio (Electron)' : 'App / Web'}</span>
-                  {inst.version && <span className="text-slate-500 ml-2">v{inst.version}</span>}
+                  {inst.version && <span className="text-slate-400 ml-2">v{inst.version}</span>}
                 </div>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-slate-400">
                   {inst.ultima_conexion ? `Última conexión: ${formatoFechaHora(inst.ultima_conexion)}` : `Activada: ${formatoFecha(inst.activada_en)}`}
                 </span>
               </div>
@@ -185,7 +185,7 @@ export function ClienteDetallePage() {
 
       <SectionCard title="Historial comercial">
         {detalle.historial.length === 0 ? (
-          <p className="text-slate-500 text-sm">Sin eventos registrados todavía.</p>
+          <p className="text-slate-400 text-sm">Sin eventos registrados todavía.</p>
         ) : (
           <div className="space-y-3">
             {detalle.historial.map((h: any) => (
@@ -194,7 +194,7 @@ export function ClienteDetallePage() {
                   <p className="font-medium">{EVENTO_LABEL[h.tipo_evento] ?? h.tipo_evento}</p>
                   {h.motivo && <p className="text-slate-400 text-xs mt-0.5">{h.motivo}</p>}
                 </div>
-                <span className="text-xs text-slate-500 shrink-0">{formatoFechaHora(h.created_at)}</span>
+                <span className="text-xs text-slate-400 shrink-0">{formatoFechaHora(h.created_at)}</span>
               </div>
             ))}
           </div>

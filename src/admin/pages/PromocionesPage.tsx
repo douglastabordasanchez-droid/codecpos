@@ -48,13 +48,13 @@ export function PromocionesPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <p className="font-semibold">{p.codigo}</p>
                       <EstadoBadge estado={p.activa ? (vigente ? 'ACTIVA' : 'VENCIDA') : 'INACTIVA'} />
-                      {p.planes?.nombre && <span className="text-xs text-slate-500">· {p.planes.nombre}</span>}
+                      {p.planes?.nombre && <span className="text-xs text-slate-400">· {p.planes.nombre}</span>}
                     </div>
                     <p className="text-lg font-bold text-amber-400 tabular-nums">{formatoMoneda(p.precio_promocional)}/mes</p>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-slate-400 mt-1">
                       Ventana de adquisición: {formatoFecha(p.fecha_inicio)} — {formatoFecha(p.fecha_fin)} · Beneficio: {p.duracion_beneficio_meses} meses por cliente
                     </p>
-                    {p.descripcion && <p className="text-xs text-slate-600 mt-2 max-w-xl">{p.descripcion}</p>}
+                    {p.descripcion && <p className="text-xs text-slate-400 mt-2 max-w-xl">{p.descripcion}</p>}
                   </div>
                   {!soloLectura && (
                     <button

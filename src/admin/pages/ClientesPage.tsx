@@ -39,18 +39,18 @@ export function ClientesPage() {
 
       <div className="flex flex-col sm:flex-row gap-3 mb-5">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Buscar por nombre de negocio…"
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-emerald-500"
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-amber-500"
           />
         </div>
         <select
           value={filtroEstado}
           onChange={(e) => setFiltroEstado(e.target.value)}
-          className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500"
+          className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-500"
         >
           {ESTADOS.map((e) => <option key={e} value={e}>{e === 'TODOS' ? 'Todos los estados' : e}</option>)}
         </select>
@@ -66,11 +66,11 @@ export function ClientesPage() {
             <Link
               key={c.id}
               to={`/clientes/${c.id}`}
-              className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-emerald-500/50 transition-colors"
+              className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-amber-500/50 transition-colors"
             >
               <div>
                 <p className="font-medium">{c.nombre_negocio}</p>
-                {c.email && <p className="text-xs text-slate-500 mt-0.5">{c.email}</p>}
+                {c.email && <p className="text-xs text-slate-400 mt-0.5">{c.email}</p>}
                 {c.licencia_vigente?.estado === 'TRIAL' && (
                   <p className="text-xs text-amber-400 mt-0.5">
                     En prueba · {diasRestantes(c.licencia_vigente.fecha_fin_periodo_actual)} días restantes

@@ -25,7 +25,7 @@ export function UsuariosPage() {
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
+              <tr className="text-left text-xs text-slate-300 border-b border-slate-800">
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Empresa</th>
                 <th className="px-4 py-3 font-medium">Rol</th>
@@ -44,7 +44,7 @@ export function UsuariosPage() {
                   <td className="px-4 py-3">
                     {u.clientes_pos ? (
                       <span className="flex items-center gap-2">
-                        <Link to={`/clientes/${u.clientes_pos.id}`} className="hover:text-emerald-400">{u.clientes_pos.nombre_negocio}</Link>
+                        <Link to={`/clientes/${u.clientes_pos.id}`} className="hover:text-amber-400">{u.clientes_pos.nombre_negocio}</Link>
                         <PlanBadge plan={u.clientes_pos.plan} />
                       </span>
                     ) : '—'}

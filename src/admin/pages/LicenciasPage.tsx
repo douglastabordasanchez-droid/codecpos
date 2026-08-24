@@ -32,7 +32,7 @@ export function LicenciasPage() {
             key={e}
             onClick={() => setFiltro(e)}
             className={`text-xs font-medium rounded-full px-3 py-1.5 border transition-colors ${
-              filtro === e ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+              filtro === e ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
             }`}
           >
             {e === 'TODAS' ? 'Todas' : e}
@@ -48,7 +48,7 @@ export function LicenciasPage() {
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-slate-500 border-b border-slate-800">
+              <tr className="text-left text-xs text-slate-300 border-b border-slate-800">
                 <th className="px-4 py-3 font-medium">Empresa</th>
                 <th className="px-4 py-3 font-medium">Plan</th>
                 <th className="px-4 py-3 font-medium">Modalidad</th>
@@ -64,7 +64,7 @@ export function LicenciasPage() {
                   <tr key={l.id} className="border-b border-slate-800/60 last:border-0">
                     <td className="px-4 py-3">
                       {l.clientes_pos ? (
-                        <Link to={`/clientes/${l.clientes_pos.id}`} className="hover:text-emerald-400">{l.clientes_pos.nombre_negocio}</Link>
+                        <Link to={`/clientes/${l.clientes_pos.id}`} className="hover:text-amber-400">{l.clientes_pos.nombre_negocio}</Link>
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3"><PlanBadge plan={l.planes?.codigo} /></td>
