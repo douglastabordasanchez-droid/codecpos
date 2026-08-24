@@ -12,7 +12,7 @@ import {
   Clock, RefreshCw, Activity, Zap, Target, Award, BarChart3,
   ArrowUpRight, ArrowDownRight, ShoppingBag, Flame, CheckCircle2,
   Bell, Banknote, Smartphone, Sun, Sunset, Moon, Pencil, X, Coffee, Wrench, TrendingDown,
-  Calendar, ChevronDown, Bike,
+  Calendar, ChevronDown, Bike, Landmark,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { electronStore, EstadisticasDia } from '../../lib/electronStore';
@@ -329,6 +329,7 @@ function FlujoCaja({ estadisticas, dark }: { estadisticas: EstadisticasDia | nul
     { label: 'Daviplata', key: 'daviplata',      color: '#ef4444', icon: Smartphone},
     { label: 'Tarjeta',   key: 'tarjeta',        color: '#3b82f6', icon: CreditCard},
     { label: 'Transf.',   key: 'transferencia',  color: '#06b6d4', icon: Activity  },
+    { label: 'Bancolombia', key: 'bancolombia',  color: '#ca8a04', icon: Landmark  },
     { label: 'Mixto',     key: 'mixto',          color: '#f59e0b', icon: DollarSign},
     ...(rappiActivo ? [{ label: rappiLabel, key: 'rappi', color: rappiColor, icon: Bike }] : []),
     ...(bonosActivo ? [{ label: bonosLabel, key: 'bonos', color: bonosColor, icon: Award }] : []),
@@ -1116,12 +1117,13 @@ export default function DashboardPOSPage() {
             acc.nequi += Number(venta.pagoMixto.nequi || 0);
             acc.daviplata += Number(venta.pagoMixto.daviplata || 0);
             acc.transferencia += Number(venta.pagoMixto.transferencia || 0);
+            acc.bancolombia += Number((venta.pagoMixto as any).bancolombia || 0);
             acc.rappi += Number(venta.pagoMixto.rappi || 0);
           } else if (venta.metodoPago && (acc as any)[venta.metodoPago] !== undefined) {
             (acc as any)[venta.metodoPago] += total;
           }
           return acc;
-        }, { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0, mixto: 0, bonos: 0, cartera: 0 });
+        }, { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, bancolombia: 0, rappi: 0, mixto: 0, bonos: 0, fidelizacion: 0, cartera: 0 });
 
         // Crear objeto de estadísticas compatible
         const statsNorm: EstadisticasDia = {
@@ -1345,6 +1347,7 @@ export default function DashboardPOSPage() {
     { name: 'Nequi',         value: Number(estadisticas.ventasPorMetodo.nequi)         || 0, color: '#8b5cf6' },
     { name: 'Daviplata',     value: Number(estadisticas.ventasPorMetodo.daviplata)     || 0, color: '#ef4444' },
     { name: 'Transferencia', value: Number(estadisticas.ventasPorMetodo.transferencia) || 0, color: '#06b6d4' },
+    { name: 'Bancolombia',   value: Number(estadisticas.ventasPorMetodo.bancolombia)   || 0, color: '#ca8a04' },
     { name: 'Rappi',         value: Number(estadisticas.ventasPorMetodo.rappi)         || 0, color: '#ff6b35' },
     { name: 'Mixto',         value: Number(estadisticas.ventasPorMetodo.mixto)         || 0, color: '#f59e0b' },
     ...(bonosActivo ? [{ name: bonosLabel, value: Number(estadisticas.ventasPorMetodo.bonos) || 0, color: bonosColor }] : []),

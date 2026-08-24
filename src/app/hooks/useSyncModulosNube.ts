@@ -29,6 +29,7 @@ import {
   type CuentaMesa,
 } from '../lib/supabase/panaderiaSyncService';
 import type { OrdenServicio } from '../types/taller';
+import { esModuloActivoGlobal, ModuloPOS } from '../lib/permissions';
 
 const STORAGE_CUENTAS_MESAS = 'codecpos_mesas_cuentas';
 const TALLER_PULL_INTERVAL_MS = 30000;
@@ -40,7 +41,22 @@ export function useSyncModulosNube() {
     const clienteId = getLinkedClienteId();
     if (!isSupabaseConfigured() || !clienteId) return;
 
+    // 🚀 FIX rendimiento: este hook se monta una sola vez en ProtectedLayout
+    // — es decir, para TODO negocio, use o no Taller/Panadería. Antes hacía
+    // el pull de Taller y se suscribía a Panadería sin preguntar, así que
+    // un negocio que nunca activó esos módulos pagaba ese costo de red/CPU
+    // igual que uno que sí los usa. Ahora cada bloque solo arranca si su
+    // módulo está realmente activo (mismo gate que usa el resto del
+    // sistema) — un negocio con esos módulos activos ve exactamente el
+    // mismo comportamiento de siempre.
+    const tallerActivo = esModuloActivoGlobal(ModuloPOS.TALLER_REPARACIONES);
+    const panaderiaActivo = esModuloActivoGlobal(ModuloPOS.PANADERIA_ONCES);
+    if (!tallerActivo && !panaderiaActivo) return;
+
     let cancelado = false;
+    let intervaloTaller: ReturnType<typeof window.setInterval> | null = null;
+    let desuscribirTaller: (() => void) | null = null;
+    let desuscribirCuentas: (() => void) | null = null;
 
     // ── Taller: aplicar una orden que llegó de otra caja o del celular ───────
     const aplicarOrden = async (orden: OrdenServicio) => {
@@ -79,57 +95,61 @@ export function useSyncModulosNube() {
       }
     };
 
-    const pullTaller = () => {
-      pullOrdenesTallerDesdePwa()
-        .then((ordenes) => { ordenes.forEach(aplicarOrden); })
-        .catch((e) => console.warn('[SyncNube] Pull de taller falló:', e));
-    };
+    if (tallerActivo) {
+      const pullTaller = () => {
+        pullOrdenesTallerDesdePwa()
+          .then((ordenes) => { ordenes.forEach(aplicarOrden); })
+          .catch((e) => console.warn('[SyncNube] Pull de taller falló:', e));
+      };
 
-    // Al arrancar: recuperar lo que pasó mientras la caja estaba cerrada.
-    pullTaller();
-    // 🛡️ Red de seguridad: además del realtime, un pull periódico por si se
-    // cae la conexión del canal sin que nadie lo note (mismo patrón que
-    // ventas/productos en syncService.ts).
-    const intervaloTaller = window.setInterval(pullTaller, TALLER_PULL_INTERVAL_MS);
+      // Al arrancar: recuperar lo que pasó mientras la caja estaba cerrada.
+      pullTaller();
+      // 🛡️ Red de seguridad: además del realtime, un pull periódico por si se
+      // cae la conexión del canal sin que nadie lo note (mismo patrón que
+      // ventas/productos en syncService.ts).
+      intervaloTaller = window.setInterval(pullTaller, TALLER_PULL_INTERVAL_MS);
 
-    const desuscribirTaller = suscribirCambiosTallerPwa(aplicarOrden);
+      desuscribirTaller = suscribirCambiosTallerPwa(aplicarOrden);
+    }
 
     // ── Panadería: cuenta de mesa enviada por un mesero U OTRA CAJA ──────────
-    const desuscribirCuentas = suscribirCuentasMesa(clienteId, (cuenta: CuentaMesa) => {
-      if (cancelado) return;
-      // Ignorar el reflejo del propio guardado — antes se ignoraba TODO lo
-      // que no viniera marcado 'pwa', lo que también bloqueaba enterarse de
-      // cambios hechos desde otra caja Electron.
-      if (esEcoPropioDeMesa(cuenta.mesaLocalId)) return;
+    if (panaderiaActivo) {
+      desuscribirCuentas = suscribirCuentasMesa(clienteId, (cuenta: CuentaMesa) => {
+        if (cancelado) return;
+        // Ignorar el reflejo del propio guardado — antes se ignoraba TODO lo
+        // que no viniera marcado 'pwa', lo que también bloqueaba enterarse de
+        // cambios hechos desde otra caja Electron.
+        if (esEcoPropioDeMesa(cuenta.mesaLocalId)) return;
 
-      try {
-        const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS);
-        const mapa: Record<string, unknown[]> = raw ? JSON.parse(raw) : {};
-        mapa[cuenta.mesaLocalId] = cuenta.items;
-        localStorage.setItem(STORAGE_CUENTAS_MESAS, JSON.stringify(mapa));
+        try {
+          const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS);
+          const mapa: Record<string, unknown[]> = raw ? JSON.parse(raw) : {};
+          mapa[cuenta.mesaLocalId] = cuenta.items;
+          localStorage.setItem(STORAGE_CUENTAS_MESAS, JSON.stringify(mapa));
 
-        // La pantalla de Panadería escucha esto para repintar el salón.
-        window.dispatchEvent(new CustomEvent('codecpos:panaderia-cuentas-sincronizadas', {
-          detail: { mesaId: cuenta.mesaLocalId, items: cuenta.items },
-        }));
+          // La pantalla de Panadería escucha esto para repintar el salón.
+          window.dispatchEvent(new CustomEvent('codecpos:panaderia-cuentas-sincronizadas', {
+            detail: { mesaId: cuenta.mesaLocalId, items: cuenta.items },
+          }));
 
-        if (cuenta.items.length > 0) {
-          toast.success(`Comanda recibida — Mesa ${cuenta.mesaLocalId}`, {
-            description: `${cuenta.items.length} ítem(s) · $${Math.round(cuenta.total).toLocaleString('es-CO')}`
-              + (cuenta.meseroNombre ? ` · ${cuenta.meseroNombre}` : ''),
-            duration: 7000,
-          });
+          if (cuenta.items.length > 0) {
+            toast.success(`Comanda recibida — Mesa ${cuenta.mesaLocalId}`, {
+              description: `${cuenta.items.length} ítem(s) · $${Math.round(cuenta.total).toLocaleString('es-CO')}`
+                + (cuenta.meseroNombre ? ` · ${cuenta.meseroNombre}` : ''),
+              duration: 7000,
+            });
+          }
+        } catch (e) {
+          console.warn('[SyncNube] No se pudo aplicar la comanda recibida:', e);
         }
-      } catch (e) {
-        console.warn('[SyncNube] No se pudo aplicar la comanda recibida:', e);
-      }
-    });
+      });
+    }
 
     return () => {
       cancelado = true;
-      window.clearInterval(intervaloTaller);
-      desuscribirTaller();
-      desuscribirCuentas();
+      if (intervaloTaller !== null) window.clearInterval(intervaloTaller);
+      desuscribirTaller?.();
+      desuscribirCuentas?.();
     };
   }, [usuarioActual?.nombreCompleto]);
 }

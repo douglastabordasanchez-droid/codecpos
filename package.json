@@ -24,6 +24,7 @@
     "voz:descargar": "node scripts/download-piper-voice.js",
     "electron:build": "npm run electron:build:win",
     "electron:build:win": "npm run clean && npm run voz:descargar && npm run check:syntax && npm run verify && npm run precheck && npx vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64 --config electron/builder-config.js",
+    "electron:build:win:publish": "npm run clean && npm run voz:descargar && npm run check:syntax && npm run verify && npm run precheck && npx vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64 --publish always --config electron/builder-config.js",
     "electron:build:all": "npm run clean && npm run voz:descargar && npm run check:syntax && npm run verify && npm run precheck && npx vite build && electron-builder -mwl --config electron/builder-config.js",
     "pack": "npm run clean && npm run voz:descargar && npx vite build && electron-builder --dir --config electron/builder-config.js",
     "dist": "npm run clean && npm run voz:descargar && npm run build && electron-builder --config electron/builder-config.js",
@@ -38,7 +39,9 @@
     "dev:pwa": "vite --config vite.config.pwa.ts",
     "build:pwa": "vite build --config vite.config.pwa.ts",
     "dev:admin": "vite --config vite.config.admin.ts",
-    "build:admin": "vite build --config vite.config.admin.ts"
+    "build:admin": "vite build --config vite.config.admin.ts",
+    "dev:landing": "npx serve landing -l 4174",
+    "dev:trial-flow": "concurrently \"npm run dev:pwa\" \"npm run dev:landing\""
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -72,7 +75,6 @@
     "@radix-ui/react-tooltip": "1.1.8",
     "@serialport/bindings-cpp": "^13.0.1",
     "@supabase/supabase-js": "^2.112.3",
-    "@tensorflow/tfjs": "^4.22.0",
     "@types/qrcode": "^1.5.6",
     "@xmldom/xmldom": "^0.9.10",
     "@zxing/browser": "^0.1.5",

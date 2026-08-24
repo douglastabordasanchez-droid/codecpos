@@ -110,7 +110,7 @@ function labelMedioEgreso(metodo: string): string {
   const key = String(metodo || '').toLowerCase();
   if (key === 'efectivo') return 'Efectivo';
   if (key === 'tarjeta_banco' || key === 'tarjeta' || key === 'banco' || key === 'cheque') return 'Tarjeta o Banco';
-  if (key === 'transferencia' || key === 'nequi' || key === 'daviplata') return 'Transferencia';
+  if (key === 'transferencia' || key === 'nequi' || key === 'daviplata' || key === 'bancolombia') return 'Transferencia';
   return metodo || 'N/A';
 }
 

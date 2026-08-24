@@ -28,6 +28,12 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png'],
+      // 🌐 Fase 5 (arquitectura unificada): la PWA ahora comparte dominio con
+      // la landing comercial (`landing/`, servida en la raíz del mismo
+      // subdominio por `vercel.json`) — la PWA vive bajo `/app/` en vez de
+      // la raíz. `start_url`/`scope` deben apuntar ahí para que el service
+      // worker no intente controlar la landing, y para que "Instalar app"
+      // desde el navegador abra `/app/`, no `/`.
       manifest: {
         name: 'CODEC POS',
         short_name: 'CODEC POS',
@@ -35,12 +41,12 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
-        start_url: '/',
-        scope: '/',
+        start_url: '/app/',
+        scope: '/app/',
         icons: [
-          { src: '/logo.png', sizes: '192x192', type: 'image/png' },
-          { src: '/logo.png', sizes: '512x512', type: 'image/png' },
-          { src: '/logo.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/app/logo.png', sizes: '192x192', type: 'image/png' },
+          { src: '/app/logo.png', sizes: '512x512', type: 'image/png' },
+          { src: '/app/logo.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
@@ -60,9 +66,15 @@ export default defineConfig({
     },
   },
   assetsInclude: ['**/*.svg', '**/*.csv'],
-  base: '/',
+  // Base '/app/' (antes '/'): la PWA se sirve bajo ese subpath del mismo
+  // dominio que la landing — ver comentario del manifest arriba y
+  // `src/pwa/routes.tsx` (basename del router) para el resto del cambio.
+  base: '/app/',
   build: {
-    outDir: 'dist-pwa',
+    // Sale directo en su propia subcarpeta dentro de dist-pwa/ para que
+    // `vercel.json` pueda copiar la landing en la raíz de ese mismo output
+    // sin que se pisen entre sí.
+    outDir: 'dist-pwa/app',
     assetsDir: 'assets',
     emptyOutDir: true,
     rollupOptions: {

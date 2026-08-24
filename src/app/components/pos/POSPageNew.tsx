@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router';
 import {
@@ -27,6 +27,7 @@ import {
   RotateCcw,
   Maximize2,
   Bike,
+  Landmark,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -42,10 +43,21 @@ import {
   useCustomerDisplay 
 } from '../../hooks/usePeripherals';
 import { SyncStatusIndicator } from '../electron/SyncStatusIndicator';
-import { PagoMixtoModal } from './PagoMixtoModal';
-import { ModalVentaCartera, type DatosVentaCartera } from './ModalVentaCartera';
+// 🚀 FIX rendimiento: estos 3 modales se montaban SIEMPRE en el árbol de
+// POSPageNew (la pantalla más visitada de todo el sistema), aunque casi
+// nunca se abren en una venta normal en efectivo — su código se descargaba
+// y evaluaba en cada apertura de la pantalla de ventas sin necesidad.
+// Cada uno ya resetea su propio estado interno al cerrarse (ver
+// handleClose en PagoMixtoModal, el efecto keyed en [isOpen] de
+// ModalVentaCartera, y [visible] de NequiVerifyModal) — así que montarlos
+// solo cuando su flag está en true es equivalente a su comportamiento
+// actual, no lo cambia.
+const PagoMixtoModal = lazy(() => import('./PagoMixtoModal').then(m => ({ default: m.PagoMixtoModal })));
+const ModalVentaCartera = lazy(() => import('./ModalVentaCartera').then(m => ({ default: m.ModalVentaCartera })));
+import type { DatosVentaCartera } from './ModalVentaCartera';
 import { crearCuentaCartera } from '../../lib/carteraService';
 import { electronStore, PagoMixtoDetalle } from '../../lib/electronStore';
+import { getCached } from '../../lib/cachedLocalStorage';
 import { logger } from '../../lib/logger';
 import { useAuth } from '../../contexts/AuthContext';
 import { antiFraudeService } from '../../lib/antiFraudeService';
@@ -53,7 +65,8 @@ import { NotificacionesAntiFraude } from '../notifications/NotificacionesAntiFra
 import { MultiFacturasInline } from './MultiFacturasInline';
 import ProductoNuevoAutoModal from './ProductoNuevoAutoModal';
 import { onVentaCompletada } from '../../lib/integracionesService';
-import { NequiVerifyModal, type EntidadPago } from '../codecVerify/NequiVerifyModal';
+const NequiVerifyModal = lazy(() => import('../codecVerify/NequiVerifyModal').then(m => ({ default: m.NequiVerifyModal })));
+import type { EntidadPago } from '../codecVerify/NequiVerifyModal';
 import { cajaDiariaService } from '../../lib/cajaDiariaService';
 import { openCashDrawer } from '../../lib/thermalPrinter';
 import { ModuloPOS, esModuloActivoGlobal } from '../../lib/permissions';
@@ -164,18 +177,12 @@ function estiloBotonPago(color: string) {
 
 // 🚀 FIX rendimiento: obtenerConfigIVA()/getConfigFacturacion() parseaban
 // 'codec_pos_config' desde localStorage en CADA llamada (varias veces por
-// render). Cache a nivel de módulo, invalidado por comparación barata del
-// string crudo — evita el JSON.parse repetido salvo que la config realmente
-// haya cambiado (ej. el usuario la edita en Configuración).
-let _configCacheRaw: string | null = null;
-let _configCacheParsed: any = {};
+// render). Usa la caché compartida (mismo patrón que antes, ahora
+// generalizado en cachedLocalStorage.ts) — evita el JSON.parse repetido
+// salvo que la config realmente haya cambiado (ej. el usuario la edita en
+// Configuración).
 function leerConfigEmpresaCacheada(): any {
-  const raw = localStorage.getItem('codec_pos_config') || '{}';
-  if (raw !== _configCacheRaw) {
-    try { _configCacheParsed = JSON.parse(raw); } catch { _configCacheParsed = {}; }
-    _configCacheRaw = raw;
-  }
-  return _configCacheParsed;
+  return getCached<any>('codec_pos_config', {});
 }
 
 export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: POSPageNewProps = {}) {
@@ -203,6 +210,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [mostrarPago, setMostrarPago] = useState(false);
   const [ventaActual, setVentaActual] = useState<any>(null);
   const [mostrarTicket, setMostrarTicket] = useState(false);
+  // 🚀 Renderizado diferido: el marco del modal (fondo + cabecera) aparece
+  // instantáneo al cobrar, y el contenido pesado del recibo (TicketReceipt:
+  // tabla de ítems, botones de imprimir/PDF/compartir) se monta un frame
+  // después, ya con el modal pintado — evita que el clic de "Cobrar" quede
+  // bloqueado esperando el render completo de la factura.
+  const [ticketContenidoListo, setTicketContenidoListo] = useState(false);
   const [productoPesable, setProductoPesable] = useState<Producto | null>(null);
   const [showPagoModal, setShowPagoModal] = useState(false);
   const [showSugerencias, setShowSugerencias] = useState(false);
@@ -306,6 +319,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     { id: 'transferencia', label: 'Transferencia',  enabled: true,  color: '#a855f7', tipo: 'transferencia' },
     { id: 'nequi',         label: 'Nequi',          enabled: true,  color: '#d946ef', tipo: 'nequi' },
     { id: 'daviplata',     label: 'Daviplata',      enabled: true,  color: '#ef4444', tipo: 'daviplata' },
+    { id: 'bancolombia',   label: 'Bancolombia',    enabled: true,  color: '#ca8a04', tipo: 'bancolombia' },
     { id: 'pago_mixto',    label: 'Pago Mixto',     enabled: true,  color: '#f59e0b', tipo: 'pago_mixto' },
     { id: 'rappi',         label: 'Rappi',          enabled: true,  color: '#ff6b35', tipo: 'rappi' },
     { id: 'bonos',         label: 'Bonos',          enabled: false, color: '#10b981', tipo: 'bonos' },
@@ -337,6 +351,24 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     try { localStorage.setItem(STORAGE_METODOS_PAGO, JSON.stringify(lista)); } catch { /* storage lleno */ }
     window.dispatchEvent(new CustomEvent('codecpos:metodos-pago-cambio', { detail: { config: lista } }));
   };
+
+  // Diferir el montaje del recibo (ver comentario en ticketContenidoListo):
+  // doble rAF asegura que el navegador ya pintó el marco del modal antes de
+  // montar el <TicketReceipt> pesado.
+  useEffect(() => {
+    if (!mostrarTicket) {
+      setTicketContenidoListo(false);
+      return;
+    }
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setTicketContenidoListo(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [mostrarTicket]);
 
   // Recargar métodos de pago cuando el servidor LAN los sincroniza a esta terminal
   useEffect(() => {
@@ -558,7 +590,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     
     // 🖼️ Cargar logo y nombre comercial de la empresa
     try {
-      const config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+      const config = leerConfigEmpresaCacheada();
       setLogoEmpresa(config.logoUrl || '');
       setNombreComercial(config.nombreComercial || '');
     } catch (error) {
@@ -670,19 +702,40 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       // lee directo de localStorage.
       const productosLocal = localStorage.getItem('pos-productos');
       if (productosLocal) {
-        let productosParsed: any[] = [];
+        // 🚀 FIX rendimiento: getCached evita reparsear el catálogo completo
+        // si nada lo modificó desde la última lectura (mismo patrón que
+        // electronStore.ts) — loadProductos() se llama tras cada venta y en
+        // cada navegación a /pos, así que este JSON.parse se repetía mucho.
+        const productosParsed = getCached<any[]>('pos-productos', []);
         let modificadores: any[] = [];
         let opciones: any[] = [];
-        try { productosParsed = JSON.parse(productosLocal); } catch { productosParsed = []; }
         try { modificadores = JSON.parse(localStorage.getItem('pos-modificadores-producto') || '[]'); } catch { modificadores = []; }
         try { opciones = JSON.parse(localStorage.getItem('pos-opciones-modificador') || '[]'); } catch { opciones = []; }
 
+        // ⚡ Antes esto era O(productos × modificadores + productos × opciones):
+        // por cada producto se recorría el arreglo COMPLETO de modificadores y
+        // luego el arreglo COMPLETO de opciones. loadProductos() se llama tras
+        // CADA venta (los 3 flujos de pago) — con un catálogo/modificadores
+        // grandes, eso se sentía como una pausa perceptible entre cobrar y
+        // quedar listo para el siguiente cliente. Agrupar una sola vez por
+        // productoId/modificadorId lo baja a O(productos + modificadores + opciones).
+        const opcionesPorModificador = new Map<string, any[]>();
+        for (const o of (Array.isArray(opciones) ? opciones : [])) {
+          if (o.activo === false) continue;
+          const lista = opcionesPorModificador.get(o.modificadorId);
+          if (lista) lista.push(o); else opcionesPorModificador.set(o.modificadorId, [o]);
+        }
+        const modificadoresPorProducto = new Map<string, any[]>();
+        for (const m of (Array.isArray(modificadores) ? modificadores : [])) {
+          if (m.activo === false) continue;
+          const lista = modificadoresPorProducto.get(m.productoId);
+          if (lista) lista.push(m); else modificadoresPorProducto.set(m.productoId, [m]);
+        }
+
         const productosConModificadores = (Array.isArray(productosParsed) ? productosParsed : []).map((p: any) => {
-          const modsProducto = (Array.isArray(modificadores) ? modificadores : []).filter((m: any) => m.productoId === p.id && m.activo !== false);
-          const modIds = new Set(modsProducto.map((m: any) => m.id));
-          const opcionesProducto = (Array.isArray(opciones) ? opciones : [])
-            .filter((o: any) => modIds.has(o.modificadorId) && o.activo !== false)
-            .map((o: any) => ({
+          const modsProducto = modificadoresPorProducto.get(p.id) || [];
+          const opcionesProducto = modsProducto.flatMap((m: any) =>
+            (opcionesPorModificador.get(m.id) || []).map((o: any) => ({
               modifierOptionId: o.id,
               nombre: o.nombre,
               precioVenta: Number(o.precioVenta) || 0,
@@ -690,7 +743,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               ingredientId: o.ingredientId,
               consumoInventario: Number(o.consumoInventario) || 0,
               unidadInventario: o.unidadInventario,
-            }));
+            }))
+          );
 
           return {
             ...p,
@@ -1265,13 +1319,21 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return true;
   };
 
-  const procesarVenta = async (metodoPago: 'efectivo' | 'tarjeta' | 'transferencia' | 'nequi' | 'daviplata' | 'rappi' | 'bonos' | 'fidelizacion') => {
+  const procesarVenta = async (metodoPago: 'efectivo' | 'tarjeta' | 'transferencia' | 'nequi' | 'daviplata' | 'bancolombia' | 'rappi' | 'bonos' | 'fidelizacion') => {
     // 🛡️ Anti-doble-cobro: si ya hay una venta en curso, ignorar el clic repetido.
     // procesandoPagoRef es síncrono (a diferencia del state) por lo que bloquea
     // incluso el segundo clic disparado en el mismo tick antes del re-render.
     if (procesandoPagoRef.current) return;
     procesandoPagoRef.current = true;
     setProcesandoPago(true);
+
+    // 🚀 Cede el hilo principal un tick antes de la validación/armado de la
+    // venta (parseos de config, mapeo del carrito): así el navegador alcanza
+    // a pintar el estado "procesando" / cierre del modal de método de pago
+    // que se acaba de disparar en este mismo clic, en vez de que ese pintado
+    // quede en cola detrás del cálculo síncrono. El candado de arriba ya
+    // bloquea clics repetidos, así que ceder aquí no abre ventana de doble cobro.
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     try {
     // ✅ VALIDACIÓN CRÍTICA 1: Usuario autenticado
@@ -1336,8 +1398,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       const fechaOperativa = getFechaLocalISO();
       const sesionCajaActiva = cajaDiariaService.getSesionActiva(usuarioActual?.id, fechaOperativa);
       const esAdmin = usuarioActual?.rol === 'super_usuario';
-      let config: any = {};
-      try { config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}'); } catch { config = {}; }
+      const config: any = leerConfigEmpresaCacheada();
       // 🛡️ FIX: el número de factura salía SOLO de un contador en
       // localStorage, que puede desincronizarse de lo que realmente hay en
       // IndexedDB (backup/restore, migración de equipo, limpieza parcial).
@@ -1347,7 +1408,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       let ultimoNumeroDB = 0;
       try { ultimoNumeroDB = await electronStore.getUltimoNumeroVenta(); } catch { /* usar solo localStorage si falla */ }
       const numeroFactura = Math.max(ultimaFacturaLS, ultimoNumeroDB) + 1;
-      const prefijoFactura = config.prefijoFactura || 'FAC';
+      // 🛡️ Si el negocio nunca eligió un prefijo a mano (Configuración >
+      // Facturación Electrónica), se usa el que el servidor asignó
+      // automáticamente a esta caja al registrarse (único por instalación
+      // dentro del negocio — ver migración 0059) antes de caer al genérico
+      // 'FAC' que no distingue entre cajas.
+      const prefijoFactura = config.prefijoFactura || localStorage.getItem('codec_pos_prefijo_auto') || 'FAC';
       const numeroFacturaCompleto = `${prefijoFactura}${numeroFactura.toString().padStart(6, '0')}`;
 
       if (!sesionCajaActiva) {
@@ -1517,6 +1583,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
 
+      // 🚀 FIX rendimiento (freeze de "Confirmar Pago"): ceder el hilo aquí
+      // para que el navegador pinte el ticket de éxito ANTES de que corra
+      // el descuento de inventario (que reescribe el catálogo completo en
+      // localStorage y puede tardar varios segundos con catálogos grandes).
+      // Sin este yield, React encola el render de éxito pero nunca llega a
+      // pintarlo hasta que termina todo el trabajo síncrono de abajo — eso
+      // es lo que se siente como "el sistema se congela al cobrar".
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       // 💾 PERSISTENCIA CRÍTICA — se espera porque de esto depende que la venta
       // realmente quede guardada; todo lo demás (estadísticas, LAN, webhooks,
       // fidelización, refresco de catálogo) es "best-effort" y antes se
@@ -1636,11 +1711,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           }).catch(() => {});
 
           // 🔐 SISTEMA ANTI-FRAUDE
-          if (metodoPago === 'nequi' || metodoPago === 'daviplata' || metodoPago === 'transferencia') {
+          if (metodoPago === 'nequi' || metodoPago === 'daviplata' || metodoPago === 'transferencia' || metodoPago === 'bancolombia') {
             try {
               await antiFraudeService.registrarTransaccionPendiente(
                 numeroFacturaCompleto,
-                metodoPago as 'nequi' | 'daviplata' | 'transferencia',
+                metodoPago as 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia',
                 total
               );
             } catch { /* anti-fraude no crítico */ }
@@ -1716,6 +1791,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     procesandoPagoRef.current = true;
     setProcesandoPago(true);
 
+    // 🚀 Ver comentario equivalente en procesarVenta(): cede el hilo un tick
+    // antes del cálculo síncrono para no bloquear el pintado del cierre del
+    // modal de pago mixto.
+    await new Promise(resolve => setTimeout(resolve, 0));
+
     if (carrito.length === 0) {
       toast.error('El carrito está vacío');
       procesandoPagoRef.current = false;
@@ -1732,11 +1812,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       const fechaOperativa = getFechaLocalISO();
       const sesionCajaActiva = cajaDiariaService.getSesionActiva(usuarioActual?.id, fechaOperativa);
       const esAdmin = usuarioActual?.rol === 'super_usuario';
-      let config: any = {};
       // 🚨 FIX: usaba la clave legacy 'pos-config-empresa' — el resto de la app
       // (incluida procesarVenta) usa 'codec_pos_config' como fuente única de
       // verdad, así que el prefijo de factura configurado nunca se aplicaba aquí.
-      try { config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}'); } catch { config = {}; }
+      const config: any = leerConfigEmpresaCacheada();
       // 🛡️ FIX: ver comentario equivalente en procesarVenta() — se reconcilia
       // el contador local con el máximo real en IndexedDB para evitar
       // colisiones de número de factura que pierden la venta en silencio.
@@ -1744,7 +1823,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       let ultimoNumeroDB = 0;
       try { ultimoNumeroDB = await electronStore.getUltimoNumeroVenta(); } catch { /* usar solo localStorage si falla */ }
       const numeroFactura = Math.max(ultimaFacturaLS, ultimoNumeroDB) + 1;
-      const prefijoFactura = config.prefijoFactura || 'FAC';
+      // 🛡️ Si el negocio nunca eligió un prefijo a mano (Configuración >
+      // Facturación Electrónica), se usa el que el servidor asignó
+      // automáticamente a esta caja al registrarse (único por instalación
+      // dentro del negocio — ver migración 0059) antes de caer al genérico
+      // 'FAC' que no distingue entre cajas.
+      const prefijoFactura = config.prefijoFactura || localStorage.getItem('codec_pos_prefijo_auto') || 'FAC';
       const numeroFacturaCompleto = `${prefijoFactura}${numeroFactura.toString().padStart(6, '0')}`;
 
       if (!sesionCajaActiva) {
@@ -1834,6 +1918,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setEfectivoRecibido('');
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       setMostrarPago(false);
+
+      // 🚀 FIX rendimiento: ver comentario equivalente en procesarVenta() —
+      // cede el hilo para pintar el ticket de éxito antes del descuento de
+      // inventario síncrono.
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       // 💾 PERSISTENCIA CRÍTICA — ver comentario equivalente en procesarVenta().
       const pagoMixtoObj: any = {};
@@ -1956,13 +2045,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       const fechaOperativa = getFechaLocalISO();
       const sesionCajaActiva = cajaDiariaService.getSesionActiva(usuarioActual?.id, fechaOperativa);
       const esAdmin = usuarioActual?.rol === 'super_usuario';
-      let config: any = {};
-      try { config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}'); } catch { config = {}; }
+      const config: any = leerConfigEmpresaCacheada();
       const ultimaFacturaLS = parseInt(localStorage.getItem('pos-ultima-factura') || '0') || 0;
       let ultimoNumeroDB = 0;
       try { ultimoNumeroDB = await electronStore.getUltimoNumeroVenta(); } catch { /* usar solo localStorage si falla */ }
       const numeroFactura = Math.max(ultimaFacturaLS, ultimoNumeroDB) + 1;
-      const prefijoFactura = config.prefijoFactura || 'FAC';
+      // 🛡️ Si el negocio nunca eligió un prefijo a mano (Configuración >
+      // Facturación Electrónica), se usa el que el servidor asignó
+      // automáticamente a esta caja al registrarse (único por instalación
+      // dentro del negocio — ver migración 0059) antes de caer al genérico
+      // 'FAC' que no distingue entre cajas.
+      const prefijoFactura = config.prefijoFactura || localStorage.getItem('codec_pos_prefijo_auto') || 'FAC';
       const numeroFacturaCompleto = `${prefijoFactura}${numeroFactura.toString().padStart(6, '0')}`;
 
       if (!sesionCajaActiva) {
@@ -2057,6 +2150,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
+
+      // 🚀 FIX rendimiento (freeze de "Confirmar Pago"): ceder el hilo aquí
+      // para que el navegador pinte el ticket de éxito ANTES de que corra
+      // el descuento de inventario (que reescribe el catálogo completo en
+      // localStorage y puede tardar varios segundos con catálogos grandes).
+      // Sin este yield, React encola el render de éxito pero nunca llega a
+      // pintarlo hasta que termina todo el trabajo síncrono de abajo — eso
+      // es lo que se siente como "el sistema se congela al cobrar".
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       // 💾 PERSISTENCIA CRÍTICA — ver comentario equivalente en procesarVenta().
       if (usuarioActual) {
@@ -3063,6 +3165,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            style={{ willChange: 'opacity' }}
             className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto py-6 flex items-start justify-center px-4"
             onClick={() => { setShowPagoModal(false); setShowPagoConfig(false); }}
           >
@@ -3070,6 +3173,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
+              style={{ willChange: 'transform, opacity' }}
               onClick={(e) => e.stopPropagation()}
               className={`max-w-2xl w-full rounded-3xl flex flex-col max-h-[calc(100vh-48px)] ${
                 darkMode ? 'bg-slate-900 border-2 border-slate-700' : 'bg-white'
@@ -3266,6 +3370,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       <DollarSign className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );
+                  if (m.id === 'bancolombia') return (
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setEntidadVerificacion('bancolombia'); setShowVerificacionPagoModal(true); }} className={cls}>
+                      <Landmark className="w-7 h-7 mb-1" />{m.label}
+                    </button>
+                  );
                   if (m.id === 'pago_mixto') return (
                     <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setShowPagoMixtoModal(true); }} className={cls}>
                       <Zap className="w-7 h-7 mb-1" />{m.label}
@@ -3420,7 +3529,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               </Button>
             </div>
 
-            <TicketReceipt venta={ventaActual} />
+            {ticketContenidoListo ? (
+              <TicketReceipt venta={ventaActual} />
+            ) : (
+              <div className="animate-pulse space-y-3 py-2">
+                <div className={`h-24 rounded-xl ${darkMode ? 'bg-slate-800' : 'bg-gray-100'}`} />
+                <div className={`h-4 rounded ${darkMode ? 'bg-slate-800' : 'bg-gray-100'} w-3/4 mx-auto`} />
+                <div className={`h-4 rounded ${darkMode ? 'bg-slate-800' : 'bg-gray-100'} w-1/2 mx-auto`} />
+                <div className={`h-40 rounded-xl ${darkMode ? 'bg-slate-800' : 'bg-gray-100'}`} />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -3432,6 +3550,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            style={{ willChange: 'opacity' }}
             className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
             onClick={() => { setMetodoPagoSimple(null); setShowPagoModal(true); }}
           >
@@ -3439,6 +3558,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
+              style={{ willChange: 'transform, opacity' }}
               onClick={(e) => e.stopPropagation()}
               className={`max-w-md w-full rounded-3xl p-8 ${
                 darkMode ? 'bg-slate-900 border-2 border-slate-700' : 'bg-white'
@@ -3508,58 +3628,71 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         )}
       </AnimatePresence>
 
-      {/* Modal de verificación de pago (Nequi/Daviplata/Transferencia) con CODEC Verify */}
-      <NequiVerifyModal
-        visible={showVerificacionPagoModal}
-        entidad={entidadVerificacion}
-        monto={calcularTotal()}
-        darkMode={darkMode}
-        cajeroNombre={usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero'}
-        numeroFactura={facturaId}
-        onCancelar={() => { setShowVerificacionPagoModal(false); setShowPagoModal(true); }}
-        onConfirmar={() => {
-          setShowVerificacionPagoModal(false);
-          procesarVenta(entidadVerificacion);
-          setShowPagoModal(false);
-        }}
-      />
+      {/* Modal de verificación de pago (Nequi/Daviplata/Transferencia) con CODEC Verify
+          — montado solo mientras está visible, ver comentario de FIX rendimiento arriba. */}
+      {showVerificacionPagoModal && (
+        <Suspense fallback={null}>
+          <NequiVerifyModal
+            visible={showVerificacionPagoModal}
+            entidad={entidadVerificacion}
+            monto={calcularTotal()}
+            darkMode={darkMode}
+            cajeroNombre={usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero'}
+            numeroFactura={facturaId}
+            onCancelar={() => { setShowVerificacionPagoModal(false); setShowPagoModal(true); }}
+            onConfirmar={() => {
+              setShowVerificacionPagoModal(false);
+              procesarVenta(entidadVerificacion);
+              setShowPagoModal(false);
+            }}
+          />
+        </Suspense>
+      )}
 
-      {/* Modal de Pago Mixto */}
-      <PagoMixtoModal
-        isOpen={showPagoMixtoModal}
-        onClose={() => setShowPagoMixtoModal(false)}
-        totalVenta={calcularTotal()}
-        subtotal={calcularSubtotal()}
-        iva={calcularIVA()}
-        porcentajeIVA={obtenerConfigIVA().porcentajeIVA}
-        ivaHabilitado={obtenerConfigIVA().ivaHabilitado}
-        onConfirm={(detalles) => {
-          // Convertir objeto PagoMixtoDetalle a array para handlePagoMixto
-          const detallesArray: any[] = [];
-          if (detalles.efectivo) detallesArray.push({ metodo: 'efectivo', monto: detalles.efectivo });
-          if (detalles.tarjeta) detallesArray.push({ metodo: 'tarjeta', monto: detalles.tarjeta });
-          if (detalles.nequi) detallesArray.push({ metodo: 'nequi', monto: detalles.nequi });
-          if (detalles.daviplata) detallesArray.push({ metodo: 'daviplata', monto: detalles.daviplata });
-          if (detalles.transferencia) detallesArray.push({ metodo: 'transferencia', monto: detalles.transferencia });
-          
-          handlePagoMixto(detallesArray);
-          setShowPagoMixtoModal(false);
-        }}
-      />
+      {/* Modal de Pago Mixto — montado solo mientras está abierto */}
+      {showPagoMixtoModal && (
+        <Suspense fallback={null}>
+          <PagoMixtoModal
+            isOpen={showPagoMixtoModal}
+            onClose={() => setShowPagoMixtoModal(false)}
+            totalVenta={calcularTotal()}
+            subtotal={calcularSubtotal()}
+            iva={calcularIVA()}
+            porcentajeIVA={obtenerConfigIVA().porcentajeIVA}
+            ivaHabilitado={obtenerConfigIVA().ivaHabilitado}
+            onConfirm={(detalles) => {
+              // Convertir objeto PagoMixtoDetalle a array para handlePagoMixto
+              const detallesArray: any[] = [];
+              if (detalles.efectivo) detallesArray.push({ metodo: 'efectivo', monto: detalles.efectivo });
+              if (detalles.tarjeta) detallesArray.push({ metodo: 'tarjeta', monto: detalles.tarjeta });
+              if (detalles.nequi) detallesArray.push({ metodo: 'nequi', monto: detalles.nequi });
+              if (detalles.daviplata) detallesArray.push({ metodo: 'daviplata', monto: detalles.daviplata });
+              if (detalles.transferencia) detallesArray.push({ metodo: 'transferencia', monto: detalles.transferencia });
 
-      {/* Modal de Venta a Cartera (crédito a cliente) */}
-      <ModalVentaCartera
-        isOpen={showVentaCarteraModal}
-        onClose={() => setShowVentaCarteraModal(false)}
-        totalVenta={calcularTotal()}
-        diasCreditoDefault={(() => {
-          try {
-            const cfg = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
-            return Number(cfg.carteraDiasCredito) || 30;
-          } catch { return 30; }
-        })()}
-        onConfirm={(datos) => { handleVentaCartera(datos); }}
-      />
+              handlePagoMixto(detallesArray);
+              setShowPagoMixtoModal(false);
+            }}
+          />
+        </Suspense>
+      )}
+
+      {/* Modal de Venta a Cartera (crédito a cliente) — montado solo mientras está abierto */}
+      {showVentaCarteraModal && (
+        <Suspense fallback={null}>
+          <ModalVentaCartera
+            isOpen={showVentaCarteraModal}
+            onClose={() => setShowVentaCarteraModal(false)}
+            totalVenta={calcularTotal()}
+            diasCreditoDefault={(() => {
+              try {
+                const cfg = leerConfigEmpresaCacheada();
+                return Number(cfg.carteraDiasCredito) || 30;
+              } catch { return 30; }
+            })()}
+            onConfirm={(datos) => { handleVentaCartera(datos); }}
+          />
+        </Suspense>
+      )}
 
       {/* Sistema de Notificaciones Anti-Fraude */}
       <NotificacionesAntiFraude />

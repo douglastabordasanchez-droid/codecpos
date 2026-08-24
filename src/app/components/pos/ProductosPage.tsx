@@ -20,6 +20,8 @@ import { Card, CardContent } from '../ui/card';
 import { usePOS } from '../../contexts/POSContext';
 import { toast } from 'sonner';
 import { electronStore, IngredienteInventarioItem } from '../../lib/electronStore';
+import { getCached } from '../../lib/cachedLocalStorage';
+import { useDebounce } from '../../hooks/useDebounce';
 import { ImportMasivaCSV } from './ImportMasivaCSV';
 import { ModalNuevoProducto } from './ModalNuevoProducto';
 import { EditProductModal } from './EditProductModal';
@@ -82,6 +84,10 @@ export default function ProductosPage() {
   // ========== ESTADOS ==========
   const [productos, setProductos] = useState<Producto[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  // 🚀 FIX rendimiento: el input queda controlado por searchTerm (sin
+  // retraso, para que se sienta instantáneo al escribir); el filtro pesado
+  // sobre el catálogo completo usa el valor debounced.
+  const debouncedSearchTerm = useDebounce(searchTerm, 200);
   const [loading, setLoading] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showNewProductModal, setShowNewProductModal] = useState(false);
@@ -148,10 +154,7 @@ export default function ProductosPage() {
       // Si hay una tienda activa diferente a la principal, usar su stock
       const productosConStock = tiendaActual
         ? productosConStockDeTienda(tiendaActual.id)
-        : (() => {
-            const stored = localStorage.getItem('pos-productos');
-            return stored ? JSON.parse(stored) : [];
-          })();
+        : getCached<any[]>('pos-productos', []);
 
       console.log(`✅ ${productosConStock.length} productos cargados`);
       setProductos(productosConStock);
@@ -188,14 +191,14 @@ export default function ProductosPage() {
       );
     }
 
-    if (!searchTerm) return lista;
-    const term = searchTerm.toLowerCase();
+    if (!debouncedSearchTerm) return lista;
+    const term = debouncedSearchTerm.toLowerCase();
     return lista.filter(p =>
       p.nombre.toLowerCase().includes(term) ||
       p.codigo.toLowerCase().includes(term) ||
       p.categoria.toLowerCase().includes(term)
     );
-  }, [productosBase, searchTerm, categoriaFiltro, categoriasGlobal]);
+  }, [productosBase, debouncedSearchTerm, categoriaFiltro, categoriasGlobal]);
 
   // Resetear página cuando cambia el filtro
   useMemo(() => {

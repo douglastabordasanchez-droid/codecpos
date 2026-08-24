@@ -19,6 +19,7 @@ export interface CierreDataModal {
     nequi: number;
     daviplata: number;
     transferencia: number;
+    bancolombia: number;
     rappi: number;
   };
   totalSistema: number;
@@ -108,6 +109,7 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
     data.desglose.nequi +
     data.desglose.daviplata +
     data.desglose.transferencia +
+    data.desglose.bancolombia +
     data.desglose.rappi;
 
   const horaApertura = (() => {
@@ -200,6 +202,9 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
             )}
             {data.desglose.transferencia > 0 && (
               <tr><td>Transferencia:</td><td style={{ textAlign: 'right' }}>{fmt(data.desglose.transferencia)}</td></tr>
+            )}
+            {data.desglose.bancolombia > 0 && (
+              <tr><td>Bancolombia:</td><td style={{ textAlign: 'right' }}>{fmt(data.desglose.bancolombia)}</td></tr>
             )}
             {data.desglose.rappi > 0 && (
               <tr><td>Rappi:</td><td style={{ textAlign: 'right' }}>{fmt(data.desglose.rappi)}</td></tr>

@@ -4,7 +4,7 @@
  * vence el saldo restante.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import {
   X,
   Search,
@@ -54,7 +54,7 @@ const METODOS_ABONO_DEFAULT = [
   { id: 'daviplata', label: 'Daviplata' },
 ];
 
-export function ModalVentaCartera({
+function ModalVentaCarteraComponent({
   isOpen,
   onClose,
   totalVenta,
@@ -386,3 +386,5 @@ export function ModalVentaCartera({
     </Dialog>
   );
 }
+
+export const ModalVentaCartera = memo(ModalVentaCarteraComponent);

@@ -13,7 +13,7 @@ import {
   CheckCircle2, XCircle, Hash, Layers,
 } from 'lucide-react';
 import {
-  Tienda, Transferencia, ItemTransferencia,
+  Tienda, TipoTienda, Transferencia, ItemTransferencia,
   listarTiendas, listarTransferencias,
   ejecutarTransferencia, getEstadisticasMultitienda,
   productosConStockDeTienda,
@@ -55,6 +55,7 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
     color: '#10b981',
     emoji: '🏪',
     notas: '',
+    tipo: 'tienda' as TipoTienda,
   });
 
   useEffect(() => {
@@ -67,9 +68,10 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
           color: tiendaEditar.color,
           emoji: tiendaEditar.emoji,
           notas: tiendaEditar.notas || '',
+          tipo: tiendaEditar.tipo || 'tienda',
         });
       } else {
-        setForm({ nombre: '', direccion: '', telefono: '', color: '#10b981', emoji: '🏪', notas: '' });
+        setForm({ nombre: '', direccion: '', telefono: '', color: '#10b981', emoji: '🏪', notas: '', tipo: 'tienda' });
       }
     }
   }, [isOpen, tiendaEditar]);
@@ -141,6 +143,38 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
                 placeholder="Ej: Sucursal Centro, Bodega Norte..."
                 autoFocus
               />
+            </div>
+
+            {/* Tipo: tienda (punto de venta) o bodega (solo almacenamiento) */}
+            <div>
+              <label className="block text-sm font-semibold text-white/80 mb-2">Tipo</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, tipo: 'tienda' })}
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                    form.tipo === 'tienda'
+                      ? 'border-emerald-400 bg-emerald-500/15 text-emerald-300'
+                      : 'border-white/15 text-white/60 hover:border-white/30'
+                  }`}
+                >
+                  <Store className="w-4 h-4" /> Tienda
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, tipo: 'bodega' })}
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                    form.tipo === 'bodega'
+                      ? 'border-amber-400 bg-amber-500/15 text-amber-300'
+                      : 'border-white/15 text-white/60 hover:border-white/30'
+                  }`}
+                >
+                  <Boxes className="w-4 h-4" /> Bodega
+                </button>
+              </div>
+              <p className="text-xs text-white/40 mt-1.5">
+                Una bodega es un punto de almacenamiento — igual que una tienda puede recibir y enviar transferencias de inventario.
+              </p>
             </div>
 
             {/* Dirección + Teléfono */}
@@ -397,7 +431,7 @@ function ModalTransferencia({ isOpen, onClose, onSuccess, tiendas, tiendaOrigenD
                   <option value="" className="bg-slate-800">Seleccionar origen...</option>
                   {tiendas.map(t => (
                     <option key={t.id} value={t.id} className="bg-slate-800">
-                      {t.emoji} {t.nombre}
+                      {t.emoji} {t.nombre} {(t.tipo || 'tienda') === 'bodega' ? '(Bodega)' : ''}
                     </option>
                   ))}
                 </select>
@@ -415,7 +449,7 @@ function ModalTransferencia({ isOpen, onClose, onSuccess, tiendas, tiendaOrigenD
                   <option value="" className="bg-slate-800">Seleccionar destino...</option>
                   {tiendas.filter(t => t.id !== tiendaOrigen).map(t => (
                     <option key={t.id} value={t.id} className="bg-slate-800">
-                      {t.emoji} {t.nombre}
+                      {t.emoji} {t.nombre} {(t.tipo || 'tienda') === 'bodega' ? '(Bodega)' : ''}
                     </option>
                   ))}
                 </select>
@@ -623,7 +657,18 @@ function TarjetaTienda({ tienda, stats, esActiva, onSeleccionar, onEditar, onEli
         <div className="flex items-start gap-3 mb-4">
           <div className="text-3xl">{tienda.emoji}</div>
           <div className="flex-1 min-w-0 pr-16">
-            <h3 className={`font-bold text-lg leading-tight ${dm('text-white', 'text-gray-900')}`}>{tienda.nombre}</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className={`font-bold text-lg leading-tight ${dm('text-white', 'text-gray-900')}`}>{tienda.nombre}</h3>
+              {(tienda.tipo || 'tienda') === 'bodega' ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-amber-500/15 text-amber-500 border border-amber-500/25">
+                  <Boxes className="w-3 h-3" /> Bodega
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-500 border border-emerald-500/25">
+                  <Store className="w-3 h-3" /> Tienda
+                </span>
+              )}
+            </div>
             {tienda.direccion && (
               <p className={`text-xs flex items-center gap-1 mt-0.5 ${dm('text-white/50', 'text-gray-500')}`}>
                 <MapPin className="w-3 h-3" />{tienda.direccion}

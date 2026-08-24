@@ -1,0 +1,50 @@
+name: Build CODEC POS Installer
+
+# Movido desde workflows/build.yml (esa carpeta no es la que GitHub Actions
+# reconoce -- solo .github/workflows/ se ejecuta -- por eso este pipeline
+# nunca había corrido ni una sola vez, y el botón "Descargar Codec POS"
+# de la landing/PWA apuntaba a una página de releases vacía.
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build app
+        run: npm run build
+
+      - name: Build and publish installer
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run electron:build:win:publish
+
+      - name: Upload installer (respaldo además de la GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CODECPOS-Installer
+          path: dist-electron/*.exe
+          retention-days: 30
+
+      - name: List generated files
+        run: dir dist-electron

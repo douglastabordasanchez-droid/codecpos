@@ -74,6 +74,7 @@ const PLANTILLAS_CSV: Record<string, { headers: string[]; ejemplos: string[][] }
       ['MED002', 'Ibuprofeno 400mg x 30 Tab', '150', '4200', '8500', 'Antiinflamatorios', '40', '2026-05-20'],
       ['VIT001', 'Vitamina C 1000mg x 30 Cap', '100', '12000', '22000', 'Vitaminas', '30', '2027-01-10'],
     ]
+
   },
   ferreteria: {
     headers: ['Código', 'Nombre', 'Stock', 'Costo', 'Precio', 'Categoría', 'MinStock', 'Marca'],

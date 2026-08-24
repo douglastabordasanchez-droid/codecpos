@@ -22,6 +22,12 @@ export function SyncStatusIndicator() {
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
 
+  // ⚡ Antes esto sondeaba IndexedDB completo (productos + ventas) cada 5s de
+  // forma independiente, sin importar si algo cambió — ruido constante en la
+  // pantalla de venta activa. syncService ya corre su propio ciclo cada 30s
+  // y avisa por listener (useNetworkStatus → syncStatus) cada vez que
+  // termina — las estadísticas solo pueden cambiar cuando eso ocurre, así
+  // que basta con releer ahí en vez de un intervalo aparte.
   useEffect(() => {
     const updateStats = async () => {
       const newStats = await syncService.getSyncStats();
@@ -29,12 +35,8 @@ export function SyncStatusIndicator() {
       setStats(newStats);
       setLastSyncTime(lastSync);
     };
-
     updateStats();
-    const interval = setInterval(updateStats, 5000);
-
-    return () => clearInterval(interval);
-  }, []);
+  }, [syncStatus.status, syncStatus.lastSync]);
 
   const getStatusIcon = () => {
     if (!isOnline) {

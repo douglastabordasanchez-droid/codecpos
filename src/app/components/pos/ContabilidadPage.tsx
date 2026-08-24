@@ -29,6 +29,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../ui/select';
 import { usePOS } from '../../contexts/POSContext';
+import { useDebounce } from '../../hooks/useDebounce';
 import { useAuth } from '../../contexts/AuthContext';
 import { electronStore } from '../../lib/electronStore';
 import { esModuloActivoGlobal, ModuloPOS } from '../../lib/permissions';
@@ -205,6 +206,11 @@ export default function ContabilidadPage() {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  // 🚀 FIX rendimiento: cargarMovimientos() reparsea localStorage (ingresos +
+  // gastos) y corre hasta 7 filtros encadenados — antes se re-ejecutaba en
+  // cada tecla. El input sigue controlado por `busqueda` (sin retraso); solo
+  // la carga pesada espera al valor debounced.
+  const busquedaDebounced = useDebounce(busqueda, 200);
   const [filtroTipo, setFiltroTipo] = useState<TipoMovimiento | 'todos'>('todos');
   const [filtroCategoria, setFiltroCategoria] = useState('');
   const [filtroMetodo, setFiltroMetodo] = useState('');
@@ -227,6 +233,9 @@ export default function ContabilidadPage() {
   const [presupuestos, setPresupuestos] = useState<ProgresoPresupuesto[]>(calcularProgresoPresupuestos());
   const [pagina, setPagina] = useState(1);
   const FILAS_POR_PAGINA = 12;
+  // 🚀 FIX rendimiento: cuentasPorCobrar se renderizaba completa sin
+  // paginar — mismo patrón 12/página que movimientos, por si la lista crece.
+  const [paginaCobrar, setPaginaCobrar] = useState(1);
 
   // ── Comparativa vs. período anterior (mismo largo de rango, inmediatamente antes) ──
   const [totalesAnterior, setTotalesAnterior] = useState<{ ingresos: number; gastos: number } | null>(null);
@@ -470,12 +479,12 @@ export default function ContabilidadPage() {
       categoria: filtroCategoria || undefined,
       metodoPago: filtroMetodo || undefined,
       usuario: filtroUsuario || undefined,
-      texto: busqueda || undefined,
+      texto: busquedaDebounced || undefined,
       origenFondos: filtroOrigen,
     }));
   };
 
-  useEffect(() => { cargarMovimientos(); }, [desde, hasta, filtroTipo, filtroCategoria, filtroMetodo, filtroUsuario, busqueda, filtroOrigen]);
+  useEffect(() => { cargarMovimientos(); }, [desde, hasta, filtroTipo, filtroCategoria, filtroMetodo, filtroUsuario, busquedaDebounced, filtroOrigen]);
 
   useEffect(() => {
     const handler = () => setCategorias(obtenerCategorias());
@@ -709,6 +718,10 @@ export default function ContabilidadPage() {
   const totalPaginas = Math.max(1, Math.ceil(movimientos.length / FILAS_POR_PAGINA));
   const paginaSegura = Math.min(pagina, totalPaginas);
   const filasPagina = movimientos.slice((paginaSegura - 1) * FILAS_POR_PAGINA, paginaSegura * FILAS_POR_PAGINA);
+
+  const totalPaginasCobrar = Math.max(1, Math.ceil(cuentasPorCobrar.length / FILAS_POR_PAGINA));
+  const paginaCobrarSegura = Math.min(paginaCobrar, totalPaginasCobrar);
+  const cuentasCobrarPagina = cuentasPorCobrar.slice((paginaCobrarSegura - 1) * FILAS_POR_PAGINA, paginaCobrarSegura * FILAS_POR_PAGINA);
 
   // ── Estilos por tema ────────────────────────────────────────────────────
   const bg = darkMode ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100';
@@ -1389,7 +1402,7 @@ export default function ContabilidadPage() {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {cuentasPorCobrar.map((c) => {
+              {cuentasCobrarPagina.map((c) => {
                 const colorEstado = c.estado === 'vencido' ? '#ef4444' : c.estado === 'proximo' ? '#f59e0b' : '#10b981';
                 const labelEstado = c.estado === 'vencido' ? 'Vencido' : c.estado === 'proximo' ? 'Próximo a vencer' : 'Al día';
                 return (
@@ -1425,6 +1438,19 @@ export default function ContabilidadPage() {
                   </div>
                 );
               })}
+              {totalPaginasCobrar > 1 && (
+                <div className={`flex items-center justify-between px-4 py-3 border-t ${border}`}>
+                  <p className={`text-xs ${sub}`}>Página {paginaCobrarSegura} de {totalPaginasCobrar} · {cuentasPorCobrar.length} clientes</p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={paginaCobrarSegura <= 1} onClick={() => setPaginaCobrar((p) => Math.max(1, p - 1))} className="h-8 w-8 p-0 rounded-lg">
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={paginaCobrarSegura >= totalPaginasCobrar} onClick={() => setPaginaCobrar((p) => Math.min(totalPaginasCobrar, p + 1))} className="h-8 w-8 p-0 rounded-lg">
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

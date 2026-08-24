@@ -8,6 +8,8 @@
 //  TIPOS
 // ──────────────────────────────────────────────
 
+export type TipoTienda = 'tienda' | 'bodega';
+
 export interface Tienda {
   id: string;
   nombre: string;
@@ -19,6 +21,7 @@ export interface Tienda {
   esPrincipal: boolean;
   fechaCreacion: string;
   notas?: string;
+  tipo?: TipoTienda;      // 'tienda' (punto de venta) o 'bodega' (solo almacenamiento) — 'tienda' si falta (retro-compat)
 }
 
 export interface ItemTransferencia {
@@ -88,7 +91,7 @@ export function listarTiendas(): Tienda[] {
       const principal = crearTiendaPrincipalDefault();
       return [principal];
     }
-    return tiendas.filter(t => t.activo !== false);
+    return tiendas.filter(t => t.activo !== false).map(t => ({ ...t, tipo: t.tipo || 'tienda' }));
   } catch { return []; }
 }
 
@@ -103,6 +106,7 @@ function crearTiendaPrincipalDefault(): Tienda {
     activo: true,
     esPrincipal: true,
     fechaCreacion: new Date().toISOString(),
+    tipo: 'tienda',
   };
   saveTiendas([principal]);
   return principal;
@@ -121,6 +125,7 @@ export function crearTienda(datos: Omit<Tienda, 'id' | 'esPrincipal' | 'fechaCre
   const tiendas = listarTiendas();
   const nueva: Tienda = {
     ...datos,
+    tipo: datos.tipo || 'tienda',
     id: uid(),
     esPrincipal: false,
     activo: true,

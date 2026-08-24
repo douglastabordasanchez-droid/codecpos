@@ -26,6 +26,8 @@ import {
   Minus,
   Receipt,
   Download,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -100,6 +102,9 @@ export default function DevolucionesPage() {
   const [devoluciones, setDevoluciones] = useState<Devolucion[]>([]);
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [filtroFecha, setFiltroFecha] = useState('');
+  // 🚀 FIX rendimiento: la lista se renderizaba completa sin paginar.
+  const [paginaDevoluciones, setPaginaDevoluciones] = useState(1);
+  const DEVOLUCIONES_POR_PAGINA = 50;
   const [processing, setProcessing] = useState(false);
   const [loadingVentas, setLoadingVentas] = useState(true);
 
@@ -112,6 +117,10 @@ export default function DevolucionesPage() {
     window.addEventListener('codecpos:devoluciones-sincronizadas', cargarDevoluciones);
     return () => window.removeEventListener('codecpos:devoluciones-sincronizadas', cargarDevoluciones);
   }, []);
+
+  useEffect(() => {
+    setPaginaDevoluciones(1);
+  }, [filtroFecha]);
 
   const cargarDevoluciones = () => {
     const saved = localStorage.getItem('codecpos_devoluciones');
@@ -432,6 +441,13 @@ export default function DevolucionesPage() {
       return true;
     })
     .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+  const totalPaginasDevoluciones = Math.max(1, Math.ceil(devolucionesFiltradas.length / DEVOLUCIONES_POR_PAGINA));
+  const paginaDevolucionesSegura = Math.min(paginaDevoluciones, totalPaginasDevoluciones);
+  const devolucionesPagina = devolucionesFiltradas.slice(
+    (paginaDevolucionesSegura - 1) * DEVOLUCIONES_POR_PAGINA,
+    paginaDevolucionesSegura * DEVOLUCIONES_POR_PAGINA
+  );
 
   // Estadísticas
   const statsHoy = devoluciones.filter(
@@ -913,7 +929,7 @@ export default function DevolucionesPage() {
                     </CardContent>
                   </Card>
                 ) : (
-                  devolucionesFiltradas.map((devolucion) => (
+                  devolucionesPagina.map((devolucion) => (
                     <Card
                       key={devolucion.id}
                       className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white'} shadow-lg`}
@@ -996,6 +1012,21 @@ export default function DevolucionesPage() {
                   ))
                 )}
               </div>
+              {totalPaginasDevoluciones > 1 && (
+                <div className={`flex items-center justify-between px-1 pt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <p className="text-xs">
+                    Página {paginaDevolucionesSegura} de {totalPaginasDevoluciones} · {devolucionesFiltradas.length} devoluciones
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={paginaDevolucionesSegura <= 1} onClick={() => setPaginaDevoluciones((p) => Math.max(1, p - 1))} className="h-8 w-8 p-0 rounded-lg">
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={paginaDevolucionesSegura >= totalPaginasDevoluciones} onClick={() => setPaginaDevoluciones((p) => Math.min(totalPaginasDevoluciones, p + 1))} className="h-8 w-8 p-0 rounded-lg">
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

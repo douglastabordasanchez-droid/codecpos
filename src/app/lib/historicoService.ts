@@ -28,7 +28,7 @@ export interface VentaHistorica {
   cajero: string;
   cajeroId: string;
   totalVenta: number;
-  metodoPago: 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia';
+  metodoPago: 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia';
   productos: {
     id: string;
     nombre: string;
@@ -54,6 +54,7 @@ export interface CierreHistorico {
     nequi: number;
     daviplata: number;
     transferencia: number;
+    bancolombia?: number;
     rappi?: number;
   };
   cantidadVentas: number;
@@ -73,6 +74,7 @@ export interface EstadisticaDiaria {
     nequi: number;
     daviplata: number;
     transferencia: number;
+    bancolombia?: number;
     rappi?: number;
   };
 }

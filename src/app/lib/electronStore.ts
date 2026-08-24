@@ -113,7 +113,7 @@ interface InventoryValidationResult {
   }>;
 }
 
-export type MetodoPago = 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'rappi' | 'mixto' | 'bonos' | 'cartera';
+export type MetodoPago = 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia' | 'rappi' | 'mixto' | 'bonos' | 'fidelizacion' | 'cartera';
 
 export interface PagoMixtoDetalle {
   efectivo?: number;
@@ -365,6 +365,31 @@ class ElectronStoreService {
     try { localStorage.setItem('pos-productos', raw); } catch { /* storage lleno */ }
     this._productosLSCacheRaw = raw;
     this._productosLSCacheParsed = productos;
+  }
+
+  // 🚀 FIX rendimiento (punto de pago): mismo patrón que _productosLSCache*
+  // arriba, generalizado — 'pos-ingredientes-inventario', 'pos-recetas' y
+  // 'pos-receta-ingredientes' se releían y reparseaban DOS VECES por venta
+  // (una en validarDisponibilidadVenta, otra en descontarInventarioVenta),
+  // sin que nada cambiara entre medio. Se invalida por comparación barata
+  // del string crudo, así que nunca puede devolver datos obsoletos.
+  private _lsCache: Map<string, { raw: string; parsed: any }> = new Map();
+
+  private getLSCached<T>(key: string, fallback: T): T {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const hit = this._lsCache.get(key);
+    if (hit && hit.raw === raw) return hit.parsed as T;
+    let parsed: T;
+    try { parsed = JSON.parse(raw) as T; } catch { parsed = fallback; }
+    this._lsCache.set(key, { raw, parsed });
+    return parsed;
+  }
+
+  private setLSCached<T>(key: string, value: T): void {
+    const raw = JSON.stringify(value);
+    try { localStorage.setItem(key, raw); } catch { /* storage lleno */ }
+    this._lsCache.set(key, { raw, parsed: value });
   }
 
   // 🚀 FIX rendimiento: 'codecpos_stock_movements' es un log interno que
@@ -663,9 +688,11 @@ class ElectronStoreService {
       nequi: 0,
       daviplata: 0,
       transferencia: 0,
+      bancolombia: 0,
       rappi: 0,
       mixto: 0,
       bonos: 0,
+      fidelizacion: 0,
       cartera: 0,
     };
     const ventasPorCajero: Record<string, number> = {};
@@ -1278,9 +1305,10 @@ class ElectronStoreService {
     // (el dato real, sin tocar) en vez de servir caché envenenada.
     this._productosLSCacheRaw = null;
     this._productosLSCacheParsed = null;
-    const ingredientes = this.getLS<any[]>('pos-ingredientes-inventario', []);
-    const recipes = this.getLS<any[]>('pos-recetas', []);
-    const recipeIngredients = this.getLS<any[]>('pos-receta-ingredientes', []);
+    this._lsCache.delete('pos-ingredientes-inventario');
+    const ingredientes = this.getLSCached<any[]>('pos-ingredientes-inventario', []);
+    const recipes = this.getLSCached<any[]>('pos-recetas', []);
+    const recipeIngredients = this.getLSCached<any[]>('pos-receta-ingredientes', []);
     const movimientos = this.getLS<any[]>('codecpos_stock_movements', []);
 
     const mapProductos = new Map(productos.map((p: any) => [String(p.id), p]));
@@ -1423,7 +1451,7 @@ class ElectronStoreService {
     }
 
     this.escribirProductosLS(productos);
-    this.setLS('pos-ingredientes-inventario', ingredientes);
+    this.setLSCached('pos-ingredientes-inventario', ingredientes);
     this.setLS(
       'codecpos_stock_movements',
       movimientos.length > ElectronStoreService.MAX_MOVIMIENTOS_STOCK
@@ -1577,8 +1605,8 @@ class ElectronStoreService {
 
   async validarDisponibilidadVenta(items: VentaItem[]): Promise<InventoryValidationResult> {
     const productos = this.leerProductosLS();
-    const ingredientes = this.getLS<any[]>('pos-ingredientes-inventario', []);
-    const recipeIngredients = this.getLS<any[]>('pos-receta-ingredientes', []);
+    const ingredientes = this.getLSCached<any[]>('pos-ingredientes-inventario', []);
+    const recipeIngredients = this.getLSCached<any[]>('pos-receta-ingredientes', []);
 
     const mapProductos = new Map(productos.map((p: any) => [String(p.id), p]));
     const mapIngredientes = new Map(ingredientes.map((i: any) => [String(i.id), i]));

@@ -39,6 +39,7 @@ import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
 import { toast } from 'sonner';
 import { electronStore, Venta } from '../../lib/electronStore';
+import { useDebounce } from '../../hooks/useDebounce';
 import { usePOS } from '../../contexts/POSContext';
 import { PremiumButton } from '../licencia/PremiumFeature';
 import { descargarReporteVentasPDF, descargarFacturaPDF, enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
@@ -56,6 +57,9 @@ export default function VentasPage() {
   const [loading, setLoading] = useState(true);
   const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>('hoy');
   const [searchTerm, setSearchTerm] = useState('');
+  // 🚀 FIX rendimiento: filtro pesado usa el valor debounced; el input
+  // sigue controlado por searchTerm para no perder fluidez al escribir.
+  const debouncedSearchTerm = useDebounce(searchTerm, 200);
   const [ordenVentas, setOrdenVentas] = useState<OrdenVentas>('fecha_desc');
   const [fechaInicioPersonalizada, setFechaInicioPersonalizada] = useState('');
   const [fechaFinPersonalizada, setFechaFinPersonalizada] = useState('');
@@ -140,8 +144,8 @@ export default function VentasPage() {
     }
 
     // Filtro por búsqueda
-    if (searchTerm.trim()) {
-      const termino = searchTerm.toLowerCase();
+    if (debouncedSearchTerm.trim()) {
+      const termino = debouncedSearchTerm.toLowerCase();
       resultado = resultado.filter(venta =>
         venta.id.toLowerCase().includes(termino) ||
         venta.cajero.toLowerCase().includes(termino) ||
@@ -163,7 +167,7 @@ export default function VentasPage() {
     });
 
     return resultado;
-  }, [ventas, filtroFecha, searchTerm, ordenVentas, fechaInicioPersonalizada, fechaFinPersonalizada]);
+  }, [ventas, filtroFecha, debouncedSearchTerm, ordenVentas, fechaInicioPersonalizada, fechaFinPersonalizada]);
 
   // Volver a la página 1 cuando cambia cualquier filtro
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { memo, useRef, useState, useEffect } from 'react';
 import { Printer, Download, MessageCircle, Mail, Send } from 'lucide-react';
 import { Button } from '../ui/button';
 import { usePOS } from '../../contexts/POSContext';
@@ -59,7 +59,7 @@ const REGIMEN_FISCAL_LABEL: Record<string, string> = {
   gran_contribuyente: 'Gran Contribuyente',
 };
 
-export function TicketReceipt({ venta }: TicketReceiptProps) {
+function TicketReceiptComponent({ venta }: TicketReceiptProps) {
   const { darkMode } = usePOS();
   const { usuarioActual } = useAuth();
   const ticketRef = useRef<HTMLDivElement>(null);
@@ -774,3 +774,8 @@ export function TicketReceipt({ venta }: TicketReceiptProps) {
     </>
   );
 }
+
+// Memoizado: la venta ya facturada no cambia mientras el modal está abierto,
+// así que evita re-renderizar el recibo completo (tabla de ítems, PDF/print
+// handlers) cuando el padre (POSPageNew) re-renderiza por otro motivo.
+export const TicketReceipt = memo(TicketReceiptComponent);

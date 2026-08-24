@@ -42,6 +42,7 @@ interface CierreRaw {
     nequi: number;
     daviplata: number;
     transferencia: number;
+    bancolombia?: number;
     rappi?: number;
   };
   billetes?: Record<string, number>;
@@ -167,11 +168,12 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
         c.desglose?.nequi || 0,
         c.desglose?.daviplata || 0,
         c.desglose?.transferencia || 0,
+        c.desglose?.bancolombia || 0,
         c.desglose?.rappi || 0,
         c.observaciones || '',
       ].join(';');
     });
-    const header = 'Fecha;Hora;Cajero;Base Inicial;Total Sistema;Total Físico;Diferencia;Estado;Efectivo;Tarjeta;Nequi;Daviplata;Transferencia;Rappi;Observaciones';
+    const header = 'Fecha;Hora;Cajero;Base Inicial;Total Sistema;Total Físico;Diferencia;Estado;Efectivo;Tarjeta;Nequi;Daviplata;Transferencia;Bancolombia;Rappi;Observaciones';
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

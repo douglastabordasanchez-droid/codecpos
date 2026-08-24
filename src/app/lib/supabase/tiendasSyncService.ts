@@ -24,6 +24,7 @@ export async function publicarTiendas(tiendas: Tienda[]): Promise<void> {
       activo: t.activo,
       es_principal: t.esPrincipal,
       notas: t.notas || null,
+      tipo: t.tipo || 'tienda',
       updated_at: new Date().toISOString(),
     })),
     { onConflict: 'cliente_id,local_id' }

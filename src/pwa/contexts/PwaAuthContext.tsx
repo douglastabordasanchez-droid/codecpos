@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { signInSupabase, EmpleadoSupabase } from '../../app/lib/supabase/authService';
+import { sincronizarSesionConAndroid, cerrarSesionAndroid } from '../lib/androidBridge';
 
 export interface TiendaDisponible {
   clienteId: string;
@@ -87,7 +88,13 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
       const empleadoCargado = (fila as EmpleadoSupabase) || null;
       setEmpleadoReal(empleadoCargado);
-      if (empleadoCargado) await cargarTiendasDisponibles(empleadoCargado.cliente_id);
+      if (empleadoCargado) {
+        await cargarTiendasDisponibles(empleadoCargado.cliente_id);
+        // 📱 App Android nativa: si esta PWA corre dentro de su WebView, le
+        // pasa el webhook_token del negocio para que el listener de
+        // notificaciones quede configurado solo, sin ningún paso aparte.
+        sincronizarSesionConAndroid(empleadoCargado.cliente_id);
+      }
       setCargando(false);
     });
   }, [cargarTiendasDisponibles]);
@@ -97,6 +104,7 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
     if (resultado.ok && resultado.empleado) {
       setEmpleadoReal(resultado.empleado);
       await cargarTiendasDisponibles(resultado.empleado.cliente_id);
+      sincronizarSesionConAndroid(resultado.empleado.cliente_id);
       return { ok: true };
     }
     return { ok: false, error: resultado.error };
@@ -109,6 +117,7 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
     setTiendasDisponibles([]);
     setTiendaActivaId(null);
     localStorage.removeItem(TIENDA_SELECCIONADA_KEY);
+    cerrarSesionAndroid();
   };
 
   /** Refleja en memoria un cambio ya guardado en Supabase — sin recargar sesión. */

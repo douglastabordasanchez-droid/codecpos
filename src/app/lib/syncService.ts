@@ -22,48 +22,52 @@ const SYNC_INTERVAL = 30000; // 30 segundos
  * ver memoria de proyecto). Sin este puente, un producto sincronizado desde
  * otro dispositivo queda invisible en la caja aunque IndexedDB sí lo tenga.
  */
+function construirEntradaLocalStorage(producto: Producto, existente: any | undefined): any {
+  return {
+    ...(existente || {}),
+    id: producto.id,
+    codigo: producto.codigo,
+    nombre: producto.nombre,
+    precio: producto.precio,
+    costo: producto.costo,
+    stock: producto.stock,
+    stockMinimo: producto.stockMinimo,
+    minStock: producto.stockMinimo,
+    categoria: producto.categoria,
+    unidad: producto.unidad,
+    aplicaIVA: producto.iva > 0,
+    activo: producto.activo,
+    imagenUrl: producto.imagenUrl,
+    fotosUrls: producto.fotosUrls,
+    pesable: existente ? existente.pesable : false,
+    tipoInventario: producto.tipoInventario || (existente ? existente.tipoInventario : 'directo'),
+    // 🎈 Papelería y Piñatería — ver migración 0035.
+    esPapeleriaPinateria: producto.esPapeleriaPinateria,
+    categoriaEspecifica: producto.categoriaEspecifica,
+    tematica: producto.tematica,
+    calibreGlobo: producto.calibreGlobo,
+    colorAcabado: producto.colorAcabado,
+    marca: producto.marca,
+    esDulceria: producto.esDulceria,
+    permitirFraccion: producto.permitirFraccion,
+    componentesCombo: producto.componentesCombo,
+    unidadesPorBolsa: producto.unidadesPorBolsa,
+    ventaPorUnidad: producto.ventaPorUnidad,
+    lote: producto.lote,
+    // 🛡️ Este producto ya viene DE Supabase (pull) — marcarlo evita que
+    // pushProductosLocalStorage lo reinterprete como "nuevo local" y cree
+    // una fila duplicada en vez de actualizar la misma.
+    _supabaseSynced: true,
+  };
+}
+
+/** Camino de UN solo producto (usado por Realtime — un evento a la vez). */
 function sincronizarProductoEnLocalStorage(producto: Producto): void {
   try {
     const raw = localStorage.getItem('pos-productos');
     const lista: any[] = raw ? JSON.parse(raw) : [];
     const idx = Array.isArray(lista) ? lista.findIndex((p) => p.id === producto.id) : -1;
-
-    const entrada = {
-      ...(idx >= 0 ? lista[idx] : {}),
-      id: producto.id,
-      codigo: producto.codigo,
-      nombre: producto.nombre,
-      precio: producto.precio,
-      costo: producto.costo,
-      stock: producto.stock,
-      stockMinimo: producto.stockMinimo,
-      minStock: producto.stockMinimo,
-      categoria: producto.categoria,
-      unidad: producto.unidad,
-      aplicaIVA: producto.iva > 0,
-      activo: producto.activo,
-      imagenUrl: producto.imagenUrl,
-      fotosUrls: producto.fotosUrls,
-      pesable: idx >= 0 ? lista[idx].pesable : false,
-      tipoInventario: producto.tipoInventario || (idx >= 0 ? lista[idx].tipoInventario : 'directo'),
-      // 🎈 Papelería y Piñatería — ver migración 0035.
-      esPapeleriaPinateria: producto.esPapeleriaPinateria,
-      categoriaEspecifica: producto.categoriaEspecifica,
-      tematica: producto.tematica,
-      calibreGlobo: producto.calibreGlobo,
-      colorAcabado: producto.colorAcabado,
-      marca: producto.marca,
-      esDulceria: producto.esDulceria,
-      permitirFraccion: producto.permitirFraccion,
-      componentesCombo: producto.componentesCombo,
-      unidadesPorBolsa: producto.unidadesPorBolsa,
-      ventaPorUnidad: producto.ventaPorUnidad,
-      lote: producto.lote,
-      // 🛡️ Este producto ya viene DE Supabase (pull) — marcarlo evita que
-      // pushProductosLocalStorage lo reinterprete como "nuevo local" y cree
-      // una fila duplicada en vez de actualizar la misma.
-      _supabaseSynced: true,
-    };
+    const entrada = construirEntradaLocalStorage(producto, idx >= 0 ? lista[idx] : undefined);
 
     if (idx >= 0) {
       lista[idx] = entrada;
@@ -73,6 +77,39 @@ function sincronizarProductoEnLocalStorage(producto: Producto): void {
     localStorage.setItem('pos-productos', JSON.stringify(lista));
   } catch (error) {
     console.error('[sync] Error sincronizando producto a pos-productos:', error);
+  }
+}
+
+/**
+ * ⚡ Camino por LOTE (usado por pullProductosRemotos — puede traer decenas de
+ * productos en un solo ciclo de sync). Antes cada producto del lote hacía su
+ * propio JSON.parse + JSON.stringify del catálogo COMPLETO de forma síncrona
+ * en el hilo principal — con varios productos cambiados en un mismo ciclo (o
+ * con más terminales/tiendas sincronizando), eso se sentía como que la caja
+ * se congelaba. Aquí se parsea una sola vez, se aplican todos los cambios en
+ * memoria, y se escribe una sola vez al final.
+ */
+function sincronizarProductosEnLocalStorageBatch(productos: Producto[]): void {
+  if (productos.length === 0) return;
+  try {
+    const raw = localStorage.getItem('pos-productos');
+    const lista: any[] = raw ? JSON.parse(raw) : [];
+    const indicePorId = new Map<string, number>();
+    lista.forEach((p, i) => { if (p?.id) indicePorId.set(p.id, i); });
+
+    for (const producto of productos) {
+      const idx = indicePorId.get(producto.id);
+      const entrada = construirEntradaLocalStorage(producto, idx !== undefined ? lista[idx] : undefined);
+      if (idx !== undefined) {
+        lista[idx] = entrada;
+      } else {
+        indicePorId.set(producto.id, lista.length);
+        lista.push(entrada);
+      }
+    }
+    localStorage.setItem('pos-productos', JSON.stringify(lista));
+  } catch (error) {
+    console.error('[sync] Error sincronizando lote de productos a pos-productos:', error);
   }
 }
 
@@ -104,6 +141,22 @@ class SyncService {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+  }
+
+  /**
+   * 🚀 FIX rendimiento: cierra el canal de Supabase Realtime abierto por
+   * setupRealtime() y detiene el polling. Antes no existía ningún método de
+   * apagado — el canal de `productos-sync-*` quedaba abierto indefinidamente
+   * (única fuga real encontrada en la auditoría de canales Realtime).
+   * Debe llamarse desde el cleanup del efecto que invoca start().
+   */
+  stop(): void {
+    this.stopAutoSync();
+    if (this.realtimeChannel) {
+      try { getSupabaseClient()?.removeChannel(this.realtimeChannel); } catch { /* no crítico */ }
+      this.realtimeChannel = null;
+    }
+    this.started = false;
   }
 
   private setupRealtime(): void {
@@ -209,25 +262,35 @@ class SyncService {
     const { data, error } = await query;
     if (error) throw error;
 
+    // ⚡ Lote: cada item se aplica a IndexedDB individualmente (async, no
+    // bloquea), pero el espejo en localStorage['pos-productos'] se hace UNA
+    // sola vez al final del lote (ver sincronizarProductosEnLocalStorageBatch).
+    const actualizados: Producto[] = [];
     for (const remote of data || []) {
-      await this.aplicarCambioRemotoProducto(remote);
+      const actualizado = await this.aplicarCambioRemotoProducto(remote, { skipLocalStorageSync: true });
+      if (actualizado) actualizados.push(actualizado);
+    }
+    if (actualizados.length > 0) {
+      sincronizarProductosEnLocalStorageBatch(actualizados);
+      window.dispatchEvent(new CustomEvent('codecpos:productos-sincronizados'));
     }
 
     await dbManager.setConfig('lastPullProductos', new Date().toISOString());
   }
 
-  private async aplicarCambioRemotoProducto(remote: any): Promise<void> {
-    if (!remote) return;
+  private async aplicarCambioRemotoProducto(remote: any, opts?: { skipLocalStorageSync?: boolean }): Promise<Producto | null> {
+    if (!remote) return null;
 
     const productos = await dbManager.getAllProductos();
     const local = productos.find((p) => p.supabaseId === remote.id || (remote.local_id && p.id === remote.local_id));
     const remoteUpdatedAt = new Date(remote.updated_at).getTime();
+    let resultado: Producto;
 
     if (local) {
       // Hay una edición local sin subir todavía: no la pisamos con la remota.
-      if (local.syncStatus === 'pending') return;
+      if (local.syncStatus === 'pending') return null;
       // Local ya está al día o más reciente (last-write-wins por updatedAt).
-      if (local.updatedAt >= remoteUpdatedAt) return;
+      if (local.updatedAt >= remoteUpdatedAt) return null;
 
       const actualizado: Producto = {
         ...local,
@@ -262,7 +325,8 @@ class SyncService {
         syncStatus: 'synced',
       };
       await dbManager.putProductoRaw(actualizado);
-      sincronizarProductoEnLocalStorage(actualizado);
+      if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(actualizado);
+      resultado = actualizado;
     } else {
       const nuevoId: string = remote.local_id || `remote-${remote.id}`;
       const producto: Producto = {
@@ -299,14 +363,20 @@ class SyncService {
         syncStatus: 'synced',
       };
       await dbManager.putProductoRaw(producto);
-      sincronizarProductoEnLocalStorage(producto);
+      if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(producto);
+      resultado = producto;
     }
 
     // 🔄 Las pantallas que ya cargaron su lista de productos en memoria (p.
     // ej. POSPageNew) no vuelven a leer IndexedDB solas — sin este evento,
     // un producto creado/editado en otro dispositivo (o por el escáner
-    // híbrido) queda invisible hasta recargar la app.
-    window.dispatchEvent(new CustomEvent('codecpos:productos-sincronizados'));
+    // híbrido) queda invisible hasta recargar la app. En modo lote
+    // (skipLocalStorageSync) el evento lo dispara una sola vez el llamador
+    // (pullProductosRemotos), tras aplicar todo el lote.
+    if (!opts?.skipLocalStorageSync) {
+      window.dispatchEvent(new CustomEvent('codecpos:productos-sincronizados'));
+    }
+    return resultado;
   }
 
   /**
@@ -586,8 +656,9 @@ class SyncService {
   // ==================== PUSH ====================
 
   private async pushProductosPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
-    const productos = await dbManager.getAllProductos();
-    const pendientes = productos.filter((p) => p.syncStatus === 'pending');
+    // ⚡ Antes escaneaba TODA la tabla (getAllProductos) para filtrar
+    // 'pending' en JS, cada 30s — el índice 'syncStatus' ya existe, úsalo.
+    const pendientes = await dbManager.getProductosPendientes();
     if (pendientes.length === 0) return;
 
     for (const p of pendientes) {
@@ -841,8 +912,9 @@ class SyncService {
   }
 
   private async pushVentasPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
-    const ventas = await dbManager.getAllVentas();
-    const pendientes = ventas.filter((v) => v.syncStatus === 'pending');
+    // ⚡ Mismo fix que pushProductosPendientes: usa el índice 'syncStatus'
+    // en vez de escanear todo el historial de ventas cada ciclo.
+    const pendientes = await dbManager.getVentasPendientes();
     if (pendientes.length === 0) return;
 
     // Fuente principal: el mapa que `pushProductosLocalStorage` acaba de

@@ -761,6 +761,17 @@ export default function CodecVerifyConexionPage() {
                       </p>
                     ) : webhookToken ? (
                       <>
+                        <div className={`rounded-xl p-4 border ${darkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>App Android Codec Verify (recomendado)</p>
+                          </div>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
+                            Instala la app Codec Verify y entra con el mismo usuario y contraseña de aquí —
+                            queda configurada sola, sin copiar ningún token ni depender de MacroDroid.
+                          </p>
+                        </div>
+
                         <div>
                           <p className={`text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>Token del negocio</p>
                           <div className="flex gap-2">

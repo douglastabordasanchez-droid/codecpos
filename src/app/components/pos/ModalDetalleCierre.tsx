@@ -47,6 +47,7 @@ export interface CierreDetalle {
     nequi: number;
     daviplata: number;
     transferencia: number;
+    bancolombia?: number;
     rappi?: number;
   };
   billetes?: Record<string, number>;
@@ -133,7 +134,7 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
   const cierre: CierreDetalle = {
     ...cierreProp,
     desglose: {
-      efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0,
+      efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, bancolombia: 0, rappi: 0,
       ...cierreProp.desglose,
     },
   };
@@ -151,7 +152,7 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
   })();
 
   const efectivoEsperado = cierre.totalFinal ?? (cierre.baseInicial + cierre.desglose.efectivo - (cierre.gastosEfectivo || 0) - (cierre.devoluciones || 0) + (cierre.abonosCarteraEfectivo || 0));
-  const totalElectronico = cierre.desglose.tarjeta + cierre.desglose.nequi + cierre.desglose.daviplata + cierre.desglose.transferencia + (cierre.desglose.rappi || 0);
+  const totalElectronico = cierre.desglose.tarjeta + cierre.desglose.nequi + cierre.desglose.daviplata + cierre.desglose.transferencia + (cierre.desglose.bancolombia || 0) + (cierre.desglose.rappi || 0);
 
   const estadoInfo = {
     cuadrado: { color: 'emerald', text: 'CAJA CUADRADA',   icon: <CheckCircle className="w-5 h-5 text-emerald-500" />,   textClass: 'text-emerald-600', bgClass: darkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200' },
@@ -172,7 +173,7 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
     fechaApertura: cierre.fechaApertura || cierre.fecha,
     fechaCierre: cierre.fecha,
     baseInicial: cierre.baseInicial,
-    desglose: { ...cierre.desglose, rappi: cierre.desglose.rappi || 0 },
+    desglose: { ...cierre.desglose, bancolombia: cierre.desglose.bancolombia || 0, rappi: cierre.desglose.rappi || 0 },
     totalSistema: cierre.totalSistema,
     gastosEfectivo: cierre.gastosEfectivo || 0,
     gastosDetalle: cierre.gastosDetalle || [],
@@ -308,6 +309,7 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
         ['Nequi', cierre.desglose.nequi],
         ['Daviplata', cierre.desglose.daviplata],
         ['Transferencia Bancaria', cierre.desglose.transferencia],
+        ['Bancolombia', cierre.desglose.bancolombia || 0],
         ['Rappi', cierre.desglose.rappi || 0],
       ].filter(([, v]) => (v as number) > 0) as [string, number][];
 

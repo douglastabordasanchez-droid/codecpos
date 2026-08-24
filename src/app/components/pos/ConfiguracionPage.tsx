@@ -27,6 +27,10 @@ import { ConfiguracionDianDirecto } from '../settings/ConfiguracionDianDirecto';
 import { electronStore } from '../../lib/electronStore';
 import { backupService } from '../../lib/backupService';
 import {
+  subirBackupACloud, listarBackupsCloud, descargarYLiberarBackupCloud,
+  type RespaldoNube,
+} from '../../lib/supabase/backupCloudService';
+import {
   ModuloPOS,
   obtenerModulosGlobales,
   guardarModulosGlobales,
@@ -225,6 +229,9 @@ export default function ConfiguracionPage() {
   const [descargandoBackup, setDescargandoBackup] = useState(false);
   const [restaurandoArchivo, setRestaurandoArchivo] = useState(false);
   const [backupDiarioHabilitado, setBackupDiarioHabilitadoState] = useState(() => backupService.isBackupDiarioHabilitado());
+  const [backupsNube, setBackupsNube] = useState<RespaldoNube[]>([]);
+  const [subiendoBackupNube, setSubiendoBackupNube] = useState(false);
+  const [descargandoBackupNubeId, setDescargandoBackupNubeId] = useState<string | null>(null);
   const inputArchivoBackupRef = useRef<HTMLInputElement>(null);
   const inputConfigClienteRef = useRef<HTMLInputElement>(null);
   const [importandoConfigCliente, setImportandoConfigCliente] = useState(false);
@@ -291,7 +298,12 @@ export default function ConfiguracionPage() {
       // Facturación Electrónica
       facturacionElectronicaHabilitada: false,
       modoFacturacionElectronica: 'ninguna',
-      prefijoFactura: 'FE',
+      // 🛡️ Si el servidor ya le asignó un prefijo único a esta caja (ver
+      // useRegistrarInstalacion.ts / migración 0059), se precarga aquí para
+      // que al guardar CUALQUIER cambio de esta pantalla no se pise ese
+      // prefijo con el genérico 'FE' — el mismo para toda instalación nueva
+      // del sistema si nadie lo hubiera asignado antes.
+      prefijoFactura: localStorage.getItem('codec_pos_prefijo_auto') || 'FE',
       consecutivoInicial: 1,
       tipoDocumento: 'factura',
       claveResolucionDIAN: '',
@@ -537,6 +549,42 @@ export default function ConfiguracionPage() {
     toast.success(habilitado
       ? 'Backup diario activado: se descargará un archivo automáticamente cada vez que abras el sistema por primera vez en el día'
       : 'Backup diario desactivado');
+  };
+
+  const cargarBackupsNube = async () => {
+    setBackupsNube(await listarBackupsCloud());
+  };
+
+  useEffect(() => { cargarBackupsNube(); }, []);
+
+  const handleSubirBackupNube = async () => {
+    setSubiendoBackupNube(true);
+    try {
+      const resultado = await subirBackupACloud();
+      if (resultado.exito) {
+        toast.success('Respaldo subido a la nube correctamente');
+        await cargarBackupsNube();
+      } else {
+        toast.error(resultado.error || 'No se pudo subir el respaldo a la nube');
+      }
+    } finally {
+      setSubiendoBackupNube(false);
+    }
+  };
+
+  const handleDescargarBackupNube = async (respaldo: RespaldoNube) => {
+    setDescargandoBackupNubeId(respaldo.id);
+    try {
+      const resultado = await descargarYLiberarBackupCloud(respaldo);
+      if (resultado.exito) {
+        toast.success('Respaldo descargado y liberado de Supabase');
+        await cargarBackupsNube();
+      } else {
+        toast.error(resultado.error || 'No se pudo descargar el respaldo');
+      }
+    } finally {
+      setDescargandoBackupNubeId(null);
+    }
   };
 
   const handleArchivoSeleccionado = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1739,6 +1787,38 @@ export default function ConfiguracionPage() {
           borderColor="border-orange-700/40"
         >
           <div className="space-y-6">
+            {/* 🛡️ Prefijo del número de venta — SIEMPRE visible, independiente
+                del modo de facturación electrónica. `config.prefijoFactura`
+                es el que usa POSPageNew.tsx para el número de CUALQUIER
+                venta/tirilla, no solo para facturación electrónica — antes
+                este campo solo aparecía si se activaba "Proveedor externo",
+                así que un negocio con facturación tradicional nunca podía
+                cambiarlo y quedaba pegado al valor por defecto ('FE') para
+                siempre. Si el mismo dueño tiene varios locales/cajas
+                (instalaciones distintas), cada uno DEBE tener un prefijo
+                distinto — si no, dos locales pueden generar el mismo número
+                de factura (ej. FE-000001 en ambos) sin que nada lo detecte. */}
+            <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-gray-50 border-gray-300'}`}>
+              <Label htmlFor="prefijoFacturaGeneral" className={darkMode ? 'text-white font-bold' : 'text-gray-900 font-bold'}>
+                Prefijo del Número de Venta / Factura
+              </Label>
+              <Input
+                id="prefijoFacturaGeneral"
+                value={config.prefijoFactura}
+                onChange={(e) => handleChange('prefijoFactura', e.target.value.toUpperCase())}
+                placeholder="FE"
+                maxLength={6}
+                className={`mt-2 ${darkMode ? 'bg-slate-700 border-slate-600 text-white uppercase' : 'uppercase'}`}
+              />
+              <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Aparece en cada tirilla/factura que imprime esta caja (ej: {config.prefijoFactura || 'FE'}-000001).
+                {' '}Si tu negocio tiene <strong>más de un local o caja instalada</strong>, cada instalación nueva
+                {' '}ya recibe automáticamente un prefijo único al conectarse por primera vez — así los números
+                {' '}de factura nunca se repiten entre cajas, aunque nadie configure nada aquí. Solo cámbialo si
+                {' '}quieres usar tu propio esquema (ej: "T01", "T02" por local).
+              </p>
+            </div>
+
             {/* Selector de modo — proveedor externo (legado, sigue intacto) vs
                 DIAN directo (módulo nuevo). Mutuamente excluyentes. */}
             <div className="grid grid-cols-3 gap-2">
@@ -1855,24 +1935,6 @@ export default function ConfiguracionPage() {
                     />
                   </div>
 
-                  {/* Prefijo de Factura */}
-                  <div className="space-y-2">
-                    <Label htmlFor="prefijoFactura" className={darkMode ? 'text-gray-300' : ''}>
-                      Prefijo de Factura *
-                    </Label>
-                    <Input
-                      id="prefijoFactura"
-                      value={config.prefijoFactura}
-                      onChange={(e) => handleChange('prefijoFactura', e.target.value.toUpperCase())}
-                      placeholder="FE"
-                      maxLength={4}
-                      className={darkMode ? 'bg-slate-700 border-slate-600 text-white uppercase' : 'uppercase'}
-                      required
-                    />
-                    <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                      Ej: FE, FVTA, POS (máx 4 caracteres)
-                    </p>
-                  </div>
 
                   {/* Consecutivo Inicial */}
                   <div className="space-y-2">
@@ -2187,6 +2249,53 @@ export default function ConfiguracionPage() {
             <div className={`p-3 rounded-xl border text-xs ${darkMode ? 'bg-amber-900/20 border-amber-700/30 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
               ⚠️ Restaurar un backup reemplaza TODOS los datos actuales por los del archivo. Úsalo solo si
               necesitas recuperar información perdida.
+            </div>
+
+            {/* Respaldo en la nube (Supabase) */}
+            <div className={`h-px ${darkMode ? 'bg-slate-700' : 'bg-gray-200'}`} />
+            <div>
+              <p className={`font-semibold text-sm mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                ☁️ Respaldo en la nube
+              </p>
+              <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Cada 15 días el sistema sube automáticamente un respaldo a Supabase. Se guarda uno solo a la
+                vez: al descargarlo desde aquí se libera el espacio en la nube automáticamente.
+              </p>
+              <Button
+                onClick={handleSubirBackupNube}
+                disabled={subiendoBackupNube}
+                variant="outline"
+                className={`font-bold mb-3 ${darkMode ? 'border-sky-600 text-sky-400 hover:bg-sky-900/20' : 'border-sky-500 text-sky-700 hover:bg-sky-50'}`}
+              >
+                {subiendoBackupNube ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                {subiendoBackupNube ? 'Subiendo...' : 'Respaldar ahora en la nube'}
+              </Button>
+
+              {backupsNube.length === 0 ? (
+                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No hay respaldos pendientes en la nube.</p>
+              ) : (
+                <div className="space-y-2">
+                  {backupsNube.map((b) => (
+                    <div key={b.id} className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${darkMode ? 'bg-slate-800/50 border-slate-600' : 'bg-white border-gray-200'}`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{b.nombre_archivo}</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                          {new Date(b.creado_en).toLocaleString('es-CO')} · {(b.tamano_bytes / 1024).toFixed(0)} KB
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => handleDescargarBackupNube(b)}
+                        disabled={descargandoBackupNubeId === b.id}
+                        size="sm"
+                        className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 font-bold shrink-0"
+                      >
+                        {descargandoBackupNubeId === b.id ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />}
+                        Descargar y liberar
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Configuración de módulos enviada por el proveedor */}

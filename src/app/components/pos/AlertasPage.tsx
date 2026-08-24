@@ -6,6 +6,7 @@ import { Card, CardContent } from '../ui/card';
 import { usePOS } from '../../contexts/POSContext';
 import { toast } from 'sonner';
 import { electronStore } from '../../lib/electronStore';
+import { getCached } from '../../lib/cachedLocalStorage';
 import { onStockBajo, onProductoVencido } from '../../lib/integracionesService';
 
 interface Producto {
@@ -57,7 +58,11 @@ export default function AlertasPage() {
       // Cargar productos reales desde localStorage
       const productosLocal = localStorage.getItem('pos-productos');
       if (productosLocal) {
-        const parsed = JSON.parse(productosLocal);
+        // 🚀 FIX rendimiento: esta página re-ejecuta loadProductos() en cada
+        // evento 'inventario:actualizado' (que puede dispararse muy seguido
+        // durante una venta activa) — getCached evita reparsear el catálogo
+        // completo si nada cambió desde la última lectura.
+        const parsed = getCached<any[]>('pos-productos', []);
         setProductos(parsed);
 
         // 🔔 Notificar a integraciones los productos con stock crítico (solo 1 vez por sesión)

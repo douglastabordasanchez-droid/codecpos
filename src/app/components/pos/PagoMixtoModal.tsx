@@ -3,7 +3,7 @@
  * Permite distribuir el pago entre múltiples métodos
  */
 
-import { useState, useEffect } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -35,7 +35,7 @@ interface PagoMixtoModalProps {
   onConfirm: (pagoMixto: PagoMixtoDetalle) => void;
 }
 
-export function PagoMixtoModal({ 
+function PagoMixtoModalComponent({
   isOpen, 
   onClose, 
   totalVenta,
@@ -355,3 +355,7 @@ export function PagoMixtoModal({
     </Dialog>
   );
 }
+
+// Memoizado: evita re-renders del formulario de pago mixto cuando el padre
+// (POSPageNew) cambia por algo ajeno a este modal mientras está abierto.
+export const PagoMixtoModal = memo(PagoMixtoModalComponent);

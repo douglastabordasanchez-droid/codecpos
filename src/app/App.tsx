@@ -152,22 +152,21 @@ marcarSetupCompletado();
 
 function App() {
   console.log('🚀 App.tsx - Iniciando aplicación...');
-  const [showSetup, setShowSetup] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
+  // ⚡ Antes 'isChecking' arrancaba en true y solo se resolvía en un
+  // useEffect (que corre DESPUÉS del primer pintado) — eso forzaba un frame
+  // de spinner "Iniciando CODEC POS..." incluso en el caso normal de todos
+  // los días (setup ya completado). localStorage ya está disponible de
+  // forma síncrona al montar, así que se calcula ahí directamente.
+  const [showSetup, setShowSetup] = useState(() => !localStorage.getItem('codecpos_initial_setup_complete'));
+  const [isChecking, setIsChecking] = useState(false);
 
   useEffect(() => {
-    // Verificar si es la primera vez
-    const setupComplete = localStorage.getItem('codecpos_initial_setup_complete');
-    
-    if (!setupComplete) {
+    if (showSetup) {
       console.log('🎯 Primera vez - Mostrando Setup Wizard');
-      setShowSetup(true);
     } else {
       console.log('✅ Setup ya completado - Cargando aplicación normal');
     }
-    
-    setIsChecking(false);
-  }, []);
+  }, [showSetup]);
 
   const handleSetupComplete = () => {
     console.log('✅ Setup completado - Redirigiendo a aplicación');

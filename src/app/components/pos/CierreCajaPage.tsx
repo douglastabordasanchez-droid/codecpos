@@ -36,6 +36,7 @@ import {
   Trash2,
   Search,
   Bike,
+  Landmark,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -98,6 +99,7 @@ interface CierreCaja {
     nequi: number;
     daviplata: number;
     transferencia: number;
+    bancolombia: number;
     rappi: number;
   };
   billetes: {
@@ -162,6 +164,7 @@ export default function CierreCajaPage() {
     nequi: 0,
     daviplata: 0,
     transferencia: 0,
+    bancolombia: 0,
     rappi: 0,
   });
 
@@ -215,7 +218,7 @@ export default function CierreCajaPage() {
   const normalizarCanalGasto = (metodoPagoRaw: string): 'efectivo' | 'transferencia' | 'tarjeta_banco' => {
     const metodo = String(metodoPagoRaw || '').toLowerCase();
     if (metodo === 'efectivo') return 'efectivo';
-    if (metodo === 'nequi' || metodo === 'daviplata' || metodo === 'transferencia') return 'transferencia';
+    if (metodo === 'nequi' || metodo === 'daviplata' || metodo === 'transferencia' || metodo === 'bancolombia') return 'transferencia';
     if (['tarjeta', 'tarjeta_banco', 'banco', 'cheque'].includes(metodo)) return 'tarjeta_banco';
     return 'transferencia';
   };
@@ -413,6 +416,7 @@ export default function CierreCajaPage() {
         nequi: stats.ventasPorMetodo.nequi,
         daviplata: stats.ventasPorMetodo.daviplata,
         transferencia: stats.ventasPorMetodo.transferencia,
+        bancolombia: stats.ventasPorMetodo.bancolombia,
         rappi: stats.ventasPorMetodo.rappi,
       });
       setGastosEfectivoDia(gastosEfectivo);
@@ -566,6 +570,7 @@ export default function CierreCajaPage() {
         nequi: Number(stats.ventasPorMetodo?.nequi) || 0,
         daviplata: Number(stats.ventasPorMetodo?.daviplata) || 0,
         transferencia: Number(stats.ventasPorMetodo?.transferencia) || 0,
+        bancolombia: Number(stats.ventasPorMetodo?.bancolombia) || 0,
         rappi: Number(stats.ventasPorMetodo?.rappi) || 0,
       };
       const totalSistemaActual = Number(stats.totalIngresos) || 0;
@@ -596,7 +601,7 @@ export default function CierreCajaPage() {
       ) + abonosCarteraEfectivoActual;
       const transferenciaEsperada = Math.max(
         0,
-        (desgloseActual.transferencia + desgloseActual.nequi + desgloseActual.daviplata + desgloseActual.rappi) - gastosTransferenciaActual
+        (desgloseActual.transferencia + desgloseActual.nequi + desgloseActual.daviplata + desgloseActual.bancolombia + desgloseActual.rappi) - gastosTransferenciaActual
       ) + abonosCarteraTransferenciaActual;
       const tarjetaBancoEsperado = Math.max(0, desgloseActual.tarjeta - gastosTarjetaBancoActual) + abonosCarteraTarjetaBancoActual;
       const totalEsperadoAnalitico = totalEsperadoEfectivo + transferenciaEsperada + tarjetaBancoEsperado;
@@ -753,7 +758,7 @@ export default function CierreCajaPage() {
     setAperturaActual(null);
     setTurnoActivo(false);              // ← dispara useEffect → activeTab = 'apertura'
     setTotalSistema(0);
-    setDesgloseSistema({ efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0 });
+    setDesgloseSistema({ efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, bancolombia: 0, rappi: 0 });
     setBilletes({ b100000: 0, b50000: 0, b20000: 0, b10000: 0, b5000: 0, b2000: 0, b1000: 0, m500: 0, m200: 0, m100: 0, m50: 0 });
     setObservaciones('');
     setGastosEfectivoDia(0);
@@ -796,6 +801,7 @@ export default function CierreCajaPage() {
             nequi: stats.ventasPorMetodo?.nequi || 0,
             daviplata: stats.ventasPorMetodo?.daviplata || 0,
             transferencia: stats.ventasPorMetodo?.transferencia || 0,
+            bancolombia: stats.ventasPorMetodo?.bancolombia || 0,
             rappi: stats.ventasPorMetodo?.rappi || 0,
           },
         })),
@@ -1005,7 +1011,7 @@ export default function CierreCajaPage() {
     usuarioActual?.rol === 'super_usuario' || usuarioActual?.permisos?.verFaltanteCaja !== false;
   const transferenciaEsperada = Math.max(
     0,
-    (desgloseSistema.transferencia + desgloseSistema.nequi + desgloseSistema.daviplata + desgloseSistema.rappi) - gastosTransferenciaDia
+    (desgloseSistema.transferencia + desgloseSistema.nequi + desgloseSistema.daviplata + desgloseSistema.bancolombia + desgloseSistema.rappi) - gastosTransferenciaDia
   ) + abonosCarteraTransferenciaDia;
   const tarjetaBancoEsperado = Math.max(0, desgloseSistema.tarjeta - gastosTarjetaBancoDia) + abonosCarteraTarjetaBancoDia;
   const totalEsperado = aperturaActual
@@ -1473,6 +1479,14 @@ export default function CierreCajaPage() {
                         <span className={`${darkMode ? 'text-slate-300' : 'text-slate-700'} text-sm`}>Transferencia</span>
                       </div>
                       <span className={`${darkMode ? 'text-white' : 'text-slate-900'} font-bold`}>{formatCurrency(desgloseSistema.transferencia)}</span>
+                    </div>
+
+                    <div className={`flex items-center justify-between p-3 ${darkMode ? 'bg-slate-700/30' : 'bg-gray-100'} rounded-lg`}>
+                      <div className="flex items-center gap-2">
+                        <Landmark className="w-4 h-4 text-yellow-400" />
+                        <span className={`${darkMode ? 'text-slate-300' : 'text-slate-700'} text-sm`}>Bancolombia</span>
+                      </div>
+                      <span className={`${darkMode ? 'text-white' : 'text-slate-900'} font-bold`}>{formatCurrency(desgloseSistema.bancolombia)}</span>
                     </div>
 
                     <div className={`flex items-center justify-between p-3 ${darkMode ? 'bg-slate-700/30' : 'bg-gray-100'} rounded-lg`}>

@@ -18,18 +18,34 @@ const getHoy = () => {
 };
 
 class CajaDiariaService {
+  // 🚀 FIX rendimiento (mismo patrón que electronStore.ts leerProductosLS):
+  // getSesionActiva() se llama 2+ veces por venta y volvía a JSON.parse-ar
+  // TODO el historial de sesiones de caja desde cero cada vez. Caché
+  // autoinvalidante: si el string crudo en localStorage no cambió desde la
+  // última lectura, reutiliza el array ya parseado — cualquier escritura
+  // (propia o de otra pestaña) invalida automáticamente al no coincidir.
+  private cacheRaw: string | null = null;
+  private cacheData: SesionCajaDiaria[] = [];
+
   private getAll(): SesionCajaDiaria[] {
+    const raw = localStorage.getItem(LS_SESIONES) || '[]';
+    if (raw === this.cacheRaw) return this.cacheData;
     try {
-      const data = JSON.parse(localStorage.getItem(LS_SESIONES) || '[]');
-      return Array.isArray(data) ? data : [];
+      const data = JSON.parse(raw);
+      this.cacheData = Array.isArray(data) ? data : [];
     } catch {
-      return [];
+      this.cacheData = [];
     }
+    this.cacheRaw = raw;
+    return this.cacheData;
   }
 
   private saveAll(sesiones: SesionCajaDiaria[]) {
     try {
-      localStorage.setItem(LS_SESIONES, JSON.stringify(sesiones));
+      const raw = JSON.stringify(sesiones);
+      localStorage.setItem(LS_SESIONES, raw);
+      this.cacheRaw = raw;
+      this.cacheData = sesiones;
     } catch {
       // Si localStorage está lleno, intenta limpiar sesiones cerradas antiguas y reintentar
       try {
@@ -39,7 +55,10 @@ class CajaDiariaService {
           const diasAtras = (Date.now() - fecha.getTime()) / 86400000;
           return diasAtras < 30;
         });
-        localStorage.setItem(LS_SESIONES, JSON.stringify(recientes));
+        const raw = JSON.stringify(recientes);
+        localStorage.setItem(LS_SESIONES, raw);
+        this.cacheRaw = raw;
+        this.cacheData = recientes;
       } catch { /* no se puede persistir — continuar en memoria */ }
     }
   }

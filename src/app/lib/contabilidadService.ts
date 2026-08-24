@@ -13,6 +13,7 @@
 
 import { onIngresoExtraRegistrado, onGastoRegistrado } from './integracionesService';
 import { cajaDiariaService } from './cajaDiariaService';
+import { getCached } from './cachedLocalStorage';
 
 /** ☁️ Espeja el ingreso extra en la nube para que la PWA lo pueda ver — best-effort. */
 function publicarIngresoEnLaNube(ingreso: IngresoExtra): void {
@@ -219,12 +220,10 @@ export function colorCategoria(id: string): string {
 // ── Ingresos extra ───────────────────────────────────────────────────────────
 
 function leerIngresos(): IngresoExtra[] {
-  try {
-    const raw = localStorage.getItem(LS_INGRESOS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  // 🚀 FIX rendimiento: ContabilidadPage llama a esto en cada tecla del
+  // buscador (obtenerMovimientos → leerIngresos+leerGastos) — getCached
+  // evita reparsear si nada cambió desde la última lectura.
+  return getCached<IngresoExtra[]>(LS_INGRESOS, []);
 }
 
 function guardarIngresos(ingresos: IngresoExtra[]) {
@@ -301,12 +300,8 @@ export function eliminarIngresoExtra(id: string, usuario: string): void {
 // ── Gastos (misma fuente que GastosPage.tsx) ─────────────────────────────────
 
 function leerGastos(): GastoContable[] {
-  try {
-    const raw = localStorage.getItem(LS_GASTOS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  // 🚀 FIX rendimiento: ver comentario equivalente en leerIngresos().
+  return getCached<GastoContable[]>(LS_GASTOS, []);
 }
 
 function guardarGastosStorage(gastos: GastoContable[]) {

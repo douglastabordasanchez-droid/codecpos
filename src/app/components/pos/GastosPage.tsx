@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePOS } from '../../contexts/POSContext';
+import { useDebounce } from '../../hooks/useDebounce';
 import { electronStore } from '../../lib/electronStore';
 import { cajaDiariaService } from '../../lib/cajaDiariaService';
 import { onGastoRegistrado } from '../../lib/integracionesService';
@@ -54,6 +55,8 @@ import {
   Save,
   Printer,
   FileSpreadsheet,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -196,7 +199,12 @@ export default function GastosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [gastoEditando, setGastoEditando] = useState<Gasto | null>(null);
   const [busqueda, setBusqueda] = useState('');
+  // 🚀 FIX rendimiento: el input sigue controlado por busqueda; el filtro
+  // usa el valor debounced para no recorrer el arreglo en cada tecla.
+  const busquedaDebounced = useDebounce(busqueda, 200);
   const [filtroCategoria, setFiltroCategoria] = useState<CategoriaGasto | 'todas'>('todas');
+  const [paginaGastos, setPaginaGastos] = useState(1);
+  const GASTOS_POR_PAGINA = 50;
   const [vistaActual, setVistaActual] = useState<'lista' | 'graficas'>('lista');
   const [showConfirmarSesion, setShowConfirmarSesion] = useState(false);
   const [gastoPendiente, setGastoPendiente] = useState<Gasto | null>(null);
@@ -223,7 +231,11 @@ export default function GastosPage() {
 
   useEffect(() => {
     filtrarGastos();
-  }, [gastos, busqueda, filtroCategoria]);
+  }, [gastos, busquedaDebounced, filtroCategoria]);
+
+  useEffect(() => {
+    setPaginaGastos(1);
+  }, [busquedaDebounced, filtroCategoria]);
 
   const cargarGastos = () => {
     try {
@@ -253,11 +265,11 @@ export default function GastosPage() {
   const filtrarGastos = () => {
     let resultado = [...gastos];
 
-    if (busqueda) {
+    if (busquedaDebounced) {
       resultado = resultado.filter(
         (g) =>
-          g.descripcion.toLowerCase().includes(busqueda.toLowerCase()) ||
-          g.notas?.toLowerCase().includes(busqueda.toLowerCase())
+          g.descripcion.toLowerCase().includes(busquedaDebounced.toLowerCase()) ||
+          g.notas?.toLowerCase().includes(busquedaDebounced.toLowerCase())
       );
     }
 
@@ -624,6 +636,11 @@ export default function GastosPage() {
   // Cálculos
   const totalGastos = gastosFiltrados.reduce((sum, g) => sum + g.monto, 0);
   const promedioGasto = gastosFiltrados.length > 0 ? totalGastos / gastosFiltrados.length : 0;
+
+  // 🚀 FIX rendimiento: la lista se renderizaba completa sin paginar.
+  const totalPaginasGastos = Math.max(1, Math.ceil(gastosFiltrados.length / GASTOS_POR_PAGINA));
+  const paginaGastosSegura = Math.min(paginaGastos, totalPaginasGastos);
+  const gastosPagina = gastosFiltrados.slice((paginaGastosSegura - 1) * GASTOS_POR_PAGINA, paginaGastosSegura * GASTOS_POR_PAGINA);
   
   const gastosPorCategoria = Object.entries(
     gastosFiltrados.reduce((acc, g) => {
@@ -930,7 +947,7 @@ export default function GastosPage() {
             <CardContent>
               <div className="space-y-3">
                 {gastosFiltrados.length > 0 ? (
-                  gastosFiltrados.map((gasto, index) => {
+                  gastosPagina.map((gasto, index) => {
                     const CatIcon = configCategoria(gasto.categoria).icon;
                     const catColor = configCategoria(gasto.categoria).color;
                     const metodoPago = METODOS_PAGO_CONFIG[normalizarMedioPagoEgreso(gasto.metodoPago) as keyof typeof METODOS_PAGO_CONFIG];
@@ -1051,8 +1068,8 @@ export default function GastosPage() {
                     <p className={`text-lg mb-2 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
                       No hay gastos registrados
                     </p>
-                    <Button 
-                      onClick={() => abrirModal()} 
+                    <Button
+                      onClick={() => abrirModal()}
                       variant="outline"
                       className="mt-4"
                     >
@@ -1062,6 +1079,21 @@ export default function GastosPage() {
                   </div>
                 )}
               </div>
+              {totalPaginasGastos > 1 && (
+                <div className={`flex items-center justify-between px-1 pt-4 mt-2 border-t ${darkMode ? 'border-slate-700' : 'border-gray-200'}`}>
+                  <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
+                    Página {paginaGastosSegura} de {totalPaginasGastos} · {gastosFiltrados.length} gastos
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={paginaGastosSegura <= 1} onClick={() => setPaginaGastos((p) => Math.max(1, p - 1))} className="h-8 w-8 p-0 rounded-lg">
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={paginaGastosSegura >= totalPaginasGastos} onClick={() => setPaginaGastos((p) => Math.min(totalPaginasGastos, p + 1))} className="h-8 w-8 p-0 rounded-lg">
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>

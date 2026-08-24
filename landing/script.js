@@ -237,19 +237,33 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 /* ── Botones de prueba gratis ──
    Llevan al registro público real (Fase 5, migración 0052: crea cuenta +
    empresa + administrador + licencia TRIAL de 14 días en una transacción).
-   PWA_URL apunta al servidor de desarrollo de la PWA (`npm run dev:pwa`,
-   puerto 5174) mientras no exista el rewrite de Vercel bajo
-   codecstudio.online/codecpos definido en la Fase 4.1 -- ese día basta con
-   cambiar esta constante (o dejarla vacía para usar una ruta relativa, si
-   landing y PWA terminan sirviéndose desde el mismo dominio). */
-const PWA_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:5174'
-  : '';
+   En producción, landing y PWA se sirven desde el mismo dominio
+   (vercel.json copia esta landing en la raíz y la PWA bajo /app/ -- ver
+   vite.config.pwa.ts), así que basta una ruta relativa a /app/. En local,
+   la PWA corre aparte con `npm run dev:pwa` (puerto 5174, también bajo
+   /app/ por el mismo cambio de base).
+
+   Detección de entorno local ampliada a propósito: antes solo reconocía
+   'localhost'/'127.0.0.1' exactos -- si esta página se abre como archivo
+   (file://, hostname vacío) o se sirve por otra IP local (ej. 0.0.0.0,
+   192.168.x.x en pruebas de red), caía al modo "producción" (ruta
+   relativa '/app/prueba-gratis'), que en la landing sola no lleva a ningún
+   lado -- eso es lo que se sentía como "el botón no hace nada / no
+   muestra el formulario". Para probar el flujo completo en local, correr
+   `npm run dev:trial-flow` (levanta landing en :4174 y la PWA en :5174 a
+   la vez) y abrir la landing SIEMPRE por http://localhost:4174, nunca
+   como archivo. */
+const ES_ENTORNO_LOCAL = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+  || window.location.protocol === 'file:';
+const PWA_URL = ES_ENTORNO_LOCAL ? 'http://localhost:5174' : '';
 ['trialCta', 'trialCtaFinal'].forEach((id) => {
   document.getElementById(id)?.addEventListener('click', (e) => {
     e.preventDefault();
     trackEvent('click_registro');
-    window.location.href = `${PWA_URL}/prueba-gratis`;
+    if (window.location.protocol === 'file:') {
+      console.warn('[Codec POS] Esta landing se abrió como archivo local (file://). Para probar el botón de prueba gratis, sírvela con "npm run dev:trial-flow" y ábrela en http://localhost:4174.');
+    }
+    window.location.href = `${PWA_URL}/app/prueba-gratis`;
   });
 });
 

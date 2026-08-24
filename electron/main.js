@@ -11,7 +11,7 @@
 
 import { app, BrowserWindow, ipcMain, Notification, shell, Menu, dialog, session } from 'electron';
 import path       from 'path';
-import { exec, execSync, spawn } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import os         from 'os';
 import crypto     from 'crypto';
@@ -69,7 +69,19 @@ if (gpuSafeModeActivo) {
   app.commandLine.appendSwitch('enable-gpu-rasterization');
   app.commandLine.appendSwitch('enable-zero-copy');
   app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
-  app.commandLine.appendSwitch('disable-gpu-vsync'); // Menos lag
+  app.commandLine.appendSwitch('disable-gpu-vsync'); // Menos lag al abrir modales
+  // 🛡️ 'ignore-gpu-blocklist' SÍ fuerza compositing por hardware en GPUs que
+  // Chromium marca como problemáticas (lo que el comentario de arriba decía
+  // evitar) — pero a diferencia de cuando se escribió ese comentario, ahora
+  // hay DOS redes de seguridad que atrapan el caso malo automáticamente:
+  // 1) el chequeo de app.getGPUFeatureStatus() más abajo, que detecta si el
+  //    compositing real no quedó activo y relanza en modo seguro ANTES de
+  //    que el usuario vea nada raro; y
+  // 2) el contador de render-process-gone (2 caídas en <15s → modo seguro
+  //    permanente), para el caso más raro de que el driver crashee en vez de
+  //    solo fallar en silencio. Con esas redes, el peor caso es 1-2 arranques
+  //    feos que se autocorrigen, no una pantalla negra permanente.
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
 }
 
 // ⚡ OPTIMIZACIONES EXTREMAS PARA BAJOS RECURSOS (NUEVO)
@@ -132,10 +144,16 @@ function refocusMainWindow() {
 }
 
 // ── Verificar privilegios de administrador ────────────────────────────────────
-function checkAdminPrivileges() {
-  if (process.platform !== 'win32') return true;
+// 🛡️ FIX FLUIDEZ: antes usaba execSync('net session', ...) — un subproceso
+// SÍNCRONO que bloquea el proceso principal completo de Electron (incluida la
+// coordinación de la ventana) hasta que Windows responde, en CADA arranque.
+// El resultado (isRunningAsAdmin) solo se consulta bajo demanda vía IPC
+// ('is-admin', línea ~1124) — nada necesita el valor antes de mostrar la
+// ventana, así que no hay razón para bloquear el arranque esperándolo.
+async function checkAdminPrivileges() {
+  if (process.platform !== 'win32') { isRunningAsAdmin = true; return true; }
   try {
-    execSync('net session', { stdio: 'ignore' });
+    await execAsync('net session', { windowsHide: true });
     isRunningAsAdmin = true;
     return true;
   } catch {
@@ -512,34 +530,44 @@ async function resolvePrinterTargetByPreference(preferredPrinterName) {
   return resolvePrinterTarget();
 }
 
-// 🚀 FIX rendimiento (popup de factura → botón Imprimir): la parte lenta de
-// esta función NUNCA fue el spooler de Windows (WritePrinter es instantáneo)
-// sino `Add-Type -TypeDefinition`, que invoca al compilador de C# de .NET
-// desde CERO en cada impresión — 1-2 segundos solo para compilar la misma
-// clase de siempre, en cada ticket. Se compila UNA sola vez a un .dll
-// cacheado en userData (persiste entre reinicios de la app); de ahí en
-// adelante cada impresión solo lo CARGA con `Add-Type -Path` (sin
-// recompilar), que es prácticamente instantáneo. El mecanismo de impresión
-// en sí (WinSpool RAW vía P/Invoke) no cambia.
-async function sendRawEscPosToWindowsSpool(printerName, rawBuffer) {
-  const tempDir = app.getPath('temp');
-  const jobId = `codecpos-${Date.now()}`;
-  const dataPath = path.join(tempDir, `${jobId}.bin`);
-  const psPath = path.join(tempDir, `${jobId}.ps1`);
-  const dllPath = path.join(app.getPath('userData'), 'RawPrinterHelper.dll');
+// 🚀 FIX rendimiento (popup de factura → botón Imprimir, causa raíz real de
+// "el sistema se traba al cobrar"): la versión anterior lanzaba un proceso
+// `powershell.exe` NUEVO en cada tirilla — incluso con el .dll ya compilado
+// y cacheado, arrancar PowerShell tiene un costo real (cientos de ms a
+// varios segundos), y un script .ps1 recién escrito a disco con P/Invoke a
+// winspool.Drv es justo el patrón que un antivirus/Defender suele
+// escanear en tiempo real antes de dejarlo correr — de ahí que el freeze
+// fuera intermitente en vez de constante. Ahora se mantiene UN SOLO proceso
+// PowerShell vivo durante toda la sesión de la app (worker persistente,
+// ver `ensurePrinterWorker()`), con el helper .NET ya cargado en memoria;
+// cada impresión solo le manda un trabajo por stdin y espera la respuesta
+// por stdout — sin volver a pagar el costo de arrancar un proceso. El
+// mecanismo de impresión en sí (WinSpool RAW vía P/Invoke, WritePrinter)
+// no cambia en absoluto.
+let printerWorkerProcess = null;
+let printerWorkerReadyPromise = null;
+let printerWorkerScriptPath = null;
+let printerWorkerStdoutBuffer = '';
+const printerWorkerPending = new Map();
+const PRINTER_WORKER_TIMEOUT_MS = 10000;
 
-  await fsPromises.writeFile(dataPath, rawBuffer);
-
-  const escapedData = dataPath.replace(/'/g, "''");
-  const escapedPrinter = printerName.replace(/'/g, "''");
+function buildPrinterWorkerScript(dllPath) {
   const escapedDllPath = dllPath.replace(/'/g, "''");
-
-  const psScript = `
+  return `
 $ErrorActionPreference = 'Stop'
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
+function Send-Respuesta($id, $ok, $error) {
+  $obj = @{ id = $id; success = $ok }
+  if ($error) { $obj.error = [string]$error }
+  [Console]::Out.WriteLine(($obj | ConvertTo-Json -Compress))
+  [Console]::Out.Flush()
+}
 
 $dllPath = '${escapedDllPath}'
-if (-not (Test-Path $dllPath)) {
-  Add-Type -OutputAssembly $dllPath -OutputType Library -TypeDefinition @"
+try {
+  if (-not (Test-Path $dllPath)) {
+    Add-Type -OutputAssembly $dllPath -OutputType Library -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 
@@ -573,48 +601,169 @@ public class RawPrinterHelper {
   public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, Int32 dwCount, out Int32 dwWritten);
 }
 "@
-}
-Add-Type -Path $dllPath
-
-$bytes = [System.IO.File]::ReadAllBytes('${escapedData}')
-$h = [IntPtr]::Zero
-
-if (-not [RawPrinterHelper]::OpenPrinter('${escapedPrinter}', [ref]$h, [IntPtr]::Zero)) {
-  throw "No se pudo abrir la impresora: ${escapedPrinter}"
-}
-
-try {
-  $doc = New-Object RawPrinterHelper+DOCINFOA
-  $doc.pDocName = 'CODECPOS_ESC_POS_RAW'
-  $doc.pDataType = 'RAW'
-
-  if (-not [RawPrinterHelper]::StartDocPrinter($h, 1, $doc)) { throw 'StartDocPrinter falló' }
-  if (-not [RawPrinterHelper]::StartPagePrinter($h)) { throw 'StartPagePrinter falló' }
-
-  $written = 0
-  if (-not [RawPrinterHelper]::WritePrinter($h, $bytes, $bytes.Length, [ref]$written)) {
-    throw 'WritePrinter falló'
+  } else {
+    Add-Type -Path $dllPath
   }
-
-  [RawPrinterHelper]::EndPagePrinter($h) | Out-Null
-  [RawPrinterHelper]::EndDocPrinter($h) | Out-Null
-} finally {
-  [RawPrinterHelper]::ClosePrinter($h) | Out-Null
+  Send-Respuesta '__ready__' $true $null
+} catch {
+  Send-Respuesta '__ready__' $false $_.Exception.Message
 }
-`;
 
-  await fsPromises.writeFile(psPath, psScript, 'utf8');
+while ($true) {
+  $line = [Console]::In.ReadLine()
+  if ($null -eq $line) { break }
+  if ($line -eq '__EXIT__') { break }
+  if ([string]::IsNullOrWhiteSpace($line)) { continue }
+
+  $req = $null
+  try { $req = $line | ConvertFrom-Json } catch { continue }
 
   try {
-    await execAsync(`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${psPath}"`, {
-      windowsHide: true,
-      timeout: 15000,
-      encoding: 'utf8',
-      maxBuffer: 1024 * 1024,
+    $bytes = [System.IO.File]::ReadAllBytes($req.dataPath)
+    $h = [IntPtr]::Zero
+
+    if (-not [RawPrinterHelper]::OpenPrinter($req.printerName, [ref]$h, [IntPtr]::Zero)) {
+      throw "No se pudo abrir la impresora: $($req.printerName)"
+    }
+
+    try {
+      $doc = New-Object RawPrinterHelper+DOCINFOA
+      $doc.pDocName = 'CODECPOS_ESC_POS_RAW'
+      $doc.pDataType = 'RAW'
+
+      if (-not [RawPrinterHelper]::StartDocPrinter($h, 1, $doc)) { throw 'StartDocPrinter falló' }
+      if (-not [RawPrinterHelper]::StartPagePrinter($h)) { throw 'StartPagePrinter falló' }
+
+      $written = 0
+      if (-not [RawPrinterHelper]::WritePrinter($h, $bytes, $bytes.Length, [ref]$written)) {
+        throw 'WritePrinter falló'
+      }
+
+      [RawPrinterHelper]::EndPagePrinter($h) | Out-Null
+      [RawPrinterHelper]::EndDocPrinter($h) | Out-Null
+    } finally {
+      [RawPrinterHelper]::ClosePrinter($h) | Out-Null
+    }
+
+    Send-Respuesta $req.id $true $null
+  } catch {
+    Send-Respuesta $req.id $false $_.Exception.Message
+  }
+}
+`;
+}
+
+// Mata el worker actual (si existe) y limpia todo su estado — cualquier
+// trabajo pendiente en ese momento se rechaza. La siguiente impresión
+// arranca uno nuevo desde cero (mismo costo único que antes se pagaba en
+// CADA impresión).
+function derribarPrinterWorker(motivo) {
+  const proc = printerWorkerProcess;
+  printerWorkerProcess = null;
+  printerWorkerReadyPromise = null;
+  printerWorkerStdoutBuffer = '';
+  for (const pendiente of printerWorkerPending.values()) {
+    clearTimeout(pendiente.timeoutHandle);
+    pendiente.reject(new Error(motivo || 'El proceso de impresión terminó inesperadamente'));
+  }
+  printerWorkerPending.clear();
+  if (proc && !proc.killed) {
+    try { proc.kill(); } catch { /* no-op */ }
+  }
+}
+
+async function ensurePrinterWorker() {
+  if (printerWorkerProcess && printerWorkerReadyPromise) {
+    return printerWorkerReadyPromise;
+  }
+
+  if (!printerWorkerScriptPath) {
+    printerWorkerScriptPath = path.join(app.getPath('userData'), 'printer-worker.ps1');
+  }
+  const dllPath = path.join(app.getPath('userData'), 'RawPrinterHelper.dll');
+  await fsPromises.writeFile(printerWorkerScriptPath, buildPrinterWorkerScript(dllPath), 'utf8');
+
+  const proc = spawn(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', printerWorkerScriptPath],
+    { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }
+  );
+  printerWorkerProcess = proc;
+
+  const readyPromise = new Promise((resolve, reject) => {
+    let resuelto = false;
+
+    proc.stdout.setEncoding('utf8');
+    proc.stdout.on('data', (chunk) => {
+      printerWorkerStdoutBuffer += chunk;
+      let idx;
+      while ((idx = printerWorkerStdoutBuffer.indexOf('\n')) >= 0) {
+        const linea = printerWorkerStdoutBuffer.slice(0, idx).trim();
+        printerWorkerStdoutBuffer = printerWorkerStdoutBuffer.slice(idx + 1);
+        if (!linea) continue;
+
+        let msg;
+        try { msg = JSON.parse(linea); } catch { continue; }
+
+        if (msg.id === '__ready__') {
+          resuelto = true;
+          if (msg.success) resolve(proc);
+          else reject(new Error(msg.error || 'No se pudo inicializar el worker de impresión'));
+          continue;
+        }
+
+        const pendiente = printerWorkerPending.get(msg.id);
+        if (pendiente) {
+          clearTimeout(pendiente.timeoutHandle);
+          printerWorkerPending.delete(msg.id);
+          if (msg.success) pendiente.resolve();
+          else pendiente.reject(new Error(msg.error || 'Fallo desconocido al imprimir'));
+        }
+      }
+    });
+
+    proc.on('error', (error) => {
+      if (!resuelto) { resuelto = true; reject(error); }
+      derribarPrinterWorker(`Proceso de impresión falló: ${error.message}`);
+    });
+
+    proc.on('exit', () => {
+      if (!resuelto) { resuelto = true; reject(new Error('El proceso de impresión terminó antes de inicializar')); }
+      derribarPrinterWorker('El proceso de impresión terminó');
+    });
+  });
+
+  printerWorkerReadyPromise = readyPromise;
+  return readyPromise;
+}
+
+async function sendRawEscPosToWindowsSpool(printerName, rawBuffer) {
+  const tempDir = app.getPath('temp');
+  const dataPath = path.join(tempDir, `codecpos-${Date.now()}-${crypto.randomUUID()}.bin`);
+  await fsPromises.writeFile(dataPath, rawBuffer);
+
+  try {
+    await ensurePrinterWorker();
+
+    await new Promise((resolve, reject) => {
+      const id = crypto.randomUUID();
+      const timeoutHandle = setTimeout(() => {
+        printerWorkerPending.delete(id);
+        reject(new Error('La impresora no respondió a tiempo'));
+      }, PRINTER_WORKER_TIMEOUT_MS);
+
+      printerWorkerPending.set(id, { resolve, reject, timeoutHandle });
+
+      try {
+        printerWorkerProcess.stdin.write(JSON.stringify({ id, printerName, dataPath }) + '\n');
+      } catch (error) {
+        clearTimeout(timeoutHandle);
+        printerWorkerPending.delete(id);
+        reject(error);
+      }
     });
   } finally {
     await fsPromises.unlink(dataPath).catch(() => {});
-    await fsPromises.unlink(psPath).catch(() => {});
   }
 }
 
@@ -810,6 +959,12 @@ function createWindow() {
     frame:           true,
     // No mostrar hasta que esté listo → evita flash blanco
     show:            false,
+    // 🚀 Con show:false, esto asegura que el renderer siga pintando de
+    // fondo mientras la ventana está oculta (ya es el default de Electron,
+    // se deja explícito) — así cuando se llama a mainWindow.show() más abajo
+    // la primera pantalla ya está compuesta, en vez de mostrarse en blanco
+    // un frame mientras termina de pintar.
+    paintWhenInitiallyHidden: true,
   };
 
   if (iconPath) winOpts.icon = iconPath;
@@ -819,17 +974,19 @@ function createWindow() {
   // ✅ OPTIMIZACIÓN: Limitar memoria de la ventana
   mainWindow.webContents.setMaxListeners(10); // Reducir listeners
   
-  // ✅ OPTIMIZACIÓN: Garbage collection más frecuente
-  setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.session.clearCache();
-    }
-  }, 600000); // Cada 10 minutos
+  // 🛡️ FIX FLUIDEZ: se quitó el clearCache() periódico que corría aquí cada
+  // 10 minutos. Vaciar el caché de Chromium no libera memoria de forma útil
+  // (ya lo gestiona con un límite propio) — solo fuerza a recursos ya
+  // decodificados (imágenes de productos, chunks JS ya cargados) a pedirse
+  // y decodificarse de nuevo la siguiente vez que se usan, lo que se siente
+  // como una pausa periódica durante el uso normal. En un POS de alto flujo
+  // (caja abierta horas seguidas) era la causa de micro-cuelgues recurrentes,
+  // no una optimización real.
 
   // Deshabilitar menú nativo en producción
   Menu.setApplicationMenu(null);
 
-  checkAdminPrivileges();
+  checkAdminPrivileges().catch(() => {});
 
   // ── Cargar la app ──────────────────────────────────────────────────────
   if (process.env.NODE_ENV === 'development') {
@@ -953,14 +1110,18 @@ function createWindow() {
   }
 
   // ── Mostrar ventana cuando esté lista y cerrar splash ─────────────────
+  // 🛡️ FIX FLUIDEZ: antes esperaba 1200ms fijos aquí solo para que el splash
+  // "se alcanzara a ver" — un retraso puramente cosmético sumado ENCIMA del
+  // tiempo real de carga, en un sistema donde el cajero abre la app varias
+  // veces al día. Se baja a 300ms (suficiente para que no haya parpadeo,
+  // sin sumar más de un segundo de espera artificial al arranque).
   mainWindow.once('ready-to-show', () => {
     if (splashWindow && !splashWindow.isDestroyed()) {
-      // Pequeño delay para que el splash se vea al menos 1.2s
       setTimeout(() => {
         if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
         mainWindow.show();
         mainWindow.focus();
-      }, 1200);
+      }, 300);
     } else {
       mainWindow.show();
       mainWindow.focus();
@@ -2290,6 +2451,15 @@ app.whenReady().then(() => {
   // Abrir puertos LAN en el Firewall de Windows de forma silenciosa
   setupWindowsFirewall().catch(() => {});
 
+  // 🚀 Precalienta el worker de impresión (arranca PowerShell + compila/carga
+  // el helper .NET) durante el arranque de la app, no en la primera venta —
+  // así el cajero nunca paga ese costo único al cobrar. Solo aplica en
+  // Windows; si falla (sin impresora configurada todavía, etc.) no bloquea
+  // el arranque — la siguiente impresión real vuelve a intentarlo.
+  if (process.platform === 'win32') {
+    ensurePrinterWorker().catch(() => {});
+  }
+
   createSplash();
   // Crear ventana principal en paralelo (splash cubre el inicio)
   createWindow();
@@ -2367,6 +2537,9 @@ app.on('will-quit', () => {
   }
   try {
     if (piperProceso && !piperProceso.killed) piperProceso.kill();
+  } catch { /* no-op */ }
+  try {
+    if (printerWorkerProcess && !printerWorkerProcess.killed) printerWorkerProcess.kill();
   } catch { /* no-op */ }
 });
 

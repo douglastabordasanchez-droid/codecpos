@@ -1,8 +1,8 @@
 {
-  "buildCommand": "npm run build:pwa && cp dist-pwa/index.pwa.html dist-pwa/index.html",
+  "buildCommand": "npm run build:pwa && cp dist-pwa/app/index.pwa.html dist-pwa/app/index.html && cp -r landing/. dist-pwa/",
   "outputDirectory": "dist-pwa",
   "framework": null,
   "rewrites": [
-    { "source": "/((?!assets/|manifest.webmanifest|sw.js|workbox-.*\\.js|registerSW.js|logo.png|icon.ico|mesa.png).*)", "destination": "/index.html" }
+    { "source": "/app/((?!assets/|manifest.webmanifest|sw.js|workbox-.*\\.js|registerSW.js|logo.png|icon.ico|mesa.png).*)", "destination": "/app/index.html" }
   ]
 }

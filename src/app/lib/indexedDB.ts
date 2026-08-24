@@ -628,6 +628,25 @@ class IndexedDBManager {
     });
   }
 
+  // ⚡ syncService corre cada 30s mientras la app está abierta y, hasta
+  // ahora, llamaba getAllProductos() (escaneo completo de la tabla) solo
+  // para filtrar por syncStatus === 'pending' en JS después — con historial
+  // acumulado de meses/años eso se siente como micro-tranqueos periódicos de
+  // fondo, aunque casi nunca haya productos pendientes reales. El índice
+  // 'syncStatus' ya existe (ver arriba); solo faltaba usarlo.
+  async getProductosPendientes(): Promise<Producto[]> {
+    const db = await this.ensureDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.PRODUCTOS], 'readonly');
+      const store = transaction.objectStore(STORES.PRODUCTOS);
+      const index = store.index('syncStatus');
+      const request = index.getAll('pending');
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   async deleteProducto(id: string): Promise<void> {
     const db = await this.ensureDB();
     return new Promise((resolve, reject) => {
@@ -678,6 +697,22 @@ class IndexedDBManager {
       const transaction = db.transaction([STORES.VENTAS], 'readonly');
       const store = transaction.objectStore(STORES.VENTAS);
       const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // ⚡ Mismo caso que getProductosPendientes: pushVentasPendientes llamaba
+  // getAllVentas() (escaneo completo) para filtrar 'pending' en JS. El
+  // índice 'syncStatus' ya existe en este store también.
+  async getVentasPendientes(): Promise<Venta[]> {
+    const db = await this.ensureDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.VENTAS], 'readonly');
+      const store = transaction.objectStore(STORES.VENTAS);
+      const index = store.index('syncStatus');
+      const request = index.getAll('pending');
 
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);

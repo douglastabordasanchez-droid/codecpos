@@ -10,7 +10,7 @@
  * ✅ Sin CodecVerify → flujo normal
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, ShieldCheck, Clock, AlertTriangle, FileText,
@@ -64,7 +64,7 @@ export function isCodecVerifyActivo(): boolean {
   } catch { return false; }
 }
 
-export type EntidadPago = 'nequi' | 'daviplata' | 'transferencia';
+export type EntidadPago = 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia';
 
 const ENTIDAD_CONFIG: Record<EntidadPago, { label: string; gradientIcon: string; glow: string; accent: string; accentSoft: string }> = {
   nequi: {
@@ -87,6 +87,13 @@ const ENTIDAD_CONFIG: Record<EntidadPago, { label: string; gradientIcon: string;
     glow: 'rgba(14,165,233,0.45)',
     accent: '#0ea5e9',
     accentSoft: 'rgba(14,165,233,0.4)',
+  },
+  bancolombia: {
+    label: 'Bancolombia',
+    gradientIcon: 'linear-gradient(135deg, #eab308, #a16207)',
+    glow: 'rgba(202,138,4,0.45)',
+    accent: '#ca8a04',
+    accentSoft: 'rgba(202,138,4,0.4)',
   },
 };
 
@@ -160,7 +167,7 @@ interface Props {
 // ═══════════════════════════════════════════════════════
 //  COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════
-export function NequiVerifyModal({
+function NequiVerifyModalComponent({
   visible, monto, darkMode, cajeroNombre, numeroFactura, entidad = 'nequi', onCancelar, onConfirmar,
 }: Props) {
   const codecActivo = isCodecVerifyActivo();
@@ -573,3 +580,5 @@ export function NequiVerifyModal({
     </>
   );
 }
+
+export const NequiVerifyModal = memo(NequiVerifyModalComponent);

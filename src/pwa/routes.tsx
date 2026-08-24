@@ -55,6 +55,9 @@ function ConSuspense({ children }: { children: ReactNode }) {
   return <Suspense fallback={<Cargando />}>{children}</Suspense>;
 }
 
+// basename '/app': la PWA comparte dominio con la landing comercial
+// (servida en la raíz por vercel.json) y vive bajo ese subpath — ver
+// vite.config.pwa.ts (base '/app/') para el resto del cambio.
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/registro', element: <RegistroPage /> },
@@ -95,4 +98,4 @@ export const router = createBrowserRouter([
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },
-]);
+], { basename: '/app' });
