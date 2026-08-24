@@ -65,7 +65,10 @@ function RutasAdmin() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    // basename '/admin': comparte dominio con la PWA ('/app') y la landing
+    // ('/') — mismo patrón, ver vite.config.admin.ts (base '/admin/') y
+    // vercel.json para el resto del despliegue.
+    <BrowserRouter basename="/admin">
       <AdminAuthProvider>
         <RutasAdmin />
       </AdminAuthProvider>

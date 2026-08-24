@@ -1,9 +1,10 @@
 {
-  "buildCommand": "npm run build:pwa && cp dist-pwa/app/index.pwa.html dist-pwa/app/index.html && cp -r landing/. dist-pwa/",
+  "buildCommand": "npm run build:pwa && cp dist-pwa/app/index.pwa.html dist-pwa/app/index.html && npm run build:admin && mkdir -p dist-pwa/admin && cp -r dist-admin/. dist-pwa/admin/ && cp dist-pwa/admin/index.admin.html dist-pwa/admin/index.html && cp -r landing/. dist-pwa/",
   "outputDirectory": "dist-pwa",
   "framework": null,
   "rewrites": [
     { "source": "/app/((?!assets/|manifest.webmanifest|sw.js|workbox-.*\\.js|registerSW.js|logo.png|icon.ico|mesa.png).*)", "destination": "/app/index.html" },
+    { "source": "/admin/((?!assets/).*)", "destination": "/admin/index.html" },
     { "source": "/download", "destination": "/descargas/codec-pos-verify.apk" }
   ],
   "headers": [

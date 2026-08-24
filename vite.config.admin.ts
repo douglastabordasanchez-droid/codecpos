@@ -36,7 +36,10 @@ export default defineConfig({
     },
   },
   assetsInclude: ['**/*.svg'],
-  base: '/',
+  // 🌐 Comparte dominio con la PWA ('/app/') y la landing ('/') — vive bajo
+  // '/admin/' en vez de la raíz para no chocar con los assets de las otras
+  // dos. Ver App.tsx (basename '/admin') y vercel.json para el resto.
+  base: '/admin/',
   build: {
     outDir: 'dist-admin',
     assetsDir: 'assets',
