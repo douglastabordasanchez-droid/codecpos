@@ -42,6 +42,21 @@
             </intent-filter>
         </service>
 
+        <!-- 📷 Necesario para que la cámara del sistema pueda escribir la foto:
+             la app que toma la foto (Cámara) no puede recibir una Uri file://
+             cruda desde Android 7+, necesita un content:// que este provider
+             expone. Usado por onShowFileChooser en MainActivity.kt cuando la
+             PWA (ProductoFormPage/PerfilPage) usa <input type="file">. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

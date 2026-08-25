@@ -193,8 +193,14 @@ export default function InicioPage() {
     return { totalPeriodo, totalPeriodoNeto, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano, proyeccionCierre };
   }, [ventasPeriodo, ventasPeriodoAnterior, productosConMinimo, alertasCount, devolucionesTotal, rango]);
 
-  const etiquetaVentas = rango === 'hoy' ? 'Ventas hoy' : rango === '3d' ? 'Ventas 3 días' : rango === '7d' ? 'Ventas 7 días' : 'Ventas del periodo';
-  const etiquetaTransacciones = rango === 'hoy' ? 'Transacciones' : 'Transacciones periodo';
+  // 🛡️ Paridad con Electron (DashboardPOSPage): allá "Total Ventas Netas" es
+  // la CANTIDAD de ventas (KpiCard con estadisticas.totalVentas) y el monto
+  // en dinero se llama "Ingresos Netos" — dos cosas distintas. Antes acá el
+  // anillo llamado "Ventas" mostraba el monto y el de la cantidad se llamaba
+  // "Transacciones", así que el dueño del negocio veía nombres distintos
+  // para el mismo concepto entre el celular y el computador.
+  const etiquetaIngresos = rango === 'hoy' ? 'Ingresos hoy' : rango === '3d' ? 'Ingresos 3 días' : rango === '7d' ? 'Ingresos 7 días' : 'Ingresos del periodo';
+  const etiquetaVentas = rango === 'hoy' ? 'Ventas hoy' : 'Ventas del periodo';
 
   const primerNombre = (empleado?.nombre_completo || '').split(' ')[0];
   const hora = new Date().getHours();
@@ -268,7 +274,7 @@ export default function InicioPage() {
               onClick={() => navigate('/dashboard')}
             />
             <RingStat
-              label={etiquetaVentas}
+              label={etiquetaIngresos}
               value={`$${Math.round(stats.totalPeriodoNeto).toLocaleString('es-CO')}`}
               pct={stats.pctVentasVsAnterior}
               colorFrom="#38bdf8"
@@ -277,7 +283,7 @@ export default function InicioPage() {
               onClick={() => navigate('/ventas')}
             />
             <RingStat
-              label={etiquetaTransacciones}
+              label={etiquetaVentas}
               value={String(stats.cantidadPeriodo)}
               pct={stats.pctTransaccionesVsAnterior}
               colorFrom="#a78bfa"

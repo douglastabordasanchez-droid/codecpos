@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Expone la carpeta de cache de la app vía content:// para la foto que
+     toma la cámara del sistema (ver FileProvider en AndroidManifest.xml y
+     onShowFileChooser en MainActivity.kt): desde Android 7 ya no se puede
+     pasar una Uri file:// cruda entre apps. -->
+<paths>
+    <cache-path name="camera_tmp" path="." />
+</paths>

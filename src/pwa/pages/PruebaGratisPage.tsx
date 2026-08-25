@@ -1,6 +1,6 @@
-import { useEffect, useState, FormEvent } from 'react';
+import { useState, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router';
-import { Sparkles, Loader2, Eye, EyeOff, CheckCircle2, Smartphone, Monitor, Share, PlusSquare, Download } from 'lucide-react';
+import { Sparkles, Loader2, Eye, EyeOff, CheckCircle2, Smartphone, Monitor, Share, PlusSquare, Download, Fingerprint } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
@@ -48,33 +48,6 @@ export default function PruebaGratisPage() {
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState(false);
   const [plataforma] = useState<Plataforma>(detectarPlataforma);
-  const [promptInstalacion, setPromptInstalacion] = useState<any>(null);
-  const [appInstalada, setAppInstalada] = useState(false);
-
-  // 📲 Chrome/Android disparan este evento cuando la PWA es instalable — lo
-  // guardamos para poder mostrar un botón real de "Instalar app" en vez de
-  // solo instrucciones manuales. Safari/iOS nunca dispara esto (no lo
-  // soporta), de ahí que iOS siempre muestre instrucciones paso a paso.
-  useEffect(() => {
-    const alDisponible = (e: Event) => {
-      e.preventDefault();
-      setPromptInstalacion(e);
-    };
-    const alInstalar = () => setAppInstalada(true);
-    window.addEventListener('beforeinstallprompt', alDisponible);
-    window.addEventListener('appinstalled', alInstalar);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', alDisponible);
-      window.removeEventListener('appinstalled', alInstalar);
-    };
-  }, []);
-
-  const instalarApp = async () => {
-    if (!promptInstalacion) return;
-    promptInstalacion.prompt();
-    await promptInstalacion.userChoice;
-    setPromptInstalacion(null);
-  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -162,30 +135,16 @@ export default function PruebaGratisPage() {
                 <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
                 <p className="text-white font-bold text-sm">Aplicación para tu celular Android</p>
               </div>
-              <p className="text-slate-400 text-xs leading-relaxed mb-3">
-                Es la app completa de Codec POS: incluye desbloqueo con huella digital real de tu teléfono.
+              <p className="text-slate-400 text-xs leading-relaxed mb-3 flex items-start gap-1.5">
+                <Fingerprint className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                Es la única app que necesitas instalar: incluye desbloqueo con huella digital real de tu teléfono.
               </p>
               <a
                 href="/download"
-                className="w-full h-11 rounded-md flex items-center justify-center gap-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors mb-3"
+                className="w-full h-11 rounded-md flex items-center justify-center gap-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors"
               >
                 <Download className="w-4 h-4" /> Descargar app (APK)
               </a>
-
-              <div className="border-t border-slate-800 pt-3">
-                <p className="text-slate-500 text-[11px] mb-2">O, si prefieres, un acceso directo más simple (sin huella):</p>
-                {appInstalada ? (
-                  <p className="text-emerald-400 text-xs">¡Ya la instalaste! Ábrela desde tu pantalla de inicio.</p>
-                ) : promptInstalacion ? (
-                  <Button onClick={instalarApp} variant="outline" className="w-full h-10 border-slate-700 text-slate-300">
-                    Agregar acceso directo
-                  </Button>
-                ) : (
-                  <p className="text-slate-500 text-[11px] leading-relaxed">
-                    Toca los <strong>3 puntos ⋮</strong> del navegador → <strong>"Agregar a pantalla de inicio"</strong>.
-                  </p>
-                )}
-              </div>
             </div>
           )}
 

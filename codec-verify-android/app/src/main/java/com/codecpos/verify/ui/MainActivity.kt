@@ -2,14 +2,22 @@ package com.codecpos.verify.ui
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebChromeClient.FileChooserParams
 import android.webkit.WebView
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -167,6 +175,53 @@ private fun CodecVerifyApp(viewModel: CodecVerifyViewModel, activity: FragmentAc
         }
     }
 
+    // 📷🖼️ ProductoFormPage y PerfilPage usan <input type="file" accept="image/*">
+    // para la foto del producto/perfil -- eso NO pasa por getUserMedia (el
+    // bloque de arriba), sino por onShowFileChooser del WebChromeClient. Sin
+    // esa función el WebView simplemente no responde al tocar el campo: por
+    // eso ni cámara ni galería funcionaban antes de este cambio.
+    var pendingFileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    var pendingCameraPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    val fileChooserLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { resultado ->
+        val callback = pendingFileChooserCallback
+        pendingFileChooserCallback = null
+        val datosSeleccionados = resultado.data?.data
+        val uris: Array<Uri>? = when {
+            resultado.resultCode != Activity.RESULT_OK -> null
+            datosSeleccionados != null -> arrayOf(datosSeleccionados) // vino de la galería
+            pendingCameraPhotoUri != null -> arrayOf(pendingCameraPhotoUri!!) // vino de la cámara
+            else -> null
+        }
+        callback?.onReceiveValue(uris)
+        pendingCameraPhotoUri = null
+    }
+
+    fun abrirSelectorDeFoto(incluirCamara: Boolean) {
+        val galeriaIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "image/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        val chooserIntent = Intent.createChooser(galeriaIntent, "Selecciona una foto")
+        if (incluirCamara) {
+            val archivoTemporal = File.createTempFile("foto_", ".jpg", context.cacheDir)
+            val fotoUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", archivoTemporal)
+            pendingCameraPhotoUri = fotoUri
+            val camaraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, fotoUri)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(camaraIntent))
+        }
+        fileChooserLauncher.launch(chooserIntent)
+    }
+
+    val fotoCameraPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { concedido -> abrirSelectorDeFoto(incluirCamara = concedido) }
+
     BackHandler(enabled = webView?.canGoBack() == true) {
         webView?.goBack()
     }
@@ -213,6 +268,26 @@ private fun CodecVerifyApp(viewModel: CodecVerifyViewModel, activity: FragmentAc
                                 }
                                 else -> request.deny()
                             }
+                        }
+
+                        // 📷🖼️ Sin esto, tocar el campo de foto en ProductoFormPage o
+                        // PerfilPage no hacía nada -- WebView no abre ningún selector
+                        // de archivos/cámara por sí solo, hay que implementarlo.
+                        override fun onShowFileChooser(
+                            webView: WebView?,
+                            filePathCallback: ValueCallback<Array<Uri>>,
+                            fileChooserParams: FileChooserParams?,
+                        ): Boolean {
+                            pendingFileChooserCallback?.onReceiveValue(null)
+                            pendingFileChooserCallback = filePathCallback
+                            val camaraYaConcedida = ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) ==
+                                PackageManager.PERMISSION_GRANTED
+                            if (camaraYaConcedida) {
+                                abrirSelectorDeFoto(incluirCamara = true)
+                            } else {
+                                fotoCameraPermLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                            return true
                         }
 
                         // 🔎 Vuelca los console.log/error/warn de la PWA al logcat de
