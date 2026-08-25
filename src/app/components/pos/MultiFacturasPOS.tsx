@@ -3,7 +3,7 @@
  * Permite atender varios clientes al mismo tiempo con facturas independientes
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, X, ShoppingCart, Users, DollarSign } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
@@ -83,11 +83,25 @@ export default function MultiFacturasPOS() {
   };
 
   // 📊 ACTUALIZAR INFO DE FACTURA (desde el hijo)
-  const actualizarInfoFactura = (id: string, info: Partial<Factura>) => {
-    setFacturas(prev => prev.map(f => 
-      f.id === id ? { ...f, ...info } : f
-    ));
-  };
+  // 🐛 FIX bucle de re-render (ver comentario en POSPageNew.tsx): esta
+  // función debe tener identidad ESTABLE porque se pasa directo como
+  // `onUpdateInfo` (ya no como closure inline por-factura) y es dependencia
+  // de un useEffect en cada POSPageNew hijo. useCallback con deps vacías es
+  // seguro aquí porque solo usa la forma funcional de setState. Además, si
+  // los valores no cambiaron realmente, no se llama setFacturas — evita
+  // crear una referencia de array nueva (y por lo tanto un re-render) por
+  // cada tick en el que el total recalculado da exactamente igual.
+  const actualizarInfoFactura = useCallback((id: string, info: Partial<Factura>) => {
+    setFacturas(prev => {
+      const factura = prev.find(f => f.id === id);
+      if (!factura) return prev;
+      const sinCambios = Object.entries(info).every(
+        ([key, value]) => factura[key as keyof Factura] === value
+      );
+      if (sinCambios) return prev;
+      return prev.map(f => (f.id === id ? { ...f, ...info } : f));
+    });
+  }, []);
 
   return (
     <div className="h-screen flex flex-col">
@@ -246,7 +260,7 @@ export default function MultiFacturasPOS() {
                 <POSPageNew
                   facturaId={factura.id}
                   numeroFactura={factura.numero}
-                  onUpdateInfo={(info) => actualizarInfoFactura(factura.id, info)}
+                  onUpdateInfo={actualizarInfoFactura}
                 />
               </motion.div>
             )

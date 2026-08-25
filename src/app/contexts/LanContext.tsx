@@ -941,17 +941,17 @@ export function LanProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('lan_server_ip', ip);
     setServerIpState(ip);
     if (!isAdmin && isAvailable && identityRef.current) {
+      // 🐛 FIX: antes, tras removeAllListeners(), solo se volvía a suscribir
+      // onConnectionStatus — onEventReceived, onAuditRequest y el resto de
+      // handlers de _initClient() quedaban SIN reconectar. El resultado no
+      // era un cuelgue visible sino silencioso: tras reconectar manualmente a
+      // otra IP, esta terminal dejaba de recibir órdenes de taller, comandas,
+      // transferencias y auditorías hasta recargar toda la app. Se reusa
+      // _initClient(), que ya arma la conexión completa y lee la IP recién
+      // guardada en localStorage, en vez de duplicar (a medias) su lógica.
       lanService.stop().then(() => {
         lanService.removeAllListeners();
-        lanService.startClient({ identity: identityRef.current!, serverIp: ip });
-        lanService.onConnectionStatus(s => {
-          setConnectionState(s.state);
-          // Conectar manualmente a un servidor también fija el rol de esta
-          // terminal como 'client' — ver comentario en tryInit().
-          if (s.state === 'connected') {
-            try { localStorage.setItem('codec_pos_lan_role', 'client'); } catch {}
-          }
-        });
+        _initClient();
       });
     }
   }, [isAdmin, isAvailable]);

@@ -67,10 +67,19 @@ export default function DashboardPage() {
       if (cancelado) return;
       const ventasLista = (ventasData as { id: string; total: number; created_at: string }[]) || [];
       setVentas(ventasLista);
-      setGastosTotal(((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0));
-      setDevolucionesTotal(((devolucionesData as { total_devolucion: number }[]) || []).reduce((a, d) => a + Number(d.total_devolucion), 0));
+      const gastosTotalCalc = ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0);
+      const devolucionesTotalCalc = ((devolucionesData as { total_devolucion: number }[]) || []).reduce((a, d) => a + Number(d.total_devolucion), 0);
+      setGastosTotal(gastosTotalCalc);
+      setDevolucionesTotal(devolucionesTotalCalc);
 
-      // Utilidad real: ventas - costo de lo vendido (venta_items × costo del producto)
+      // 🐛 FIX: coincidir con Electron/InicioPage.tsx — la utilidad neta
+      // debe restar TAMBIÉN gastos y devoluciones del período, no solo el
+      // costo de lo vendido. Antes esta pantalla ya traía gastosTotal y
+      // devolucionesTotal (se mostraban en sus propias tarjetas) pero nunca
+      // se restaban de la utilidad, así que el número no cuadraba ni con
+      // Electron ni con InicioPage.tsx aunque fuera el mismo negocio y
+      // período.
+      // Utilidad real: ventas - devoluciones - costo de lo vendido - gastos
       if (ventasLista.length > 0) {
         const ventaIds = ventasLista.map((v) => v.id);
         const { data: itemsData } = await client
@@ -86,9 +95,9 @@ export default function DashboardPage() {
         }
         const costoTotal = items.reduce((a, i) => a + (costosPorProducto.get(i.producto_id || '') || 0) * Number(i.cantidad), 0);
         const totalVentas = ventasLista.reduce((a, v) => a + Number(v.total), 0);
-        if (!cancelado) setUtilidad(totalVentas - costoTotal);
+        if (!cancelado) setUtilidad(totalVentas - devolucionesTotalCalc - costoTotal - gastosTotalCalc);
       } else {
-        setUtilidad(0);
+        if (!cancelado) setUtilidad(-devolucionesTotalCalc - gastosTotalCalc);
       }
 
       setCargando(false);

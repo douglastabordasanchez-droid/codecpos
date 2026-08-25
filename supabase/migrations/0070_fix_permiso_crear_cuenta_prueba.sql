@@ -1,0 +1,15 @@
+-- FIX urgente: el formulario público de prueba gratuita (RegistroPage / landing)
+-- está fallando en producción con "permission denied for function
+-- crear_cuenta_prueba" -- el registro público llama a esta función como rol
+-- `anon` (nadie ha iniciado sesión todavía en ese punto).
+--
+-- La migración 0052 sí otorgó EXECUTE a anon para la firma original de 5
+-- parámetros. La 0055 cambió la firma a 8 parámetros (agregó nit/ciudad/
+-- tipo_negocio) -- en Postgres eso crea un objeto de función DISTINTO (OID
+-- nuevo), y aunque 0055 sí volvió a otorgar el permiso para esa firma nueva,
+-- no hay forma de confirmar sin acceso directo a la base de producción que
+-- ese grant realmente haya quedado aplicado (o que 0055/0063/0066 se hayan
+-- aplicado todas y en orden). Se re-otorga explícitamente el permiso para la
+-- firma ACTUAL (la de la migración 0066) -- operación idempotente y segura
+-- de repetir, sin importar cuál fue la causa exacta del hueco.
+grant execute on function public.crear_cuenta_prueba(text, text, text, text, text, text, text, text) to anon;

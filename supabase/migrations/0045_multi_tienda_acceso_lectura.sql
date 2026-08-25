@@ -47,14 +47,21 @@ alter table public.tiendas_vinculadas enable row level security;
 
 -- Solo staff de Codec Studio administra vínculos (pantalla futura en el
 -- Panel de Desarrollador) — ningún negocio puede auto-vincularse tiendas.
+-- 🛡️ FIX recuperación de historial de migraciones: `create policy` no
+-- soporta IF NOT EXISTS -- se agrega `drop policy if exists` antes de cada
+-- una para que esta migración sea segura de reintentar (este contenido ya
+-- estaba aplicado en producción por fuera del tracking de la CLI).
+drop policy if exists tiendas_vinculadas_staff_select on public.tiendas_vinculadas;
 create policy tiendas_vinculadas_staff_select on public.tiendas_vinculadas
   for select using (
     exists (select 1 from public.empleados e where e.id = auth.uid() and e.es_staff_codec = true)
   );
+drop policy if exists tiendas_vinculadas_staff_insert on public.tiendas_vinculadas;
 create policy tiendas_vinculadas_staff_insert on public.tiendas_vinculadas
   for insert with check (
     exists (select 1 from public.empleados e where e.id = auth.uid() and e.es_staff_codec = true)
   );
+drop policy if exists tiendas_vinculadas_staff_delete on public.tiendas_vinculadas;
 create policy tiendas_vinculadas_staff_delete on public.tiendas_vinculadas
   for delete using (
     exists (select 1 from public.empleados e where e.id = auth.uid() and e.es_staff_codec = true)
@@ -95,14 +102,17 @@ $$;
 grant execute on function public.mis_tiendas_para_selector() to authenticated;
 
 -- Policies aditivas de solo lectura — ver nota de diseño arriba.
+drop policy if exists ventas_lectura_multi_tienda on public.ventas;
 create policy ventas_lectura_multi_tienda on public.ventas
   for select to authenticated
   using (cliente_id in (select public.mis_cliente_ids_permitidos()));
 
+drop policy if exists gastos_lectura_multi_tienda on public.gastos;
 create policy gastos_lectura_multi_tienda on public.gastos
   for select to authenticated
   using (cliente_id in (select public.mis_cliente_ids_permitidos()));
 
+drop policy if exists devoluciones_lectura_multi_tienda on public.devoluciones;
 create policy devoluciones_lectura_multi_tienda on public.devoluciones
   for select to authenticated
   using (cliente_id in (select public.mis_cliente_ids_permitidos()));

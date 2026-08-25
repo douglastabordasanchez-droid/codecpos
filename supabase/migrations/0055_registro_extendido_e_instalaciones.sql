@@ -143,6 +143,12 @@ grant execute on function public.crear_cuenta_prueba(text, text, text, text, tex
 -- empleado admin/super_usuario ya autenticado registra SU instalación,
 -- nunca la de otro cliente (a diferencia de "instalaciones escritura
 -- staff", que sigue existiendo para el Admin Web).
+-- 🛡️ FIX recuperación de historial: una versión anterior de esta función ya
+-- estaba en producción con un tipo de retorno distinto -- `create or
+-- replace` no puede cambiar el tipo de retorno de una función existente.
+-- Ningún llamador real (registrarInstalacion.ts / useRegistrarInstalacion.ts)
+-- lee el valor de retorno, solo si hubo error -- seguro de recrear.
+drop function if exists public.registrar_instalacion cascade;
 create or replace function public.registrar_instalacion(
   p_machine_id text,
   p_tipo text,

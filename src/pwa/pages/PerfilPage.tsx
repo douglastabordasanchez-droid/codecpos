@@ -6,7 +6,7 @@ import imageCompression from 'browser-image-compression';
 import { toast } from 'sonner';
 import {
   LogOut, User, Settings, ChevronRight, Crown, Zap, Users, Plus, X, Loader2, ShieldCheck, Check,
-  Pencil, Camera, Cake, Phone as PhoneIcon,
+  Pencil, Camera, Cake, Phone as PhoneIcon, Fingerprint,
 } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
@@ -15,6 +15,9 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
+import {
+  huellaDisponibleEnDispositivo, huellaHabilitada, habilitarHuella, deshabilitarHuella,
+} from '../lib/huellaLock';
 import logo from '/logo.png';
 
 function createImage(url: string): Promise<HTMLImageElement> {
@@ -76,6 +79,34 @@ export default function PerfilPage() {
   const [rol, setRol] = useState('cajero');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [huellaSoportada, setHuellaSoportada] = useState(false);
+  const [huellaActiva, setHuellaActiva] = useState(false);
+  const [activandoHuella, setActivandoHuella] = useState(false);
+
+  useEffect(() => {
+    huellaDisponibleEnDispositivo().then(setHuellaSoportada);
+    if (empleado) setHuellaActiva(huellaHabilitada(empleado.id));
+  }, [empleado]);
+
+  const alternarHuella = async () => {
+    if (!empleado) return;
+    if (huellaActiva) {
+      deshabilitarHuella(empleado.id);
+      setHuellaActiva(false);
+      toast.info('Desbloqueo con huella desactivado');
+      return;
+    }
+    setActivandoHuella(true);
+    const resultado = await habilitarHuella(empleado.id, empleado.nombre_completo);
+    setActivandoHuella(false);
+    if (resultado.ok) {
+      setHuellaActiva(true);
+      toast.success('Huella activada — la app se bloqueará tras 10 min en segundo plano');
+    } else {
+      toast.error(resultado.error || 'No se pudo activar la huella en este dispositivo');
+    }
+  };
 
   const cargarEquipo = async () => {
     if (!empleado) return;
@@ -291,6 +322,33 @@ export default function PerfilPage() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {huellaSoportada && (
+        <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-4 mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+              <Fingerprint className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-white font-semibold text-sm">Desbloqueo con huella</p>
+              <p className="text-slate-500 text-xs">Bloquea la app tras 10 min en segundo plano</p>
+            </div>
+          </div>
+          <button
+            onClick={alternarHuella}
+            disabled={activandoHuella}
+            className={`shrink-0 w-11 h-6 rounded-full relative transition-colors disabled:opacity-50 ${
+              huellaActiva ? 'bg-emerald-500' : 'bg-slate-700'
+            }`}
+          >
+            {activandoHuella ? (
+              <Loader2 className="w-4 h-4 text-white animate-spin absolute top-1 left-1" />
+            ) : (
+              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${huellaActiva ? 'right-0.5' : 'left-0.5'}`} />
+            )}
+          </button>
         </div>
       )}
 

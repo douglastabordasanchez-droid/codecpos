@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
-import { Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock, Calendar } from 'lucide-react';
+import { Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock, Calendar, DollarSign, TrendingUp, Receipt, Target } from 'lucide-react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -83,6 +83,8 @@ export default function InicioPage() {
   const [ventasPeriodoAnterior, setVentasPeriodoAnterior] = useState<VentaFila[]>([]);
   const [utilidadNeta, setUtilidadNeta] = useState(0);
   const [devolucionesTotal, setDevolucionesTotal] = useState(0);
+  const [devolucionesCount, setDevolucionesCount] = useState(0);
+  const [gastosTotal, setGastosTotal] = useState(0);
   const [alertasCount, setAlertasCount] = useState(0);
   const [productosConMinimo, setProductosConMinimo] = useState(0);
   const [sesiones, setSesiones] = useState<SesionFila[]>([]);
@@ -134,8 +136,11 @@ export default function InicioPage() {
       setProductosConMinimo(productos.length);
       setAlertasCount(productos.filter((p) => p.stock <= p.stock_minimo).length);
       setSesiones((sesionesData as SesionFila[]) || []);
-      const devTotal = ((devolucionesData as { total_devolucion: number }[]) || []).reduce((a, d) => a + Number(d.total_devolucion), 0);
+      const devolucionesLista = (devolucionesData as { total_devolucion: number }[]) || [];
+      const devTotal = devolucionesLista.reduce((a, d) => a + Number(d.total_devolucion), 0);
       setDevolucionesTotal(devTotal);
+      setDevolucionesCount(devolucionesLista.length);
+      setGastosTotal(esAdmin ? ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0) : 0);
 
       // 🛡️ FIX: coincidir con el Dashboard de Electron — ahí la utilidad neta
       // resta también los gastos del período (no solo el costo de lo
@@ -153,9 +158,9 @@ export default function InicioPage() {
           for (const p of (prodsData as { id: string; costo: number }[]) || []) costosPorProducto.set(p.id, Number(p.costo) || 0);
         }
         const costoTotal = items.reduce((a, i) => a + (costosPorProducto.get(i.producto_id || '') || 0) * Number(i.cantidad), 0);
-        const gastosTotal = ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0);
+        const gastosDelPeriodo = ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0);
         const totalVentas = ventasLista.reduce((a, v) => a + Number(v.total), 0);
-        if (!cancelado) setUtilidadNeta(totalVentas - devTotal - costoTotal - gastosTotal);
+        if (!cancelado) setUtilidadNeta(totalVentas - devTotal - costoTotal - gastosDelPeriodo);
       } else if (esAdmin) {
         setUtilidadNeta(0);
       }
@@ -179,8 +184,14 @@ export default function InicioPage() {
     const pctVentasVsAnterior = totalAnterior > 0 ? Math.min(100, (totalPeriodo / totalAnterior) * 100) : totalPeriodo > 0 ? 100 : 0;
     const pctTransaccionesVsAnterior = ventasPeriodoAnterior.length > 0 ? Math.min(100, (ventasPeriodo.length / ventasPeriodoAnterior.length) * 100) : ventasPeriodo.length > 0 ? 100 : 0;
     const pctInventarioSano = productosConMinimo > 0 ? ((productosConMinimo - alertasCount) / productosConMinimo) * 100 : 100;
-    return { totalPeriodo, totalPeriodoNeto, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano };
-  }, [ventasPeriodo, ventasPeriodoAnterior, productosConMinimo, alertasCount, devolucionesTotal]);
+    // Proyección de cierre — igual que Electron: estima el total del día
+    // según el ritmo de ventas transcurrido hasta ahora. Solo tiene sentido
+    // para el rango 'hoy' (un periodo ya cerrado no se "proyecta").
+    const ahora = new Date();
+    const horasTranscurridas = Math.max(ahora.getHours() + ahora.getMinutes() / 60, 0.25);
+    const proyeccionCierre = rango === 'hoy' ? (totalPeriodo / horasTranscurridas) * 24 : totalPeriodo;
+    return { totalPeriodo, totalPeriodoNeto, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano, proyeccionCierre };
+  }, [ventasPeriodo, ventasPeriodoAnterior, productosConMinimo, alertasCount, devolucionesTotal, rango]);
 
   const etiquetaVentas = rango === 'hoy' ? 'Ventas hoy' : rango === '3d' ? 'Ventas 3 días' : rango === '7d' ? 'Ventas 7 días' : 'Ventas del periodo';
   const etiquetaTransacciones = rango === 'hoy' ? 'Transacciones' : 'Transacciones periodo';
@@ -284,6 +295,23 @@ export default function InicioPage() {
               onClick={() => navigate('/alertas')}
             />
           </div>
+
+          {/* 🖥️ Solo escritorio (lg+): el "control total" que pidió el dueño
+              del negocio — mismos números que ya calcula Electron, en
+              tarjetas planas en vez de anillos (más fáciles de escanear
+              cuando hay muchas). El celular no cambia: sigue mostrando solo
+              los 4 anillos de arriba. */}
+          <div className="hidden lg:grid grid-cols-3 xl:grid-cols-4 gap-3 px-4 mt-6">
+            <KpiCardDesktop icon={DollarSign} label="Ingresos brutos" value={`$${Math.round(stats.totalPeriodo).toLocaleString('es-CO')}`} color="sky" />
+            <KpiCardDesktop icon={TrendingUp} label="Ingresos netos" value={`$${Math.round(stats.totalPeriodoNeto).toLocaleString('es-CO')}`} color="emerald" />
+            <KpiCardDesktop icon={Receipt} label="Ticket promedio" value={`$${Math.round(stats.ticketProm).toLocaleString('es-CO')}`} color="purple" />
+            {rango === 'hoy' && (
+              <KpiCardDesktop icon={Target} label="Proyección de cierre" value={`$${Math.round(stats.proyeccionCierre).toLocaleString('es-CO')}`} color="amber" />
+            )}
+            <KpiCardDesktop icon={RotateCcw} label="Devoluciones (monto)" value={`$${Math.round(devolucionesTotal).toLocaleString('es-CO')}`} color="red" />
+            <KpiCardDesktop icon={RotateCcw} label="Devoluciones (n°)" value={String(devolucionesCount)} color="red" />
+            <KpiCardDesktop icon={Wallet} label="Gastos" value={`$${Math.round(gastosTotal).toLocaleString('es-CO')}`} color="amber" />
+          </div>
         </motion.div>
       )}
 
@@ -366,5 +394,18 @@ function QuickLink({ icon: Icon, label, color, onClick }: { icon: any; label: st
       </div>
       <ChevronRight className="w-4 h-4 text-slate-500" />
     </button>
+  );
+}
+
+function KpiCardDesktop({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: string }) {
+  const c = QUICKLINK_COLORS[color] || QUICKLINK_COLORS.sky;
+  return (
+    <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
+      <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center mb-2`}>
+        <Icon className={`w-4 h-4 ${c.text}`} />
+      </div>
+      <p className="text-white text-lg font-black leading-tight truncate">{value}</p>
+      <p className="text-slate-500 text-xs font-semibold">{label}</p>
+    </div>
   );
 }

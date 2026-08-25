@@ -4,7 +4,7 @@
  * Los números son POSICIONALES (1, 2, 3...) y se renumeran automáticamente
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, X, ShoppingCart } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
@@ -26,8 +26,12 @@ interface Props {
 
 const STORAGE_KEY = 'codecpos_facturas_inline';
 
-export function MultiFacturasInline({ 
-  carritoActual, 
+// 🚀 FIX FLUIDEZ: envuelto en memo — con las props ahora estables
+// (POSPageNew.tsx pasa callbacks vía useCallback), esto evita re-renderizar
+// todo este bloque (con sus animaciones framer-motion) cuando POSPageNew se
+// re-renderiza por razones ajenas al carrito/búsqueda de facturas.
+export const MultiFacturasInline = memo(function MultiFacturasInline({
+  carritoActual,
   searchTermActual,
   onRestaurarFactura,
   onLimpiarCarrito
@@ -306,4 +310,4 @@ export function MultiFacturasInline({
       )}
     </div>
   );
-}
+});

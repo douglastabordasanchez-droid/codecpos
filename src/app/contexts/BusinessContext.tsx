@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
+import { getSupabaseClient } from '../lib/supabase/config';
+import { isLinked } from '../lib/supabase/tenantLink';
 
 export interface BusinessConfig {
   tipoNegocio: string;
@@ -48,12 +50,25 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<BusinessConfig>(loadConfig);
 
   const setBusinessConfig = (newConfig: BusinessConfig) => {
+    const tipoAnterior = config.tipoNegocio;
     setConfig(newConfig);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newConfig));
       localStorage.setItem(LEGACY_KEY, newConfig.tipoNegocio);
     } catch { /* storage full */ }
     window.dispatchEvent(new CustomEvent('codec-business-changed', { detail: newConfig }));
+
+    // 🐛 FIX: clientes_pos.tipo_negocio nunca se actualizaba cuando el dueño
+    // cambiaba el tipo de negocio aquí (100% local hasta ahora) — la PWA
+    // (categorías de producto dinámicas por tipo de negocio) quedaba viendo
+    // siempre el valor del registro original, o vacío. Best-effort: si falla
+    // (sin internet, sin vincular todavía) no bloquea el cambio local.
+    if (newConfig.tipoNegocio !== tipoAnterior && isLinked()) {
+      const client = getSupabaseClient();
+      client?.rpc('actualizar_tipo_negocio', { p_tipo_negocio: newConfig.tipoNegocio }).then(({ error }) => {
+        if (error) console.warn('[BusinessContext] No se pudo sincronizar tipo_negocio a la nube:', error.message);
+      });
+    }
   };
 
   return (

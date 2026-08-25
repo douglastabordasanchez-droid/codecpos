@@ -328,7 +328,12 @@ export default function PanaderiaOncesPage() {
 
   useEffect(() => { try { if (!localStorage.getItem(GLOBAL_CATS_KEY)) { localStorage.setItem(GLOBAL_CATS_KEY, JSON.stringify(categoriasPos.map(c => ({ id: c.id, nombre: c.nombre, color: c.color })))); } } catch {} }, []);
 
-  useEffect(() => { try { localStorage.setItem(STORAGE_CUENTA_LIBRE, JSON.stringify(cuentaLibre)); } catch {} }, [cuentaLibre]);
+  // 🚀 FIX FLUIDEZ: se quitó un useEffect(..., [cuentaLibre]) que volvía a
+  // serializar y escribir el MISMO JSON en localStorage cada vez que cambiaba
+  // cuentaLibre — persistirCuentaLibre() (más abajo), el único lugar que
+  // llama setCuentaLibre, ya hace exactamente esa escritura. Doble trabajo
+  // síncrono en cada toque de producto en la cuenta libre, sin ningún efecto
+  // adicional real.
 
   // ── Handlers de mesas ────────────────────────────────────────────────────────
   const persistirMesas = (nuevas: MesaConfig[]) => { setMesas(nuevas); localStorage.setItem(STORAGE_MESAS, JSON.stringify(nuevas)); };

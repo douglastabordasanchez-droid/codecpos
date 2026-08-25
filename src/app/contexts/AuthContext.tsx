@@ -26,7 +26,7 @@ import {
   solicitarRecuperacionPassword as solicitarRecuperacionPasswordSupabase,
 } from '../lib/supabase/authService';
 import { getSupabaseClient } from '../lib/supabase/config';
-import { vincularNegocio, isLinked } from '../lib/supabase/tenantLink';
+import { vincularNegocio, isLinked, getLinkedClienteId } from '../lib/supabase/tenantLink';
 
 export type RolUsuario = 'super_usuario' | 'cajero' | 'tecnico';
 
@@ -889,6 +889,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         console.error('[Auth] Error verificando licencia en la nube:', e);
+      }
+    }
+
+    // 🐛 FIX: empleados creados desde el celular (RPC invitar_empleado, cuenta
+    // real de Supabase Auth con email) no podían iniciar sesión en Electron
+    // — iniciarSesion() nunca llegaba a consultar la tabla `empleados`, solo
+    // usuarios locales, el legacy de Panel Desarrollador, o la licencia del
+    // dueño. Esta 4ª prioridad reusa signInSupabase (la misma función que ya
+    // usa la PWA) para autenticar contra Supabase Auth y crear el usuario
+    // local a partir de la fila de `empleados`, quedando disponible para
+    // logins futuros sin depender de internet.
+    //
+    // 🛡️ Seguridad: solo se acepta si esta instalación YA está vinculada
+    // (isLinked()) al MISMO negocio del empleado (empleado.cliente_id). No se
+    // auto-vincula con credenciales de empleado — eso requiere la licencia
+    // del dueño (ver PRIORIDAD 3) para que un empleado no pueda "reclamar"
+    // una instalación sin vincular o de otro negocio.
+    if (navigator.onLine) {
+      try {
+        const resultadoEmpleado = await signInSupabase(usernameNormalizado, passwordNormalizado);
+        if (resultadoEmpleado.ok && resultadoEmpleado.empleado) {
+          const empleadoRemoto = resultadoEmpleado.empleado;
+
+          if (!isLinked() || getLinkedClienteId() !== empleadoRemoto.cliente_id) {
+            console.log('❌ Empleado válido en Supabase pero esta instalación no está vinculada a su negocio');
+            return false;
+          }
+          if (!empleadoRemoto.activo) {
+            console.log('❌ Cuenta de empleado desactivada');
+            return false;
+          }
+
+          const modulosHabilitados = (
+            empleadoRemoto.permisos?.modulosHabilitados?.length
+              ? empleadoRemoto.permisos.modulosHabilitados
+              : obtenerModulosGlobales().modulosActivos
+          ) as ModuloPOS[];
+
+          const usuarioDesdeEmpleado: Usuario = {
+            id: empleadoRemoto.id,
+            nombreCompleto: empleadoRemoto.nombre_completo,
+            cedula: empleadoRemoto.telefono || '',
+            username: usernameNormalizado,
+            password: hashPassword(passwordNormalizado),
+            rol: (empleadoRemoto.rol as RolUsuario) || 'cajero',
+            permisos: construirPermisosDesdeModulos(modulosHabilitados, undefined),
+            activo: true,
+            fechaCreacion: new Date().toISOString(),
+            creadoPor: 'SUPABASE_EMPLEADO',
+            modulosActivos: modulosHabilitados,
+          } as Usuario;
+
+          setUsuarios((prev) => [...prev.filter((u) => u.id !== usuarioDesdeEmpleado.id), usuarioDesdeEmpleado]);
+
+          const ahoraEmp = new Date().toISOString();
+          setSesionActiva({
+            usuarioId: usuarioDesdeEmpleado.id,
+            nombreUsuario: usuarioDesdeEmpleado.nombreCompleto,
+            rol: usuarioDesdeEmpleado.rol,
+            horaInicio: ahoraEmp,
+            ultimaActividad: ahoraEmp,
+            usuario: usuarioDesdeEmpleado,
+          });
+          setRegistrosSesiones((prev) => [
+            ...prev,
+            {
+              id: 'sesion_' + Date.now(),
+              usuarioId: usuarioDesdeEmpleado.id,
+              nombreUsuario: usuarioDesdeEmpleado.nombreCompleto,
+              cedula: usuarioDesdeEmpleado.cedula,
+              horaInicio: ahoraEmp,
+            },
+          ]);
+
+          electronStore.iniciarTurno(usuarioDesdeEmpleado.id, usuarioDesdeEmpleado.nombreCompleto).catch(() => {});
+
+          console.log('✅ AUTENTICACIÓN DE EMPLEADO (SUPABASE) COMPLETADA');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          return true;
+        }
+      } catch (e) {
+        console.error('[Auth] Error verificando empleado en la nube:', e);
       }
     }
 

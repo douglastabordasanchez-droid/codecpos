@@ -42,18 +42,41 @@ export default function EscanerPage() {
 
   const iniciarEscaneo = () => {
     if (!videoRef.current) return;
+    setErrorCamara(null);
     const reader = new BrowserMultiFormatReader();
+    // 🐛 FIX: decodeFromVideoDevice(undefined, ...) deja que el navegador
+    // elija CUALQUIER cámara disponible sin preferencia — en varios Android
+    // (y en varios navegadores) eso termina abriendo la cámara FRONTAL en
+    // vez de la trasera, así que el usuario ve su propia cara en vez del
+    // código de barras y percibe "la cámara no funciona". decodeFromConstraints
+    // permite pedir explícitamente la cámara trasera (facingMode:
+    // 'environment'), con 'ideal' para que igual funcione en equipos con una
+    // sola cámara (ej. laptops) en vez de fallar duro si no hay trasera.
     reader
-      .decodeFromVideoDevice(undefined, videoRef.current, (result, _err, controls) => {
-        controlsRef.current = controls;
-        if (result) {
-          controls.stop();
-          const texto = result.getText();
-          setCodigo(texto);
-          buscarProducto(texto);
+      .decodeFromConstraints(
+        { video: { facingMode: { ideal: 'environment' } } },
+        videoRef.current,
+        (result, _err, controls) => {
+          controlsRef.current = controls;
+          if (result) {
+            controls.stop();
+            const texto = result.getText();
+            setCodigo(texto);
+            buscarProducto(texto);
+          }
         }
-      })
-      .catch((e) => setErrorCamara(e?.message || 'No se pudo acceder a la cámara'));
+      )
+      .catch((e) => {
+        // NotAllowedError = permiso de cámara denegado por el usuario/navegador;
+        // el mensaje nativo del navegador no siempre deja claro qué hacer.
+        if (e?.name === 'NotAllowedError') {
+          setErrorCamara('Permiso de cámara denegado. Actívalo en los ajustes del navegador/app para este sitio y vuelve a intentar.');
+        } else if (e?.name === 'NotFoundError') {
+          setErrorCamara('No se encontró ninguna cámara en este dispositivo.');
+        } else {
+          setErrorCamara(e?.message || 'No se pudo acceder a la cámara');
+        }
+      });
   };
 
   useEffect(() => {
@@ -91,15 +114,18 @@ export default function EscanerPage() {
       {!codigo && (
         <div className="px-5">
           <div className="relative rounded-2xl overflow-hidden bg-black aspect-square">
-            <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
+            <video ref={videoRef} className="w-full h-full object-cover" muted playsInline autoPlay />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="w-4/5 h-1/3 border-2 border-amber-400/70 rounded-xl" />
             </div>
           </div>
           {errorCamara && (
-            <p className="text-red-400 text-sm text-center mt-4">
-              {errorCamara} — revisa los permisos de cámara del navegador.
-            </p>
+            <div className="mt-4 text-center">
+              <p className="text-red-400 text-sm mb-3">{errorCamara}</p>
+              <Button variant="outline" onClick={iniciarEscaneo} className="border-slate-700 bg-slate-900/50 text-slate-300">
+                Reintentar
+              </Button>
+            </div>
           )}
         </div>
       )}

@@ -1,9 +1,23 @@
 import { useEffect } from 'react';
 import { RouterProvider } from 'react-router';
 import { Toaster } from 'sonner';
-import { PwaAuthProvider } from './contexts/PwaAuthContext';
+import { PwaAuthProvider, usePwaAuth } from './contexts/PwaAuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { router } from './routes';
+import { useAutoLock } from './hooks/useAutoLock';
+import LockScreen from './components/LockScreen';
+
+/** Separado de App() porque usePwaAuth() necesita estar DENTRO de PwaAuthProvider. */
+function ContenidoConBloqueo() {
+  const { empleado } = usePwaAuth();
+  const { bloqueado, desbloquear } = useAutoLock(empleado?.id);
+
+  if (empleado && bloqueado) {
+    return <LockScreen empleadoId={empleado.id} onDesbloqueado={desbloquear} />;
+  }
+
+  return <RouterProvider router={router} />;
+}
 
 export default function App() {
   // Safari/iOS en modo standalone (agregada a pantalla de inicio) no recarga
@@ -25,7 +39,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <PwaAuthProvider>
-        <RouterProvider router={router} />
+        <ContenidoConBloqueo />
         <Toaster position="top-center" richColors />
       </PwaAuthProvider>
     </ThemeProvider>

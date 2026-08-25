@@ -1,6 +1,6 @@
-import { useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router';
-import { Sparkles, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Loader2, Eye, EyeOff, CheckCircle2, Smartphone, Monitor, Share, PlusSquare, Download } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
@@ -9,6 +9,17 @@ import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { TIPOS_NEGOCIO } from '../../data/tipos-negocio';
 
 const OPCIONES_TIPO_NEGOCIO = Object.values(TIPOS_NEGOCIO).map((t) => t.nombre);
+const URL_DESCARGA_WINDOWS = 'https://github.com/douglastabordasanchez-droid/codecpos/releases/latest';
+
+type Plataforma = 'android' | 'ios' | 'desktop';
+
+function detectarPlataforma(): Plataforma {
+  const ua = navigator.userAgent || '';
+  if (/android/i.test(ua)) return 'android';
+  // iPadOS 13+ se reporta como Mac con soporte táctil — hay que distinguirlo.
+  if (/iphone|ipad|ipod/i.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1)) return 'ios';
+  return 'desktop';
+}
 
 /**
  * Registro público de un negocio NUEVO (Fase 5) -- distinto de RegistroPage,
@@ -36,6 +47,34 @@ export default function PruebaGratisPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState(false);
+  const [plataforma] = useState<Plataforma>(detectarPlataforma);
+  const [promptInstalacion, setPromptInstalacion] = useState<any>(null);
+  const [appInstalada, setAppInstalada] = useState(false);
+
+  // 📲 Chrome/Android disparan este evento cuando la PWA es instalable — lo
+  // guardamos para poder mostrar un botón real de "Instalar app" en vez de
+  // solo instrucciones manuales. Safari/iOS nunca dispara esto (no lo
+  // soporta), de ahí que iOS siempre muestre instrucciones paso a paso.
+  useEffect(() => {
+    const alDisponible = (e: Event) => {
+      e.preventDefault();
+      setPromptInstalacion(e);
+    };
+    const alInstalar = () => setAppInstalada(true);
+    window.addEventListener('beforeinstallprompt', alDisponible);
+    window.addEventListener('appinstalled', alInstalar);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', alDisponible);
+      window.removeEventListener('appinstalled', alInstalar);
+    };
+  }, []);
+
+  const instalarApp = async () => {
+    if (!promptInstalacion) return;
+    promptInstalacion.prompt();
+    await promptInstalacion.userChoice;
+    setPromptInstalacion(null);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -95,28 +134,88 @@ export default function PruebaGratisPage() {
 
   if (listo) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-4 shadow-xl shadow-emerald-500/30">
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center p-6 pt-10 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-4 shadow-xl shadow-emerald-500/30 shrink-0">
           <CheckCircle2 className="w-8 h-8 text-white" />
         </div>
         <h1 className="text-white text-2xl font-black mb-2">¡Tu prueba gratuita comenzó!</h1>
-        <p className="text-slate-400 text-sm mb-8 max-w-xs">
+        <p className="text-slate-400 text-sm mb-6 max-w-xs">
           Te quedan 14 días para probar Codec POS sin restricciones. No necesitas tarjeta ni hacer nada más.
         </p>
+
         <Button
           onClick={() => navigate('/', { replace: true })}
-          className="w-full max-w-xs h-12 bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20"
+          className="w-full max-w-xs h-12 bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20 mb-6"
         >
-          Entrar a Codec POS Web
+          Entrar a Codec POS Web ahora
         </Button>
-        <a
-          href="https://github.com/douglastabordasanchez-droid/codecpos/releases/latest"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full max-w-xs mt-3 h-12 rounded-md flex items-center justify-center text-sm font-medium border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors"
-        >
-          Descargar Codec POS (Windows)
-        </a>
+
+        <div className="w-full max-w-xs text-left space-y-3">
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-wide text-center mb-1">
+            O instala Codec POS
+          </p>
+
+          {/* ── ANDROID ─────────────────────────────────────────────── */}
+          {plataforma === 'android' && (
+            <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
+                <p className="text-white font-bold text-sm">Instalar en tu Android</p>
+              </div>
+              {appInstalada ? (
+                <p className="text-emerald-400 text-xs">¡Ya la instalaste! Ábrela desde tu pantalla de inicio.</p>
+              ) : promptInstalacion ? (
+                <Button onClick={instalarApp} className="w-full h-11 bg-emerald-600 hover:bg-emerald-500">
+                  Instalar app
+                </Button>
+              ) : (
+                <p className="text-slate-400 text-xs leading-relaxed">
+                  Toca los <strong>3 puntos ⋮</strong> arriba a la derecha del navegador → <strong>"Instalar app"</strong> o
+                  {' '}<strong>"Agregar a pantalla de inicio"</strong>.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── iPHONE ───────────────────────────────────────────────── */}
+          {plataforma === 'ios' && (
+            <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Smartphone className="w-4 h-4 text-sky-400 shrink-0" />
+                <p className="text-white font-bold text-sm">Instalar en tu iPhone</p>
+              </div>
+              <ol className="text-slate-400 text-xs leading-relaxed space-y-1.5 list-decimal list-inside">
+                <li>Toca el ícono <Share className="w-3.5 h-3.5 inline mx-0.5 -mt-0.5" /> <strong>Compartir</strong> abajo en Safari.</li>
+                <li>Elige <PlusSquare className="w-3.5 h-3.5 inline mx-0.5 -mt-0.5" /> <strong>"Agregar a pantalla de inicio"</strong>.</li>
+                <li>Toca <strong>"Agregar"</strong> — listo, ya tienes el ícono de Codec POS.</li>
+              </ol>
+            </div>
+          )}
+
+          {/* ── WINDOWS (.exe) ───────────────────────────────────────── */}
+          <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Monitor className="w-4 h-4 text-amber-400 shrink-0" />
+              <p className="text-white font-bold text-sm">Codec POS para computador (Windows)</p>
+            </div>
+            {plataforma === 'desktop' ? (
+              <a
+                href={URL_DESCARGA_WINDOWS}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full h-11 rounded-md flex items-center justify-center gap-2 text-sm font-semibold bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+              >
+                <Download className="w-4 h-4" /> Descargar instalador (.exe)
+              </a>
+            ) : (
+              <p className="text-slate-400 text-xs leading-relaxed">
+                Este es el programa que se instala en el computador de tu negocio (donde cobras). Abre{' '}
+                <span className="text-amber-400 font-semibold">{typeof window !== 'undefined' ? window.location.hostname : 'esta página'}</span>{' '}
+                desde ese computador y descarga el instalador ahí — no funciona en el celular.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     );
   }

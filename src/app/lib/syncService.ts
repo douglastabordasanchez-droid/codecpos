@@ -12,6 +12,7 @@
 import { dbManager, Producto, Venta } from './indexedDB';
 import { getSupabaseClient } from './supabase/config';
 import { getLinkedClienteId, restablecerSesionSync } from './supabase/tenantLink';
+import { listarTiendas, getStockResumenTienda, ejecutarTransferencia } from './multitiendaService';
 
 const SYNC_INTERVAL = 30000; // 30 segundos
 
@@ -219,6 +220,9 @@ class SyncService {
       ['push_productos_localstorage', () => this.pushProductosLocalStorage(client, clienteId)],
       ['push_gastos', () => this.pushGastosLocalStorage(client, clienteId)],
       ['push_ventas', () => this.pushVentasPendientes(client, clienteId)],
+      ['backfill_producto_id_venta_items', () => this.backfillProductoIdVentaItems(client, clienteId)],
+      ['push_tiendas_stock', () => this.pushTiendasStock(client, clienteId)],
+      ['procesar_transferencias', () => this.procesarSolicitudesTransferencia(client, clienteId)],
       ['push_cierres', () => this.pushCierresPendientes(client, clienteId)],
       ['push_devoluciones', () => this.pushDevolucionesLocalStorage(client, clienteId)],
       ['push_heartbeat', () => this.pushSesionActivaHeartbeat(client, clienteId)],
@@ -956,9 +960,21 @@ class SyncService {
 
       // Reemplazo idempotente de líneas (soporta reintentos sin duplicar).
       await client.from('venta_items').delete().eq('venta_id', ventaRow.id);
+      // 🐛 FIX causa raíz Utilidad=Ventas en la web: el flujo real de venta
+      // (POSPageNew.tsx) guarda cada línea con el campo `id` (id local del
+      // producto) — `VentaItem.productoId` (electronStore.ts) NUNCA se
+      // llena; solo `indexedDB.ts` declara ambos como opcionales de forma
+      // defensiva. `idMap.get(it.productoId)` leía siempre el campo vacío,
+      // así que `producto_id` quedaba `null` en TODAS las líneas de TODAS
+      // las ventas subidas, sin importar que el mapa producto→uuid estuviera
+      // bien construido. El Dashboard web (InicioPage.tsx) calcula el costo
+      // uniendo venta_items.producto_id con productos.costo — con
+      // producto_id siempre null, costoTotal siempre daba 0 y Utilidad
+      // terminaba mostrando exactamente lo mismo que Ventas. Se revisan
+      // ambos campos por si algún flujo distinto sí llena `productoId`.
       const items = (v.items || []).map((it) => ({
         venta_id: ventaRow.id,
-        producto_id: idMap.get(it.productoId) || null,
+        producto_id: idMap.get(it.id || it.productoId) || null,
         nombre: it.nombre,
         cantidad: it.cantidad,
         precio_unitario: it.precio,
@@ -972,6 +988,179 @@ class SyncService {
     }
 
     await dbManager.addLog('push_ventas', `${pendientes.length} ventas subidas`);
+  }
+
+  /**
+   * 🐛 Backfill único: las ventas subidas ANTES del fix de arriba
+   * (`idMap.get(it.productoId)` leía un campo que `VentaItem` nunca tuvo)
+   * quedaron con `producto_id = null` en TODAS sus líneas — el Dashboard
+   * web/PWA seguirá mostrando Utilidad = Ventas para esas ventas hasta
+   * corregirlas. Se re-sincronizan una sola vez (bandera en dbManager)
+   * reemplazando venta_items con el producto_id correcto, sin tocar la fila
+   * de la venta en sí. Idempotente y seguro de reintentar: usa el mismo
+   * patrón delete+insert que ya usa pushVentasPendientes.
+   */
+  private async backfillProductoIdVentaItems(client: NonNullable<ReturnType<typeof getSupabaseClient>>, _clienteId: string): Promise<void> {
+    const YA_HECHO_KEY = 'backfillProductoIdVentaItemsHecho';
+    if (await dbManager.getConfig(YA_HECHO_KEY)) return;
+
+    const ventas = await dbManager.getAllVentas();
+    const yaSincronizadas = ventas.filter((v) => v.supabaseId);
+    if (yaSincronizadas.length === 0) {
+      await dbManager.setConfig(YA_HECHO_KEY, true);
+      return;
+    }
+
+    const mapaGuardado = (await dbManager.getConfig('productosIdMap')) as Record<string, string> | null;
+    const idMap = new Map<string, string>(Object.entries(mapaGuardado || {}));
+    const productos = await dbManager.getAllProductos();
+    for (const p of productos) {
+      if (p.supabaseId && !idMap.has(p.id)) idMap.set(p.id, p.supabaseId);
+    }
+
+    let corregidas = 0;
+    for (const v of yaSincronizadas) {
+      const items = (v.items || []).map((it) => ({
+        venta_id: v.supabaseId,
+        producto_id: idMap.get(it.id || it.productoId) || null,
+        nombre: it.nombre,
+        cantidad: it.cantidad,
+        precio_unitario: it.precio,
+        subtotal: it.subtotal,
+      }));
+      if (items.length === 0 || !items.some((i) => i.producto_id)) continue;
+
+      const { error: delError } = await client.from('venta_items').delete().eq('venta_id', v.supabaseId);
+      if (delError) {
+        console.error(`[sync] Backfill: no se pudo limpiar venta_items de venta #${v.numero}:`, delError.message);
+        continue;
+      }
+      const { error: insError } = await client.from('venta_items').insert(items);
+      if (insError) {
+        console.error(`[sync] Backfill: no se pudo re-insertar venta_items de venta #${v.numero}:`, insError.message);
+        continue;
+      }
+      corregidas++;
+    }
+
+    await dbManager.setConfig(YA_HECHO_KEY, true);
+    await dbManager.addLog('backfill_producto_id_venta_items', `${corregidas} de ${yaSincronizadas.length} venta(s) corregidas con producto_id real`);
+  }
+
+  /**
+   * Sube un espejo de LECTURA del stock por sucursal (multitiendaService.ts,
+   * 100% local hasta ahora) a `tiendas_stock`, para que la PWA pueda mostrar
+   * "cuánto hay en cada tienda" antes de pedir una transferencia. Electron
+   * sigue siendo la única fuente de verdad — esto nunca se lee de vuelta
+   * hacia el stock real, solo se sube.
+   */
+  private async pushTiendasStock(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const tiendas = listarTiendas();
+    if (tiendas.length === 0) return;
+
+    const mapaGuardado = (await dbManager.getConfig('productosIdMap')) as Record<string, string> | null;
+    const idMap = new Map<string, string>(Object.entries(mapaGuardado || {}));
+    const productos = await dbManager.getAllProductos();
+    for (const p of productos) {
+      if (p.supabaseId && !idMap.has(p.id)) idMap.set(p.id, p.supabaseId);
+    }
+    if (idMap.size === 0) return;
+
+    const filas: Record<string, unknown>[] = [];
+    const ahoraIso = new Date().toISOString();
+    for (const tienda of tiendas) {
+      const resumen = getStockResumenTienda(tienda.id);
+      for (const [productoIdLocal, cantidad] of Object.entries(resumen)) {
+        const productoIdSupabase = idMap.get(productoIdLocal);
+        if (!productoIdSupabase) continue;
+        filas.push({
+          cliente_id: clienteId,
+          tienda_id: tienda.id,
+          tienda_nombre: tienda.nombre,
+          producto_id: productoIdSupabase,
+          cantidad: Number(cantidad) || 0,
+          actualizado_en: ahoraIso,
+        });
+      }
+    }
+    if (filas.length === 0) return;
+
+    // Se trocea por si el catálogo es grande (payload por llamada limitado).
+    const LOTE = 500;
+    for (let i = 0; i < filas.length; i += LOTE) {
+      const lote = filas.slice(i, i + LOTE);
+      const { error } = await client.from('tiendas_stock').upsert(lote, { onConflict: 'cliente_id,tienda_id,producto_id' });
+      if (error) {
+        console.error('[sync] Error subiendo stock por tienda:', error.message);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Recoge solicitudes de transferencia creadas desde la PWA (el dueño pide
+   * mover mercancía entre sucursales sin estar en el local) y las ejecuta
+   * con la MISMA función que ya usa la UI local de Electron
+   * (ejecutarTransferencia) — ninguna lógica de negocio nueva, solo un
+   * origen distinto para la solicitud.
+   */
+  private async procesarSolicitudesTransferencia(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const { data: pendientes, error } = await client
+      .from('solicitudes_transferencia')
+      .select('id, tienda_origen_id, tienda_destino_id, items, notas')
+      .eq('cliente_id', clienteId)
+      .eq('estado', 'pendiente');
+
+    if (error) {
+      console.error('[sync] Error leyendo solicitudes de transferencia:', error.message);
+      return;
+    }
+    if (!pendientes || pendientes.length === 0) return;
+
+    const mapaGuardado = (await dbManager.getConfig('productosIdMap')) as Record<string, string> | null;
+    const idMapInverso = new Map<string, string>();
+    for (const [local, supa] of Object.entries(mapaGuardado || {})) idMapInverso.set(supa, local);
+    const productos = await dbManager.getAllProductos();
+    for (const p of productos) {
+      if (p.supabaseId) idMapInverso.set(p.supabaseId, p.id);
+    }
+
+    let huboExito = false;
+    for (const solicitud of pendientes as any[]) {
+      try {
+        const itemsRemotos = (solicitud.items || []) as { producto_id: string; cantidad: number }[];
+        const itemsLocales = itemsRemotos.map((it) => {
+          const productoIdLocal = idMapInverso.get(it.producto_id);
+          if (!productoIdLocal) throw new Error('Un producto de esta solicitud aún no se ha sincronizado en esta terminal — vuelve a intentar en unos minutos');
+          return { productoId: productoIdLocal, cantidad: Number(it.cantidad) || 0 };
+        });
+
+        ejecutarTransferencia({
+          tiendaOrigenId: solicitud.tienda_origen_id,
+          tiendaDestinoId: solicitud.tienda_destino_id,
+          items: itemsLocales,
+          notas: solicitud.notas || 'Transferencia solicitada desde la app móvil',
+        });
+
+        await client
+          .from('solicitudes_transferencia')
+          .update({ estado: 'completada', procesado_en: new Date().toISOString(), error_mensaje: null })
+          .eq('id', solicitud.id);
+        huboExito = true;
+      } catch (e) {
+        const mensaje = e instanceof Error ? e.message : 'Error desconocido ejecutando la transferencia';
+        console.error(`[sync] Error ejecutando transferencia ${solicitud.id}:`, mensaje);
+        await client
+          .from('solicitudes_transferencia')
+          .update({ estado: 'error', error_mensaje: mensaje, procesado_en: new Date().toISOString() })
+          .eq('id', solicitud.id);
+      }
+    }
+
+    if (huboExito) {
+      await dbManager.addLog('procesar_transferencias', 'Transferencia(s) de inventario ejecutadas desde solicitud móvil');
+      await this.pushTiendasStock(client, clienteId);
+    }
   }
 
   /**

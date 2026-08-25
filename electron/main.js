@@ -937,8 +937,14 @@ function createWindow() {
       // Permitir reproducción de audio (impresora, escáner)
       autoplayPolicy:      'no-user-gesture-required',
       
-      // ✅ OPTIMIZACIONES PARA BAJOS RECURSOS
-      backgroundThrottling: true,  // Throttle cuando está en background
+      // 🚀 FIX FLUIDEZ: con backgroundThrottling:true, Chromium pausa/desfasa
+      // timers y rAF del renderer en cuanto la ventana pierde el foco del SO
+      // (ej. un diálogo nativo de impresión, alt-tab, o la ventana oculta que
+      // usa printWin) — eso es exactamente lo que produce que temporizadores
+      // de UI, reconexiones LAN/Realtime o animaciones "se congelen" mientras
+      // está en segundo plano y luego salten de golpe al recuperar foco. Un
+      // POS que se deja abierto de fondo en el mostrador debe seguir fluido.
+      backgroundThrottling: false,
       offscreen: false,             // No renderizar offscreen
       
       // ✅ Reducir uso de memoria

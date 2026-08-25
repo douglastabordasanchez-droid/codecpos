@@ -724,10 +724,16 @@ export default function POSLayoutSidebar() {
     >
     <div className={`h-full flex ${darkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
       {/* Sidebar */}
+      {/* 🚀 FIX FLUIDEZ: animar `width` con animate={{width}} de Framer Motion
+          fuerza un reflow de layout (recalcula el sidebar y el área de venta
+          contigua) en CADA frame durante los 300ms. `layout` activa la
+          técnica FLIP de Framer Motion: mide el tamaño antes/después UNA sola
+          vez y anima el cambio con `transform` (compositor, sin reflow por
+          frame) — mismo resultado visual, sin el costo de reflow repetido. */}
       <motion.div
-        initial={false}
-        animate={{ width: collapsed ? '80px' : '280px' }}
+        layout
         transition={{ duration: 0.3, ease: 'easeInOut' }}
+        style={{ width: collapsed ? '80px' : '280px' }}
         className={`h-full flex flex-col border-r relative ${
           darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'
         } shadow-2xl`}

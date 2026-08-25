@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router';
 import {
@@ -149,7 +149,7 @@ interface MesaPOS {
 interface POSPageNewProps {
   facturaId?: string;
   numeroFactura?: number;
-  onUpdateInfo?: (info: { totalItems?: number; total?: number; nombreCliente?: string }) => void;
+  onUpdateInfo?: (facturaId: string, info: { totalItems?: number; total?: number; nombreCliente?: string }) => void;
 }
 
 // Aclara/oscurece un color hex un porcentaje dado (positivo = más claro,
@@ -674,13 +674,23 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   }, [carrito, displayCliente.conectado]);
 
   // 🆕 REPORTAR CAMBIOS AL COMPONENTE PADRE (MultiFacturasPOS)
+  // 🐛 FIX bucle de re-render: antes MultiFacturasPOS pasaba
+  // `onUpdateInfo={(info) => actualizarInfoFactura(factura.id, info)}` — una
+  // función NUEVA en cada render del padre. Como este efecto dependía de esa
+  // identidad, cada cambio de carrito disparaba el efecto → onUpdateInfo →
+  // setFacturas en el padre → el padre se re-renderiza → nueva identidad de
+  // onUpdateInfo → este efecto se dispara OTRA VEZ aunque el carrito no haya
+  // cambiado → vuelve a llamar setFacturas → bucle continuo consumiendo CPU
+  // en segundo plano en cada factura abierta. Ahora onUpdateInfo es la
+  // función `actualizarInfoFactura` estable (useCallback) y recibe el
+  // facturaId como parámetro en vez de capturarlo en un closure por-render.
   useEffect(() => {
-    if (onUpdateInfo) {
+    if (onUpdateInfo && facturaId) {
       const totalItems = carrito.reduce((sum, item) => sum + item.cantidad, 0);
       const total = calcularTotal();
-      onUpdateInfo({ totalItems, total });
+      onUpdateInfo(facturaId, { totalItems, total });
     }
-  }, [carrito, onUpdateInfo]);
+  }, [carrito, onUpdateInfo, facturaId]);
 
   useEffect(() => {
     if (showProductoManualModal) {
@@ -1219,6 +1229,24 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     toast.info('Producto eliminado del carrito');
   };
 
+  // 🚀 FIX FLUIDEZ: MultiFacturasInline recibía estas dos funciones como
+  // closures NUEVAS en cada render de POSPageNew (sin useCallback) — mismo
+  // antipatrón estructural que causó el bucle de re-render real entre
+  // MultiFacturasPOS/POSPageNew (ver comentario más abajo en el useEffect de
+  // onUpdateInfo). Acá no llegaba a haber bucle infinito porque los efectos
+  // internos de MultiFacturasInline no dependen de estas props, pero sí
+  // forzaban su re-render completo (con animaciones de framer-motion) en
+  // cada tecla o cambio de carrito. setCarrito/setSearchTerm son estables
+  // (setters de useState), así que useCallback con deps vacías es seguro.
+  const onRestaurarFacturaEstable = useCallback((nuevoCarrito: ItemCarrito[], nuevoSearchTerm: string) => {
+    setCarrito(nuevoCarrito);
+    setSearchTerm(nuevoSearchTerm);
+  }, []);
+  const onLimpiarCarritoEstable = useCallback(() => {
+    setCarrito([]);
+    setSearchTerm('');
+  }, []);
+
   // Función para obtener configuración de IVA (DESACTIVADO POR DEFECTO)
   const obtenerConfigIVA = () => {
     const config = leerConfigEmpresaCacheada();
@@ -1241,8 +1269,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return validos;
   };
 
-  // Calcular subtotal (sin IVA)
-  const calcularSubtotal = () => {
+  // 🚀 FIX FLUIDEZ: calcularSubtotal/calcularIVA/calcularTotal se llamaban
+  // como funciones planas ~9 veces por render (varias en JSX que reevalúa en
+  // cada tecla del input de efectivo recibido), cada una recorriendo el
+  // carrito completo de nuevo — hasta 2x el trabajo por llamada porque
+  // calcularIVA también filtra el carrito por su cuenta. Se memoiza el
+  // resultado por `carrito` una sola vez por render real del carrito; las
+  // funciones de abajo quedan como wrappers finos para no tener que tocar
+  // cada punto de la UI que ya las llama como calcularSubtotal().
+  const subtotalMemo = useMemo(() => {
     return carritoItemsValidos().reduce((total, item) => {
       const extraMods = (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.precioVenta) || 0), 0);
       if (item.producto.pesable && item.peso) {
@@ -1250,18 +1285,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       }
       return total + ((item.producto.precio + extraMods) * item.cantidad);
     }, 0);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrito]);
 
-  // Calcular IVA - Solo de productos que aplican IVA
-  const calcularIVA = () => {
+  const ivaMemo = useMemo(() => {
     const { ivaHabilitado, porcentajeIVA } = obtenerConfigIVA();
     if (!ivaHabilitado) return 0;
 
-    // Calcular subtotal SOLO de productos que aplican IVA
     const subtotalConIVA = carritoItemsValidos().reduce((total, item) => {
-      // Solo incluir si el producto tiene aplicaIVA: true
       if (!item.producto.aplicaIVA) return total;
-
       if (item.producto.pesable && item.peso) {
         return total + (item.producto.precio * item.peso);
       }
@@ -1269,14 +1301,19 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }, 0);
 
     return subtotalConIVA * (porcentajeIVA / 100);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrito]);
+
+  const totalMemo = useMemo(() => subtotalMemo + ivaMemo, [subtotalMemo, ivaMemo]);
+
+  // Calcular subtotal (sin IVA)
+  const calcularSubtotal = () => subtotalMemo;
+
+  // Calcular IVA - Solo de productos que aplican IVA
+  const calcularIVA = () => ivaMemo;
 
   // Calcular total (subtotal + IVA)
-  const calcularTotal = () => {
-    const subtotal = calcularSubtotal();
-    const iva = calcularIVA();
-    return subtotal + iva;
-  };
+  const calcularTotal = () => totalMemo;
 
   const calcularCambio = () => {
     const recibido = parseFloat(efectivoRecibido) || 0;
@@ -2425,14 +2462,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 <MultiFacturasInline
                   carritoActual={carrito}
                   searchTermActual={searchTerm}
-                  onRestaurarFactura={(nuevoCarrito, nuevoSearchTerm) => {
-                    setCarrito(nuevoCarrito);
-                    setSearchTerm(nuevoSearchTerm);
-                  }}
-                  onLimpiarCarrito={() => {
-                    setCarrito([]);
-                    setSearchTerm('');
-                  }}
+                  onRestaurarFactura={onRestaurarFacturaEstable}
+                  onLimpiarCarrito={onLimpiarCarritoEstable}
                 />
               </div>
             </div>

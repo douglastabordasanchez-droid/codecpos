@@ -9,6 +9,7 @@ import { Label } from '../../app/components/ui/label';
 import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { obtenerCategoriasPorTipo } from '../../data/tipos-negocio';
 
 const UNIDADES = ['unidad', 'kg', 'g', 'lb', 'l', 'ml', 'paquete'];
 const MAX_FOTOS = 6;
@@ -54,6 +55,15 @@ async function recortarImagen(imageSrc: string, pixelCrop: Area): Promise<Blob> 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.92));
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 /** Sube un blob ya listo (recortado o no) y devuelve su URL pública. */
 async function subirFotoProducto(clienteId: string, blob: Blob): Promise<string> {
   const client = getSupabaseClient()!;
@@ -82,6 +92,7 @@ export default function ProductoFormPage() {
   const [zoom, setZoom] = useState(1);
   const [areaRecorte, setAreaRecorte] = useState<Area | null>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [analizandoConIA, setAnalizandoConIA] = useState(false);
   const camaraInputRef = useRef<HTMLInputElement>(null);
   const galeriaInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,23 +131,30 @@ export default function ProductoFormPage() {
       });
   }, [id, esNuevo]);
 
-  // 🔗 Categorías: se leen del MISMO inventario que administra Electron —
-  // no una lista aparte — así el vendedor elige de lo que el negocio ya usa
-  // en vez de escribir variantes del mismo nombre ("Dulces"/"dulceria"...).
+  // 🔗 Categorías: se combinan dos fuentes —
+  // 1) el catálogo curado según el tipo de negocio (src/data/tipos-negocio.ts,
+  //    el mismo que ya usa Electron al crear productos) — así un negocio
+  //    NUEVO (sin productos aún) ya ve sugerencias reales de "Papelería",
+  //    "Ropa", etc. en vez de una lista vacía.
+  // 2) las categorías que el inventario YA usa (por si el negocio tiene
+  //    algo custom fuera del catálogo) — así no se pierden categorías
+  //    propias ni se duplican variantes del mismo nombre.
   useEffect(() => {
     if (!empleado) return;
     const client = getSupabaseClient();
-    client
-      ?.from('productos')
-      .select('categoria')
-      .eq('cliente_id', empleado.cliente_id)
-      .not('categoria', 'is', null)
-      .limit(3000)
-      .then(({ data }) => {
-        const unicas = [...new Set((data || []).map((r: { categoria: string }) => r.categoria).filter(Boolean))] as string[];
-        unicas.sort((a, b) => a.localeCompare(b));
-        setCategoriasExistentes(unicas);
-      });
+    if (!client) return;
+
+    Promise.all([
+      client.from('clientes_pos').select('tipo_negocio').eq('id', empleado.cliente_id).maybeSingle(),
+      client.from('productos').select('categoria').eq('cliente_id', empleado.cliente_id).not('categoria', 'is', null).limit(3000),
+    ]).then(([{ data: clienteData }, { data: productosData }]) => {
+      const tipoNegocio = (clienteData as { tipo_negocio: string | null } | null)?.tipo_negocio || 'minimercado';
+      const delCatalogo = obtenerCategoriasPorTipo(tipoNegocio);
+      const propias = ((productosData || []) as { categoria: string }[]).map((r) => r.categoria).filter(Boolean);
+      const combinadas = [...new Set([...delCatalogo, ...propias])];
+      combinadas.sort((a, b) => a.localeCompare(b));
+      setCategoriasExistentes(combinadas);
+    });
   }, [empleado?.cliente_id]);
 
   const handleSeleccionarCamara = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,11 +169,20 @@ export default function ProductoFormPage() {
   const confirmarRecorte = async () => {
     if (!imagenOriginal || !areaRecorte || !empleado) return;
     setSubiendoFoto(true);
+    // 🤖 IA: solo autocompletar en la PRIMERA foto de un producto NUEVO sin
+    // nombre todavía — así no se gasta una llamada a la IA cada vez que se
+    // agregan más fotos, ni se pisa lo que el usuario ya escribió a mano.
+    const debeAnalizarConIA = esNuevo && !form.nombre.trim() && form.fotos.length === 0;
     try {
       const blobRecortado = await recortarImagen(imagenOriginal, areaRecorte);
       const blobComprimido = await imageCompression(blobRecortado as File, {
         maxSizeMB: 0.4, maxWidthOrHeight: 800, useWebWorker: true, initialQuality: 0.8,
       });
+
+      if (debeAnalizarConIA) {
+        analizarFotoConIA(blobComprimido);
+      }
+
       const url = await subirFotoProducto(empleado.cliente_id, blobComprimido);
       setForm((f) => ({ ...f, fotos: [...f.fotos, url].slice(0, MAX_FOTOS) }));
       setImagenOriginal(null);
@@ -164,6 +191,31 @@ export default function ProductoFormPage() {
       toast.error('Error subiendo la foto', { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSubiendoFoto(false);
+    }
+  };
+
+  /** No bloquea la subida de la foto — corre en paralelo y solo rellena campos que sigan vacíos. */
+  const analizarFotoConIA = async (blobComprimido: Blob) => {
+    const client = getSupabaseClient();
+    if (!client) return;
+    setAnalizandoConIA(true);
+    try {
+      const imageBase64 = await blobToDataUrl(blobComprimido);
+      const { data, error } = await client.functions.invoke('analizar-foto-producto', {
+        body: { imageBase64, categoriasDisponibles: categoriasExistentes },
+      });
+      if (error || !data?.ok) return; // silencioso: la foto ya se sube igual, esto es solo una ayuda
+      setForm((f) => ({
+        ...f,
+        nombre: f.nombre.trim() ? f.nombre : (data.nombre || f.nombre),
+        categoria: f.categoria.trim() ? f.categoria : (data.categoria || f.categoria),
+        unidad: f.unidad === 'unidad' && data.unidad ? data.unidad : f.unidad,
+      }));
+      toast.success('La IA sugirió nombre y categoría — revísalos antes de guardar', { duration: 4000 });
+    } catch {
+      // silencioso — es una ayuda, no un paso obligatorio
+    } finally {
+      setAnalizandoConIA(false);
     }
   };
 
@@ -309,7 +361,14 @@ export default function ProductoFormPage() {
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-slate-400 text-xs">Nombre</Label>
+          <Label className="text-slate-400 text-xs flex items-center gap-1.5">
+            Nombre
+            {analizandoConIA && (
+              <span className="text-amber-400 flex items-center gap-1 normal-case font-normal">
+                <Loader2 className="w-3 h-3 animate-spin" /> Analizando foto con IA...
+              </span>
+            )}
+          </Label>
           <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} className="h-12 bg-slate-900/70 border-slate-800 text-white" />
         </div>
 

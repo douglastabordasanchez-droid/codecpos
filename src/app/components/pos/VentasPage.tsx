@@ -206,14 +206,19 @@ export default function VentasPage() {
     };
   }, []);
 
-  // 📊 Calcular estadísticas
-  const totalVentas = ventasFiltradas.length;
-  const totalIngresos = ventasFiltradas.reduce((sum, v) => sum + Number(v.total), 0);
-  const promedioVenta = totalVentas > 0 ? totalIngresos / totalVentas : 0;
-  const ventasPorMetodo = ventasFiltradas.reduce((acc, venta) => {
-    acc[venta.metodoPago] = (acc[venta.metodoPago] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  // 📊 Calcular estadísticas — memoizado junto con ventasFiltradas para no
+  // recorrer el historial filtrado de nuevo en cada render (antes corría
+  // aunque el filtro no hubiera cambiado, ej. al escribir en otro campo).
+  const { totalVentas, totalIngresos, promedioVenta, ventasPorMetodo } = useMemo(() => {
+    const totalVentas = ventasFiltradas.length;
+    const totalIngresos = ventasFiltradas.reduce((sum, v) => sum + Number(v.total), 0);
+    const promedioVenta = totalVentas > 0 ? totalIngresos / totalVentas : 0;
+    const ventasPorMetodo = ventasFiltradas.reduce((acc, venta) => {
+      acc[venta.metodoPago] = (acc[venta.metodoPago] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return { totalVentas, totalIngresos, promedioVenta, ventasPorMetodo };
+  }, [ventasFiltradas]);
 
   // 💾 Exportar a CSV
   const exportarCSV = () => {
