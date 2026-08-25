@@ -157,23 +157,35 @@ export default function PruebaGratisPage() {
 
           {/* ── ANDROID ─────────────────────────────────────────────── */}
           {plataforma === 'android' && (
-            <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
+            <div className="bg-slate-900/70 backdrop-blur border border-emerald-800/40 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
-                <p className="text-white font-bold text-sm">Instalar en tu Android</p>
+                <p className="text-white font-bold text-sm">Aplicación para tu celular Android</p>
               </div>
-              {appInstalada ? (
-                <p className="text-emerald-400 text-xs">¡Ya la instalaste! Ábrela desde tu pantalla de inicio.</p>
-              ) : promptInstalacion ? (
-                <Button onClick={instalarApp} className="w-full h-11 bg-emerald-600 hover:bg-emerald-500">
-                  Instalar app
-                </Button>
-              ) : (
-                <p className="text-slate-400 text-xs leading-relaxed">
-                  Toca los <strong>3 puntos ⋮</strong> arriba a la derecha del navegador → <strong>"Instalar app"</strong> o
-                  {' '}<strong>"Agregar a pantalla de inicio"</strong>.
-                </p>
-              )}
+              <p className="text-slate-400 text-xs leading-relaxed mb-3">
+                Es la app completa de Codec POS: incluye desbloqueo con huella digital real de tu teléfono.
+              </p>
+              <a
+                href="/download"
+                className="w-full h-11 rounded-md flex items-center justify-center gap-2 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors mb-3"
+              >
+                <Download className="w-4 h-4" /> Descargar app (APK)
+              </a>
+
+              <div className="border-t border-slate-800 pt-3">
+                <p className="text-slate-500 text-[11px] mb-2">O, si prefieres, un acceso directo más simple (sin huella):</p>
+                {appInstalada ? (
+                  <p className="text-emerald-400 text-xs">¡Ya la instalaste! Ábrela desde tu pantalla de inicio.</p>
+                ) : promptInstalacion ? (
+                  <Button onClick={instalarApp} variant="outline" className="w-full h-10 border-slate-700 text-slate-300">
+                    Agregar acceso directo
+                  </Button>
+                ) : (
+                  <p className="text-slate-500 text-[11px] leading-relaxed">
+                    Toca los <strong>3 puntos ⋮</strong> del navegador → <strong>"Agregar a pantalla de inicio"</strong>.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -182,8 +194,12 @@ export default function PruebaGratisPage() {
             <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Smartphone className="w-4 h-4 text-sky-400 shrink-0" />
-                <p className="text-white font-bold text-sm">Instalar en tu iPhone</p>
+                <p className="text-white font-bold text-sm">Aplicación para tu iPhone</p>
               </div>
+              <p className="text-slate-400 text-xs leading-relaxed mb-2">
+                <strong className="text-sky-400">Importante:</strong> en iPhone el proceso es diferente al de Android — Apple no
+                permite instalar esta app desde fuera de la App Store, así que se agrega así (funciona igual de bien):
+              </p>
               <ol className="text-slate-400 text-xs leading-relaxed space-y-1.5 list-decimal list-inside">
                 <li>Toca el ícono <Share className="w-3.5 h-3.5 inline mx-0.5 -mt-0.5" /> <strong>Compartir</strong> abajo en Safari.</li>
                 <li>Elige <PlusSquare className="w-3.5 h-3.5 inline mx-0.5 -mt-0.5" /> <strong>"Agregar a pantalla de inicio"</strong>.</li>
@@ -192,11 +208,11 @@ export default function PruebaGratisPage() {
             </div>
           )}
 
-          {/* ── WINDOWS (.exe) ───────────────────────────────────────── */}
+          {/* ── COMPUTADOR (Windows) ───────────────────────────────────── */}
           <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <Monitor className="w-4 h-4 text-amber-400 shrink-0" />
-              <p className="text-white font-bold text-sm">Codec POS para computador (Windows)</p>
+              <p className="text-white font-bold text-sm">Aplicación para tu computador (Windows)</p>
             </div>
             {plataforma === 'desktop' ? (
               <a
@@ -209,9 +225,10 @@ export default function PruebaGratisPage() {
               </a>
             ) : (
               <p className="text-slate-400 text-xs leading-relaxed">
-                Este es el programa que se instala en el computador de tu negocio (donde cobras). Abre{' '}
+                <strong className="text-amber-400">Esta no se puede instalar desde el celular.</strong> Es el programa para el
+                computador de tu negocio (donde cobras). Abre{' '}
                 <span className="text-amber-400 font-semibold">{typeof window !== 'undefined' ? window.location.hostname : 'esta página'}</span>{' '}
-                desde ese computador y descarga el instalador ahí — no funciona en el celular.
+                desde esa computadora y descarga el instalador ahí.
               </p>
             )}
           </div>

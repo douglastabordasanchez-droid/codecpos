@@ -10,12 +10,14 @@ import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebView
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,7 +54,10 @@ private const val PWA_APP_URL = "https://codecpos.vercel.app/app/"
 /** Mismo azul-marino oscuro que theme_color/background_color del manifest de la PWA (vite.config.pwa.ts). */
 private val FondoApp = Color(0xFF0F172A)
 
-class MainActivity : ComponentActivity() {
+// FragmentActivity (en vez de ComponentActivity) porque BiometricPrompt lo
+// requiere -- FragmentActivity ya es un ComponentActivity, así que setContent
+// y todo lo demás sigue funcionando exactamente igual.
+class MainActivity : FragmentActivity() {
 
     private val viewModel: CodecVerifyViewModel by viewModels()
 
@@ -75,16 +80,72 @@ class MainActivity : ComponentActivity() {
         setContent {
             CodecVerifyTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = FondoApp) {
-                    CodecVerifyApp(viewModel)
+                    CodecVerifyApp(viewModel, this)
                 }
             }
         }
     }
 }
 
+/**
+ * Muestra el diálogo nativo de huella/rostro del sistema y devuelve el
+ * resultado a la PWA llamando su callback global — ver el comentario de
+ * `autenticarConHuella` en AndroidNotificationBridge.kt y `huellaLock.ts`
+ * del lado web (busca el marcador "__android_native__").
+ */
+private fun autenticarConHuellaNativa(activity: FragmentActivity, webView: WebView, requestId: String) {
+    fun resolver(ok: Boolean) {
+        webView.post {
+            webView.evaluateJavascript(
+                "window.__codecVerifyHuellaCallback && window.__codecVerifyHuellaCallback('$requestId', $ok);",
+                null,
+            )
+        }
+    }
+
+    val gestor = BiometricManager.from(activity)
+    val disponible = gestor.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+    if (disponible != BiometricManager.BIOMETRIC_SUCCESS) {
+        resolver(false)
+        return
+    }
+
+    val executor = ContextCompat.getMainExecutor(activity)
+    val prompt = BiometricPrompt(
+        activity,
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                resolver(true)
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                // Incluye "cancelado por el usuario" -- no es un error real, solo no se autenticó.
+                resolver(false)
+            }
+
+            // onAuthenticationFailed (huella no reconocida) NO resuelve nada --
+            // BiometricPrompt sigue abierto y deja reintentar; solo error/success cierran el diálogo.
+        },
+    )
+
+    val info = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Confirma tu identidad")
+        .setSubtitle("Codec POS")
+        .setNegativeButtonText("Cancelar")
+        .build()
+
+    prompt.authenticate(info)
+}
+
+private fun huellaDisponibleEnDispositivo(activity: FragmentActivity): Boolean {
+    val gestor = BiometricManager.from(activity)
+    return gestor.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun CodecVerifyApp(viewModel: CodecVerifyViewModel) {
+private fun CodecVerifyApp(viewModel: CodecVerifyViewModel, activity: FragmentActivity) {
     val context = LocalContext.current
     val eventos by viewModel.eventos.collectAsStateWithLifecycle()
     val listenerConectado by viewModel.listenerConectado.collectAsStateWithLifecycle()
@@ -131,7 +192,12 @@ private fun CodecVerifyApp(viewModel: CodecVerifyViewModel) {
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
                     addJavascriptInterface(
-                        AndroidNotificationBridge(viewModel.prefs, onAbrirAjustes = { mostrarAjustes = true }),
+                        AndroidNotificationBridge(
+                            viewModel.prefs,
+                            onAbrirAjustes = { mostrarAjustes = true },
+                            onAutenticarConHuella = { requestId -> autenticarConHuellaNativa(activity, this, requestId) },
+                            huellaDisponibleEnDispositivo = { huellaDisponibleEnDispositivo(activity) },
+                        ),
                         "AndroidCodecVerify",
                     )
                     webChromeClient = object : WebChromeClient() {

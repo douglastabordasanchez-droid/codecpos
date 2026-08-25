@@ -103,6 +103,12 @@ dependencies {
     // Almacenamiento local cifrado del webhook_token / config del negocio.
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Huella dactilar nativa (BiometricPrompt) para el desbloqueo de la PWA
+    // dentro de este WebView -- WebAuthn del navegador no es confiable ahí.
+    // fragment-ktx es requisito de BiometricPrompt (necesita FragmentActivity).
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.4")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")

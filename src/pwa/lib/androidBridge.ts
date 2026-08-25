@@ -21,12 +21,28 @@ interface AndroidCodecVerifyBridge {
   guardarSesion(webhookToken: string, nombreNegocio: string): void;
   cerrarSesion(): void;
   abrirAjustesNotificaciones(): void;
+  autenticarConHuella(requestId: string): void;
+  huellaDisponible(): boolean;
 }
 
 declare global {
   interface Window {
     AndroidCodecVerify?: AndroidCodecVerifyBridge;
+    /** Llamado por MainActivity.kt (evaluateJavascript) cuando BiometricPrompt termina. */
+    __codecVerifyHuellaCallback?: (requestId: string, ok: boolean) => void;
   }
+}
+
+const solicitudesHuellaPendientes: Record<string, (ok: boolean) => void> = {};
+
+if (typeof window !== 'undefined') {
+  window.__codecVerifyHuellaCallback = (requestId, ok) => {
+    const resolver = solicitudesHuellaPendientes[requestId];
+    if (resolver) {
+      delete solicitudesHuellaPendientes[requestId];
+      resolver(ok);
+    }
+  };
 }
 
 function getBridge(): AndroidCodecVerifyBridge | null {
@@ -78,4 +94,49 @@ export function abrirAjustesNotificacionesAndroid(): void {
   } catch {
     /* no crítico */
   }
+}
+
+/**
+ * Huella dactilar nativa (BiometricPrompt) — usada por huellaLock.ts SOLO
+ * cuando estaEnAppAndroid() es true. El WebView de esta app no soporta
+ * WebAuthn del navegador de forma confiable, así que dentro de la app
+ * nativa se usa el diálogo de huella del propio sistema operativo en su
+ * lugar (más simple y más confiable que intentar forzar WebAuthn en WebView).
+ */
+export function huellaDisponibleAndroid(): boolean {
+  try {
+    return getBridge()?.huellaDisponible() ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** Se resuelve cuando MainActivity.kt llama de vuelta a __codecVerifyHuellaCallback, o a los 30s si nunca responde. */
+export function autenticarConHuellaAndroid(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      resolve(false);
+      return;
+    }
+
+    const requestId = crypto.randomUUID();
+    const timeoutId = setTimeout(() => {
+      delete solicitudesHuellaPendientes[requestId];
+      resolve(false);
+    }, 30000);
+
+    solicitudesHuellaPendientes[requestId] = (ok) => {
+      clearTimeout(timeoutId);
+      resolve(ok);
+    };
+
+    try {
+      bridge.autenticarConHuella(requestId);
+    } catch {
+      clearTimeout(timeoutId);
+      delete solicitudesHuellaPendientes[requestId];
+      resolve(false);
+    }
+  });
 }

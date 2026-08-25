@@ -19,6 +19,8 @@ import com.codecpos.verify.data.Prefs
 class AndroidNotificationBridge(
     private val prefs: Prefs,
     private val onAbrirAjustes: () -> Unit,
+    private val onAutenticarConHuella: (requestId: String) -> Unit,
+    private val huellaDisponibleEnDispositivo: () -> Boolean,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -41,4 +43,20 @@ class AndroidNotificationBridge(
     fun abrirAjustesNotificaciones() {
         mainHandler.post { onAbrirAjustes() }
     }
+
+    /**
+     * Huella dactilar nativa para el autobloqueo de la PWA (src/pwa/lib/huellaLock.ts).
+     * WebAuthn del navegador no es confiable dentro de este WebView -- se usa
+     * BiometricPrompt del sistema operativo en su lugar, que sí es consistente
+     * en cualquier Android moderno. `requestId` viaja de ida y vuelta para que
+     * la PWA pueda resolver la Promise correcta si hay más de una solicitud en
+     * vuelo (ver window.__codecVerifyHuellaCallback en androidBridge.ts).
+     */
+    @JavascriptInterface
+    fun autenticarConHuella(requestId: String) {
+        mainHandler.post { onAutenticarConHuella(requestId) }
+    }
+
+    @JavascriptInterface
+    fun huellaDisponible(): Boolean = huellaDisponibleEnDispositivo()
 }

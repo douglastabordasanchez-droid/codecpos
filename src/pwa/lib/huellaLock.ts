@@ -14,9 +14,19 @@
  *
  * Todo vive en localStorage, por diseño: una huella enrolada en un teléfono
  * nunca debe "viajar" a otro dispositivo ni pasar por el servidor.
+ *
+ * 🤖 Dentro de la app nativa "Codec Verify" (WebView, ver src/pwa/lib/
+ * androidBridge.ts) NO se usa WebAuthn -- el WebView de Android no lo
+ * soporta de forma confiable. Ahí se usa BiometricPrompt nativo en su lugar
+ * (mismo diálogo de huella del sistema operativo), y el localStorage guarda
+ * el marcador MARCADOR_NATIVO en vez de una credencial WebAuthn real. Todo
+ * lo demás (autobloqueo a los 10 min, habilitar/deshabilitar) es idéntico
+ * en ambos casos -- solo cambia CÓMO se valida la huella.
  */
+import { estaEnAppAndroid, huellaDisponibleAndroid, autenticarConHuellaAndroid } from './androidBridge';
 
 const AUTOLOCK_MS = 10 * 60 * 1000; // 10 minutos, igual que apps bancarias
+const MARCADOR_NATIVO = '__android_native__';
 
 const keyCredencial = (empleadoId: string) => `pwa_huella_credencial_${empleadoId}`;
 const keyUltimaActividad = (empleadoId: string) => `pwa_huella_ultima_actividad_${empleadoId}`;
@@ -39,6 +49,7 @@ function bufferToBase64Url(buffer: ArrayBuffer): string {
 
 /** true si este dispositivo/navegador soporta un autenticador de plataforma (huella/Face ID). */
 export async function huellaDisponibleEnDispositivo(): Promise<boolean> {
+  if (estaEnAppAndroid()) return huellaDisponibleAndroid();
   try {
     if (!window.PublicKeyCredential) return false;
     return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
@@ -57,6 +68,23 @@ export function huellaHabilitada(empleadoId: string): boolean {
 
 /** Dispara el enrolamiento nativo (huella/Face ID/PIN del dispositivo) y guarda la credencial. */
 export async function habilitarHuella(empleadoId: string, nombre: string): Promise<{ ok: boolean; error?: string }> {
+  if (estaEnAppAndroid()) {
+    // No hay "enrolamiento" propio que crear -- BiometricPrompt reusa
+    // directamente lo que el usuario ya tiene configurado en Ajustes de
+    // Android. Solo se confirma que el dispositivo pueda y se guarda el
+    // marcador para que verificarHuella() sepa qué camino tomar.
+    if (!huellaDisponibleAndroid()) {
+      return { ok: false, error: 'Este dispositivo no tiene una huella o rostro configurado en Ajustes de Android' };
+    }
+    try {
+      localStorage.setItem(keyCredencial(empleadoId), MARCADOR_NATIVO);
+      registrarActividad(empleadoId);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'No se pudo activar la huella' };
+    }
+  }
+
   try {
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     const userId = crypto.getRandomValues(new Uint8Array(16));
@@ -95,10 +123,17 @@ export function deshabilitarHuella(empleadoId: string): void {
 
 /** Pide la huella para desbloquear. true = validado por el sensor del dispositivo. */
 export async function verificarHuella(empleadoId: string): Promise<boolean> {
-  try {
-    const credencialB64 = localStorage.getItem(keyCredencial(empleadoId));
-    if (!credencialB64) return false;
+  const credencialGuardada = localStorage.getItem(keyCredencial(empleadoId));
+  if (!credencialGuardada) return false;
 
+  if (credencialGuardada === MARCADOR_NATIVO) {
+    const ok = await autenticarConHuellaAndroid();
+    if (ok) registrarActividad(empleadoId);
+    return ok;
+  }
+
+  try {
+    const credencialB64 = credencialGuardada;
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     const resultado = await navigator.credentials.get({
       publicKey: {
