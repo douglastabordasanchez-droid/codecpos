@@ -48,7 +48,7 @@ fun PermissionsScreen(
 
         PermisoItem(
             titulo = "Acceso a notificaciones",
-            descripcion = "Para leer las notificaciones de pago de Nequi, Bancolombia y Daviplata.",
+            descripcion = "Para leer las notificaciones de pago de Nequi, Bancolombia, Daviplata y Davivienda.",
             concedido = accesoNotificacionesConcedido,
             onSolicitar = onPedirAccesoNotificaciones,
         )

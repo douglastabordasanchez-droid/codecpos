@@ -52,7 +52,12 @@ fun StatusScreen(
 
         Spacer(Modifier.height(20.dp))
         Text("Bancos habilitados", style = MaterialTheme.typography.titleMedium)
-        listOf("nequi" to "Nequi", "bancolombia" to "Bancolombia (incluye pago por Llave)", "daviplata" to "Daviplata").forEach { (id, label) ->
+        listOf(
+            "nequi" to "Nequi",
+            "bancolombia" to "Bancolombia (incluye pago por Llave)",
+            "daviplata" to "Daviplata",
+            "davivienda" to "Davivienda",
+        ).forEach { (id, label) ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

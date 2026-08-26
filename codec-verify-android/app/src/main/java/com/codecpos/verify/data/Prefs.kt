@@ -74,7 +74,7 @@ class Prefs(context: Context) {
         private const val KEY_PAQUETES_PREFIX = "paquetes_"
         private const val KEY_MODO_APRENDIZAJE = "modo_aprendizaje"
 
-        val DEFAULT_ENTIDADES = setOf("nequi", "bancolombia", "daviplata")
+        val DEFAULT_ENTIDADES = setOf("nequi", "bancolombia", "daviplata", "davivienda")
 
         // Nombres de paquete verificados contra las fichas públicas de Google
         // Play (agosto 2026) — aun así, si algún banco cambia de paquete o el
@@ -88,6 +88,9 @@ class Prefs(context: Context) {
                 "com.todo1.mobile", // Bancolombia Personas (discontinuada, algunos celulares aún no migraron)
             ),
             "daviplata" to setOf("com.davivienda.daviplataapp"),
+            // App del banco Davivienda propiamente dicha — distinta de la billetera
+            // Daviplata de arriba (paquetes y notificaciones separados).
+            "davivienda" to setOf("com.davivienda.daviviendaapp"),
         )
     }
 }
