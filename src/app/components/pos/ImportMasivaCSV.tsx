@@ -149,13 +149,27 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
         const normalized = header.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         
         if (normalized.includes('codigo') || normalized.includes('code')) headerMap.codigo = index;
-        if (normalized.includes('nombre') || normalized.includes('name') || normalized.includes('producto')) headerMap.nombre = index;
+        // 🛡️ FIX: "TipoProducto" contiene "producto" y "PrecioPorKilo" contiene
+        // "precio" -- sin el `&& !normalized.includes(...)` estas dos columnas
+        // nuevas de Veterinaria pisaban headerMap.nombre/headerMap.precio (la
+        // última columna que hace match gana, y ambas vienen DESPUÉS de
+        // Nombre/Precio en esa plantilla), rompiendo el import completo.
+        if ((normalized.includes('nombre') || normalized.includes('name') || normalized.includes('producto')) && !normalized.includes('tipo')) headerMap.nombre = index;
         if (normalized.includes('stock') || normalized.includes('cantidad') || normalized.includes('inventario')) headerMap.stock = index;
         if (normalized.includes('costo') || normalized.includes('cost')) headerMap.costo = index;
-        if (normalized.includes('precio') || normalized.includes('price') || normalized.includes('valor')) headerMap.precio = index;
+        if ((normalized.includes('precio') || normalized.includes('price') || normalized.includes('valor')) && !normalized.includes('porkilo') && !normalized.includes('porgramo')) headerMap.precio = index;
         if (normalized.includes('categoria') || normalized.includes('category')) headerMap.categoria = index;
         if (normalized.includes('minstock') || normalized.includes('min') || normalized.includes('minimo')) headerMap.minStock = index;
         if (normalized.includes('vencimiento') || normalized.includes('expira') || normalized.includes('expiry')) headerMap.fechaVencimiento = index;
+        // 🐾 Veterinaria / Pet Shop
+        if (normalized.includes('tipoproducto')) headerMap.tipoProducto = index;
+        if (normalized.includes('esbulto')) headerMap.esBulto = index;
+        if (normalized.includes('pesobulto')) headerMap.pesoBultoKg = index;
+        if (normalized.includes('porkilo') || normalized.includes('porgramo')) headerMap.precioPorKilo = index;
+        if (normalized.includes('rendimiento') || normalized.includes('raciones')) headerMap.rendimientoRaciones = index;
+        if (normalized.includes('lote')) headerMap.lote = index;
+        if (normalized.includes('especie')) headerMap.especie = index;
+        if (normalized.includes('receta')) headerMap.requiereReceta = index;
       });
 
       console.log('📊 Índices de columnas:', headerMap);
@@ -217,18 +231,60 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
             ? values[headerMap.fechaVencimiento]?.trim() || undefined
             : undefined;
 
+          // 🐾 Veterinaria / Pet Shop — solo se llenan si la plantilla trae esas
+          // columnas (headerMap.* queda undefined para el resto de negocios).
+          const esSiNo = (v: string | undefined) => /^(si|sí|s|yes|y|true|1)$/i.test((v || '').trim());
+          const tipoProductoRaw = headerMap.tipoProducto !== undefined ? values[headerMap.tipoProducto]?.trim().toLowerCase() : undefined;
+          const tipoProducto = tipoProductoRaw?.includes('granel') ? 'granel' as const
+            : tipoProductoRaw?.includes('servicio') ? 'servicio' as const
+            : tipoProductoRaw ? 'fisico' as const
+            : undefined;
+          const esBulto = headerMap.esBulto !== undefined ? esSiNo(values[headerMap.esBulto]) : undefined;
+          const pesoBultoKg = headerMap.pesoBultoKg !== undefined && values[headerMap.pesoBultoKg]?.trim()
+            ? parseFloat(values[headerMap.pesoBultoKg].replace(',', '.')) : undefined;
+          const precioPorKilo = headerMap.precioPorKilo !== undefined && values[headerMap.precioPorKilo]?.trim()
+            ? parseFloat(values[headerMap.precioPorKilo].replace(/[,$]/g, '')) : undefined;
+          const rendimientoRaciones = headerMap.rendimientoRaciones !== undefined && values[headerMap.rendimientoRaciones]?.trim()
+            ? parseFloat(values[headerMap.rendimientoRaciones].replace(',', '.')) : undefined;
+          const lote = headerMap.lote !== undefined ? values[headerMap.lote]?.trim() || undefined : undefined;
+          const especieRaw = headerMap.especie !== undefined ? values[headerMap.especie]?.trim().toLowerCase() : undefined;
+          const especie = especieRaw?.includes('perro') ? 'perro' as const
+            : especieRaw?.includes('gato') ? 'gato' as const
+            : especieRaw?.includes('ave') ? 'aves' as const
+            : especieRaw ? 'generales' as const
+            : undefined;
+          const requiereReceta = headerMap.requiereReceta !== undefined ? esSiNo(values[headerMap.requiereReceta]) : undefined;
+
+          // 🐾 Un producto "Granel-Alimento" se conecta al mecanismo de venta
+          // por peso QUE YA EXISTE en el POS (producto.pesable, ver
+          // POSPageNew.tsx) -- ese mecanismo interpreta `precio` como precio
+          // POR KILO directamente, así que para un bulto se usa PrecioPorKilo
+          // como el precio real del producto, no el de la columna Precio
+          // (pensada para el precio del bulto cerrado completo, informativo).
+          const esGranel = tipoProducto === 'granel';
+          const precioFinal = esGranel && precioPorKilo ? precioPorKilo : precio;
+
           // Crear producto
           const producto = {
             id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`,
             codigo,
             nombre,
-            precio,
+            precio: precioFinal,
             stock,
             costo,
             minStock,
+            ...(esGranel && { pesable: true }),
             categoria,
             fechaVencimiento,
             tipoNegocio: tipoNegocioGlobal,
+            ...(tipoProducto !== undefined && { tipoProducto }),
+            ...(esBulto !== undefined && { esBulto }),
+            ...(pesoBultoKg !== undefined && { pesoBultoKg }),
+            ...(precioPorKilo !== undefined && { precioPorKilo }),
+            ...(rendimientoRaciones !== undefined && { rendimientoRaciones }),
+            ...(lote !== undefined && { lote }),
+            ...(especie !== undefined && { especie }),
+            ...(requiereReceta !== undefined && { requiereReceta }),
           };
 
           productos.push(producto);

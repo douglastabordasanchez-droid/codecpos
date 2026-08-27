@@ -6,7 +6,7 @@ import {
   ShoppingCart, Package, Receipt, RotateCcw, BarChart3, Calculator,
   FileText, Wallet, Settings, Monitor, Users, User, Bell, Gift,
   TrendingUp, Tag, Building2, Barcode, Zap, Shield, ChevronLeft, ChevronRight,
-  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff, Palette, PartyPopper,
+  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff, Palette, PartyPopper, PawPrint,
 } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -388,6 +388,13 @@ export default function POSLayoutSidebar() {
       label: 'Papelería y Piñatería',
       color: 'rose',
       moduloId: ModuloPOS.PAPELERIA_PINATERIA,
+    },
+    {
+      path: '/veterinaria',
+      icon: PawPrint,
+      label: 'Veterinaria y Mascotas',
+      color: 'emerald',
+      moduloId: ModuloPOS.VETERINARIA,
     },
     {
       path: '/codec-verify',

@@ -41,6 +41,7 @@ const TallerPage = lazy(() => import('./components/taller/TallerPage'));
 const ArtesGraficasPage = lazy(() => import('./components/artesGraficas/ArtesGraficasPage'));
 const PapeleriaPinateriaPage = lazy(() => import('./components/papeleriaPinateria/PapeleriaPinateriaPage'));
 const PanaderiaOncesPage = lazy(() => import('./components/pos/PanaderiaOncesPage'));
+const VeterinariaPage = lazy(() => import('./components/pos/VeterinariaPage'));
 const MonitoreoTerminalesPage = lazy(() => import('./components/monitoreo/MonitoreoTerminalesPage'));
 const FacturacionElectronicaPage = lazy(() => import('./pages/FacturacionElectronicaPage'));
 
@@ -329,6 +330,16 @@ export const router = createHashRouter([
           <Suspense fallback={<LoadingFallback />}>
             <ModuleProtectedRoute modulo={ModuloPOS.PANADERIA_ONCES}>
               <PanaderiaOncesPage />
+            </ModuleProtectedRoute>
+          </Suspense>
+        )
+      },
+      {
+        path: 'veterinaria',
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <ModuleProtectedRoute modulo={ModuloPOS.VETERINARIA}>
+              <VeterinariaPage />
             </ModuleProtectedRoute>
           </Suspense>
         )

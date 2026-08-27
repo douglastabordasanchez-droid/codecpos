@@ -19,6 +19,7 @@ export enum ModuloPOS {
   CODIGOS_BARRAS    = 'codigos_barras',
   ALERTAS_STOCK     = 'alertas_stock',
   PANADERIA_ONCES   = 'panaderia_onces',
+  VETERINARIA       = 'veterinaria_mascotas',
 
   // ── CLIENTES ──
   CLIENTES          = 'clientes',
@@ -157,6 +158,15 @@ export const MODULOS_CATALOGO: ModuloInfo[] = [
     icono: '☕',
     categoria: 'inventario',
     planRequerido: 'basico',
+    habilitadoPorDefecto: true,
+  },
+  {
+    id: ModuloPOS.VETERINARIA,
+    nombre: 'Veterinaria y Mascotas',
+    descripcion: 'Venta de alimento a granel con báscula, estética/grooming con agenda, y farmacia con control de lotes',
+    icono: '🐾',
+    categoria: 'premium',
+    planRequerido: 'premium',
     habilitadoPorDefecto: true,
   },
 
@@ -429,6 +439,7 @@ export const MODULOS_CLIENTE_OFICIALES: ModuloPOS[] = [
   ModuloPOS.EMPLEADOS,
   ModuloPOS.ALERTAS_STOCK,
   ModuloPOS.PANADERIA_ONCES,
+  ModuloPOS.VETERINARIA,
   ModuloPOS.FIDELIZACION,
   ModuloPOS.PROVEEDORES,
   ModuloPOS.PROMOCIONES,
@@ -441,7 +452,7 @@ export const MODULOS_CLIENTE_OFICIALES: ModuloPOS[] = [
   ModuloPOS.MONITOREO_TERMINALES,
 ];
 
-// 👑 Lista oficial del perfil maestro (24 = 23 operativos + desarrollador)
+// 👑 Lista oficial del perfil maestro (25 = 24 operativos + desarrollador)
 export const MODULOS_MAESTRO_OFICIALES: ModuloPOS[] = [
   ...MODULOS_CLIENTE_OFICIALES,
   ModuloPOS.AREA_DESARROLLADOR,

@@ -92,6 +92,22 @@ export interface Producto {
   lote?: string;
   /** Hasta 6 fotos — `imagenUrl` sigue siendo la portada (primera foto). */
   fotosUrls?: string[];
+  // 🐾 Veterinaria / Pet Shop — venta a granel con báscula, servicios
+  // médicos y de estética (ver migración 0079).
+  /** 'fisico' = producto normal, 'servicio' = baño/consulta/vacuna (no
+   *  descuenta stock por unidad), 'granel' = se vende por peso desde un
+   *  bulto cerrado (concentrado, alimento a granel). */
+  tipoProducto?: 'fisico' | 'servicio' | 'granel';
+  /** El registro representa un bulto cerrado (ej. bulto de 25kg) del que se
+   *  van descontando kilos/gramos vendidos a granel. */
+  esBulto?: boolean;
+  pesoBultoKg?: number;
+  /** Precio de venta por kilo — el precio por gramo se deriva (÷1000) al vender. */
+  precioPorKilo?: number;
+  /** Porciones/raciones estimadas que rinde el bulto completo (informativo). */
+  rendimientoRaciones?: number;
+  especie?: 'perro' | 'gato' | 'aves' | 'generales';
+  requiereReceta?: boolean;
 }
 
 export interface IngredienteInventario {
