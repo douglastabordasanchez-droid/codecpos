@@ -1,17 +1,19 @@
 /**
- * Firma digital del documento electrónico (XAdES sobre el XML UBL) — la
- * llave privada del certificado NUNCA debe llegar al renderer. La firma
+ * Firma digital del documento electrónico (XAdES-EPES sobre el XML UBL) —
+ * la llave privada del certificado NUNCA debe llegar al renderer. La firma
  * real ocurre en el proceso principal de Electron (ver
- * electron/dianSigner.js), este archivo solo define el contrato y el
- * puente IPC hacia allá.
+ * electron/dianSigner.js → electron/dianXadesSigner.js), este archivo solo
+ * define el contrato y el puente IPC hacia allá. Implementación real y
+ * autoverificada contra el Anexo Técnico v1.9 — ver
+ * docs/electronic-invoicing/DIAN-BLOCKERS.md para el detalle de qué se
+ * verificó y qué sigue pendiente (solo la prueba contra la DIAN real, que
+ * requiere el certificado del propio negocio).
  *
- * ⚠️ PENDIENTE (no implementado a propósito, ver electron/dianSigner.js):
- * la política de firma exacta que exige la DIAN (perfil XAdES — BES/EPES,
- * algoritmo de canonicalización XML, si la firma es enveloped o detached,
- * requisitos de sello de tiempo) no está confirmada. Firmar con un perfil
- * incorrecto produce un documento que la DIAN rechaza. Falta: la sección
- * "política de firma" del Anexo Técnico v1.9 o un ejemplo de XML firmado
- * ya aceptado por la DIAN en ambiente de habilitación.
+ * ⚠️ Esta ruta SOLO existe en Electron — la PWA/web no puede firmar
+ * documentos DIAN hoy, porque no hay ningún proceso de confianza (fuera de
+ * un navegador) donde guardar la llave privada. Llevar esto a la versión
+ * web requeriría mover la firma+transmisión a un entorno servidor (p. ej.
+ * una Edge Function de Supabase) que sí pueda custodiar el certificado.
  */
 
 export interface ElectronicSignatureProvider {
