@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { getSupabaseClient } from '../lib/supabase/config';
 import { getRealMachineUUID } from '../utils/machineId';
 import { useAuth } from '../contexts/AuthContext';
+import { dbManager } from '../lib/indexedDB';
 
 /**
  * Registra esta instalación de Electron contra la licencia del cliente
@@ -28,6 +29,23 @@ export function useRegistrarInstalacion() {
         localStorage.setItem('codecpos_machine_id', machineId);
       } catch {
         // localStorage no disponible -- no crítico, solo afecta la etiqueta de los backups.
+      }
+
+      // 🛡️ FIX: `puntoVentaId` (el `terminal_id` que sube con cada venta a
+      // Supabase) nunca se configuraba en ningún lado del código -- siempre
+      // caía en el default hardcodeado 'POS-001', así que TODAS las cajas de
+      // TODOS los negocios (no solo multi-sucursal) reportaban ventas bajo el
+      // mismo terminal_id, sin forma de distinguir de qué caja/sucursal vino
+      // cada una. Se siembra aquí, una sola vez, con el UUID real del
+      // hardware -- nunca pisa un valor que ya exista (por si en el futuro
+      // se agrega una pantalla para que el dueño lo escriba a mano).
+      try {
+        const puntoVentaIdActual = await dbManager.getConfig('puntoVentaId');
+        if (!puntoVentaIdActual) {
+          await dbManager.setConfig('puntoVentaId', machineId);
+        }
+      } catch {
+        // no crítico -- en el peor caso, esta caja sigue reportando 'POS-001'.
       }
 
       const client = getSupabaseClient();

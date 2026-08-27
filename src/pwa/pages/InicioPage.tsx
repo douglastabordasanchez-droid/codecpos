@@ -7,6 +7,8 @@ import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { ModuloPOS } from '../../app/lib/permissions';
 import { RingStat } from '../components/RingStat';
+import { SucursalSelector } from '../components/SucursalSelector';
+import { machineIdsDeSucursal } from '../../app/lib/supabase/sucursalesService';
 
 interface VentaFila {
   id: string;
@@ -92,6 +94,7 @@ export default function InicioPage() {
   const [rango, setRango] = useState<RangoFiltro>('hoy');
   const [customDesde, setCustomDesde] = useState(() => formatoFechaInput(inicioDeHoy()));
   const [customHasta, setCustomHasta] = useState(() => formatoFechaInput(inicioDeHoy()));
+  const [sucursalSeleccionada, setSucursalSeleccionada] = useState<string | null>(null);
 
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
   const { tieneModulo } = useModulosActivos();
@@ -106,13 +109,29 @@ export default function InicioPage() {
 
       const { inicio, fin, inicioAnterior, finAnterior } = calcularRangos(rango, customDesde, customHasta);
 
+      // 🏬 Filtro por sucursal: cada caja física sube sus ventas con
+      // terminal_id = su propio machine_id (ver useRegistrarInstalacion.ts).
+      // Al elegir una sucursal, se traducen sus cajas asignadas a esa lista
+      // de machine_id y se filtra por ahí -- "Todas" no aplica ningún filtro.
+      // Un array vacío (sucursal elegida sin ninguna caja asignada todavía)
+      // se resuelve con un terminal_id imposible en vez de mandar `.in([])`
+      // a PostgREST, para no depender de cómo maneje esa librería el caso.
+      const machineIdsSucursal = sucursalSeleccionada
+        ? await machineIdsDeSucursal(empleado.cliente_id, sucursalSeleccionada)
+        : null;
+      const filtrarPorSucursal = <T,>(query: T): T => {
+        if (!machineIdsSucursal) return query;
+        const ids = machineIdsSucursal.length > 0 ? machineIdsSucursal : ['__sin_instalaciones_asignadas__'];
+        return (query as any).in('terminal_id', ids);
+      };
+
       const [{ data: periodoData }, { data: anteriorData }, { data: stockData }, { data: sesionesData }, { data: gastosData }, { data: devolucionesData }] = await Promise.all([
-        client.from('ventas').select('id, total, created_at')
+        filtrarPorSucursal(client.from('ventas').select('id, total, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString()),
-        client.from('ventas').select('id, total, created_at')
+          .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString())),
+        filtrarPorSucursal(client.from('ventas').select('id, total, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', inicioAnterior.toISOString()).lt('created_at', finAnterior.toISOString()),
+          .gte('created_at', inicioAnterior.toISOString()).lt('created_at', finAnterior.toISOString())),
         esAdmin
           ? client.from('productos').select('id, stock, stock_minimo').eq('cliente_id', empleado.cliente_id).eq('activo', true)
           : Promise.resolve({ data: [] as any[] }),
@@ -171,7 +190,7 @@ export default function InicioPage() {
     cargar();
     const interval = window.setInterval(cargar, 30000);
     return () => { cancelado = true; window.clearInterval(interval); };
-  }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta]);
+  }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta, sucursalSeleccionada]);
 
   const stats = useMemo(() => {
     const totalPeriodo = ventasPeriodo.reduce((a, v) => a + Number(v.total), 0);
@@ -235,6 +254,15 @@ export default function InicioPage() {
               </button>
             ))}
           </div>
+
+          {empleado && (
+            <SucursalSelector
+              clienteId={empleado.cliente_id}
+              esAdmin={esAdmin}
+              sucursalSeleccionada={sucursalSeleccionada}
+              onSeleccionar={setSucursalSeleccionada}
+            />
+          )}
 
           {rango === 'custom' && (
             <div className="flex items-center gap-2 px-4 mb-4">
