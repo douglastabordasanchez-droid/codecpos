@@ -84,6 +84,17 @@ const PLANTILLAS_CSV: Record<string, { headers: string[]; ejemplos: string[][] }
       ['PIN001', 'Pintura Blanca 1Gal', '40', '35000', '65000', 'Pinturas', '12', 'Pintuco'],
     ]
   },
+  veterinaria: {
+    headers: [
+      'Código', 'Nombre', 'Stock', 'Costo', 'Precio', 'Categoría', 'MinStock', 'FechaVencimiento',
+      'TipoProducto', 'EsBulto', 'PesoBultoKg', 'PrecioPorKilo', 'RendimientoRaciones', 'Lote', 'Especie', 'RequiereReceta',
+    ],
+    ejemplos: [
+      ['ALI001', 'Concentrado Perro Adulto', '20', '95000', '145000', 'Alimentos para Perros', '5', '', 'Granel-Alimento', 'SI', '25', '6200', '80', '', 'Perro', 'NO'],
+      ['MED010', 'Ivermectina Inyectable 50ml', '15', '18000', '32000', 'Medicamentos Veterinarios', '5', '2027-03-15', 'Físico', 'NO', '', '', '', 'L4521', 'Generales', 'SI'],
+      ['SRV001', 'Consulta General', '999', '0', '45000', 'Otros Animales', '0', '', 'Servicio', 'NO', '', '', '', '', 'Generales', 'NO'],
+    ]
+  },
 };
 
 export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMasivaCSVProps) {
