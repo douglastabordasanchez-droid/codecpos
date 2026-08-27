@@ -549,7 +549,11 @@ function obtenerModulosBasePorUsuario(userId: string): ModuloPOS[] {
 // `habilitadoPorDefecto: true` que aún no estén en la config guardada — sin
 // tener que mantener una lista manual nunca más. Lo que el Admin haya
 // apagado explícitamente después sigue respetándose (no se vuelve a forzar).
-const MODULOS_MERGE_VERSION_ACTUAL = 3;
+// v4: agrega ModuloPOS.VETERINARIA (habilitadoPorDefecto: true) -- sin subir
+// esta versión, el nuevo módulo queda invisible para siempre en cualquier
+// instalación que ya tuviera su config de módulos guardada (exactamente el
+// bug que describe el comentario de arriba, repetido si no se sube este número).
+const MODULOS_MERGE_VERSION_ACTUAL = 4;
 const STORAGE_KEY_MERGE_VERSION = 'codec_pos_modulos_merge_version';
 
 export function obtenerModulosGlobales(): ConfiguracionModulosGlobal {
