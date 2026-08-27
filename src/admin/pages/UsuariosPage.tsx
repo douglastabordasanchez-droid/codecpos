@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ShieldCheck, KeyRound, Eye, EyeOff, X } from 'lucide-react';
+import { ShieldCheck, KeyRound, Eye, EyeOff, X, Sparkles, Copy, Check } from 'lucide-react';
 import { listarUsuarios, actualizarEmpleadoAdmin, resetearPasswordEmpleadoAdmin } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import { PageHeader, LoadingState, ErrorState, EmptyState, EstadoBadge, PlanBadge } from '../components/ui';
@@ -146,11 +146,40 @@ export function UsuariosPage() {
   );
 }
 
+// Alfabeto sin caracteres ambiguos (0/O, 1/l/I) -- pensado para que Douglas
+// la lea en voz alta o la pegue en WhatsApp sin que el cliente la transcriba mal.
+const ALFABETO_TEMPORAL = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+
+function generarPasswordTemporal(longitud = 10): string {
+  const bytes = new Uint32Array(longitud);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => ALFABETO_TEMPORAL[b % ALFABETO_TEMPORAL.length]).join('');
+}
+
 function ResetPasswordModal({ empleadoId, nombre, onCerrar }: { empleadoId: string; nombre: string; onCerrar: () => void }) {
   const [password, setPassword] = useState('');
   const [mostrar, setMostrar] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiada, setCopiada] = useState(false);
+
+  const handleGenerarYCopiar = async () => {
+    const nueva = generarPasswordTemporal();
+    setPassword(nueva);
+    setMostrar(true);
+    setError(null);
+    setGuardando(true);
+    try {
+      await resetearPasswordEmpleadoAdmin(empleadoId, nueva);
+      await navigator.clipboard.writeText(nueva);
+      setCopiada(true);
+      setTimeout(() => setCopiada(false), 3000);
+    } catch (e: any) {
+      setError(e.message || 'No se pudo generar la contraseña');
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   const handleGuardar = async () => {
     if (password.length < 6) {
@@ -189,6 +218,21 @@ function ResetPasswordModal({ empleadoId, nombre, onCerrar }: { empleadoId: stri
           Esto fija una contraseña NUEVA. No es posible ver la contraseña actual — está cifrada de forma
           irreversible, ni siquiera Codec Studio puede leerla.
         </p>
+
+        <button
+          onClick={handleGenerarYCopiar}
+          disabled={guardando}
+          className="w-full h-10 rounded-lg text-sm font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:from-amber-400 hover:to-orange-400 disabled:opacity-50 flex items-center justify-center gap-2 mb-3"
+        >
+          {copiada ? <Check className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+          {copiada ? '¡Copiada al portapapeles!' : 'Generar y copiar contraseña temporal'}
+        </button>
+
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex-1 h-px bg-slate-800" />
+          <span className="text-slate-600 text-[10px] uppercase tracking-wide">o escríbela tú</span>
+          <div className="flex-1 h-px bg-slate-800" />
+        </div>
 
         <div className="relative mb-2">
           <input
