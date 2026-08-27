@@ -21,6 +21,7 @@ import { VinculacionNubeCard } from '../electron/VinculacionNubeCard';
 import { ModulosAppWebCard } from '../electron/ModulosAppWebCard';
 import { CodecLogoHorizontal, CodecFavicon } from '../shared/CodecLogos';
 import { PlanSummaryCard } from './PlanSummaryCard';
+import { LicenciaSoftwareCard } from './LicenciaSoftwareCard';
 import { ConfiguracionTipoNegocio } from '../settings/ConfiguracionTipoNegocio';
 import { ConfiguracionIntegraciones } from '../settings/ConfiguracionIntegraciones';
 import { ConfiguracionDianDirecto } from '../settings/ConfiguracionDianDirecto';
@@ -254,6 +255,7 @@ export default function ConfiguracionPage() {
     facturacionElectronica: false,
     integraciones: false,
     plan: false,
+    licencia: false,
     respaldoDatos: false,
     reseteoSistema: false,
     sincronizacionNube: false,
@@ -2156,6 +2158,21 @@ export default function ConfiguracionPage() {
           borderColor="border-amber-600/50"
         >
           <PlanSummaryCard />
+        </AccordionSection>
+
+        {/* 8️⃣.3 LICENCIA DE SOFTWARE */}
+        <AccordionSection
+          id="licencia"
+          title="Licencia de Software"
+          description="Confirma que esta instalación es una copia original y con licencia activa de Codec POS"
+          icon={<Shield className="w-6 h-6 text-emerald-500" />}
+          isOpen={sectionsOpen.licencia}
+          onToggle={() => toggleSection('licencia')}
+          darkMode={darkMode}
+          gradient="from-emerald-900/20 to-teal-900/20"
+          borderColor="border-emerald-700/40"
+        >
+          <LicenciaSoftwareCard darkMode={darkMode} />
         </AccordionSection>
 
         {/* 8️⃣.4 SINCRONIZACIÓN CON LA NUBE (Supabase) */}
