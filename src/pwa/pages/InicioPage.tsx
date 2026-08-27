@@ -255,15 +255,6 @@ export default function InicioPage() {
             ))}
           </div>
 
-          {empleado && (
-            <SucursalSelector
-              clienteId={empleado.cliente_id}
-              esAdmin={esAdmin}
-              sucursalSeleccionada={sucursalSeleccionada}
-              onSeleccionar={setSucursalSeleccionada}
-            />
-          )}
-
           {rango === 'custom' && (
             <div className="flex items-center gap-2 px-4 mb-4">
               <div className="flex-1 flex items-center gap-1.5 bg-slate-950/60 border border-slate-700 rounded-xl px-2.5 h-9">
@@ -329,6 +320,15 @@ export default function InicioPage() {
               onClick={() => navigate('/alertas')}
             />
           </div>
+
+          {empleado && (
+            <SucursalSelector
+              clienteId={empleado.cliente_id}
+              esAdmin={esAdmin}
+              sucursalSeleccionada={sucursalSeleccionada}
+              onSeleccionar={setSucursalSeleccionada}
+            />
+          )}
 
           {/* 🖥️ Solo escritorio (lg+): el "control total" que pidió el dueño
               del negocio — mismos números que ya calcula Electron, en

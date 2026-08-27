@@ -42,8 +42,9 @@ export function SucursalSelector({ clienteId, esAdmin, sucursalSeleccionada, onS
   if (sucursales.length === 0 && !esAdmin) return null;
 
   return (
-    <>
-      <div className="flex items-center gap-1.5 px-4 mb-4 overflow-x-auto">
+    <div className="mt-6 pt-5 border-t border-slate-800/60">
+      <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-3 px-4">Ver por sucursal</h3>
+      <div className="flex items-center gap-1.5 px-4 overflow-x-auto">
         <button
           onClick={() => onSeleccionar(null)}
           className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
@@ -86,7 +87,7 @@ export function SucursalSelector({ clienteId, esAdmin, sucursalSeleccionada, onS
           onCambio={recargar}
         />
       )}
-    </>
+    </div>
   );
 }
 

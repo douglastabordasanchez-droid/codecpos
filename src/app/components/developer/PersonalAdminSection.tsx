@@ -24,6 +24,7 @@ import {
   guardarPermisosUsuarioPersistente,
   esModuloActivoGlobal,
 } from '../../lib/permissions';
+import { hashPassword } from '../../lib/passwordHash';
 
 interface UsuarioLocal {
   id: string;
@@ -138,7 +139,11 @@ export function PersonalAdminSection({ darkMode: dm }: { darkMode: boolean }) {
 
   const confirmarResetPassword = (id: string) => {
     if (!resetPwdValue || resetPwdValue.length < 4) { toast.error('Mínimo 4 caracteres'); return; }
-    guardarUsuariosLocal(usuarios.map(u => u.id === id ? { ...u, password: resetPwdValue } : u));
+    // 🛡️ FIX seguridad: esto guardaba resetPwdValue (texto plano tal cual lo
+    // escribió el admin) directo en localStorage, saltándose hashPassword()
+    // que sí usa el resto de usuariosStorage.ts -- cualquiera con acceso al
+    // localStorage de la máquina podía leer la contraseña real del usuario.
+    guardarUsuariosLocal(usuarios.map(u => u.id === id ? { ...u, password: hashPassword(resetPwdValue) } : u));
     toast.success('Contraseña restablecida');
     setExpandedId(null);
     setResetPwdValue('');
@@ -212,7 +217,10 @@ export function PersonalAdminSection({ darkMode: dm }: { darkMode: boolean }) {
       actualizados++;
       return {
         ...u,
-        ...(match.password ? { password: match.password } : {}),
+        // 🛡️ FIX seguridad: el Sheet/CSV trae la contraseña en texto plano
+        // (un humano la escribió en la celda) -- se hashea antes de guardarla,
+        // igual que confirmarResetPassword() de arriba.
+        ...(match.password ? { password: hashPassword(match.password) } : {}),
         ...(match.nombreCompleto ? { nombreCompleto: match.nombreCompleto } : {}),
         ...(match.cedula !== undefined ? { cedula: match.cedula } : {}),
         ...(match.rol ? { rol: match.rol } : {}),
