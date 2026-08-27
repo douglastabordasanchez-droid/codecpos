@@ -8,6 +8,13 @@ import { printSaleReceipt } from '../../lib/thermalPrinter';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import { enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
+import { getCached } from '../../lib/cachedLocalStorage';
+
+// bre_b no debe imprimirse como "BRE_B" (guion bajo feo en la tirilla) —
+// el resto de métodos sí se ven bien con un simple toUpperCase().
+function labelMetodoPagoTirilla(metodoPago: string): string {
+  return metodoPago.toLowerCase() === 'bre_b' ? 'BRE-B' : metodoPago.toUpperCase();
+}
 
 interface ItemVenta {
   productoId: string;
@@ -72,15 +79,13 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
 
   // Cargar configuración SOLO UNA VEZ (sin interval pesado)
   useEffect(() => {
+    // 🚀 FIX rendimiento: usa el caché compartido (cachedLocalStorage.ts) en
+    // vez de un JSON.parse propio — si otra pantalla ya leyó 'codec_pos_config'
+    // en este mismo ciclo y nada cambió, evita reparsear el mismo JSON.
+    // Mismo dato, mismo shape; getCached se auto-invalida si el string crudo
+    // cambia, así que no puede quedar desactualizado.
     const loadConfig = () => {
-      const savedConfig = localStorage.getItem('codec_pos_config');
-      if (savedConfig) {
-        try {
-          setConfig(JSON.parse(savedConfig));
-        } catch (e) {
-          console.error('Error parsing config:', e);
-        }
-      }
+      setConfig(getCached('codec_pos_config', {}));
     };
 
     loadConfig();
@@ -272,7 +277,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     right('TOTAL:', `$${venta.total.toLocaleString('es-CO')}`);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    left(`Método de pago: ${venta.metodoPago.toUpperCase()}`);
+    left(`Método de pago: ${labelMetodoPagoTirilla(venta.metodoPago)}`);
 
     if (venta.metodoPago.toLowerCase() === 'efectivo') {
       right('Efectivo recibido:', `$${(venta.efectivoRecibido || 0).toLocaleString('es-CO')}`);
@@ -580,7 +585,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
               </tr>
               <tr>
                 <td>Método de Pago:</td>
-                <td className="right">{venta.metodoPago.toUpperCase()}</td>
+                <td className="right">{labelMetodoPagoTirilla(venta.metodoPago)}</td>
               </tr>
               {venta.metodoPago.toLowerCase() === 'efectivo' && (
                 <>

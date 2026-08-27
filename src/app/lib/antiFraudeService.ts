@@ -10,7 +10,7 @@ import { storeEvents } from './electronStore';
 export interface ConfirmacionPago {
   id: string;
   ventaId: string; // FAC000007
-  metodoPago: 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia';
+  metodoPago: 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia' | 'bre_b';
   monto: number;
   numeroTransaccion?: string;
   estado: 'pendiente' | 'confirmado' | 'rechazado';
@@ -32,7 +32,7 @@ class AntiFraudeService {
    */
   async registrarTransaccionPendiente(
     ventaId: string,
-    metodoPago: 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia',
+    metodoPago: 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia' | 'bre_b',
     monto: number
   ): Promise<string> {
     const db = await dbManager.ensureDB();

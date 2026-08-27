@@ -320,6 +320,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     { id: 'nequi',         label: 'Nequi',          enabled: true,  color: '#d946ef', tipo: 'nequi' },
     { id: 'daviplata',     label: 'Daviplata',      enabled: true,  color: '#ef4444', tipo: 'daviplata' },
     { id: 'bancolombia',   label: 'Bancolombia',    enabled: true,  color: '#ca8a04', tipo: 'bancolombia' },
+    { id: 'bre_b',         label: 'Bre-B',          enabled: true,  color: '#14b8a6', tipo: 'bre_b' },
     { id: 'pago_mixto',    label: 'Pago Mixto',     enabled: true,  color: '#f59e0b', tipo: 'pago_mixto' },
     { id: 'rappi',         label: 'Rappi',          enabled: true,  color: '#ff6b35', tipo: 'rappi' },
     { id: 'bonos',         label: 'Bonos',          enabled: false, color: '#10b981', tipo: 'bonos' },
@@ -1356,7 +1357,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return true;
   };
 
-  const procesarVenta = async (metodoPago: 'efectivo' | 'tarjeta' | 'transferencia' | 'nequi' | 'daviplata' | 'bancolombia' | 'rappi' | 'bonos' | 'fidelizacion') => {
+  const procesarVenta = async (metodoPago: 'efectivo' | 'tarjeta' | 'transferencia' | 'nequi' | 'daviplata' | 'bancolombia' | 'bre_b' | 'rappi' | 'bonos' | 'fidelizacion') => {
     // 🛡️ Anti-doble-cobro: si ya hay una venta en curso, ignorar el clic repetido.
     // procesandoPagoRef es síncrono (a diferencia del state) por lo que bloquea
     // incluso el segundo clic disparado en el mismo tick antes del re-render.
@@ -1748,11 +1749,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           }).catch(() => {});
 
           // 🔐 SISTEMA ANTI-FRAUDE
-          if (metodoPago === 'nequi' || metodoPago === 'daviplata' || metodoPago === 'transferencia' || metodoPago === 'bancolombia') {
+          if (metodoPago === 'nequi' || metodoPago === 'daviplata' || metodoPago === 'transferencia' || metodoPago === 'bancolombia' || metodoPago === 'bre_b') {
             try {
               await antiFraudeService.registrarTransaccionPendiente(
                 numeroFacturaCompleto,
-                metodoPago as 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia',
+                metodoPago as 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia' | 'bre_b',
                 total
               );
             } catch { /* anti-fraude no crítico */ }
@@ -3403,6 +3404,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   );
                   if (m.id === 'bancolombia') return (
                     <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setEntidadVerificacion('bancolombia'); setShowVerificacionPagoModal(true); }} className={cls}>
+                      <Landmark className="w-7 h-7 mb-1" />{m.label}
+                    </button>
+                  );
+                  if (m.id === 'bre_b') return (
+                    <button key={m.id} style={style} onClick={() => { setShowPagoModal(false); setEntidadVerificacion('bre_b'); setShowVerificacionPagoModal(true); }} className={cls}>
                       <Landmark className="w-7 h-7 mb-1" />{m.label}
                     </button>
                   );

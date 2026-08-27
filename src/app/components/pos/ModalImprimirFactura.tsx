@@ -9,12 +9,13 @@ import { type Venta } from '../../lib/electronStore';
 import { descargarFacturaPDF, enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
 import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
+import { getCached } from '../../lib/cachedLocalStorage';
 
 // ── Config empresa ────────────────────────────────────────────────────────────
 
 function getEmpresaConfig() {
   try {
-    const c = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+    const c = getCached('codec_pos_config', {} as any);
     return {
       nombreComercial: (c.nombreComercial as string) || (c.razonSocial as string) || 'MI NEGOCIO',
       razonSocial:     (c.razonSocial as string)     || '',
@@ -56,6 +57,7 @@ function metodoPagoLabel(m: string) {
   const map: Record<string, string> = {
     efectivo: 'Efectivo', tarjeta: 'Tarjeta', nequi: 'Nequi',
     daviplata: 'Daviplata', transferencia: 'Transferencia', mixto: 'Pago Mixto',
+    bancolombia: 'Bancolombia', bre_b: 'Bre-B',
   };
   return map[m?.toLowerCase()] || (m ? m.charAt(0).toUpperCase() + m.slice(1) : 'N/D');
 }
@@ -288,7 +290,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
 
   /** Mismos datos que ejecutarPDF() arma para descargarFacturaPDF — reutilizado por WhatsApp/Correo. */
   function datosParaCompartir() {
-    const cfg = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+    const cfg = getCached('codec_pos_config', {} as any);
     return {
       venta: {
         numeroFactura: nFactura,
@@ -364,7 +366,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
   async function ejecutarPDF() {
     setBusy('pdf');
     try {
-      const cfg = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+      const cfg = getCached('codec_pos_config', {} as any);
       await descargarFacturaPDF(
         {
           numeroFactura: nFactura,

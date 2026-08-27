@@ -330,6 +330,7 @@ function FlujoCaja({ estadisticas, dark }: { estadisticas: EstadisticasDia | nul
     { label: 'Tarjeta',   key: 'tarjeta',        color: '#3b82f6', icon: CreditCard},
     { label: 'Transf.',   key: 'transferencia',  color: '#06b6d4', icon: Activity  },
     { label: 'Bancolombia', key: 'bancolombia',  color: '#ca8a04', icon: Landmark  },
+    { label: 'Bre-B',     key: 'bre_b',          color: '#14b8a6', icon: Landmark  },
     { label: 'Mixto',     key: 'mixto',          color: '#f59e0b', icon: DollarSign},
     ...(rappiActivo ? [{ label: rappiLabel, key: 'rappi', color: rappiColor, icon: Bike }] : []),
     ...(bonosActivo ? [{ label: bonosLabel, key: 'bonos', color: bonosColor, icon: Award }] : []),
@@ -1123,7 +1124,7 @@ export default function DashboardPOSPage() {
             (acc as any)[venta.metodoPago] += total;
           }
           return acc;
-        }, { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, bancolombia: 0, rappi: 0, mixto: 0, bonos: 0, fidelizacion: 0, cartera: 0 });
+        }, { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, bancolombia: 0, bre_b: 0, rappi: 0, mixto: 0, bonos: 0, fidelizacion: 0, cartera: 0 });
 
         // Crear objeto de estadísticas compatible
         const statsNorm: EstadisticasDia = {
@@ -1348,6 +1349,7 @@ export default function DashboardPOSPage() {
     { name: 'Daviplata',     value: Number(estadisticas.ventasPorMetodo.daviplata)     || 0, color: '#ef4444' },
     { name: 'Transferencia', value: Number(estadisticas.ventasPorMetodo.transferencia) || 0, color: '#06b6d4' },
     { name: 'Bancolombia',   value: Number(estadisticas.ventasPorMetodo.bancolombia)   || 0, color: '#ca8a04' },
+    { name: 'Bre-B',         value: Number(estadisticas.ventasPorMetodo.bre_b)         || 0, color: '#14b8a6' },
     { name: 'Rappi',         value: Number(estadisticas.ventasPorMetodo.rappi)         || 0, color: '#ff6b35' },
     { name: 'Mixto',         value: Number(estadisticas.ventasPorMetodo.mixto)         || 0, color: '#f59e0b' },
     ...(bonosActivo ? [{ name: bonosLabel, value: Number(estadisticas.ventasPorMetodo.bonos) || 0, color: bonosColor }] : []),

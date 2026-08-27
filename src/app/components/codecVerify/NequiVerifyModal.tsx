@@ -64,7 +64,7 @@ export function isCodecVerifyActivo(): boolean {
   } catch { return false; }
 }
 
-export type EntidadPago = 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia';
+export type EntidadPago = 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia' | 'bre_b';
 
 const ENTIDAD_CONFIG: Record<EntidadPago, { label: string; gradientIcon: string; glow: string; accent: string; accentSoft: string }> = {
   nequi: {
@@ -94,6 +94,17 @@ const ENTIDAD_CONFIG: Record<EntidadPago, { label: string; gradientIcon: string;
     glow: 'rgba(202,138,4,0.45)',
     accent: '#ca8a04',
     accentSoft: 'rgba(202,138,4,0.4)',
+  },
+  // Bre-B: sistema interoperable de pagos inmediatos de Colombia (ACH Colombia,
+  // reemplaza/complementa transferencias con llave entre bancos) — el dinero
+  // sigue llegando a la cuenta bancaria real del negocio, así que la
+  // verificación usa el mismo match por monto que las demás entidades.
+  bre_b: {
+    label: 'Bre-B',
+    gradientIcon: 'linear-gradient(135deg, #14b8a6, #0f766e)',
+    glow: 'rgba(20,184,166,0.45)',
+    accent: '#14b8a6',
+    accentSoft: 'rgba(20,184,166,0.4)',
   },
 };
 

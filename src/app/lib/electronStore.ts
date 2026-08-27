@@ -113,7 +113,7 @@ interface InventoryValidationResult {
   }>;
 }
 
-export type MetodoPago = 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia' | 'rappi' | 'mixto' | 'bonos' | 'fidelizacion' | 'cartera';
+export type MetodoPago = 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia' | 'bre_b' | 'rappi' | 'mixto' | 'bonos' | 'fidelizacion' | 'cartera';
 
 export interface PagoMixtoDetalle {
   efectivo?: number;
@@ -689,6 +689,7 @@ class ElectronStoreService {
       daviplata: 0,
       transferencia: 0,
       bancolombia: 0,
+      bre_b: 0,
       rappi: 0,
       mixto: 0,
       bonos: 0,

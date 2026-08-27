@@ -28,7 +28,7 @@ export interface VentaHistorica {
   cajero: string;
   cajeroId: string;
   totalVenta: number;
-  metodoPago: 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia';
+  metodoPago: 'efectivo' | 'tarjeta' | 'nequi' | 'daviplata' | 'transferencia' | 'bancolombia' | 'bre_b';
   productos: {
     id: string;
     nombre: string;
