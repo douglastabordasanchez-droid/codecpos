@@ -32,6 +32,7 @@ const PanelDesarrolladorPage = lazy(() => import('./pages/PanelDesarrolladorPage
 const FacturacionPage = lazy(() => import('./pages/FacturacionPage'));
 const TallerPage = lazy(() => import('./pages/TallerPage'));
 const PanaderiaPage = lazy(() => import('./pages/PanaderiaPage'));
+const VeterinariaPage = lazy(() => import('./pages/VeterinariaPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ReportesPage = lazy(() => import('./pages/ReportesPage'));
 const CodigosBarrasPage = lazy(() => import('./pages/CodigosBarrasPage'));
@@ -83,6 +84,7 @@ export const router = createBrowserRouter([
       { path: 'caja', element: <ConSuspense><ModuloGate modulo={ModuloPOS.CIERRE_CAJA}><CierreCajaPage /></ModuloGate></ConSuspense> },
       { path: 'taller', element: <ConSuspense><ModuloGate modulo={ModuloPOS.TALLER_REPARACIONES}><TallerPage /></ModuloGate></ConSuspense> },
       { path: 'panaderia', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PANADERIA_ONCES}><PanaderiaPage /></ModuloGate></ConSuspense> },
+      { path: 'veterinaria', element: <ConSuspense><ModuloGate modulo={ModuloPOS.VETERINARIA}><VeterinariaPage /></ModuloGate></ConSuspense> },
       { path: 'dashboard', element: <ConSuspense><ModuloGate modulo={ModuloPOS.DASHBOARD}><DashboardPage /></ModuloGate></ConSuspense> },
       { path: 'reportes', element: <ConSuspense><ModuloGate modulo={ModuloPOS.REPORTES}><ReportesPage /></ModuloGate></ConSuspense> },
       { path: 'codigos-barras', element: <ConSuspense><ModuloGate modulo={ModuloPOS.CODIGOS_BARRAS}><CodigosBarrasPage /></ModuloGate></ConSuspense> },

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   X, User, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
   Settings, LogOut, Sun, Moon, Crown, Zap, ShieldAlert, Wrench, Coffee,
-  LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper,
+  LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper, PawPrint,
 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -64,6 +64,7 @@ export function SideMenu({ open, onClose }: Props) {
   // o un técnico esta es su pantalla de trabajo, no un accesorio.
   const modulos: ItemMenu[] = [
     { icon: Coffee, label: 'Alimentos y Bebidas', subtitulo: 'Mesas, comandas y pedidos del salón', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
+    { icon: PawPrint, label: 'Veterinaria y Mascotas', subtitulo: 'Granel con báscula, estética y farmacia', path: '/veterinaria', modulo: ModuloPOS.VETERINARIA },
     { icon: Wrench, label: 'Taller', subtitulo: 'Órdenes de reparación y estados', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
     { icon: Palette, label: 'Artes Gráficas', subtitulo: 'Catálogo por escalas y facturas dinámicas', path: '/artes-graficas', modulo: ModuloPOS.ARTES_GRAFICAS },
     { icon: PartyPopper, label: 'Papelería y Piñatería', subtitulo: 'Globos, dulcería, juguetería y fiestas', path: '/papeleria-pinateria', modulo: ModuloPOS.PAPELERIA_PINATERIA },
