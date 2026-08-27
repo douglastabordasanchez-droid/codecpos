@@ -173,13 +173,22 @@ interface Props {
   entidad?: EntidadPago;
   onCancelar: () => void;
   onConfirmar: () => void;
+  /**
+   * Se dispara apenas CODEC Verify detecta el pago (match automático o
+   * bypass), ANTES de que el cajero toque "Confirmar Pago" — incluso si
+   * este carrito no es el que está visible en pantalla en ese momento
+   * (el cajero pudo cambiar a otro carrito mientras esperaba). Permite que
+   * MultiFacturasPOS avise "Carrito #N recibió el pago" sin depender de que
+   * el modal esté montado/visible.
+   */
+  onPagoDetectado?: (pago: PagoConfirmado) => void;
 }
 
 // ═══════════════════════════════════════════════════════
 //  COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════
 function NequiVerifyModalComponent({
-  visible, monto, darkMode, cajeroNombre, numeroFactura, entidad = 'nequi', onCancelar, onConfirmar,
+  visible, monto, darkMode, cajeroNombre, numeroFactura, entidad = 'nequi', onCancelar, onConfirmar, onPagoDetectado,
 }: Props) {
   const codecActivo = isCodecVerifyActivo();
   const config = ENTIDAD_CONFIG[entidad];
@@ -207,7 +216,8 @@ function NequiVerifyModalComponent({
     setEstado('verificado');
     setShowPagoRecibido(true);
     try { window.navigator.vibrate?.([100, 50, 100]); } catch {}
-  }, []);
+    onPagoDetectado?.(pago);
+  }, [onPagoDetectado]);
 
   // Suscripción real a Supabase (Realtime + poll de respaldo) mientras se
   // espera el pago — ver suscribirPagoEsperado en codecVerifyService.ts.

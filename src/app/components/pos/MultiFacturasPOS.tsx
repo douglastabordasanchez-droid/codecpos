@@ -3,9 +3,9 @@
  * Permite atender varios clientes al mismo tiempo con facturas independientes
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, ShoppingCart, Users, DollarSign } from 'lucide-react';
+import { Plus, X, ShoppingCart, Users, DollarSign, ShieldCheck } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { Button } from '../ui/button';
 import POSPageNew from './POSPageNew';
@@ -18,6 +18,9 @@ interface Factura {
   createdAt: number;
   totalItems?: number;
   total?: number;
+  /** true apenas CODEC Verify detecta el pago de este carrito, aunque el cajero esté viendo otro. */
+  pagoListo?: boolean;
+  pagoInfo?: { monto: number; entidad: string };
 }
 
 export default function MultiFacturasPOS() {
@@ -31,6 +34,13 @@ export default function MultiFacturasPOS() {
   ]);
   const [facturaActivaId, setFacturaActivaId] = useState<string>('factura-1');
   const [contadorFacturas, setContadorFacturas] = useState(1);
+
+  // actualizarInfoFactura es estable (useCallback, deps vacías) para no
+  // recrear el efecto que la llama en cada POSPageNew hijo — por eso lee el
+  // carrito activo desde un ref en vez de capturarlo en el closure (que
+  // quedaría desactualizado para siempre con el valor del primer render).
+  const facturaActivaIdRef = useRef(facturaActivaId);
+  useEffect(() => { facturaActivaIdRef.current = facturaActivaId; }, [facturaActivaId]);
 
   // 🆕 AGREGAR NUEVA FACTURA
   const agregarFactura = () => {
@@ -99,6 +109,20 @@ export default function MultiFacturasPOS() {
         ([key, value]) => factura[key as keyof Factura] === value
       );
       if (sinCambios) return prev;
+
+      // 🔔 Avisa cuando el pago de un carrito QUE NO ESTÁS MIRANDO ya está
+      // listo — sin esto, el cajero solo se enteraría al volver manualmente
+      // a esa pestaña. Se dispara una sola vez, justo al pasar de
+      // "esperando" a "listo" (nunca en cada re-render).
+      if (info.pagoListo && !factura.pagoListo && id !== facturaActivaIdRef.current) {
+        const monto = info.pagoInfo?.monto ?? factura.pagoInfo?.monto;
+        const entidad = info.pagoInfo?.entidad ?? factura.pagoInfo?.entidad;
+        toast.success(`✅ Carrito #${factura.numero} recibió el pago${entidad ? ` · ${entidad}` : ''}${monto ? ` $${monto.toLocaleString('es-CO')}` : ''}`, {
+          duration: 8000,
+          action: { label: 'Ir al carrito', onClick: () => setFacturaActivaId(id) },
+        });
+      }
+
       return prev.map(f => (f.id === id ? { ...f, ...info } : f));
     });
   }, []);
@@ -173,6 +197,17 @@ export default function MultiFacturasPOS() {
                             {factura.totalItems}
                           </span>
                         )}
+                        {/* 💰 Pago de CODEC Verify ya confirmado en segundo plano — solo
+                            tiene sentido mostrarlo mientras NO estás mirando este carrito,
+                            el modal mismo ya se ve "verificado" cuando lo activas. */}
+                        {factura.pagoListo && !isActive && (
+                          <span
+                            className="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-white animate-pulse"
+                            title="Pago recibido — listo para cobrar"
+                          >
+                            <ShieldCheck className="w-2.5 h-2.5" />
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs truncate">
                         {factura.nombreCliente || 'Cliente'}
@@ -244,28 +279,31 @@ export default function MultiFacturasPOS() {
         </div>
       </div>
 
-      {/* 📄 CONTENIDO DE LA FACTURA ACTIVA */}
-      <div className="flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
-          {facturas.map(factura => (
-            factura.id === facturaActivaId && (
-              <motion.div
-                key={factura.id}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-                className="h-full"
-              >
-                <POSPageNew
-                  facturaId={factura.id}
-                  numeroFactura={factura.numero}
-                  onUpdateInfo={actualizarInfoFactura}
-                />
-              </motion.div>
-            )
-          ))}
-        </AnimatePresence>
+      {/* 📄 CONTENIDO DE TODAS LAS FACTURAS ABIERTAS
+          🔑 A propósito NUNCA se desmontan las inactivas (antes sí, con
+          `factura.id === facturaActivaId && <POSPageNew/>` dentro de
+          AnimatePresence) — solo se ocultan con `hidden` (display:none).
+          Desmontar mataba la suscripción en tiempo real de CODEC Verify
+          (suscribirPagoEsperado) y todo el estado del modal "esperando
+          pago" de esa factura apenas el cajero cambiaba de pestaña, así
+          que no era posible cobrarle a un cliente mientras otro seguía
+          pagando por Nequi/Daviplata/etc. Mantenerlas montadas dej que
+          el pago siga esperando en segundo plano y el cajero se entera
+          por el toast + el punto verde en la pestaña (ver
+          actualizarInfoFactura) en vez de tener que quedarse mirando. */}
+      <div className="flex-1 overflow-hidden relative">
+        {facturas.map(factura => (
+          <div
+            key={factura.id}
+            className={factura.id === facturaActivaId ? 'h-full' : 'hidden'}
+          >
+            <POSPageNew
+              facturaId={factura.id}
+              numeroFactura={factura.numero}
+              onUpdateInfo={actualizarInfoFactura}
+            />
+          </div>
+        ))}
       </div>
 
       {/* 💡 TOOLTIP DE AYUDA (aparece solo al inicio) */}

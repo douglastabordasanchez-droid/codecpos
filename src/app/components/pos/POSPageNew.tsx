@@ -149,7 +149,14 @@ interface MesaPOS {
 interface POSPageNewProps {
   facturaId?: string;
   numeroFactura?: number;
-  onUpdateInfo?: (facturaId: string, info: { totalItems?: number; total?: number; nombreCliente?: string }) => void;
+  onUpdateInfo?: (facturaId: string, info: {
+    totalItems?: number;
+    total?: number;
+    nombreCliente?: string;
+    /** true apenas CODEC Verify detecta el pago de este carrito — aunque el cajero esté viendo otro. */
+    pagoListo?: boolean;
+    pagoInfo?: { monto: number; entidad: string };
+  }) => void;
 }
 
 // Aclara/oscurece un color hex un porcentaje dado (positivo = más claro,
@@ -3676,6 +3683,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             darkMode={darkMode}
             cajeroNombre={usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero'}
             numeroFactura={facturaId}
+            onPagoDetectado={(pago) => {
+              if (onUpdateInfo && facturaId) {
+                onUpdateInfo(facturaId, { pagoListo: true, pagoInfo: { monto: pago.monto, entidad: pago.banco } });
+              }
+            }}
             onCancelar={() => { setShowVerificacionPagoModal(false); setShowPagoModal(true); }}
             onConfirmar={() => {
               setShowVerificacionPagoModal(false);
