@@ -128,12 +128,20 @@ export async function listarSucursales() {
 
 // ---- Usuarios ---------------------------------------------------------
 export async function listarUsuarios() {
-  const { data, error } = await cliente()
-    .from('empleados')
-    .select('id, nombre_completo, rol, activo, es_staff_codec, clientes_pos(id, nombre_negocio, plan)')
-    .order('nombre_completo', { ascending: true });
+  // RPC (no select directo) porque necesita el email real de auth.users --
+  // ese schema nunca se expone vía PostgREST/RLS, solo a través de este
+  // punto gateado por es_staff_actual() (ver migración 0078).
+  const { data, error } = await cliente().rpc('admin_listar_usuarios');
   if (error) throw new Error(error.message);
-  return data;
+  return (data || []).map((u: any) => ({
+    id: u.id,
+    nombre_completo: u.nombre_completo,
+    email: u.email,
+    rol: u.rol,
+    activo: u.activo,
+    es_staff_codec: u.es_staff_codec,
+    clientes_pos: u.cliente_id ? { id: u.cliente_id, nombre_negocio: u.nombre_negocio, plan: u.plan } : null,
+  }));
 }
 
 export async function actualizarEmpleadoAdmin(empleadoId: string, cambios: { activo?: boolean; rol?: string }) {
@@ -141,6 +149,19 @@ export async function actualizarEmpleadoAdmin(empleadoId: string, cambios: { act
     p_empleado_id: empleadoId,
     p_activo: cambios.activo ?? null,
     p_rol: cambios.rol ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Fija una contraseña NUEVA para el empleado (soporte cuando un cliente se
+ * bloquea) -- nunca revela la contraseña actual, eso es imposible por diseño
+ * (bcrypt/pgcrypto, hash de un solo sentido). Ver migración 0077.
+ */
+export async function resetearPasswordEmpleadoAdmin(empleadoId: string, passwordNueva: string) {
+  const { error } = await cliente().rpc('admin_resetear_password_empleado', {
+    p_empleado_id: empleadoId,
+    p_password_nueva: passwordNueva,
   });
   if (error) throw new Error(error.message);
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ShieldCheck } from 'lucide-react';
-import { listarUsuarios, actualizarEmpleadoAdmin } from '../lib/adminApi';
+import { ShieldCheck, KeyRound, Eye, EyeOff, X } from 'lucide-react';
+import { listarUsuarios, actualizarEmpleadoAdmin, resetearPasswordEmpleadoAdmin } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import { PageHeader, LoadingState, ErrorState, EmptyState, EstadoBadge, PlanBadge } from '../components/ui';
 
@@ -14,6 +14,7 @@ export function UsuariosPage() {
   const [items, setItems] = useState<Awaited<ReturnType<typeof listarUsuarios>> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [procesando, setProcesando] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<{ id: string; nombre: string } | null>(null);
 
   const cargar = () => {
     listarUsuarios().then(setItems).catch((e) => setError(e.message));
@@ -59,6 +60,7 @@ export function UsuariosPage() {
             <thead>
               <tr className="text-left text-xs text-slate-300 border-b border-slate-800">
                 <th className="px-4 py-3 font-medium">Nombre</th>
+                <th className="px-4 py-3 font-medium">Usuario (correo)</th>
                 <th className="px-4 py-3 font-medium">Empresa</th>
                 <th className="px-4 py-3 font-medium">Rol</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
@@ -76,6 +78,7 @@ export function UsuariosPage() {
                         {u.es_staff_codec && <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" aria-label="Staff Codec Studio" />}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-slate-400 font-mono text-xs">{u.email || '—'}</td>
                     <td className="px-4 py-3">
                       {u.clientes_pos ? (
                         <span className="flex items-center gap-2">
@@ -100,17 +103,27 @@ export function UsuariosPage() {
                     {!soloLectura && (
                       <td className="px-4 py-3">
                         {editable && (
-                          <button
-                            onClick={() => handleToggleActivo(u.id, u.activo)}
-                            disabled={procesando === u.id}
-                            className={`text-xs font-medium rounded-lg px-3 py-1.5 border disabled:opacity-50 ${
-                              u.activo
-                                ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
-                                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                            }`}
-                          >
-                            {u.activo ? 'Desactivar' : 'Activar'}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleToggleActivo(u.id, u.activo)}
+                              disabled={procesando === u.id}
+                              className={`text-xs font-medium rounded-lg px-3 py-1.5 border disabled:opacity-50 ${
+                                u.activo
+                                  ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
+                                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                              }`}
+                            >
+                              {u.activo ? 'Desactivar' : 'Activar'}
+                            </button>
+                            <button
+                              onClick={() => setResetTarget({ id: u.id, nombre: u.nombre_completo })}
+                              disabled={procesando === u.id}
+                              title="Restablecer contraseña"
+                              className="text-xs font-medium rounded-lg px-2.5 py-1.5 border bg-slate-800/60 text-slate-300 border-slate-700 hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </td>
                     )}
@@ -121,6 +134,99 @@ export function UsuariosPage() {
           </table>
         </div>
       )}
+
+      {resetTarget && (
+        <ResetPasswordModal
+          empleadoId={resetTarget.id}
+          nombre={resetTarget.nombre}
+          onCerrar={() => setResetTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ResetPasswordModal({ empleadoId, nombre, onCerrar }: { empleadoId: string; nombre: string; onCerrar: () => void }) {
+  const [password, setPassword] = useState('');
+  const [mostrar, setMostrar] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleGuardar = async () => {
+    if (password.length < 6) {
+      setError('Mínimo 6 caracteres');
+      return;
+    }
+    setGuardando(true);
+    setError(null);
+    try {
+      await resetearPasswordEmpleadoAdmin(empleadoId, password);
+      onCerrar();
+    } catch (e: any) {
+      setError(e.message || 'No se pudo restablecer la contraseña');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onCerrar}>
+      <div
+        className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-white font-bold text-base flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-amber-400" /> Restablecer contraseña
+          </h3>
+          <button onClick={onCerrar} className="text-slate-500 hover:text-slate-300">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-slate-500 text-xs mb-4">{nombre}</p>
+
+        <p className="text-slate-500 text-[11px] mb-3 bg-slate-800/50 border border-slate-800 rounded-lg px-3 py-2">
+          Esto fija una contraseña NUEVA. No es posible ver la contraseña actual — está cifrada de forma
+          irreversible, ni siquiera Codec Studio puede leerla.
+        </p>
+
+        <div className="relative mb-2">
+          <input
+            type={mostrar ? 'text' : 'password'}
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError(null); }}
+            onKeyDown={(e) => e.key === 'Enter' && handleGuardar()}
+            placeholder="Nueva contraseña (mín. 6 caracteres)"
+            autoFocus
+            className="w-full h-10 pl-3 pr-9 rounded-lg bg-slate-950 border border-slate-700 text-white text-sm outline-none focus:border-amber-500"
+          />
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setMostrar((v) => !v)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+          >
+            {mostrar ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+        {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
+
+        <div className="flex gap-2 mt-3">
+          <button
+            onClick={onCerrar}
+            className="flex-1 h-9 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleGuardar}
+            disabled={guardando || password.length < 6}
+            className="flex-1 h-9 rounded-lg text-sm font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:opacity-40"
+          >
+            {guardando ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
