@@ -55,7 +55,9 @@ export function PwaLayout() {
   return (
     <>
       <TopBar navInferiorVisible={navInferiorVisible} onToggleNavInferior={() => setNavInferiorVisible((v) => !v)} />
-      <Outlet />
+      <div className="w-full max-w-[432px] mx-auto">
+        <Outlet />
+      </div>
       {navInferiorVisible && <BottomNav />}
     </>
   );
