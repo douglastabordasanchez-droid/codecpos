@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { useEffect } from 'react';
 import { Outlet, Navigate } from 'react-router';
 import { Loader2, CloudOff } from 'lucide-react';
+import { toast } from 'sonner';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { BottomNav } from './BottomNav';
 import { TopBar } from './TopBar';
 import { DesktopLayout } from './DesktopLayout';
@@ -19,6 +22,30 @@ export function PwaLayout() {
   const { appHabilitada } = useModulosActivos();
   const esEscritorio = useIsDesktop();
   const [navInferiorVisible, setNavInferiorVisible] = useState(true);
+
+  useEffect(() => {
+    if (!empleado) return;
+    const client = getSupabaseClient();
+    if (!client) return;
+    const avisar = async () => {
+      const { data } = await client.from('avisos_licencia')
+        .select('id, programado_para')
+        .eq('cliente_id', empleado.cliente_id)
+        .is('enviado_en', null)
+        .lte('programado_para', new Date().toISOString())
+        .order('programado_para', { ascending: true })
+        .limit(1);
+      const aviso = data?.[0];
+      if (!aviso) return;
+      toast.warning('Tu prueba vence pronto', { description: 'Faltan 2 días para renovar Codec POS.' });
+      await client.from('avisos_licencia').update({ enviado_en: new Date().toISOString() }).eq('id', aviso.id);
+    };
+    avisar();
+    const canal = client.channel(`avisos-licencia-${empleado.cliente_id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'avisos_licencia', filter: `cliente_id=eq.${empleado.cliente_id}` }, avisar)
+      .subscribe();
+    return () => { client.removeChannel(canal); };
+  }, [empleado?.cliente_id]);
 
   if (cargando) {
     return (

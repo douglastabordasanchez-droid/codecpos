@@ -12,6 +12,7 @@ import {
   crearClienteAdmin,
   actualizarClienteAdmin,
   actualizarModulosClienteAdmin,
+  activarPruebaGratisAdmin,
   cambiarEstadoClienteAdmin,
   crearAccesoMovilDueno,
   ClienteAdmin,
@@ -177,18 +178,8 @@ export default function PanelDesarrolladorPage() {
   const activarPruebaGratis = async (c: ClienteAdmin) => {
     setGuardando(true);
     try {
-      const fechaExpiracion = new Date(Date.now() + 30 * 86_400_000).toISOString();
-      await actualizarClienteAdmin(c.id, {
-        nombreNegocio: c.nombreNegocio, nit: c.nit, contacto: c.contacto, telefono: c.telefono, email: c.email,
-        usuario: c.usuario, contraseña: c.contraseña,
-        plan: 'PREMIUM', duracion: '1_MES',
-        fechaActivacion: new Date().toISOString(), fechaExpiracion,
-        estado: 'ACTIVA', enPrueba: true, diasPruebaRestantes: 30,
-        modulosActivos: MODULOS_DISPONIBLES.map((m) => m.id),
-      });
-      toast.success(`🎁 Prueba gratis de 1 mes activada para ${c.nombreNegocio}`, {
-        description: `Expira el ${new Date(fechaExpiracion).toLocaleDateString('es-CO')} — todos los módulos activos`,
-      });
+      await activarPruebaGratisAdmin(c.id);
+      toast.success(`Prueba gratis de 14 días activada para ${c.nombreNegocio}`);
       setSeleccionado(null);
       cargar();
     } catch (e) {
@@ -328,7 +319,7 @@ export default function PanelDesarrolladorPage() {
                   className="h-12 bg-gradient-to-r from-emerald-500 to-green-600"
                 >
                   {guardando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Gift className="w-4 h-4 mr-2" />}
-                  Prueba gratis 1 mes
+                  Activar prueba gratis (14 días)
                 </Button>
               </div>
 
@@ -358,7 +349,7 @@ export default function PanelDesarrolladorPage() {
                           });
                         }}
                         className={`text-left px-2.5 py-2 rounded-lg border text-xs transition ${
-                          activo ? 'border-emerald-700 bg-emerald-900/20 text-emerald-300' : 'border-slate-800 text-slate-400'
+                          activo ? 'border-slate-500 bg-slate-700 text-white' : 'border-slate-700 bg-slate-900 text-slate-300'
                         }`}
                       >
                         {activo ? '☑' : '☐'} {m.nombre}

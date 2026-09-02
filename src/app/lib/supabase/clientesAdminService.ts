@@ -291,6 +291,13 @@ export async function actualizarModulosClienteAdmin(clienteId: string, modulosAc
   if (error) throw new Error(error.message);
 }
 
+export async function activarPruebaGratisAdmin(clienteId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { error } = await client.rpc('activar_prueba_admin', { p_cliente_id: clienteId });
+  if (error) throw new Error(error.message);
+}
+
 /** Activa/desactiva el acceso a la app móvil (PWA) para este cliente — gate de pago, ver migración 0026. */
 export async function actualizarAppMovilClienteAdmin(clienteId: string, habilitada: boolean): Promise<void> {
   const client = getSupabaseClient();
