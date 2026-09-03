@@ -246,6 +246,7 @@ export default function ConfiguracionPage() {
   const [sectionsOpen, setSectionsOpen] = useState({
     informacionBasica: true,
     tipoNegocio: false,
+    modulosAppWeb: true,
     mensajes: false,
     machineId: false,
     iva: false,
@@ -1108,6 +1109,23 @@ export default function ConfiguracionPage() {
           darkMode={darkMode}
         >
           <ConfiguracionTipoNegocio />
+        </AccordionSection>
+
+        {/* APP WEB / CELULAR: sección propia para que la ruta indicada en la
+            PWA sea literal y fácil de encontrar. La tarjeta conserva la
+            validación de vínculo y licencia antes de permitir publicar. */}
+        <AccordionSection
+          id="modulosAppWeb"
+          title="Módulos en la App Web / Celular"
+          description="Elige qué módulos verá tu equipo y publica sus datos para usarlos desde el celular"
+          icon={<Smartphone className="w-6 h-6 text-violet-500" />}
+          isOpen={sectionsOpen.modulosAppWeb}
+          onToggle={() => toggleSection('modulosAppWeb')}
+          darkMode={darkMode}
+          gradient="from-violet-900/20 to-fuchsia-900/20"
+          borderColor="border-violet-700/40"
+        >
+          <ModulosAppWebCard />
         </AccordionSection>
 
         {/* 3️⃣ MENSAJES PERSONALIZADOS */}
@@ -2190,11 +2208,6 @@ export default function ConfiguracionPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <VinculacionNubeCard />
             <SyncStatusCard />
-            {/* Panel de control de la app móvil: qué módulos ve el equipo en
-                el celular. Vive junto a la vinculación porque depende de ella. */}
-            <div className="md:col-span-2">
-              <ModulosAppWebCard />
-            </div>
           </div>
         </AccordionSection>
 
