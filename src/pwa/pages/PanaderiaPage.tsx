@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Coffee, X, Loader2, Plus, Minus, Users, Search, Check,
-  Trash2, AlertCircle, ChefHat,
+  Trash2, AlertCircle, ChefHat, BellRing, Settings2, Vibrate, Volume2, VolumeX,
 } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
@@ -38,6 +38,12 @@ import {
   type PanaderiaProducto,
 } from '../../app/lib/supabase/panaderiaSyncService';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import {
+  activarAvisosPedidos,
+  guardarPreferenciasAvisosPedidos,
+  obtenerPreferenciasAvisosPedidos,
+  permisoAvisosPedidos,
+} from '../lib/pedidoAlerts';
 
 const ESTADO_COMANDA_LABEL: Record<string, string> = {
   pendiente: '🕓 En cola',
@@ -64,6 +70,29 @@ export default function PanaderiaPage() {
   // 🍳 Comanda más reciente por mesa — para que el mesero vea sin preguntar
   // si cocina/bar ya la está preparando o ya está lista para servir.
   const [comandasPorMesa, setComandasPorMesa] = useState<Record<string, Comanda>>({});
+  const [permisoAvisos, setPermisoAvisos] = useState(() => permisoAvisosPedidos());
+  const [preferenciasAvisos, setPreferenciasAvisos] = useState(() => obtenerPreferenciasAvisosPedidos());
+  const [mostrarAjustesAvisos, setMostrarAjustesAvisos] = useState(false);
+
+  const cambiarPreferenciaAvisos = (campo: 'voz' | 'vibracion') => {
+    setPreferenciasAvisos((actuales) => {
+      const siguientes = { ...actuales, [campo]: !actuales[campo] };
+      guardarPreferenciasAvisosPedidos(siguientes);
+      return siguientes;
+    });
+  };
+
+  const activarAvisos = async () => {
+    const permiso = await activarAvisosPedidos();
+    setPermisoAvisos(permiso);
+    if (permiso === 'granted') {
+      toast.success('Avisos del mesero activados', { description: 'Recibirás vibración, notificación y voz al cambiar una comanda.' });
+    } else if (permiso === 'denied') {
+      toast.error('Las notificaciones están bloqueadas', { description: 'Actívalas en los permisos de este sitio o de la app CODEC POS.' });
+    } else {
+      toast.info('Este navegador no ofrece notificaciones del sistema. La vibración y los avisos en pantalla seguirán activos.');
+    }
+  };
 
   const cargar = useCallback(async () => {
     if (!empleado) return;
@@ -175,7 +204,8 @@ export default function PanaderiaPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
       {/* ── Encabezado ── */}
       <div className="px-5 pt-8 pb-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/25">
             <Coffee className="w-5 h-5 text-white" />
           </div>
@@ -183,7 +213,64 @@ export default function PanaderiaPage() {
             <h1 className="text-white text-xl font-black leading-tight">Alimentos y Bebidas</h1>
             <p className="text-slate-400 text-sm">Comandas del salón</p>
           </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMostrarAjustesAvisos((visible) => !visible)}
+              className="shrink-0 rounded-xl border border-slate-700 bg-slate-900 p-3 text-slate-300 active:scale-95 transition-transform"
+              aria-label="Configurar avisos de pedidos"
+              aria-expanded={mostrarAjustesAvisos}
+              title="Configurar voz y vibración"
+            >
+              <Settings2 className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={activarAvisos}
+              className={`shrink-0 rounded-xl border p-3 active:scale-95 transition-transform ${
+                permisoAvisos === 'granted'
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                  : 'border-slate-700 bg-slate-900 text-slate-300'
+              }`}
+              aria-label="Activar notificaciones de pedidos"
+              title={permisoAvisos === 'granted' ? 'Notificaciones de pedidos activas' : 'Activar notificaciones de pedidos'}
+            >
+              <BellRing className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+        {permisoAvisos !== 'granted' && (
+          <button onClick={activarAvisos} className="mt-3 text-xs font-semibold text-amber-400 text-left">
+            Activa los avisos para recibir vibración, voz y notificaciones de cocina.
+          </button>
+        )}
+        {mostrarAjustesAvisos && (
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-slate-800 bg-slate-900/80 p-2">
+            <button
+              type="button"
+              onClick={() => cambiarPreferenciaAvisos('voz')}
+              aria-pressed={preferenciasAvisos.voz}
+              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors ${
+                preferenciasAvisos.voz ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-800 text-slate-400'
+              }`}
+            >
+              {preferenciasAvisos.voz ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              Voz {preferenciasAvisos.voz ? 'activada' : 'desactivada'}
+            </button>
+            <button
+              type="button"
+              onClick={() => cambiarPreferenciaAvisos('vibracion')}
+              aria-pressed={preferenciasAvisos.vibracion}
+              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors ${
+                preferenciasAvisos.vibracion ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-800 text-slate-400'
+              }`}
+            >
+              <Vibrate className="w-4 h-4" />
+              Vibración {preferenciasAvisos.vibracion ? 'activada' : 'desactivada'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Resumen ── */}

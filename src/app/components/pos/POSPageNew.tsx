@@ -146,6 +146,11 @@ interface MesaPOS {
   activa: boolean;
 }
 
+interface EstadoMesaCocina {
+  estado: 'pendiente' | 'preparando' | 'listo';
+  updatedAt: string;
+}
+
 // 🆕 PROPS PARA MÚLTIPLES FACTURAS
 interface POSPageNewProps {
   facturaId?: string;
@@ -282,6 +287,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }
   });
   const [referenciaMesaTransfer, setReferenciaMesaTransfer] = useState<string | null>(null);
+  const [versionCuentasMesas, setVersionCuentasMesas] = useState(0);
+  const [estadosMesasCocina, setEstadosMesasCocina] = useState<Record<string, EstadoMesaCocina>>({});
 
   const [toggleModuloPanaderiaOncesActivo, setToggleModuloPanaderiaOncesActivo] = useState<boolean>(() => {
     try {
@@ -528,6 +535,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       const map = raw ? JSON.parse(raw) : {};
       map[mesaId] = cart;
       localStorage.setItem(STORAGE_CUENTAS_MESAS, JSON.stringify(map));
+      setVersionCuentasMesas((version) => version + 1);
     } catch {
       // no-op
     }
@@ -537,11 +545,45 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     try {
       const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS);
       const map = raw ? JSON.parse(raw) : {};
-      return Array.isArray(map?.[mesaId]) ? map[mesaId] : [];
+      const items = Array.isArray(map?.[mesaId]) ? map[mesaId] : [];
+      // Las comandas que llegan de la PWA contienen el producto mínimo
+      // necesario. El POS completa sus campos opcionales para que el carrito
+      // conserve todos sus controles (cantidad, inventario y facturación).
+      return items
+        .filter((item: any) => item?.producto && Number(item.cantidad) > 0)
+        .map((item: any) => ({
+          ...item,
+          cantidad: Number(item.cantidad) || 1,
+          producto: {
+            ...item.producto,
+            codigo: String(item.producto.codigo || item.producto.nombre || item.producto.id),
+            stock: Number(item.producto.stock) > 0 ? Number(item.producto.stock) : 999999,
+            categoria: String(item.producto.categoria || 'Alimentos y Bebidas'),
+            costo: Number(item.producto.costo) || 0,
+          },
+        }));
     } catch {
       return [];
     }
   }, []);
+
+  const abrirCarritoMesa = useCallback((mesaId: string) => {
+    const mesa = mesasDisponibles.find((item) => item.id === mesaId);
+    const cuenta = cargarCarritoMesa(mesaId);
+    if (!mesa || cuenta.length === 0) return;
+    // Marca el origen para que el cierre de venta libere esta mesa tanto en
+    // el equipo como en Supabase (igual que al abrirla desde Alimentos y Bebidas).
+    localStorage.setItem('codecpos_panaderia_origen', mesaId);
+    localStorage.setItem('codecpos_referencia_mesa', mesa.nombre);
+    setReferenciaMesaTransfer(mesa.nombre);
+    setMesaActivaId(mesaId);
+    setCarrito(cuenta);
+    toast.info(`${mesa.nombre} abierta en caja`, {
+      description: estadosMesasCocina[mesaId]?.estado === 'listo'
+        ? 'Pedido listo para facturar.'
+        : 'Pedido cargado para continuar o facturar.',
+    });
+  }, [cargarCarritoMesa, estadosMesasCocina, mesasDisponibles]);
 
   // Limpia la cuenta de Panadería que originó esta venta (mesa o cuenta libre)
   const limpiarCuentaPanaderia = () => {
@@ -554,6 +596,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         const cuentas = JSON.parse(localStorage.getItem('codecpos_mesas_cuentas') || '{}');
         delete cuentas[origen];
         localStorage.setItem('codecpos_mesas_cuentas', JSON.stringify(cuentas));
+        setVersionCuentasMesas((version) => version + 1);
+        // También libera la mesa en la nube para que no vuelva a aparecer en
+        // el celular del mesero ni en otra caja después de facturarla.
+        Promise.all([
+          import('../../lib/supabase/tenantLink'),
+          import('../../lib/supabase/panaderiaSyncService'),
+        ]).then(([{ getLinkedClienteId }, { guardarCuentaMesa }]) => {
+          const clienteId = getLinkedClienteId();
+          if (clienteId) return guardarCuentaMesa(clienteId, origen, [], 'electron');
+        }).catch(() => {});
       }
       localStorage.removeItem('codecpos_panaderia_origen');
       localStorage.removeItem('codecpos_referencia_mesa');
@@ -676,6 +728,70 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   useEffect(() => {
     guardarCarritoMesa(mesaActivaId, carrito);
   }, [carrito, mesaActivaId, guardarCarritoMesa]);
+
+  // Cuando la comandera o cualquier otra caja actualiza una mesa, el POS
+  // refresca los carritos de mesa sin que el cajero tenga que recargar.
+  useEffect(() => {
+    const alSincronizarCuentas = (evento: Event) => {
+      const detalle = (evento as CustomEvent<{ mesaId?: string }>).detail;
+      setVersionCuentasMesas((version) => version + 1);
+      if (detalle?.mesaId === mesaActivaId && !transferLoadedRef.current) {
+        setCarrito(cargarCarritoMesa(mesaActivaId));
+      }
+    };
+    window.addEventListener('codecpos:panaderia-cuentas-sincronizadas', alSincronizarCuentas);
+    return () => window.removeEventListener('codecpos:panaderia-cuentas-sincronizadas', alSincronizarCuentas);
+  }, [cargarCarritoMesa, mesaActivaId]);
+
+  // Estado de Cocina/Bar para resaltar el carrito que ya puede facturarse.
+  useEffect(() => {
+    let activo = true;
+    let desuscribir: (() => void) | undefined;
+
+    Promise.all([
+      import('../../lib/supabase/tenantLink'),
+      import('../../lib/supabase/panaderiaSyncService'),
+    ]).then(([{ getLinkedClienteId }, { obtenerComandasActivas, suscribirComandas }]) => {
+      const clienteId = getLinkedClienteId();
+      if (!clienteId || !activo) return;
+      const aplicar = (comanda: any) => {
+        if (!activo) return;
+        setEstadosMesasCocina((actuales) => {
+          if (comanda.estado === 'entregado' || comanda.estado === 'cancelado') {
+            const { [comanda.mesaLocalId]: _omitida, ...resto } = actuales;
+            return resto;
+          }
+          const anterior = actuales[comanda.mesaLocalId];
+          // Varias comandas pueden coexistir en una mesa: una lista siempre
+          // debe mantener el carrito destacado hasta que caja lo facture.
+          if (anterior?.estado === 'listo' && comanda.estado !== 'listo') return actuales;
+          return { ...actuales, [comanda.mesaLocalId]: { estado: comanda.estado, updatedAt: comanda.updatedAt } };
+        });
+      };
+      obtenerComandasActivas(clienteId).then((comandas) => comandas.forEach(aplicar)).catch(() => {});
+      desuscribir = suscribirComandas(clienteId, aplicar);
+    }).catch(() => {});
+
+    return () => { activo = false; desuscribir?.(); };
+  }, []);
+
+  const carritosMesas = useMemo(() => {
+    if (!moduloPanaderiaOncesActivo) return [];
+    return mesasDisponibles
+      .filter((mesa) => mesa.id !== 'general')
+      .map((mesa) => {
+        const cuenta = cargarCarritoMesa(mesa.id);
+        const estado = estadosMesasCocina[mesa.id]?.estado;
+        return {
+          id: mesa.id,
+          nombre: mesa.nombre,
+          itemsCount: cuenta.reduce((total, item) => total + (Number(item.cantidad) || 0), 0),
+          total: cuenta.reduce((total, item) => total + (Number(item.producto.precio) || 0) * (Number(item.cantidad) || 0), 0),
+          listo: estado === 'listo',
+        };
+      })
+      .filter((mesa) => mesa.itemsCount > 0);
+  }, [cargarCarritoMesa, estadosMesasCocina, mesasDisponibles, moduloPanaderiaOncesActivo, versionCuentasMesas]);
 
   useEffect(() => {
     // Actualizar display del cliente cuando cambia el total
@@ -2503,6 +2619,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   searchTermActual={searchTerm}
                   onRestaurarFactura={onRestaurarFacturaEstable}
                   onLimpiarCarrito={onLimpiarCarritoEstable}
+                  carritosMesas={carritosMesas}
+                  onAbrirCarritoMesa={abrirCarritoMesa}
                 />
               </div>
             </div>

@@ -23,6 +23,16 @@ interface Props {
   searchTermActual: string;
   onRestaurarFactura: (carrito: any[], searchTerm: string) => void;
   onLimpiarCarrito: () => void;
+  carritosMesas?: CarritoMesaResumen[];
+  onAbrirCarritoMesa?: (mesaId: string) => void;
+}
+
+export interface CarritoMesaResumen {
+  id: string;
+  nombre: string;
+  itemsCount: number;
+  total: number;
+  listo: boolean;
 }
 
 const STORAGE_KEY = 'codecpos_facturas_inline';
@@ -35,7 +45,9 @@ export const MultiFacturasInline = memo(function MultiFacturasInline({
   carritoActual,
   searchTermActual,
   onRestaurarFactura,
-  onLimpiarCarrito
+  onLimpiarCarrito,
+  carritosMesas = [],
+  onAbrirCarritoMesa,
 }: Props) {
   const { darkMode } = usePOS();
   const [facturas, setFacturas] = useState<FacturaGuardada[]>([]);
@@ -242,6 +254,30 @@ export const MultiFacturasInline = memo(function MultiFacturasInline({
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {carritosMesas.map((mesa) => (
+        <motion.button
+          key={`mesa-${mesa.id}`}
+          layout
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          onClick={() => onAbrirCarritoMesa?.(mesa.id)}
+          title={mesa.listo ? `${mesa.nombre}: pedido listo para facturar` : `${mesa.nombre}: abrir pedido`}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
+            mesa.listo
+              ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/30 animate-pulse'
+              : darkMode
+                ? 'bg-amber-500/15 border-amber-500/60 text-amber-300 hover:bg-amber-500/25'
+                : 'bg-amber-50 border-amber-400 text-amber-700 hover:bg-amber-100'
+          }`}
+        >
+          <ShoppingCart className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="max-w-28 truncate">{mesa.nombre}</span>
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${mesa.listo ? 'bg-white/25' : darkMode ? 'bg-slate-900/40' : 'bg-amber-200/70'}`}>
+            {mesa.itemsCount}
+          </span>
+          {mesa.listo && <span className="text-[10px] uppercase tracking-wide">Listo</span>}
+        </motion.button>
+      ))}
       <AnimatePresence mode="popLayout">
         {facturas.map((factura, indice) => {
           const isActive = indice === indiceActivo;

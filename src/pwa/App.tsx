@@ -5,12 +5,14 @@ import { PwaAuthProvider, usePwaAuth } from './contexts/PwaAuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { router } from './routes';
 import { useAutoLock } from './hooks/useAutoLock';
+import { useComandaAlerts } from './hooks/useComandaAlerts';
 import LockScreen from './components/LockScreen';
 
 /** Separado de App() porque usePwaAuth() necesita estar DENTRO de PwaAuthProvider. */
 function ContenidoConBloqueo() {
   const { empleado } = usePwaAuth();
   const { bloqueado, desbloquear } = useAutoLock(empleado?.id);
+  useComandaAlerts();
 
   if (empleado && bloqueado) {
     return <LockScreen empleadoId={empleado.id} onDesbloqueado={desbloquear} />;
