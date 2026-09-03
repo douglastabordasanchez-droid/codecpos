@@ -2827,22 +2827,6 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               darkMode ? 'bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-blue-500/30' : 'bg-blue-50 border-blue-200'
             } rounded-2xl`}>
               <CardContent className="p-2.5">
-                {moduloPanaderiaOncesActivo && (
-                  <div className="mb-2 flex items-center gap-2">
-                    <img src="/mesa.png" alt="Mesa" className="w-7 h-7 object-contain" />
-                    <select
-                      value={mesaActivaId}
-                      onChange={(e) => setMesaActivaId(e.target.value)}
-                      className={`h-9 rounded-xl px-3 text-sm border ${
-                        darkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                      }`}
-                    >
-                      {mesasDisponibles.map((m) => (
-                        <option key={m.id} value={m.id}>{m.nombre}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
                     <Search className="w-4 h-4 text-white" />

@@ -77,6 +77,16 @@ function ctx() {
 // `actualizado_en: 'pwa'`.
 const VENTANA_ECO_MS = 8000;
 const mesasRecienGuardadas = new Map<string, number>();
+let consecutivoCanalRealtime = 0;
+
+// Supabase reutiliza un canal si se pide el mismo nombre. Como la PWA mantiene
+// un listener global para avisos y otro para la pantalla del salón, cada
+// suscripción necesita su propio canal para no intentar registrar dos veces
+// el mismo `postgres_changes` en un canal ya unido.
+function nuevoNombreCanalRealtime(prefijo: string, clienteId: string): string {
+  consecutivoCanalRealtime += 1;
+  return `${prefijo}-${clienteId}-${consecutivoCanalRealtime}`;
+}
 
 function marcarMesaComoRecienGuardada(mesaLocalId: string): void {
   mesasRecienGuardadas.set(mesaLocalId, Date.now());
@@ -293,7 +303,7 @@ export function suscribirCuentasMesa(
   if (!client) return () => {};
 
   const canal = client
-    .channel(`panaderia-cuentas-${clienteId}`)
+    .channel(nuevoNombreCanalRealtime('panaderia-cuentas', clienteId))
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'panaderia_cuentas', filter: `cliente_id=eq.${clienteId}` },
@@ -408,7 +418,7 @@ export function suscribirComandas(
   if (!client) return () => {};
 
   const canal = client
-    .channel(`panaderia-comandas-${clienteId}`)
+    .channel(nuevoNombreCanalRealtime('panaderia-comandas', clienteId))
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'panaderia_comandas', filter: `cliente_id=eq.${clienteId}` },
