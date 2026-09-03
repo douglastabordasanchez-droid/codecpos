@@ -109,14 +109,14 @@ export function SideMenu({ open, onClose }: Props) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 z-40"
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[1px]"
           />
           <motion.div
             initial={{ x: '-100%' }}
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-            className="fixed top-0 left-0 bottom-0 w-[82%] max-w-sm bg-slate-950 border-r border-slate-800 z-50 overflow-y-auto"
+            className="fixed inset-y-0 left-0 z-50 h-[100dvh] w-[80vw] max-w-[300px] overflow-y-auto border-r border-slate-800 bg-slate-950 pb-[env(safe-area-inset-bottom)]"
           >
             <div className="px-5 pt-6 pb-5 border-b border-slate-800 flex items-start justify-between">
               <div className="flex items-center gap-3">

@@ -33,13 +33,18 @@ export async function crearVentaMovil(
   cajeroNombre: string,
   items: ItemCarritoMovil[],
   metodoPago: string,
-  metodosMultiples?: MetodosMultiplesMovil
+  metodosMultiples?: MetodosMultiplesMovil,
+  propina: number = 0,
+  porcentajePropinaSugerido: number = 0,
+  propinaModificada: boolean = false,
 ): Promise<{ ok: boolean; error?: string; numero?: number; ventaId?: string }> {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
   if (items.length === 0) return { ok: false, error: 'El carrito está vacío' };
 
-  const total = items.reduce((acc, it) => acc + it.cantidad * it.precio, 0);
+  const totalProductos = items.reduce((acc, it) => acc + it.cantidad * it.precio, 0);
+  const propinaValida = Math.max(0, Number(propina) || 0);
+  const total = totalProductos + propinaValida;
 
   const { data: ultimaVenta } = await client
     .from('ventas')
@@ -59,6 +64,9 @@ export async function crearVentaMovil(
       numero,
       cajero_nombre: cajeroNombre,
       total,
+      propina: propinaValida,
+      porcentaje_propina_sugerido: Math.max(0, Number(porcentajePropinaSugerido) || 0),
+      propina_modificada: propinaModificada,
       metodo_pago: metodoPago,
       metodos_multiples: metodoPago === 'mixto' ? (metodosMultiples || null) : null,
       estado: 'completada',

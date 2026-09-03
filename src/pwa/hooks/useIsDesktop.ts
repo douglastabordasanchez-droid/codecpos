@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
-const QUERY = '(min-width: 1024px)';
+const QUERY = '(min-width: 1024px) and (pointer: fine)';
 
-/** ≥1024px = pantallas de 12" en adelante — umbral para pasar del layout móvil (bottom nav) al de escritorio (sidebar), misma app y mismo enlace. */
+/** Solo el viewport amplio con puntero preciso usa sidebar; los dispositivos táctiles conservan el shell móvil. */
 export function useIsDesktop(): boolean {
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia(QUERY).matches : false

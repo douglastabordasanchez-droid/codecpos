@@ -413,7 +413,7 @@ class SyncService {
 
     let query = client
       .from('ventas')
-      .select('id, numero, terminal_id, cajero_nombre, total, metodo_pago, created_at')
+      .select('id, numero, terminal_id, cajero_nombre, total, propina, porcentaje_propina_sugerido, propina_modificada, metodo_pago, created_at')
       .eq('cliente_id', clienteId)
       .eq('estado', 'completada')
       .is('local_id', null); // ventas creadas por Electron siempre traen local_id — solo interesan las que no
@@ -460,6 +460,9 @@ class SyncService {
         })),
         subtotal,
         iva: total - subtotal,
+        propina: Number(r.propina) || 0,
+        porcentajePropinaSugerido: Number(r.porcentaje_propina_sugerido) || 0,
+        propinaModificada: r.propina_modificada === true,
         total,
         metodoPago: r.metodo_pago || 'efectivo',
         cajero: r.cajero_nombre || 'Venta móvil',
@@ -965,6 +968,9 @@ class SyncService {
             numero: v.numero,
             cajero_nombre: v.cajero,
             total: v.total,
+            propina: v.propina || 0,
+            porcentaje_propina_sugerido: v.porcentajePropinaSugerido || 0,
+            propina_modificada: v.propinaModificada === true,
             metodo_pago: v.metodoPago,
             metodos_multiples: v.metodosMultiples || null,
             estado: 'completada',

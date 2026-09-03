@@ -38,6 +38,8 @@ interface Venta {
   subtotal?: number;
   iva?: number;
   porcentajeIVA?: number;
+  propina?: number;
+  porcentajePropinaSugerido?: number;
   metodoPago: string;
   efectivoRecibido?: number;
   cambio?: number;
@@ -70,12 +72,15 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
   const { darkMode } = usePOS();
   const { usuarioActual } = useAuth();
   const ticketRef = useRef<HTMLDivElement>(null);
+  const botonesRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<any>({});
   const [panelCompartir, setPanelCompartir] = useState<'whatsapp' | 'email' | null>(null);
   const [telefono, setTelefono] = useState('');
   const [emailDestino, setEmailDestino] = useState('');
   const [enviando, setEnviando] = useState<'whatsapp' | 'email' | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
+  const [configCargada, setConfigCargada] = useState(false);
+  const autoImprimioRef = useRef<string | null>(null);
 
   // Cargar configuración SOLO UNA VEZ (sin interval pesado)
   useEffect(() => {
@@ -86,6 +91,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     // cambia, así que no puede quedar desactualizado.
     const loadConfig = () => {
       setConfig(getCached('codec_pos_config', {}));
+      setConfigCargada(true);
     };
 
     loadConfig();
@@ -103,6 +109,35 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []); // SIN interval - mejora crítica de rendimiento
+
+  // 🖨️ Autoimprimir al abrir el ticket: el cajero ya no tiene que tocar
+  // "Imprimir" en cada venta — el popup manda a imprimir apenas aparece,
+  // por el mismo camino que el botón manual (respeta impresora configurada
+  // / abre el diálogo nativo si no hay una). Espera a `configCargada`
+  // porque `handlePrint` usa los datos del negocio (nombre, NIT, mensajes
+  // de tirilla) — disparar en el primer render los mandaría vacíos, ya que
+  // el efecto de arriba todavía no terminó de cargarlos en ese momento.
+  // Una sola vez por factura (autoImprimioRef evita reimprimir si el padre
+  // re-renderiza con la misma venta ya facturada).
+  useEffect(() => {
+    if (!venta || !configCargada || autoImprimioRef.current === venta.numeroFactura) return;
+    autoImprimioRef.current = venta.numeroFactura;
+    handlePrint();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venta?.numeroFactura, configCargada]);
+
+  // 📍 Abrir el popup ya desplazado hasta el botón "Imprimir" — mismo diseño
+  // de siempre, el cajero solo ya no tiene que bajar el scroll para verlo.
+  // rAF espera un frame a que el modal termine de pintar el recibo completo
+  // (si se llama antes, el navegador todavía no sabe cuánto mide el recibo
+  // y el scroll queda corto).
+  useEffect(() => {
+    if (!venta) return;
+    const raf = requestAnimationFrame(() => {
+      botonesRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [venta?.numeroFactura]);
 
   if (!venta) return null;
 
@@ -135,6 +170,8 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       subtotal: venta.subtotal,
       iva: venta.iva,
       porcentajeIVA: venta.porcentajeIVA,
+      propina: venta.propina,
+      porcentajePropinaSugerido: venta.porcentajePropinaSugerido,
       total: venta.total,
       metodoPago: venta.metodoPago,
       cambio: venta.cambio,
@@ -271,6 +308,9 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       right('Subtotal:', `$${venta.subtotal.toLocaleString('es-CO')}`);
       right(`IVA (${venta.porcentajeIVA || 19}%):`, `$${venta.iva.toLocaleString('es-CO')}`);
       separator();
+    }
+    if (venta.propina !== undefined) {
+      right(venta.porcentajePropinaSugerido ? `Propina (${venta.porcentajePropinaSugerido}%):` : 'Propina:', `$${venta.propina!.toLocaleString('es-CO')}`);
     }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
@@ -579,6 +619,12 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
                   <tr><td colSpan={2}><div className="line"></div></td></tr>
                 </>
               )}
+              {venta.propina !== undefined && (
+                <tr>
+                  <td>{venta.porcentajePropinaSugerido ? `Propina (${venta.porcentajePropinaSugerido}%):` : 'Propina:'}</td>
+                  <td className="right">${venta.propina!.toLocaleString('es-CO')}</td>
+                </tr>
+              )}
               <tr className="bold" style={{ fontSize: '15px' }}>
                 <td>TOTAL:</td>
                 <td className="right">${venta.total.toLocaleString('es-CO')}</td>
@@ -691,7 +737,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       </div>
 
       {/* Botones de acción */}
-      <div className="grid grid-cols-2 gap-3 mt-6">
+      <div ref={botonesRef} className="grid grid-cols-2 gap-3 mt-6">
         <Button
           onClick={handlePrint}
           disabled={imprimiendo}
@@ -703,7 +749,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
           }
           {imprimiendo ? 'Imprimiendo…' : 'Imprimir'}
         </Button>
-        
+
         <Button
           onClick={handleDownloadPDF}
           className="rounded-2xl bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"

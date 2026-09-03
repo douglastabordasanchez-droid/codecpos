@@ -36,7 +36,7 @@ export function RingStat({ label, value, pct, colorFrom, colorTo, size = 108, on
   return (
     <Wrapper
       onClick={onClick}
-      className={`flex flex-col items-center gap-2 ${onClick ? 'active:scale-95 transition-transform' : ''}`}
+      className={`w-full max-w-[120px] justify-self-center flex flex-col items-center gap-2 ${onClick ? 'active:scale-95 transition-transform' : ''}`}
     >
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90">

@@ -226,7 +226,7 @@ export default function InicioPage() {
   const saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
+    <div className="w-full min-h-[100dvh] bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
       <div className="px-5 pt-8 pb-5">
         <p className="text-slate-400 text-sm">{saludo},</p>
         <h1 className="text-white text-2xl font-black">{primerNombre || 'bienvenido'} 👋</h1>
@@ -282,7 +282,7 @@ export default function InicioPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-x-2 gap-y-5">
+          <div className="grid grid-cols-2 gap-3 px-4">
             <RingStat
               label="Utilidad neta"
               value={`$${Math.round(utilidadNeta).toLocaleString('es-CO')}`}
@@ -367,7 +367,7 @@ export default function InicioPage() {
             <Users className="w-4 h-4 text-amber-400" />
             <h2 className="text-slate-400 text-xs font-bold uppercase tracking-wide">Empleados</h2>
           </div>
-          <div className="space-y-2">
+          <div className="w-full space-y-2">
             {sesiones.map((s, i) => (
               <motion.div
                 key={s.id}
@@ -418,7 +418,7 @@ function QuickLink({ icon: Icon, label, color, onClick }: { icon: any; label: st
   return (
     <button
       onClick={onClick}
-      className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4 flex items-center justify-between active:scale-[0.98] transition-transform"
+      className="w-full bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4 flex items-center justify-between active:scale-[0.98] transition-transform"
     >
       <div className="flex items-center gap-3">
         <div className={`w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center`}>

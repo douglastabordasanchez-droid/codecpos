@@ -1216,7 +1216,7 @@ ipcMain.handle('save-backup', async (_, { fileName, data }) => {
 
 ipcMain.handle('backup:save-safe', async (_, jsonString) => {
   try {
-    const result = backupManager.saveBackup(jsonString);
+    const result = await backupManager.saveBackup(jsonString);
     fileLogger.writeLog('INFO', `Backup blindado creado: ${result.fileName}`, { bytes: result.bytes });
     return { success: true, ...result };
   } catch (e) {
@@ -2417,7 +2417,7 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
 });
 
 // ── App Lifecycle ─────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // 🛡️ Caja negra: primera línea del día — usuario de Windows activo y si
   // arrancó sobre un perfil temporal (síntoma típico de "se me borró todo").
   fileLogger.logAppStart({ appVersion: app.getVersion(), platform: process.platform });
@@ -2428,8 +2428,9 @@ app.whenReady().then(() => {
   // software/deshabilitada. Sin esto, "puede ser la GPU" nunca deja de ser
   // una suposición — con esto, cada arranque deja constancia objetiva.
   try {
-    const gpuStatus = app.getGPUFeatureStatus();
-    fileLogger.writeLog('INFO', 'Estado de GPU al arrancar', { gpuStatus, safeModeActivo: gpuSafeModeActivo });
+    const compositingHabilitado = (status) => status?.gpu_compositing === 'enabled';
+    const primeraLectura = app.getGPUFeatureStatus();
+    fileLogger.writeLog('INFO', 'Estado de GPU al arrancar', { gpuStatus: primeraLectura, safeModeActivo: gpuSafeModeActivo });
 
     // 🛡️ FIX FLUIDEZ: si Chromium ya decidió por su cuenta que este equipo no
     // tiene compositing por hardware real (típico en iGPUs viejas tipo Intel
@@ -2442,13 +2443,26 @@ app.whenReady().then(() => {
     // anti-crash-loop (app.disableHardwareAcceleration() en el próximo
     // arranque) para que Chromium arranque directo en software, sin negociar
     // GPU — arranque más liviano y más CPU libre para pintar la UI a tiempo.
-    const compositingReal = gpuStatus?.gpu_compositing === 'enabled';
-    if (!compositingReal && !gpuSafeModeActivo) {
-      fileLogger.writeLog('WARN', 'GPU sin compositing por hardware real detectado — activando modo seguro de GPU para el próximo arranque (arranque más liviano)', { gpuStatus });
-      try { fs.writeFileSync(GPU_SAFE_MODE_FLAG, 'software-detected', 'utf8'); } catch { /* no-op */ }
-      app.relaunch();
-      app.exit(0);
-      return;
+    if (!compositingHabilitado(primeraLectura) && !gpuSafeModeActivo) {
+      // 🛡️ FIX FALSO POSITIVO (evidencia real: equipo con GPU perfectamente
+      // funcional en Chrome quedó con este modo activado ~7 semanas por una
+      // sola lectura mala). getGPUFeatureStatus() justo al arrancar puede leer
+      // el proceso de GPU antes de que termine de negociar compositing. Como
+      // 'software-detected' NUNCA se autolimpiaba (ver did-finish-load más
+      // abajo), una lectura temprana equivocada dejaba la app en software
+      // para siempre. Se confirma con una segunda lectura antes de comprometerse.
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      const segundaLectura = app.getGPUFeatureStatus();
+      fileLogger.writeLog('INFO', 'Segunda lectura de GPU (confirmación)', { gpuStatus: segundaLectura });
+
+      if (!compositingHabilitado(segundaLectura)) {
+        fileLogger.writeLog('WARN', 'GPU sin compositing por hardware real confirmado en 2 lecturas — activando modo seguro de GPU para el próximo arranque (arranque más liviano)', { primeraLectura, segundaLectura });
+        try { fs.writeFileSync(GPU_SAFE_MODE_FLAG, `software-detected:${Date.now()}`, 'utf8'); } catch { /* no-op */ }
+        app.relaunch();
+        app.exit(0);
+        return;
+      }
+      fileLogger.writeLog('INFO', 'Falso positivo de GPU descartado en la segunda lectura — se continúa con aceleración por hardware');
     }
   } catch (e) {
     fileLogger.writeLog('WARN', 'No se pudo leer el estado de GPU', { error: e.message });

@@ -187,6 +187,22 @@ export async function cancelarLicencia(licenciaId: string, motivo: string) {
   if (error) throw new Error(error.message);
 }
 
+export async function activarPruebaGratis(clienteId: string) {
+  const fechaInicio = new Date();
+  const fechaFin = new Date(fechaInicio.getTime() + 14 * 86_400_000);
+  const { error } = await cliente().from('clientes_pos').update({
+    plan: 'PREMIUM', duracion: '1_MES', fecha_activacion: fechaInicio.toISOString(),
+    fecha_expiracion: fechaFin.toISOString(), estado: 'ACTIVA', en_prueba: true,
+    dias_prueba_restantes: 14,
+  }).eq('id', clienteId);
+  if (error) throw new Error(error.message);
+}
+
+export async function actualizarModulosCliente(clienteId: string, modulos: string[]) {
+  const { error } = await cliente().from('clientes_pos').update({ modulos_activos: modulos }).eq('id', clienteId);
+  if (error) throw new Error(error.message);
+}
+
 export async function registrarLicencia(params: {
   clienteId: string; planCodigo: string; modalidad: string;
   promocionCodigo?: string; motivo?: string;

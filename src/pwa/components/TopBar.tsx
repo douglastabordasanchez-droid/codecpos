@@ -45,7 +45,7 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
 
   return (
     <>
-      <div className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80">
+      <div className="sticky top-0 z-30 w-full bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80 pt-[env(safe-area-inset-top)]">
         <div className="h-14 px-4 flex items-center justify-between">
           <button
             onClick={() => setMenuAbierto(true)}

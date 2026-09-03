@@ -1011,10 +1011,12 @@ export default function ProductosPage() {
                       const porcentajeStock = Math.min((producto.stock / producto.minStock) * 100, 100);
 
                       return (
-                        <motion.tr
+                        // 🚀 FIX rendimiento: era <motion.tr> con fade-in por fila — con
+                        // hasta 50 filas por página, cada cambio de filtro/página instanciaba
+                        // 50 animadores de Framer Motion a la vez. Una <tr> normal se ve igual
+                        // una vez cargada (era solo un fade-in de entrada) sin ese costo.
+                        <tr
                           key={producto.id}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
                           className={`transition-colors ${
                             darkMode ? 'hover:bg-slate-800/50' : 'hover:bg-gray-50'
                           } ${
@@ -1124,7 +1126,7 @@ export default function ProductosPage() {
                               </Button>
                             </div>
                           </td>
-                        </motion.tr>
+                        </tr>
                       );
                     })}
                   </tbody>

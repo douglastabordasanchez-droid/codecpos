@@ -158,6 +158,7 @@ export default function CierreCajaPage() {
 
   // Datos del sistema
   const [totalSistema, setTotalSistema] = useState(0);
+  const [totalPropinas, setTotalPropinas] = useState(0);
   const [desgloseSistema, setDesgloseSistema] = useState({
     efectivo: 0,
     tarjeta: 0,
@@ -410,6 +411,7 @@ export default function CierreCajaPage() {
         await calcularAbonosCarteraDelDia(sesionCajaId);
 
       setTotalSistema(stats.totalIngresos);
+      setTotalPropinas(Number(stats.totalPropinas) || 0);
       setDesgloseSistema({
         efectivo: stats.ventasPorMetodo.efectivo,
         tarjeta: stats.ventasPorMetodo.tarjeta,
@@ -1431,8 +1433,12 @@ export default function CierreCajaPage() {
                 <CardContent className="space-y-4">
                   {/* Total Sistema */}
                   <div className="p-4 bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-xl">
-                    <p className={`${darkMode ? 'text-blue-300' : 'text-blue-600'} text-sm font-semibold mb-1`}>TOTAL VENTAS</p>
+                    <p className={`${darkMode ? 'text-blue-300' : 'text-blue-600'} text-sm font-semibold mb-1`}>TOTAL RECAUDADO</p>
                     <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-3xl font-black`}>{formatCurrency(totalSistema)}</p>
+                    <div className={`mt-3 pt-3 border-t text-sm space-y-1 ${darkMode ? 'border-blue-400/20 text-blue-100' : 'border-blue-500/20 text-blue-700'}`}>
+                      <div className="flex justify-between"><span>Ventas de productos</span><span>{formatCurrency(Math.max(0, totalSistema - totalPropinas))}</span></div>
+                      <div className="flex justify-between"><span>Propinas</span><span>{formatCurrency(totalPropinas)}</span></div>
+                    </div>
                   </div>
 
                   <Separator className={darkMode ? 'bg-slate-700' : 'bg-gray-200'} />

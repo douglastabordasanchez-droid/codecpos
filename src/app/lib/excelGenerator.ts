@@ -21,6 +21,7 @@ interface Venta {
   }>;
   subtotal: number;
   iva: number;
+  propina?: number;
   total: number;
   metodoPago: string;
   cajero: string;
@@ -62,6 +63,7 @@ export const generarReporteVentasExcel = (
     ['Total Ingresos:', ventas.reduce((sum, v) => sum + v.total, 0)],
     ['Total IVA:', ventas.reduce((sum, v) => sum + v.iva, 0)],
     ['Total sin IVA:', ventas.reduce((sum, v) => sum + v.subtotal, 0)],
+    ['Total Propinas:', ventas.reduce((sum, v) => sum + (v.propina ?? 0), 0)],
   ];
 
   const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
@@ -69,7 +71,7 @@ export const generarReporteVentasExcel = (
 
   // ==================== HOJA 2: DETALLE DE VENTAS ====================
   const ventasData = [
-    ['Factura', 'Fecha', 'Hora', 'Cliente', 'Cajero', 'Método Pago', 'Subtotal', 'IVA', 'Total'],
+    ['Factura', 'Fecha', 'Hora', 'Cliente', 'Cajero', 'Método Pago', 'Subtotal', 'IVA', 'Propina / Tip', 'Total'],
     ...ventas.map(v => [
       v.numeroFactura,
       format(new Date(v.fecha), 'dd/MM/yyyy', { locale: es }),
@@ -79,6 +81,7 @@ export const generarReporteVentasExcel = (
       v.metodoPago.toUpperCase(),
       v.subtotal,
       v.iva,
+      v.propina ?? 0,
       v.total,
     ]),
   ];
@@ -88,7 +91,7 @@ export const generarReporteVentasExcel = (
   // Aplicar formato a números (columnas de dinero)
   const range = XLSX.utils.decode_range(wsVentas['!ref'] || 'A1');
   for (let R = 1; R <= range.e.r; ++R) {
-    for (let C = 6; C <= 8; ++C) {
+    for (let C = 6; C <= 9; ++C) {
       const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
       if (!wsVentas[cellAddress]) continue;
       wsVentas[cellAddress].z = '"$"#,##0.00';

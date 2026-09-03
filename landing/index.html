@@ -6,7 +6,7 @@
 <title>Codec POS — El sistema que pone todo tu negocio bajo control</title>
 <meta name="description" content="Codec POS es el ecosistema completo para administrar tu negocio: ventas, inventario, caja, reportes, facturación electrónica DIAN, Codec Verify y app móvil — funciona online y offline. Prueba 14 días gratis.">
 <meta name="author" content="Codec Studio">
-<link rel="canonical" href="https://codecstudio.online/">
+<link rel="canonical" href="https://codecpos.vercel.app/">
 <link rel="icon" href="./assets/favicon.ico">
 <link rel="apple-touch-icon" href="./assets/logo.png">
 <meta name="theme-color" content="#0F172A">
@@ -16,15 +16,15 @@
 <meta property="og:site_name" content="Codec POS">
 <meta property="og:title" content="Codec POS — El sistema que pone todo tu negocio bajo control">
 <meta property="og:description" content="Ventas, inventario, caja, reportes, facturación electrónica DIAN y confirmación automática de pagos — en un solo sistema que funciona online y offline. 14 días gratis.">
-<meta property="og:url" content="https://codecstudio.online/">
-<meta property="og:image" content="https://codecstudio.online/assets/dashboard-dark.webp">
+<meta property="og:url" content="https://codecpos.vercel.app/">
+<meta property="og:image" content="https://codecpos.vercel.app/assets/dashboard-dark.webp">
 <meta property="og:locale" content="es_CO">
 
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Codec POS — El sistema que pone todo tu negocio bajo control">
 <meta name="twitter:description" content="Ventas, inventario, caja, reportes, DIAN y Codec Verify — todo en un solo sistema, online y offline. 14 días gratis.">
-<meta name="twitter:image" content="https://codecstudio.online/assets/dashboard-dark.webp">
+<meta name="twitter:image" content="https://codecpos.vercel.app/assets/dashboard-dark.webp">
 
 <!-- Fuentes: preconnect para no bloquear el render -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,6 +47,27 @@
     { "@type": "Offer", "name": "Premium", "price": "79990", "priceCurrency": "COP", "priceValidUntil": "2027-12-31" }
   ],
   "publisher": { "@type": "Organization", "name": "Codec Studio" }
+}
+</script>
+
+<!-- Schema.org: FAQPage (para rich snippets en resultados de búsqueda) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "¿Qué es Codec POS?", "acceptedAnswer": { "@type": "Answer", "text": "Es un sistema de punto de venta que además incluye inventario, contabilidad, facturación electrónica DIAN y confirmación automática de pagos — todo integrado, para que no necesites contratar varios sistemas separados." } },
+    { "@type": "Question", "name": "¿Funciona sin internet?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. Puedes seguir vendiendo aunque se corte la conexión — cuando vuelve el internet, todo se sincroniza con respaldo en la nube." } },
+    { "@type": "Question", "name": "¿Cuánto dura la prueba gratuita?", "acceptedAnswer": { "@type": "Answer", "text": "14 días completos, sin necesidad de ingresar tarjeta de crédito." } },
+    { "@type": "Question", "name": "¿Necesito instalar algo?", "acceptedAnswer": { "@type": "Answer", "text": "Para tu punto de venta principal, sí — es una aplicación de escritorio pensada para funcionar de forma estable incluso sin internet. La app móvil no requiere instalación." } },
+    { "@type": "Question", "name": "¿Puedo usarlo desde el celular?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, con la app móvil de Codec POS (plan Premium) puedes operar tu negocio, no solo consultarlo." } },
+    { "@type": "Question", "name": "¿Puedo administrar varias tiendas?", "acceptedAnswer": { "@type": "Answer", "text": "Sí — desde un solo login puedes ver las métricas de todas tus tiendas vinculadas, disponible en el plan Premium." } },
+    { "@type": "Question", "name": "¿Qué diferencia hay entre Básico y Premium?", "acceptedAnswer": { "@type": "Answer", "text": "Básico cubre la operación esencial de un solo negocio con un módulo especializado. Premium suma usuarios ilimitados, varias sucursales, app móvil completa, Codec Verify, facturación electrónica DIAN y más de un módulo especializado." } },
+    { "@type": "Question", "name": "¿Puedo cancelar?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, sin permanencia forzada." } },
+    { "@type": "Question", "name": "¿Qué ocurre después de los 14 días?", "acceptedAnswer": { "@type": "Answer", "text": "Eliges el plan que mejor se ajuste a tu negocio para seguir usando Codec POS sin interrupciones." } },
+    { "@type": "Question", "name": "¿Puedo pasar de Básico a Premium?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, en cualquier momento que tu negocio lo necesite." } },
+    { "@type": "Question", "name": "¿Codec POS funciona con la DIAN?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, la facturación electrónica está preparada para trabajar con la DIAN — activarla solo requiere configurar la firma digital de tu negocio." } }
+  ]
 }
 </script>
 
@@ -630,6 +651,7 @@
     </div>
     <p>Un producto de <a href="#">Codec Studio</a></p>
     <p><a href="https://github.com/douglastabordasanchez-droid/codecpos/releases/latest" target="_blank" rel="noopener noreferrer" data-event="click_descargar" data-event-loc="footer">Descargar Codec POS para Windows</a></p>
+    <p><a href="/ciudades/" data-event="click_ciudades" data-event-loc="footer">Codec POS en tu ciudad</a></p>
     <p class="footer-copy">© <span id="year"></span> Codec Studio. Todos los derechos reservados.</p>
   </div>
 </footer>

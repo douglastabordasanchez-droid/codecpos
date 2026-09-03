@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Crown, Zap, Loader2, Tag, X } from 'lucide-react';
+import { Check, Crown, Zap, Loader2, Tag, X, MessageCircle, Smartphone } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
@@ -96,6 +96,12 @@ export default function PlanesPage() {
 
   const precioConDescuento = (precio: number): number =>
     codigoAplicado ? Math.round(precio * (1 - codigoAplicado.porcentaje / 100)) : precio;
+
+  const enviarComprobanteWhatsApp = () => {
+    const nombreNegocio = (empleado as any)?.nombre_negocio || (empleado as any)?.nombreNegocio || 'mi negocio';
+    const mensaje = `Hola, adjunto el comprobante de pago para la activación/renovación del negocio ${nombreNegocio} en Codec POS.`;
+    window.open(`https://wa.me/573238646844?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener,noreferrer');
+  };
 
   const handlePagar = async () => {
     if (!plan) return;
@@ -245,6 +251,13 @@ export default function PlanesPage() {
               <p className="text-center text-xs text-slate-500 mt-3">
                 Serás redirigido a Mercado Pago para completar el pago de forma segura.
               </p>
+              <div className="mt-5 rounded-xl border border-slate-700 bg-slate-900/80 p-4">
+                <div className="flex items-center gap-2 text-white font-semibold text-sm"><Smartphone className="w-4 h-4 text-fuchsia-400" /> Pago directo</div>
+                <p className="text-xs text-slate-400 mt-2">Nequi / Llave: <strong className="text-white tracking-wide">3112726359</strong></p>
+                <button onClick={enviarComprobanteWhatsApp} className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white">
+                  <MessageCircle className="w-4 h-4" /> Enviar comprobante de pago por WhatsApp
+                </button>
+              </div>
             </>
           )}
         </>

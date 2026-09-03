@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw } from 'lucide-react';
-import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios } from '../lib/adminApi';
+import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X } from 'lucide-react';
+import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaGratis, actualizarModulosCliente } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import {
   PageHeader, SectionCard, LoadingState, ErrorState, EstadoBadge, PlanBadge,
   formatoMoneda, formatoFecha, formatoFechaHora,
 } from '../components/ui';
+import { MODULOS_CATALOGO } from '../../app/lib/permissions';
 
 const MODALIDADES = ['MENSUAL', 'TRIMESTRAL', 'ANUAL', 'VITALICIA'];
 
@@ -41,9 +42,14 @@ export function ClienteDetallePage() {
   const [planes, setPlanes] = useState<Awaited<ReturnType<typeof listarPlanesConPrecios>> | null>(null);
   const [mostrarCambioPlan, setMostrarCambioPlan] = useState(false);
   const [nuevoPlan, setNuevoPlan] = useState({ planCodigo: '', modalidad: 'MENSUAL' });
+  const [mostrarModulos, setMostrarModulos] = useState(false);
+  const [modulos, setModulos] = useState<string[]>([]);
 
   const cargar = () => {
-    if (id) obtenerDetalleCliente(id).then(setDetalle).catch((e) => setError(e.message));
+    if (id) obtenerDetalleCliente(id).then((data) => {
+      setDetalle(data);
+      setModulos((data.cliente.modulos_activos as string[] | null) ?? []);
+    }).catch((e) => setError(e.message));
   };
 
   useEffect(cargar, [id]);
@@ -108,6 +114,31 @@ export function ClienteDetallePage() {
     }
   };
 
+  const handlePruebaGratis = async () => {
+    if (!id) return;
+    setProcesando(true);
+    try {
+      await activarPruebaGratis(id);
+      await registrarAuditoria('ACTIVAR_PRUEBA_14_DIAS', id, 'EXITO');
+      cargar();
+    } catch (e: any) {
+      alert('No se pudo activar la prueba: ' + e.message);
+    } finally { setProcesando(false); }
+  };
+
+  const guardarModulos = async () => {
+    if (!id) return;
+    setProcesando(true);
+    try {
+      await actualizarModulosCliente(id, modulos);
+      await registrarAuditoria('ACTUALIZAR_MODULOS', id, 'EXITO', { modulos });
+      setMostrarModulos(false);
+      cargar();
+    } catch (e: any) {
+      alert('No se pudieron guardar los módulos: ' + e.message);
+    } finally { setProcesando(false); }
+  };
+
   if (error) return <><PageHeader title="Cliente" /><ErrorState mensaje={error} /></>;
   if (!detalle) return <><PageHeader title="Cliente" /><LoadingState /></>;
 
@@ -124,13 +155,19 @@ export function ClienteDetallePage() {
         title={detalle.cliente.nombre_negocio}
         actions={
           !soloLectura ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setMostrarCambioPlan((v) => !v)}
                 disabled={procesando}
                 className="flex items-center gap-1.5 text-sm bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 rounded-lg px-3 py-2 disabled:opacity-50"
               >
                 <RefreshCw className="w-4 h-4" /> {lic ? 'Cambiar plan' : 'Activar licencia'}
+              </button>
+              <button onClick={handlePruebaGratis} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg px-3 py-2 disabled:opacity-50">
+                <Gift className="w-4 h-4" /> Activar prueba gratis (14 días)
+              </button>
+              <button onClick={() => setMostrarModulos((value) => !value)} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2 disabled:opacity-50">
+                <Check className="w-4 h-4" /> Activar / desactivar módulos
               </button>
               <button
                 onClick={handleAgregarSucursal}
@@ -186,6 +223,18 @@ export function ClienteDetallePage() {
               Confirmar
             </button>
           </div>
+        </SectionCard>
+      )}
+
+      {mostrarModulos && (
+        <SectionCard title="Módulos del cliente" className="mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {MODULOS_CATALOGO.filter((modulo) => modulo.categoria !== 'desarrollador').map((modulo) => {
+              const activo = modulos.includes(modulo.id);
+              return <button key={modulo.id} type="button" onClick={() => setModulos((actuales) => activo ? actuales.filter((id) => id !== modulo.id) : [...actuales, modulo.id])} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${activo ? 'border-slate-500 bg-slate-700 text-white' : 'border-slate-700 bg-slate-900 text-slate-300'}`}><span>{activo ? <Check className="w-4 h-4 text-emerald-300" /> : <X className="w-4 h-4 text-slate-500" />}</span><span>{modulo.nombre}</span></button>;
+            })}
+          </div>
+          <button onClick={guardarModulos} disabled={procesando} className="mt-4 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50">Guardar módulos</button>
         </SectionCard>
       )}
 

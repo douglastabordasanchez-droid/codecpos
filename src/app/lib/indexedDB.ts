@@ -164,6 +164,10 @@ export interface Venta {
   subtotal: number;
   iva?: number;
   descuento?: number;
+  /** Importe de propina realmente cobrado; nunca se recalcula para ventas históricas. */
+  propina?: number;
+  porcentajePropinaSugerido?: number;
+  propinaModificada?: boolean;
   total: number;
   metodoPago: string;
   metodosMultiples?: Array<{ metodo: string; monto: number }>;

@@ -983,12 +983,25 @@ export function LanProvider({ children }: { children: ReactNode }) {
 
   const cloudOnlineCount = cloudTerminals.filter(t => t.connected).length;
 
-  return (
-    <LanContext.Provider value={{
+  // 🚀 FIX rendimiento: este value se recreaba en cada render sin useMemo,
+  // forzando a TODO consumidor de useLanContext() (incluye la pantalla de
+  // venta) a re-renderizar en cada actualización de red/LAN, aunque el dato
+  // que ese consumidor usa no haya cambiado. Ver auditoría de rendimiento en curso.
+  const value = useMemo(
+    () => ({
       mode, connectionState, localIp, serverIp, terminals: terminalesUnificadas, allEvents,
       isAvailable, emitLanEvent, requestAudit, setServerIp, clearAudit,
       cloudAvailable, cloudEnabled, cloudState, cloudDetail, cloudOnlineCount, setCloudEnabled,
-    }}>
+    }),
+    [
+      mode, connectionState, localIp, serverIp, terminalesUnificadas, allEvents,
+      isAvailable, emitLanEvent, requestAudit, setServerIp, clearAudit,
+      cloudAvailable, cloudEnabled, cloudState, cloudDetail, cloudOnlineCount, setCloudEnabled,
+    ]
+  );
+
+  return (
+    <LanContext.Provider value={value}>
       {children}
     </LanContext.Provider>
   );

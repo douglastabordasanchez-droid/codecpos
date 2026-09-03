@@ -4,7 +4,7 @@
  * ✅ OPTIMIZADO: Sistema robusto de almacenamiento (IndexedDB + localStorage + Electron)
  */
 
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, ReactNode } from 'react';
 import { electronStore } from '../lib/electronStore';
 import { logger } from '../lib/logger';
 import UsuariosStorage from '../lib/usuariosStorage';
@@ -148,6 +148,28 @@ const STORAGE_KEY_SESION_ACTIVA = 'codecpos_sesion_activa';
 const STORAGE_KEY_CONFIG_INICIAL = 'codecpos_config_inicial';
 const STORAGE_KEY_CONFIG_CLIENTE = 'codecpos_config_cliente_completada';
 const MAX_USUARIOS = 5; // Máximo 5 usuarios por terminal
+
+// 🚀 FIX rendimiento: AuthContext es el contexto más consumido de toda la
+// app (sesión/permisos, usado en ProtectedLayout, sidebar y casi cada
+// pantalla). Su `value` era un objeto literal inline con ~15 funciones
+// recreadas en cada render — cualquier cambio de estado (sync LAN, refresco
+// de permisos, heartbeat de `ultimaActividad`) recreaba el objeto entero y
+// re-renderizaba TODO consumidor de useAuth(), aunque solo le importara un
+// campo que no cambió.
+//
+// Envolver el value en useMemo no alcanza por sí solo: si las funciones
+// siguen siendo un closure nuevo en cada render, seguirían siendo una
+// dependencia distinta cada vez y romperían la memoización igual. Este
+// helper les da una identidad ESTABLE para siempre (useCallback con []),
+// delegando a la versión más reciente vía un ref actualizado en
+// useLayoutEffect (antes del paint, así nunca puede ejecutar una versión
+// obsoleta) — no requiere tocar ni una línea de la lógica interna de cada
+// función (iniciarSesion, por ejemplo, tiene más de 400 líneas).
+function useStableCallback<T extends (...args: any[]) => any>(fn: T): T {
+  const ref = useRef(fn);
+  useLayoutEffect(() => { ref.current = fn; });
+  return useCallback(((...args: Parameters<T>) => ref.current(...args)) as T, []);
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -1258,38 +1280,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY_CONFIG_CLIENTE, JSON.stringify(true));
   };
 
+  // Identidad estable para siempre — ver useStableCallback arriba.
+  const stableActivarModoAdminTemporal = useStableCallback(activarModoAdminTemporal);
+  const stableDesactivarModoAdminTemporal = useStableCallback(desactivarModoAdminTemporal);
+  const stableRefrescarPermisosUsuario = useStableCallback(refrescarPermisosUsuario);
+  const stableIniciarSesion = useStableCallback(iniciarSesion);
+  const stableIniciarSesionStaff = useStableCallback(iniciarSesionStaff);
+  const stableSolicitarRecuperacionPassword = useStableCallback(solicitarRecuperacionPassword);
+  const stableRegistrarSesionRedLocal = useStableCallback(registrarSesionRedLocal);
+  const stableCerrarSesion = useStableCallback(cerrarSesion);
+  const stableCrearUsuario = useStableCallback(crearUsuario);
+  const stableActualizarUsuario = useStableCallback(actualizarUsuario);
+  const stableEliminarUsuario = useStableCallback(eliminarUsuario);
+  const stableCambiarPassword = useStableCallback(cambiarPassword);
+  const stableObtenerRegistrosSesionesPorUsuario = useStableCallback(obtenerRegistrosSesionesPorUsuario);
+  const stableCompletarConfiguracionInicial = useStableCallback(completarConfiguracionInicial);
+  const stableCompletarConfiguracionCliente = useStableCallback(completarConfiguracionCliente);
+
+  const value = useMemo(
+    () => ({
+      user: usuarioActual, // Alias para compatibilidad
+      usuarioActual,
+      sesionActiva,
+      usuarios,
+      registrosSesiones,
+      configuracionInicial,
+      configuracionClienteCompletada,
+      estaAutenticado,
+      esSuperUsuario,
+      esDesarrollador, // Nueva propiedad
+      modoAdminTemporalActivo,
+      logoutKey,
+      activarModoAdminTemporal: stableActivarModoAdminTemporal,
+      desactivarModoAdminTemporal: stableDesactivarModoAdminTemporal,
+      refrescarPermisosUsuario: stableRefrescarPermisosUsuario,
+      iniciarSesion: stableIniciarSesion,
+      iniciarSesionStaff: stableIniciarSesionStaff,
+      solicitarRecuperacionPassword: stableSolicitarRecuperacionPassword,
+      registrarSesionRedLocal: stableRegistrarSesionRedLocal,
+      cerrarSesion: stableCerrarSesion,
+      crearUsuario: stableCrearUsuario,
+      actualizarUsuario: stableActualizarUsuario,
+      eliminarUsuario: stableEliminarUsuario,
+      cambiarPassword: stableCambiarPassword,
+      obtenerRegistrosSesionesPorUsuario: stableObtenerRegistrosSesionesPorUsuario,
+      completarConfiguracionInicial: stableCompletarConfiguracionInicial,
+      completarConfiguracionCliente: stableCompletarConfiguracionCliente,
+    }),
+    [
+      usuarioActual, sesionActiva, usuarios, registrosSesiones, configuracionInicial,
+      configuracionClienteCompletada, estaAutenticado, esSuperUsuario, esDesarrollador,
+      modoAdminTemporalActivo, logoutKey,
+      stableActivarModoAdminTemporal, stableDesactivarModoAdminTemporal, stableRefrescarPermisosUsuario,
+      stableIniciarSesion, stableIniciarSesionStaff, stableSolicitarRecuperacionPassword,
+      stableRegistrarSesionRedLocal, stableCerrarSesion, stableCrearUsuario, stableActualizarUsuario,
+      stableEliminarUsuario, stableCambiarPassword, stableObtenerRegistrosSesionesPorUsuario,
+      stableCompletarConfiguracionInicial, stableCompletarConfiguracionCliente,
+    ]
+  );
+
   return (
-    <AuthContext.Provider
-      value={{
-        user: usuarioActual, // Alias para compatibilidad
-        usuarioActual,
-        sesionActiva,
-        usuarios,
-        registrosSesiones,
-        configuracionInicial,
-        configuracionClienteCompletada,
-        estaAutenticado,
-        esSuperUsuario,
-        esDesarrollador, // Nueva propiedad
-        modoAdminTemporalActivo,
-        logoutKey,
-        activarModoAdminTemporal,
-        desactivarModoAdminTemporal,
-        refrescarPermisosUsuario,
-        iniciarSesion,
-        iniciarSesionStaff,
-        solicitarRecuperacionPassword,
-        registrarSesionRedLocal,
-        cerrarSesion,
-        crearUsuario,
-        actualizarUsuario,
-        eliminarUsuario,
-        cambiarPassword,
-        obtenerRegistrosSesionesPorUsuario,
-        completarConfiguracionInicial,
-        completarConfiguracionCliente,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

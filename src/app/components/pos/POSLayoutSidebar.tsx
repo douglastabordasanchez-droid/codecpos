@@ -126,6 +126,11 @@ export default function POSLayoutSidebar() {
   // Estado de pantalla completa
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  useEffect(() => {
+    const licenciaVencida = planInfo.estado === 'EXPIRADA' || planInfo.estado === 'VENCIDA';
+    if (licenciaVencida && location.pathname !== '/planes') navigate('/planes', { replace: true });
+  }, [location.pathname, navigate, planInfo.estado]);
+
   // Verificar estado de fullscreen al montar
   useEffect(() => {
     const checkFullscreen = async () => {

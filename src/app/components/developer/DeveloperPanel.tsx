@@ -138,7 +138,7 @@ export function DeveloperPanel() {
     plan: 'BASICO' as 'BASICO' | 'PREMIUM',
     duracion: '1_ANO' as '1_MES' | '3_MESES' | '1_ANO' | 'VITALICIA',
     activarPrueba: false,
-    diasPrueba: 7,
+    diasPrueba: 14,
   });
   const [modulosSeleccionados, setModulosSeleccionados] = useState<Set<ModuloPOS>>(new Set());
 
@@ -269,7 +269,7 @@ export function DeveloperPanel() {
   };
 
   const resetForm = () => {
-    setFormData({ nombreNegocio: '', nit: '', contacto: '', telefono: '', email: '', usuario: '', contraseña: '', plan: 'BASICO', duracion: '1_ANO', activarPrueba: false, diasPrueba: 7 });
+    setFormData({ nombreNegocio: '', nit: '', contacto: '', telefono: '', email: '', usuario: '', contraseña: '', plan: 'BASICO', duracion: '1_ANO', activarPrueba: false, diasPrueba: 14 });
     setEditingCliente(null);
     setModulosSeleccionados(new Set(construirModulosPorPlan('BASICO')));
   };
@@ -280,7 +280,7 @@ export function DeveloperPanel() {
       nombreNegocio: cliente.nombreNegocio, nit: cliente.nit, contacto: cliente.contacto,
       telefono: cliente.telefono, email: cliente.email, usuario: cliente.usuario,
       contraseña: cliente.contraseña, plan: cliente.plan, duracion: cliente.duracion,
-      activarPrueba: cliente.enPrueba || false, diasPrueba: cliente.diasPruebaRestantes || 7,
+      activarPrueba: cliente.enPrueba || false, diasPrueba: cliente.diasPruebaRestantes || 14,
     });
     setModulosSeleccionados(
       cliente.modulosActivos ? new Set(cliente.modulosActivos as ModuloPOS[]) : new Set(construirModulosPorPlan(cliente.plan))
@@ -1069,7 +1069,7 @@ export function DeveloperPanel() {
                             key={modulo.id}
                             type="button"
                             onClick={() => setModulosSeleccionados(prev => { const n = new Set(prev); if (n.has(modulo.id)) n.delete(modulo.id); else n.add(modulo.id); return n; })}
-                            className={`text-left px-2.5 py-2 rounded-md border text-sm transition ${activo ? darkMode ? 'border-emerald-500 bg-emerald-900/20 text-emerald-300' : 'border-emerald-500 bg-emerald-50 text-emerald-800' : darkMode ? 'border-slate-600 text-gray-200 hover:bg-slate-700/50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                            className={`text-left px-2.5 py-2 rounded-md border text-sm transition ${activo ? darkMode ? 'border-emerald-400 bg-emerald-700/45 text-white' : 'border-emerald-400 bg-emerald-50 text-slate-900' : darkMode ? 'border-slate-600 text-gray-200 hover:bg-slate-700/50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                           >
                             <span className="mr-1.5">{activo ? '☑' : '☐'}</span>
                             <span className="mr-1">{modulo.icono}</span>
@@ -1105,8 +1105,8 @@ export function DeveloperPanel() {
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
-                          <Label className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Días de Prueba</Label>
-                          <Input type="number" min="1" max="90" value={formData.diasPrueba} onChange={e => setFormData({ ...formData, diasPrueba: Math.max(1, Math.min(90, parseInt(e.target.value) || 7)) })} className={darkMode ? 'bg-slate-700 border-slate-600 text-white' : ''} />
+                          <Label className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Duración</Label>
+                          <div className={`h-10 px-3 rounded-md border flex items-center text-sm ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-100 border-gray-300'}`}>14 días exactos</div>
                         </div>
                         <div className="space-y-1.5">
                           <Label className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Expira el</Label>
@@ -1114,13 +1114,6 @@ export function DeveloperPanel() {
                             {new Date(Date.now() + formData.diasPrueba * 86_400_000).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
                           </div>
                         </div>
-                      </div>
-                      <div className="flex gap-2">
-                        {[3, 7, 15, 30].map(d => (
-                          <button key={d} type="button" onClick={() => setFormData({ ...formData, diasPrueba: d })} className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-all ${formData.diasPrueba === d ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow' : darkMode ? 'bg-slate-600 text-gray-300 hover:bg-slate-500' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                            {d}d
-                          </button>
-                        ))}
                       </div>
                     </div>
                   )}

@@ -1,0 +1,101 @@
+﻿Código;Nombre;Stock;Costo;Precio;Categoría;MinStock;FechaVencimiento;TipoProducto;EsBulto;PesoBultoKg;PrecioPorKilo;RendimientoRaciones;Lote;Especie;RequiereReceta
+ALP001;Concentrado Dog Chow Adulto (bulto);14;115500;170000;Alimentos para Perros;4;2027-11-20;Granel-Alimento;SI;25;6800;90;;Perro;NO
+ALP002;Concentrado Pedigree Cachorro (bulto);17;102500;151000;Alimentos para Perros;4;2027-07-05;Granel-Alimento;SI;21;7200;75;;Perro;NO
+ALP003;Concentrado Purina Pro Plan Raza Pequeña (bulto);5;100000;147000;Alimentos para Perros;3;2026-04-28;Granel-Alimento;SI;15;9800;55;;Perro;NO
+ALP004;Concentrado Ringo Adulto (bulto);16;78000;114500;Alimentos para Perros;4;2027-05-08;Granel-Alimento;SI;22;5200;85;;Perro;NO
+ALP005;Concentrado Nutrican Cachorro (bulto);6;79000;116000;Alimentos para Perros;3;2027-11-24;Granel-Alimento;SI;20;5800;78;;Perro;NO
+ALP006;Dog Chow Adulto Bolsa x8kg;19;46200;68000;Alimentos para Perros;5;2026-11-02;Físico;;;;;;Perro;NO
+ALP007;Pedigree Adulto Razas Pequeñas x3kg;26;28600;42000;Alimentos para Perros;7;2027-10-04;Físico;;;;;;Perro;NO
+ALP008;Purina One Adulto x8kg;17;53700;79000;Alimentos para Perros;4;2027-01-08;Físico;;;;;;Perro;NO
+ALP009;Royal Canin Medium Adult x15kg;20;193800;285000;Alimentos para Perros;5;2027-04-15;Físico;;;;;;Perro;NO
+ALP010;Hill's Science Diet Cachorro x7.5kg;10;132600;195000;Alimentos para Perros;3;2027-07-19;Físico;;;;;;Perro;NO
+ALP011;Comida Húmeda Pedigree Lata x374g;24;5800;8500;Alimentos para Perros;6;2027-10-07;Físico;;;;;;Perro;NO
+ALG001;Whiskas Adulto x1kg;27;12600;18500;Alimentos para Gatos;7;2026-12-04;Físico;;;;;;Gato;NO
+ALG002;Cat Chow Adulto x8kg;27;60500;89000;Alimentos para Gatos;7;2026-01-14;Físico;;;;;;Gato;NO
+ALG003;Friskies Adulto x7kg;10;49000;72000;Alimentos para Gatos;3;2026-12-07;Físico;;;;;;Gato;NO
+ALG004;Purina Pro Plan Gato Esterilizado x7.5kg;16;114200;168000;Alimentos para Gatos;4;2027-09-17;Físico;;;;;;Gato;NO
+ALG005;Royal Canin Gato Indoor x7.5kg;26;142800;210000;Alimentos para Gatos;7;2027-08-03;Físico;;;;;;Gato;NO
+ALG006;Concentrado Ringo Gato (bulto);9;76000;112000;Alimentos para Gatos;3;2026-11-28;Granel-Alimento;SI;20;5600;80;;Gato;NO
+ALG007;Whiskas Sobre Alimento Húmedo x85g;15;2200;3200;Alimentos para Gatos;4;2027-03-12;Físico;;;;;;Gato;NO
+ALG008;Friskies Pouch Salmón x85g;11;2300;3400;Alimentos para Gatos;3;2026-02-10;Físico;;;;;;Gato;NO
+ALG009;Cat Chow Gatitos x1.5kg;21;18400;27000;Alimentos para Gatos;5;2027-06-11;Físico;;;;;;Gato;NO
+ALG010;Purina Fancy Feast Lata x85g;17;4200;6200;Alimentos para Gatos;4;2027-05-01;Físico;;;;;;Gato;NO
+MED001;Ivermectina Inyectable 50ml;33;19200;32000;Medicamentos Veterinarios;8;2026-10-05;Físico;;;;;L7138;Generales;SI
+MED002;Amoxicilina Suspensión 60ml;26;12600;21000;Medicamentos Veterinarios;7;2027-08-14;Físico;;;;;L4757;Generales;SI
+MED003;Meloxicam Inyectable 20ml;17;16800;28000;Medicamentos Veterinarios;4;2026-04-16;Físico;;;;;L3603;Generales;SI
+MED004;Dexametasona Inyectable 50ml;40;11700;19500;Medicamentos Veterinarios;10;2027-08-03;Físico;;;;;L9580;Generales;SI
+MED005;Suero Fisiológico 500ml;28;5900;9800;Medicamentos Veterinarios;7;2027-02-03;Físico;;;;;L8481;Generales;NO
+MED006;Vitaminas AD3E Inyectable 100ml;30;14400;24000;Medicamentos Veterinarios;8;2026-10-19;Físico;;;;;L8802;Generales;NO
+MED007;Desparasitante Drontal Plus x2 Tab;20;15900;26500;Medicamentos Veterinarios;5;2026-06-02;Físico;;;;;L9139;Generales;NO
+MED008;Antibiótico Enrofloxacina 50ml;20;13800;23000;Medicamentos Veterinarios;5;2027-07-02;Físico;;;;;L1817;Generales;SI
+MED009;Vacuna Antirrábica Unidosis;26;10800;18000;Medicamentos Veterinarios;7;2026-12-01;Físico;;;;;L9537;Generales;SI
+MED010;Vacuna Quíntuple Canina;39;27000;45000;Medicamentos Veterinarios;10;2027-08-15;Físico;;;;;L5145;Perro;SI
+ACC001;Comedero Doble Acero Inoxidable;23;17600;32000;Accesorios para Mascotas;6;;Físico;;;;;;Generales;NO
+ACC002;Bebedero Automático 2L;16;24800;45000;Accesorios para Mascotas;4;;Físico;;;;;;Generales;NO
+ACC003;Plato Antivoraz para Perro;15;15400;28000;Accesorios para Mascotas;4;;Físico;;;;;;Perro;NO
+ACC004;Rascador para Gato Torre;12;66000;120000;Accesorios para Mascotas;3;;Físico;;;;;;Gato;NO
+ACC005;Bozal de Tela Talla M;18;12100;22000;Accesorios para Mascotas;5;;Físico;;;;;;Perro;NO
+ACC006;Escalera para Mascotas;35;35800;65000;Accesorios para Mascotas;9;;Físico;;;;;;Generales;NO
+ACC007;Impermeable para Perro Talla S;26;20900;38000;Accesorios para Mascotas;7;;Físico;;;;;;Perro;NO
+ACC008;Bandeja para Cachorros con Rejilla;16;30300;55000;Accesorios para Mascotas;4;;Físico;;;;;;Perro;NO
+JUG001;Pelota de Goma con Sonido;36;6000;12000;Juguetes;9;;Físico;;;;;;Perro;NO
+JUG002;Hueso de Nylon para Morder;23;7500;15000;Juguetes;6;;Físico;;;;;;Perro;NO
+JUG003;Cuerda de Algodón Trenzada;36;4800;9500;Juguetes;9;;Físico;;;;;;Perro;NO
+JUG004;Ratón de Peluche con Catnip;42;3800;7500;Juguetes;11;;Físico;;;;;;Gato;NO
+JUG005;Frisbee para Perro;22;7000;14000;Juguetes;6;;Físico;;;;;;Perro;NO
+JUG006;Juguete Interactivo Dispensador de Premios;16;21000;42000;Juguetes;4;;Físico;;;;;;Perro;NO
+JUG007;Varita con Plumas para Gato;31;5500;11000;Juguetes;8;;Físico;;;;;;Gato;NO
+JUG008;Kong Clásico Talla M;38;27500;55000;Juguetes;10;;Físico;;;;;;Perro;NO
+HIG001;Shampoo Antipulgas para Perro 500ml;24;13200;24000;Higiene y Cuidado;6;;Físico;;;;;;Perro;NO
+HIG002;Shampoo Hipoalergénico para Gato 500ml;16;14300;26000;Higiene y Cuidado;4;;Físico;;;;;;Gato;NO
+HIG003;Cepillo Deslanador;26;9900;18000;Higiene y Cuidado;7;;Físico;;;;;;Generales;NO
+HIG004;Cortauñas para Mascotas;29;7400;13500;Higiene y Cuidado;7;;Físico;;;;;;Generales;NO
+HIG005;Toallitas Húmedas para Mascotas x80;15;8800;16000;Higiene y Cuidado;4;;Físico;;;;;;Generales;NO
+HIG006;Colonia para Perro 250ml;12;10500;19000;Higiene y Cuidado;3;;Físico;;;;;;Perro;NO
+HIG007;Servicio de Baño y Corte (Grooming);999;0;38000;Higiene y Cuidado;0;;Servicio;;;;;;Generales;NO
+HIG008;Servicio de Corte de Uñas;999;0;12000;Higiene y Cuidado;0;;Servicio;;;;;;Generales;NO
+SUP001;Omega 3 para Piel y Pelaje x60 Cap;13;26100;45000;Suplementos;3;;Físico;;;;;;Generales;NO
+SUP002;Condroprotector Articular x30 Tab;12;30200;52000;Suplementos;3;;Físico;;;;;;Perro;NO
+SUP003;Probiótico Digestivo Polvo x100g;17;19700;34000;Suplementos;4;;Físico;;;;;;Generales;NO
+SUP004;Multivitamínico Cachorro x30 Tab;13;16800;29000;Suplementos;3;;Físico;;;;;;Perro;NO
+SUP005;Calcio para Aves x100ml;22;9900;17000;Suplementos;6;;Físico;;;;;;Aves;NO
+SUP006;Suplemento para Muda de Pelo x200g;14;18000;31000;Suplementos;4;;Físico;;;;;;Gato;NO
+SNK001;Galletas Pedigree Dentastix x7 Un;21;8000;14500;Snacks y Premios;5;;Físico;;;;;;Perro;NO
+SNK002;Premios Whiskas Temptations x85g;26;5400;9800;Snacks y Premios;7;;Físico;;;;;;Gato;NO
+SNK003;Huesos de Cuero Prensado x5 Un;30;8800;16000;Snacks y Premios;8;;Físico;;;;;;Perro;NO
+SNK004;Snacks de Pollo Deshidratado x100g;21;7200;13000;Snacks y Premios;5;;Físico;;;;;;Generales;NO
+SNK005;Premios de Entrenamiento Ringo x200g;45;6100;11000;Snacks y Premios;11;;Físico;;;;;;Perro;NO
+SNK006;Barritas de Salmón para Gato x50g;20;4700;8500;Snacks y Premios;5;;Físico;;;;;;Gato;NO
+SNK007;Snacks Dentales para Gato x40g;47;5800;10500;Snacks y Premios;12;;Físico;;;;;;Gato;NO
+SNK008;Croquetas Premio Freeze Dried x100g;22;12100;22000;Snacks y Premios;6;;Físico;;;;;;Generales;NO
+CAM001;Cama Ortopédica para Perro Talla L;17;70200;135000;Camas y Transportadoras;4;;Físico;;;;;;Perro;NO
+CAM002;Cama Redonda para Gato;10;35400;68000;Camas y Transportadoras;3;;Físico;;;;;;Gato;NO
+CAM003;Transportadora Plástica Talla M;18;49400;95000;Camas y Transportadoras;5;;Físico;;;;;;Generales;NO
+CAM004;Transportadora de Tela Talla S;12;32200;62000;Camas y Transportadoras;3;;Físico;;;;;;Generales;NO
+CAM005;Colchoneta Impermeable para Mascota;12;23400;45000;Camas y Transportadoras;3;;Físico;;;;;;Generales;NO
+CAM006;Casa de Madera para Exteriores;15;114400;220000;Camas y Transportadoras;4;;Físico;;;;;;Perro;NO
+COL001;Collar Antipulgas para Perro;23;13000;26000;Collares y Correas;6;;Físico;;;;;;Perro;NO
+COL002;Collar Ajustable con Hebilla Talla M;29;9000;18000;Collares y Correas;7;;Físico;;;;;;Perro;NO
+COL003;Correa Retráctil 5m;30;24000;48000;Collares y Correas;8;;Físico;;;;;;Perro;NO
+COL004;Arnés Acolchado Talla S;29;17000;34000;Collares y Correas;7;;Físico;;;;;;Perro;NO
+COL005;Correa de Cuero Talla L;23;26000;52000;Collares y Correas;6;;Físico;;;;;;Perro;NO
+COL006;Collar Isabelino Talla M;21;10500;21000;Collares y Correas;5;;Físico;;;;;;Generales;NO
+COL007;Placa de Identificación Grabada;27;7500;15000;Collares y Correas;7;;Físico;;;;;;Generales;NO
+COL008;Pechera Antitirón Talla M;31;19500;39000;Collares y Correas;8;;Físico;;;;;;Perro;NO
+OTR001;Alimento para Conejo x2kg;24;13200;22000;Otros Animales;6;;Físico;;;;;;Generales;NO
+OTR002;Alimento para Hámster x1kg;16;8400;14000;Otros Animales;4;;Físico;;;;;;Generales;NO
+OTR003;Heno Timothy para Roedores x500g;10;10800;18000;Otros Animales;3;;Físico;;;;;;Generales;NO
+OTR004;Alimento para Tortuga Acuática x100g;11;7500;12500;Otros Animales;3;;Físico;;;;;;Generales;NO
+OTR005;Bebedero para Jaula de Aves;24;5700;9500;Otros Animales;6;;Físico;;;;;;Aves;NO
+OTR006;Consulta General Veterinaria;999;0;45000;Otros Animales;0;;Servicio;;;;;;Generales;NO
+ANT001;Pipeta Antipulgas para Perro Frontline;18;18600;32000;Antipulgas y Garrapatas;5;;Físico;;;;;;Perro;NO
+ANT002;Pipeta Antipulgas para Gato Advantage;19;16800;29000;Antipulgas y Garrapatas;5;;Físico;;;;;;Gato;NO
+ANT003;Collar Antipulgas Seresto;24;49300;85000;Antipulgas y Garrapatas;6;;Físico;;;;;;Perro;NO
+ANT004;Spray Antipulgas para Ambientes 500ml;23;15700;27000;Antipulgas y Garrapatas;6;;Físico;;;;;;Generales;NO
+ANT005;Tableta Antipulgas Bravecto;23;39400;68000;Antipulgas y Garrapatas;6;;Físico;;;;;;Perro;NO
+ARE001;Arenero Cerrado con Filtro;19;52300;95000;Areneros;5;;Físico;;;;;;Gato;NO
+ARE002;Arena Sanitaria Aglomerante x10kg;8;17600;32000;Areneros;3;;Físico;;;;;;Gato;NO
+ARE003;Pala para Arenero de Gato;13;4700;8500;Areneros;3;;Físico;;;;;;Gato;NO
+PEC001;Pecera de Vidrio 20L;12;41300;75000;Peceras y Acuarios;3;;Físico;;;;;;Generales;NO
+PEC002;Filtro para Acuario Interno;8;20900;38000;Peceras y Acuarios;3;;Físico;;;;;;Generales;NO
+PEC003;Alimento para Peces en Hojuelas x100g;13;5200;9500;Peceras y Acuarios;3;;Físico;;;;;;Generales;NO

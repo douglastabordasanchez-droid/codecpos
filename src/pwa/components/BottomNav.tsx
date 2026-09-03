@@ -5,6 +5,7 @@ import { Home, Receipt, DollarSign, Bell, Coffee, Wrench, Lock, Package, User, W
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { MENU_INFERIOR_CATALOGO, type MenuInferiorItemId } from '../../app/lib/menuInferiorCatalogo';
+import { ModuloPOS } from '../../app/lib/permissions';
 import { SideMenu } from './SideMenu';
 import logo from '/logo.png';
 
@@ -55,7 +56,10 @@ export function BottomNav() {
       .filter((item) => item && (!item.moduloRequerido || tieneModulo(item.moduloRequerido)));
 
   const izquierda = resolverLado(menuInferior.izquierda);
-  const derecha = resolverLado(menuInferior.derecha);
+  const derechaConfigurada = resolverLado(menuInferior.derecha);
+  const derecha = derechaConfigurada.some((item) => item.id === 'nuevo_producto') || !tieneModulo(ModuloPOS.PRODUCTOS)
+    ? derechaConfigurada
+    : [...derechaConfigurada, MENU_INFERIOR_CATALOGO.nuevo_producto];
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `flex flex-col items-center gap-1 py-3 px-2 min-w-0 flex-1 ${isActive ? 'text-amber-400' : 'text-slate-500'}`;
@@ -80,7 +84,7 @@ export function BottomNav() {
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 flex items-center justify-around px-1 pb-[env(safe-area-inset-bottom)] z-40">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 w-full bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 flex items-center justify-around px-1 pb-[env(safe-area-inset-bottom)]">
         {izquierda.map(renderItem)}
 
         {soloLectura ? (

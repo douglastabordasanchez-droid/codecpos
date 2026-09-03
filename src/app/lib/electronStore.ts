@@ -142,6 +142,10 @@ export interface EstadisticasDia {
   totalTransacciones?: number;
   totalIngresosBrutos?: number;
   totalIngresos: number;
+  /** Dinero cobrado por productos, excluye propinas. */
+  totalVentasProductos?: number;
+  /** Propinas recibidas, separadas de la venta de productos. */
+  totalPropinas?: number;
   totalCostos: number;
   utilidadProductos?: number;
   utilidadVentasDevueltas?: number;
@@ -673,6 +677,7 @@ class ElectronStoreService {
 
     let totalIngresos = 0;
     let totalIngresosBrutos = 0;
+    let totalPropinas = 0;
     let totalCostos = 0;
     let utilidadProductos = 0;
     let utilidadVentasDevueltas = 0;
@@ -704,8 +709,10 @@ class ElectronStoreService {
     for (const venta of ventasNeteables) {
       // Asegurar que total es un número
       const total = Number(venta.total) || 0;
+      const propina = Math.max(0, Number((venta as any).propina) || 0);
       totalIngresos += total;
       totalIngresosBrutos += total;
+      totalPropinas += propina;
 
       // Calcular costos
       for (const item of venta.items) {
@@ -866,7 +873,7 @@ class ElectronStoreService {
     }
 
     // ✅ Utilidad Neta = Ingresos - Costos - Gastos
-    const utilidadNeta = totalIngresos - totalCostos - totalGastos;
+    const utilidadNeta = (totalIngresos - totalPropinas) - totalCostos - totalGastos;
 
     const estadisticas: EstadisticasDia = {
       fecha: hoy,
@@ -875,6 +882,8 @@ class ElectronStoreService {
       totalVentas: Math.max(0, ventasNeteables.length - devoluciones.length),
       totalIngresosBrutos,
       totalIngresos,
+      totalVentasProductos: Math.max(0, totalIngresos - totalPropinas),
+      totalPropinas,
       totalCostos,
       utilidadProductos,
       utilidadVentasDevueltas,
@@ -1063,7 +1072,11 @@ class ElectronStoreService {
 
   async obtenerDevolucionesDelDia(filtro?: FiltroDashboard): Promise<DevolucionDia[]> {
     try {
-      const devoluciones = JSON.parse(localStorage.getItem('codecpos_devoluciones') || '[]');
+      // 🚀 FIX rendimiento: mismo patrón que getLSCached en otros lados de
+      // este archivo — evita reparsear 'codecpos_devoluciones' completo en
+      // cada llamada (Dashboard/Contabilidad la disparan seguido) cuando no
+      // ha cambiado desde la última lectura.
+      const devoluciones = this.getLSCached<DevolucionDia[]>('codecpos_devoluciones', []);
       const hoy = this.getFechaLocalISO();
       const ultimoCierreTs = Number(localStorage.getItem('pos_ultimo_cierre_ts') || 0);
       const inicioCalendario = new Date(`${hoy}T00:00:00`).getTime();
@@ -1110,7 +1123,7 @@ class ElectronStoreService {
 
   async obtenerDevolucionesPorRango(inicio: Date, fin: Date, filtro?: FiltroDashboard): Promise<DevolucionDia[]> {
     try {
-      const devoluciones = JSON.parse(localStorage.getItem('codecpos_devoluciones') || '[]');
+      const devoluciones = this.getLSCached<DevolucionDia[]>('codecpos_devoluciones', []);
       const inicioTs = inicio.getTime();
       const finTs = fin.getTime();
 
@@ -1451,7 +1464,22 @@ class ElectronStoreService {
       }
     }
 
+    // 📏 Decisión tomada (auditoría de rendimiento 2026-08-27): esta escritura
+    // se queda SÍNCRONA a propósito. El stock que se está descontando aquí es
+    // justo el dato crítico de "Blindaje Ventas" — diferirla (idle callback,
+    // microtask) arriesgaría perder el descuento de inventario de esta venta
+    // si la app se cierra justo después de cobrar, y `pos-productos` ya se
+    // evaluó como fuera de alcance para un rediseño de almacenamiento (lo
+    // leen/escriben ~20 archivos fuera de electronStore.ts — ver auditoría de
+    // 2026-08-17): tocar solo esta escritura sin tocar esos ~20 sitios no
+    // resuelve el problema de fondo y sí introduce riesgo de inconsistencia.
+    // El log de tiempo se queda como diagnóstico permanente (barato, usa
+    // `logger` que ya bufferiza — no console.*, que vite.config.ts elimina en
+    // producción) para detectar si este costo crece con catálogos grandes.
+    const __t0 = performance.now();
     this.escribirProductosLS(productos);
+    const __ms = performance.now() - __t0;
+    logger.info(`[perf] escribirProductosLS: ${__ms.toFixed(1)}ms para ${productos.length} productos`);
     this.setLSCached('pos-ingredientes-inventario', ingredientes);
     this.setLS(
       'codecpos_stock_movements',
@@ -1748,12 +1776,14 @@ class ElectronStoreService {
     return (await dbManager.getAllVentas()) as unknown as Venta[];
   }
 
+  // 🚀 FIX rendimiento: antes traía TODA la tabla de ventas (getAllVentas,
+  // escaneo completo) y filtraba en JS por fecha — se repetía en cada clic
+  // de los filtros rápidos de fecha (Hoy/Semana/Mes/Todo...) en Contabilidad,
+  // Dashboard y Reportes. Ya existía el índice 'fecha' en IndexedDB sin usar
+  // (ver dbManager.getVentasByDateRange) — ahora se usa ese índice con
+  // IDBKeyRange, que resuelve el mismo rango sin leer las ventas fuera de él.
   async obtenerVentasPorRango(inicio: Date, fin: Date): Promise<Venta[]> {
-    const ventas = await this.obtenerTodasLasVentas();
-    return ventas.filter(v => {
-      const fechaVenta = new Date(v.fecha);
-      return fechaVenta >= inicio && fechaVenta <= fin;
-    });
+    return (await dbManager.getVentasByDateRange(inicio.toISOString(), fin.toISOString())) as unknown as Venta[];
   }
 
   async guardarArqueoCaja(arqueo: any): Promise<void> {

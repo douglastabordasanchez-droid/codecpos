@@ -18,12 +18,16 @@ interface Desglose {
   otro: number;
 }
 
+type DesglosePropinas = Record<keyof Desglose, number>;
+
 const DESGLOSE_VACIO: Desglose = { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0, mixto: 0, otro: 0 };
 
 const METODOS_LABEL: Record<keyof Desglose, string> = {
   efectivo: 'Efectivo', tarjeta: 'Tarjeta', nequi: 'Nequi', daviplata: 'Daviplata',
   transferencia: 'Transferencia', rappi: 'Rappi', mixto: 'Mixto', otro: 'Otro',
 };
+
+const PROPINA_VACIA: DesglosePropinas = { efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, rappi: 0, mixto: 0, otro: 0 };
 
 /** Mismo desglose que ya calcula y guarda Electron (ver syncService.ts → `detalle.desglose`) — así el historial se lee igual en las dos plataformas. */
 function calcularDesglose(ventas: { total: number; metodo_pago: string | null }[]): Desglose {
@@ -37,6 +41,17 @@ function calcularDesglose(ventas: { total: number; metodo_pago: string | null }[
   return d;
 }
 
+function calcularPropinas(ventas: { propina?: number; metodo_pago: string | null }[]): DesglosePropinas {
+  const propinas = { ...PROPINA_VACIA };
+  for (const venta of ventas) {
+    const metodo = String(venta.metodo_pago || '').toLowerCase();
+    const valor = Number(venta.propina) || 0;
+    if (metodo in propinas) propinas[metodo as keyof Desglose] += valor;
+    else propinas.otro += valor;
+  }
+  return propinas;
+}
+
 interface CierreFila {
   id: string;
   fecha_apertura: string | null;
@@ -45,7 +60,7 @@ interface CierreFila {
   monto_cierre: number;
   ventas_total: number;
   diferencia: number;
-  detalle: { desglose?: Partial<Desglose> } | null;
+  detalle: { desglose?: Partial<Desglose>; propinas?: Partial<DesglosePropinas> } | null;
 }
 
 const TERMINAL_ID = 'PWA';
@@ -66,6 +81,7 @@ export default function CierreCajaPage() {
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [desglosePreview, setDesglosePreview] = useState<Desglose | null>(null);
+  const [propinasPreview, setPropinasPreview] = useState<DesglosePropinas | null>(null);
   const [cierreExpandido, setCierreExpandido] = useState<string | null>(null);
 
   const cargar = async () => {
@@ -106,12 +122,15 @@ export default function CierreCajaPage() {
     let cancelado = false;
     client
       .from('ventas')
-      .select('total, metodo_pago')
+      .select('total, propina, metodo_pago')
       .eq('cliente_id', empleado.cliente_id)
       .eq('estado', 'completada')
       .gte('created_at', cierreAbierto.fecha_apertura || new Date().toISOString())
       .then(({ data }) => {
-        if (!cancelado) setDesglosePreview(calcularDesglose((data as any[]) || []));
+        if (!cancelado) {
+          setDesglosePreview(calcularDesglose((data as any[]) || []));
+          setPropinasPreview(calcularPropinas((data as any[]) || []));
+        }
       });
     return () => { cancelado = true; };
   }, [empleado?.cliente_id, cierreAbierto?.id, cierreAbierto?.fecha_apertura]);
@@ -153,7 +172,7 @@ export default function CierreCajaPage() {
 
     const { data: ventas } = await client
       .from('ventas')
-      .select('total, metodo_pago')
+      .select('total, propina, metodo_pago')
       .eq('cliente_id', empleado.cliente_id)
       .eq('estado', 'completada')
       .gte('created_at', cierreAbierto.fecha_apertura || new Date().toISOString());
@@ -161,6 +180,7 @@ export default function CierreCajaPage() {
     const ventasLista = ventas || [];
     const ventasTotal = ventasLista.reduce((s: number, v: any) => s + Number(v.total), 0);
     const desglose = calcularDesglose(ventasLista as any[]);
+    const propinas = calcularPropinas(ventasLista as any[]);
     const montoContado = Number(montoCierre) || 0;
     const esperado = cierreAbierto.monto_apertura + ventasTotal;
     const diferencia = montoContado - esperado;
@@ -173,7 +193,7 @@ export default function CierreCajaPage() {
         ventas_total: ventasTotal,
         diferencia,
         // Mismo shape que usa Electron (detalle.desglose) — ver syncService.ts.
-        detalle: { desglose },
+        detalle: { desglose, propinas },
       })
       .eq('id', cierreAbierto.id);
 
@@ -263,6 +283,17 @@ export default function CierreCajaPage() {
                 </div>
               </div>
             )}
+            {propinasPreview && (
+              <div className="bg-slate-950/50 border border-amber-900/40 rounded-xl p-3">
+                <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wide mb-2">Propinas por método de pago</p>
+                <div className="space-y-1">
+                  {(Object.keys(PROPINA_VACIA) as (keyof Desglose)[]).filter((m) => propinasPreview[m] > 0).map((m) => (
+                    <div key={m} className="flex items-center justify-between text-xs"><span className="text-slate-400">{METODOS_LABEL[m]}</span><span className="text-amber-300 font-bold">${propinasPreview[m].toLocaleString('es-CO')}</span></div>
+                  ))}
+                  {Object.values(propinasPreview).every((v) => v === 0) && <p className="text-slate-600 text-xs">Sin propinas en este turno.</p>}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-slate-400 text-xs">Monto contado al cerrar</Label>
@@ -294,6 +325,8 @@ export default function CierreCajaPage() {
           )}
           {historial.map((c, i) => {
             const desglose = c.detalle?.desglose;
+            const propinas = c.detalle?.propinas;
+            const totalPropinas = Object.values(propinas || {}).reduce((total, valor) => total + Number(valor || 0), 0);
             const tieneDesglose = desglose && Object.values(desglose).some((v) => Number(v) > 0);
             const expandido = cierreExpandido === c.id;
             return (
@@ -320,7 +353,7 @@ export default function CierreCajaPage() {
                   </div>
                   <div className="flex items-center justify-between">
                     <p className="text-slate-500 text-xs">
-                      Ventas: ${c.ventas_total.toLocaleString('es-CO')} · Contado: ${c.monto_cierre.toLocaleString('es-CO')}
+                      Ventas: ${c.ventas_total.toLocaleString('es-CO')} · Propinas: ${totalPropinas.toLocaleString('es-CO')} · Contado: ${c.monto_cierre.toLocaleString('es-CO')}
                     </p>
                     {tieneDesglose && (
                       <ChevronDown className={`w-3.5 h-3.5 text-slate-600 shrink-0 transition-transform ${expandido ? 'rotate-180' : ''}`} />

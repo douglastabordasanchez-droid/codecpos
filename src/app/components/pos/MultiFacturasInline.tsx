@@ -6,7 +6,7 @@
 
 import { useState, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, ShoppingCart } from 'lucide-react';
+import { Plus, X, ShoppingCart, Pencil } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { toast } from 'sonner';
 
@@ -15,6 +15,7 @@ interface FacturaGuardada {
   carrito: any[];
   searchTerm: string;
   timestamp: number;
+  alias?: string;
 }
 
 interface Props {
@@ -39,6 +40,8 @@ export const MultiFacturasInline = memo(function MultiFacturasInline({
   const { darkMode } = usePOS();
   const [facturas, setFacturas] = useState<FacturaGuardada[]>([]);
   const [indiceActivo, setIndiceActivo] = useState(0); // 🆕 Usamos índice (0-based)
+  const [indiceEditando, setIndiceEditando] = useState<number | null>(null);
+  const [aliasEditando, setAliasEditando] = useState('');
 
   // Cargar facturas guardadas
   useEffect(() => {
@@ -182,6 +185,20 @@ export const MultiFacturasInline = memo(function MultiFacturasInline({
     return carrito.reduce((sum, item) => sum + item.cantidad, 0);
   };
 
+  const comenzarRenombrado = (indice: number, event: React.SyntheticEvent) => {
+    event?.stopPropagation();
+    const actual = facturas[indice];
+    if (!actual) return;
+    setIndiceEditando(indice);
+    setAliasEditando(actual.alias || `#${indice + 1}`);
+  };
+
+  const guardarAlias = (indice: number) => {
+    const alias = aliasEditando.trim();
+    setFacturas((prev) => prev.map((factura, i) => i === indice ? { ...factura, alias: alias || undefined, timestamp: Date.now() } : factura));
+    setIndiceEditando(null);
+  };
+
   // 🆕 Función para eliminar factura activa (después de cobrar)
   const eliminarFacturaActiva = () => {
     if (facturas.length === 1) {
@@ -240,6 +257,8 @@ export const MultiFacturasInline = memo(function MultiFacturasInline({
               exit={{ opacity: 0, scale: 0.8 }}
               transition={{ duration: 0.2 }}
               onClick={() => cambiarFactura(indice)}
+              onDoubleClick={(event) => comenzarRenombrado(indice, event)}
+              title="Doble clic para renombrar esta venta"
               className={`
                 group relative flex items-center gap-2 px-3 py-1.5 rounded-full
                 transition-all duration-200 border text-xs font-semibold
@@ -254,7 +273,25 @@ export const MultiFacturasInline = memo(function MultiFacturasInline({
               `}
             >
               <ShoppingCart className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>#{numeroMostrado}</span>
+              {indiceEditando === indice ? (
+                <input
+                  type="text"
+                  value={aliasEditando}
+                  autoFocus
+                  maxLength={40}
+                  onChange={(event) => setAliasEditando(event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+                  onBlur={() => guardarAlias(indice)}
+                  className="w-24 min-w-0 bg-transparent border-b border-current outline-none text-xs font-semibold"
+                  aria-label="Nombre de la venta"
+                />
+              ) : (
+                <>
+                  <span className="max-w-28 truncate">{factura.alias || `#${numeroMostrado}`}</span>
+                  <span role="button" tabIndex={0} aria-label="Renombrar venta" onClick={(event) => comenzarRenombrado(indice, event)} onTouchEnd={(event) => comenzarRenombrado(indice, event)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') comenzarRenombrado(indice, event); }} className="p-1 -m-1 text-current opacity-70 hover:opacity-100"><Pencil className="w-3 h-3" /></span>
+                </>
+              )}
               {itemsCount > 0 && (
                 <span className={`
                   px-1.5 py-0.5 rounded-full text-[10px] font-bold

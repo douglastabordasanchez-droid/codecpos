@@ -414,8 +414,8 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
                                 className={`flex items-center justify-between p-3 rounded-md border transition-all ${
                                   isActivo
                                     ? darkMode
-                                      ? 'bg-emerald-900/20 border-emerald-700/50'
-                                      : 'bg-emerald-50 border-emerald-300'
+                                      ? 'bg-emerald-700/45 border-emerald-400/70 text-white'
+                                      : 'bg-emerald-50 border-emerald-400 text-slate-900'
                                     : darkMode
                                     ? 'bg-slate-700/30 border-slate-600/50'
                                     : 'bg-gray-50 border-gray-200'
@@ -452,7 +452,7 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
                                     isActivo
                                       ? esPremiumEnBasico
                                         ? 'bg-purple-600'
-                                        : 'bg-emerald-600'
+                                          : 'bg-emerald-600'
                                       : darkMode ? 'bg-slate-600' : 'bg-gray-300'
                                   }`}
                                 >

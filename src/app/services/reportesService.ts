@@ -6,6 +6,7 @@ interface Venta {
   id: string;
   fecha: string;
   total: number;
+  propina?: number;
   items: any[];
   metodoPago: string;
   cajero?: string;
@@ -180,7 +181,9 @@ class ReportesService {
         .filter(v => v.items.length > 0);
     }
 
-    const totalVentas = ventas.reduce((sum, v) => sum + v.total, 0);
+    const totalRecaudado = ventas.reduce((sum, v) => sum + (Number(v.total) || 0), 0);
+    const totalPropinas = ventas.reduce((sum, v) => sum + Math.max(0, Number(v.propina) || 0), 0);
+    const totalVentas = totalRecaudado - totalPropinas;
     const totalDevoluciones = devoluciones.reduce((sum, d) => sum + (Number(d.totalDevolucion) || 0), 0);
     const totalVentasNetas = Math.max(0, totalVentas - totalDevoluciones);
     const ventasPorMetodo = this.agruparPorMetodoPago(ventas);
@@ -194,6 +197,8 @@ class ReportesService {
       egresosDetalle,
       resumen: {
         totalVentas,
+        totalPropinas,
+        totalRecaudado,
         totalDevoluciones,
         totalVentasNetas,
         cantidadTransacciones: ventas.length,

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { signInSupabase, EmpleadoSupabase } from '../../app/lib/supabase/authService';
 import { sincronizarSesionConAndroid, cerrarSesionAndroid } from '../lib/androidBridge';
@@ -101,7 +101,7 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
     });
   }, [cargarTiendasDisponibles]);
 
-  const iniciarSesion = async (email: string, password: string) => {
+  const iniciarSesion = useCallback(async (email: string, password: string) => {
     const resultado = await signInSupabase(email, password);
     if (resultado.ok && resultado.empleado) {
       setEmpleadoReal(resultado.empleado);
@@ -111,9 +111,9 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     }
     return { ok: false, error: resultado.error };
-  };
+  }, [cargarTiendasDisponibles]);
 
-  const cerrarSesion = async () => {
+  const cerrarSesion = useCallback(async () => {
     const client = getSupabaseClient();
     await client?.auth.signOut();
     setEmpleadoReal(null);
@@ -121,45 +121,57 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
     setTiendaActivaId(null);
     localStorage.removeItem(TIENDA_SELECCIONADA_KEY);
     cerrarSesionAndroid();
-  };
+  }, []);
 
   /** Refleja en memoria un cambio ya guardado en Supabase — sin recargar sesión. */
-  const actualizarEmpleadoLocal = (cambios: Partial<EmpleadoSupabase>) => {
+  const actualizarEmpleadoLocal = useCallback((cambios: Partial<EmpleadoSupabase>) => {
     setEmpleadoReal((prev) => (prev ? { ...prev, ...cambios } : prev));
-  };
+  }, []);
 
-  const seleccionarTienda = (clienteId: string) => {
+  const seleccionarTienda = useCallback((clienteId: string) => {
     if (!tiendasDisponibles.some((t) => t.clienteId === clienteId)) return;
     setTiendaActivaId(clienteId);
     localStorage.setItem(TIENDA_SELECCIONADA_KEY, clienteId);
-  };
+  }, [tiendasDisponibles]);
 
-  const tiendaActiva = tiendasDisponibles.find((t) => t.clienteId === tiendaActivaId) || null;
+  const tiendaActiva = useMemo(
+    () => tiendasDisponibles.find((t) => t.clienteId === tiendaActivaId) || null,
+    [tiendasDisponibles, tiendaActivaId]
+  );
 
   // El resto de la PWA (~120 pantallas) lee `empleado.cliente_id` tal cual
   // ya lo hacía — este es el único punto donde se sustituye por el de la
   // tienda activa, así que el selector "solo funciona" sin tocar cada
   // pantalla una por una.
-  const empleado: EmpleadoSupabase | null = empleadoReal
-    ? { ...empleadoReal, cliente_id: tiendaActivaId || empleadoReal.cliente_id }
-    : null;
+  const empleado: EmpleadoSupabase | null = useMemo(
+    () => (empleadoReal ? { ...empleadoReal, cliente_id: tiendaActivaId || empleadoReal.cliente_id } : null),
+    [empleadoReal, tiendaActivaId]
+  );
 
   const soloLectura = !!tiendaActiva && !tiendaActiva.esPropia;
 
+  // 🚀 FIX rendimiento: este value se recreaba en cada render sin useMemo
+  // (y sus funciones no tenían identidad estable), forzando a TODA la PWA
+  // (~120 pantallas leen usePwaAuth()) a re-renderizar en cada cambio de
+  // estado de este provider, aunque no les importara. Ver auditoría de
+  // rendimiento en curso.
+  const value = useMemo(
+    () => ({
+      empleado,
+      cargando,
+      iniciarSesion,
+      cerrarSesion,
+      actualizarEmpleadoLocal,
+      tiendasDisponibles,
+      tiendaActiva,
+      seleccionarTienda,
+      soloLectura,
+    }),
+    [empleado, cargando, iniciarSesion, cerrarSesion, actualizarEmpleadoLocal, tiendasDisponibles, tiendaActiva, seleccionarTienda, soloLectura]
+  );
+
   return (
-    <PwaAuthContext.Provider
-      value={{
-        empleado,
-        cargando,
-        iniciarSesion,
-        cerrarSesion,
-        actualizarEmpleadoLocal,
-        tiendasDisponibles,
-        tiendaActiva,
-        seleccionarTienda,
-        soloLectura,
-      }}
-    >
+    <PwaAuthContext.Provider value={value}>
       {children}
     </PwaAuthContext.Provider>
   );

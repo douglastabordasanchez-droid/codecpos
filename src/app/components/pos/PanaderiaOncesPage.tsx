@@ -508,7 +508,19 @@ export default function PanaderiaOncesPage() {
   const totalItemsCuentaActiva = cuentaActivaActual.reduce((sum, it) => sum + (Number(it.cantidad) || 0), 0);
   const totalCuentaActiva = cuentaActivaActual.reduce((sum, it) => sum + ((Number(it.producto.precio) || 0) * (Number(it.cantidad) || 0)), 0);
 
-  const guardarCategorias = (nuevas: CategoriaPos[]) => { setCategoriasPos(nuevas); localStorage.setItem('codecpos_panaderia_cats', JSON.stringify(nuevas)); localStorage.setItem(GLOBAL_CATS_KEY, JSON.stringify(nuevas.map(c => ({ id: c.id, nombre: c.nombre, color: c.color })))); };
+  const guardarCategorias = (nuevas: CategoriaPos[]) => {
+    setCategoriasPos(nuevas);
+    localStorage.setItem('codecpos_panaderia_cats', JSON.stringify(nuevas));
+    // 🛡️ Otros módulos (ej. Veterinaria > Alimentos a Granel) también escriben
+    // categorías con color en este mismo índice global — se hace merge por
+    // prefijo de id en vez de sobrescribir, para no borrar las de ellos.
+    try {
+      const globalRaw = localStorage.getItem(GLOBAL_CATS_KEY);
+      const globales: { id: string; nombre: string; color: string }[] = globalRaw ? JSON.parse(globalRaw) : [];
+      const deOtrosModulos = globales.filter((g) => !g.id.startsWith('cat-'));
+      localStorage.setItem(GLOBAL_CATS_KEY, JSON.stringify([...deOtrosModulos, ...nuevas.map(c => ({ id: c.id, nombre: c.nombre, color: c.color }))]));
+    } catch { localStorage.setItem(GLOBAL_CATS_KEY, JSON.stringify(nuevas.map(c => ({ id: c.id, nombre: c.nombre, color: c.color })))); }
+  };
   const guardarProductosPos = (nuevos: ProductoPos[]) => { setProductosPos(nuevos); localStorage.setItem('codecpos_panaderia_prods', JSON.stringify(nuevos)); };
 
   const abrirEdicionCategoria = (categoria: CategoriaPos) => {

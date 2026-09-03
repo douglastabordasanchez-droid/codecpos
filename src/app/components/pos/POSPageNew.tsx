@@ -60,6 +60,7 @@ import { electronStore, PagoMixtoDetalle } from '../../lib/electronStore';
 import { getCached } from '../../lib/cachedLocalStorage';
 import { logger } from '../../lib/logger';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBusinessContext } from '../../contexts/BusinessContext';
 import { antiFraudeService } from '../../lib/antiFraudeService';
 import { NotificacionesAntiFraude } from '../notifications/NotificacionesAntiFraude';
 import { MultiFacturasInline } from './MultiFacturasInline';
@@ -195,10 +196,12 @@ function leerConfigEmpresaCacheada(): any {
 export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: POSPageNewProps = {}) {
   const navigate = useNavigate();
   const { darkMode, triggerRefresh, uiScale, setUiScale } = usePOS();
+  const { propinaActiva, porcentajePropinaPredeterminado } = useBusinessContext();
   const { emitLanEvent } = useLanContext();
   const [productos, setProductos] = useState<Producto[]>([]);
   const [combosOnces, setCombosOnces] = useState<Producto[]>([]);
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
+  const [propinaManual, setPropinaManual] = useState<number | null>(null);
   const [transferLoaded, setTransferLoaded] = useState(false);
   const transferLoadedRef = useRef(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1312,7 +1315,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrito]);
 
-  const totalMemo = useMemo(() => subtotalMemo + ivaMemo, [subtotalMemo, ivaMemo]);
+  const totalBaseMemo = useMemo(() => subtotalMemo + ivaMemo, [subtotalMemo, ivaMemo]);
+  const propinaAplicada = useMemo(() => {
+    if (!propinaActiva) return 0;
+    if (propinaManual !== null) return Math.max(0, propinaManual);
+    return Math.round(totalBaseMemo * (Math.max(0, Number(porcentajePropinaPredeterminado) || 0) / 100));
+  }, [propinaActiva, propinaManual, porcentajePropinaPredeterminado, totalBaseMemo]);
+  const totalMemo = useMemo(() => totalBaseMemo + propinaAplicada, [totalBaseMemo, propinaAplicada]);
+
+  useEffect(() => {
+    if (carrito.length === 0) setPropinaManual(null);
+  }, [carrito.length]);
 
   // Calcular subtotal (sin IVA)
   const calcularSubtotal = () => subtotalMemo;
@@ -1514,6 +1527,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         iva: configIVA.ivaHabilitado ? iva : undefined,
         porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : undefined,
         total,
+        propina: propinaAplicada,
+        porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
+        propinaModificada: propinaManual !== null,
         metodoPago,
         efectivoRecibido: metodoPago === 'efectivo' ? parseFloat(efectivoRecibido) : total,
         cambio: metodoPago === 'efectivo' ? calcularCambio() : 0,
@@ -1666,6 +1682,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
             descuento: 0,
             total,
+            propina: propinaAplicada,
+            porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
+            propinaModificada: propinaManual !== null,
             metodoPago,
             cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
             cajeroId: usuarioActual.id || 'user-1',
@@ -1929,6 +1948,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         iva: configIVA.ivaHabilitado ? iva : undefined,
         porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : undefined,
         total,
+        propina: propinaAplicada,
+        porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
+        propinaModificada: propinaManual !== null,
         metodoPago: 'mixto' as any,
         pagoMixtoDetalles: detalles,
         fecha: new Date().toISOString(),
@@ -1991,6 +2013,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
             descuento: 0,
             total,
+            propina: propinaAplicada,
+            porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
+            propinaModificada: propinaManual !== null,
             metodoPago: 'mixto',
             pagoMixto: pagoMixtoObj,
             cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
@@ -2179,6 +2204,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         iva: configIVA.ivaHabilitado ? iva : undefined,
         porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : undefined,
         total,
+        propina: propinaAplicada,
+        porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
+        propinaModificada: propinaManual !== null,
         metodoPago: 'cartera' as any,
         fecha: new Date().toISOString(),
         cliente: datosCartera.clienteNombre,
@@ -2221,6 +2249,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
             descuento: 0,
             total,
+            propina: propinaAplicada,
+            porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
+            propinaModificada: propinaManual !== null,
             metodoPago: 'cartera',
             cajero: usuarioActual.nombreCompleto || usuarioActual.username || 'Cajero',
             cajeroId: usuarioActual.id || 'user-1',
@@ -2503,7 +2534,14 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
                       return (
                         <motion.div
-                          key={`${item.producto.id}-${index}`}
+                          // 🚀 FIX rendimiento: la key incluía `index` — al agregar/quitar
+                          // un producto que no fuera el último, TODOS los ítems posteriores
+                          // cambiaban de key y Framer Motion los trataba como elementos
+                          // nuevos, reanimando el carrito COMPLETO en cada acción. Cada
+                          // producto solo puede tener una línea en el carrito (agregarAlCarrito*
+                          // y agregarProductoPesable siempre mezclan por producto.id antes de
+                          // insertar una línea nueva), así que `producto.id` ya es único aquí.
+                          key={item.producto.id}
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: -20 }}
@@ -2760,12 +2798,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                         </div>
                         
                         <div className="p-1 space-y-0.5">
-                          {productosSugeridos.map((producto, index) => (
+                          {productosSugeridos.map((producto) => (
                             <motion.button
                               key={producto.id}
                               initial={{ opacity: 0, x: -10 }}
                               animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: index * 0.03 }}
+                              // 🚀 FIX rendimiento: el delay escalonado por índice hacía que,
+                              // al escribir rápido en el buscador, cada tecla re-disparara una
+                              // "cascada" de animación en los resultados nuevos — se sentía
+                              // como parpadeo. Se quita el escalonado, no la animación en sí.
                               onClick={() => seleccionarProductoSugerido(producto)}
                               className={`w-full text-left p-2 rounded-lg transition-all ${
                                 darkMode 
@@ -2874,6 +2915,28 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </div>
                   </motion.div>
                 )}
+
+                {carrito.length > 0 && propinaActiva && (
+                  <div className={`mb-4 p-4 rounded-2xl border ${darkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-left">
+                        <p className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                          Propina{propinaManual === null ? ` (${porcentajePropinaPredeterminado}%)` : ''}
+                        </p>
+                        <button type="button" onClick={() => setPropinaManual(0)} className="text-xs text-red-500 hover:underline">Sin propina</button>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        aria-label="Valor de propina"
+                        value={propinaManual === null ? propinaAplicada : propinaManual}
+                        onChange={(e) => setPropinaManual(Math.max(0, Number(e.target.value) || 0))}
+                        className={`w-36 px-3 py-2 rounded-lg border text-right font-bold ${darkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                      />
+                    </div>
+                  </div>
+                )}
                 
                 <motion.div
                   key={total}
@@ -2881,7 +2944,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   animate={{ scale: 1 }}
                   className="relative"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-emerald-600 blur-3xl opacity-20 animate-pulse" />
+                  {/* 🚀 FIX rendimiento: `animate-pulse` sobre un `blur-3xl` obligaba a
+                      Chromium a repintar esta capa desenfocada en CADA frame, todo el
+                      tiempo que el cajero está en la pantalla de venta (compite por
+                      tiempo de compositor con el buscador, dropdowns, etc.). El brillo
+                      estático detrás del total se mantiene igual visualmente. */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-emerald-600 blur-3xl opacity-20" />
                   <h1 className="relative text-9xl font-black bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent tracking-tight">
                     ${total.toLocaleString('es-CO')}
                   </h1>

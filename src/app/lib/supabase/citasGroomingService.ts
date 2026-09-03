@@ -1,14 +1,21 @@
 /**
- * Agenda de estética/grooming del módulo Veterinaria y Mascotas.
- * Tabla `citas_grooming` (migración 0080).
+ * Agenda de citas del módulo Veterinaria y Mascotas. Empezó siendo solo de
+ * estética/grooming; con la migración 0081 la misma tabla `citas_grooming`
+ * (0080) sirve de agenda general —también consulta, vacunación,
+ * desparasitación y cirugía— vía la columna `tipo`, y puede vincularse a
+ * una ficha clínica ya creada en `mascotas` vía `mascota_id`. Se mantiene
+ * el nombre del archivo/tabla para no romper lo que ya existe.
  */
 import { getSupabaseClient } from './config';
 import { getLinkedClienteId } from './tenantLink';
 
 export type EstadoCita = 'PENDIENTE' | 'EN_PROCESO' | 'COMPLETADA' | 'CANCELADA';
+export type TipoCita = 'grooming' | 'consulta' | 'vacunacion' | 'desparasitacion' | 'cirugia' | 'otro';
 
 export interface CitaGrooming {
   id: string;
+  tipo: TipoCita;
+  mascotaId: string | null;
   tutorNombre: string;
   tutorTelefono: string | null;
   mascotaNombre: string;
@@ -24,6 +31,8 @@ export interface CitaGrooming {
 
 interface CitaRow {
   id: string;
+  tipo: TipoCita;
+  mascota_id: string | null;
   tutor_nombre: string;
   tutor_telefono: string | null;
   mascota_nombre: string;
@@ -37,9 +46,13 @@ interface CitaRow {
   estado: EstadoCita;
 }
 
+const SELECT_CITA = 'id, tipo, mascota_id, tutor_nombre, tutor_telefono, mascota_nombre, especie, raza, tipo_pelo, observaciones, servicio, precio, fecha_hora, estado';
+
 function mapRow(r: CitaRow): CitaGrooming {
   return {
     id: r.id,
+    tipo: r.tipo || 'grooming',
+    mascotaId: r.mascota_id,
     tutorNombre: r.tutor_nombre,
     tutorTelefono: r.tutor_telefono,
     mascotaNombre: r.mascota_nombre,
@@ -61,7 +74,7 @@ export async function listarCitasGrooming(desde: Date, hasta: Date): Promise<Cit
   if (!client || !clienteId) return [];
   const { data, error } = await client
     .from('citas_grooming')
-    .select('id, tutor_nombre, tutor_telefono, mascota_nombre, especie, raza, tipo_pelo, observaciones, servicio, precio, fecha_hora, estado')
+    .select(SELECT_CITA)
     .eq('cliente_id', clienteId)
     .gte('fecha_hora', desde.toISOString())
     .lt('fecha_hora', hasta.toISOString())
@@ -71,6 +84,7 @@ export async function listarCitasGrooming(desde: Date, hasta: Date): Promise<Cit
 }
 
 export async function crearCitaGrooming(datos: {
+  tipo?: TipoCita; mascotaId?: string;
   tutorNombre: string; tutorTelefono?: string; mascotaNombre: string; especie?: string;
   raza?: string; tipoPelo?: string; observaciones?: string; servicio: string; precio: number; fechaHora: string;
 }): Promise<void> {
@@ -79,6 +93,8 @@ export async function crearCitaGrooming(datos: {
   if (!client || !clienteId) throw new Error('No hay un negocio vinculado a esta sesión');
   const { error } = await client.from('citas_grooming').insert({
     cliente_id: clienteId,
+    tipo: datos.tipo || 'grooming',
+    mascota_id: datos.mascotaId || null,
     tutor_nombre: datos.tutorNombre,
     tutor_telefono: datos.tutorTelefono || null,
     mascota_nombre: datos.mascotaNombre,

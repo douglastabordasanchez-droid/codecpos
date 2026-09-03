@@ -837,6 +837,17 @@ export async function onProductoVencido(producto: {
   );
 }
 
+export async function onVacunaProximaVencer(evento: {
+  mascota: string; propietario: string; descripcion: string; diasParaVencer: number; proximaFecha?: string;
+}): Promise<void> {
+  await notificarCanalesActivos(
+    'vacuna_proxima_vencer',
+    '💉 Vacuna/desparasitación próxima',
+    `${evento.mascota} (${evento.propietario}) | ${evento.descripcion} | ${evento.diasParaVencer <= 0 ? 'Vencida' : `Vence en ${evento.diasParaVencer} día(s)`}${evento.proximaFecha ? ` (${evento.proximaFecha})` : ''}`,
+    evento,
+  );
+}
+
 export async function onUsuarioCreado(usuario: { nombre: string; rol: string }): Promise<void> {
   await notificarCanalesActivos(
     'usuario_creado',

@@ -34,6 +34,7 @@ interface Venta {
   }>;
   subtotal: number;
   iva: number;
+  propina?: number;
   total: number;
   metodoPago: string;
   cajero: string;
@@ -191,6 +192,10 @@ export const generarFacturaPDF = async (venta: Venta, config: ConfigEmpresa): Pr
     doc.text(`$${venta.iva.toLocaleString('es-CO')}`, totalesX + 50, yPos, { align: 'right' });
     yPos += 7;
   }
+
+  doc.text('Propina / Tip:', totalesX, yPos);
+  doc.text(`$${(venta.propina ?? 0).toLocaleString('es-CO')}`, totalesX + 50, yPos, { align: 'right' });
+  yPos += 7;
   
   // Línea separadora
   doc.setDrawColor(200, 200, 200);

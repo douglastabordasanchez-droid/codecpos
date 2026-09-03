@@ -17,7 +17,7 @@ import {
   User, CreditCard, ChevronLeft, ChevronRight, Palette, FileDown,
   AlertTriangle, Landmark, Banknote, Wrench, Target, FileSpreadsheet,
   ArrowUp, ArrowDown, Repeat, ShieldCheck, Bell, Pencil, CheckCircle2,
-  Sparkles, Users, LineChart, Activity, FileText, Send,
+  Sparkles, Users, LineChart, Activity, FileText, Send, Download,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -50,6 +50,21 @@ import {
   usuariosDistintos, calcularProgresoPresupuestos, obtenerPresupuestos, guardarPresupuesto,
   obtenerGastosRecurrentes, guardarGastoRecurrente, eliminarGastoRecurrente, calcularRecordatoriosPendientes,
 } from '../../lib/contabilidadService';
+import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
+import { listarFacturasDian } from '../../lib/supabase/facturaElectronicaDianService';
+import type { FacturaElectronicaDian, EstadoDocumentoDian } from '../../lib/dian/types';
+
+const ESTADO_DIAN_UI: Record<EstadoDocumentoDian, { label: string; color: string }> = {
+  draft: { label: 'Borrador', color: '#94a3b8' },
+  pending: { label: 'Pendiente', color: '#f59e0b' },
+  signing: { label: 'Firmando', color: '#0ea5e9' },
+  sent: { label: 'Enviada a la DIAN', color: '#0ea5e9' },
+  accepted: { label: 'Aceptada', color: '#10b981' },
+  rejected: { label: 'Rechazada', color: '#ef4444' },
+  error: { label: 'Error', color: '#ef4444' },
+  contingency: { label: 'Contingencia', color: '#f97316' },
+  cancelled: { label: 'Anulada', color: '#64748b' },
+};
 
 const fmt = (v: number) => `$${Math.round(Number(v) || 0).toLocaleString('es-CO')}`;
 const getFechaLocalISO = (date: Date = new Date()) => {
@@ -261,7 +276,16 @@ export default function ContabilidadPage() {
   const moduloTallerActivo = esModuloActivoGlobal(ModuloPOS.TALLER_REPARACIONES);
 
   // ── Navegación por pestañas: centro de control financiero ──────────────
-  const [tabActiva, setTabActiva] = useState<'resumen' | 'cobrar' | 'rentabilidad' | 'flujo' | 'reportes'>('resumen');
+  const [tabActiva, setTabActiva] = useState<'resumen' | 'cobrar' | 'rentabilidad' | 'flujo' | 'dian' | 'reportes'>('resumen');
+
+  // ── Facturación electrónica DIAN: solo lectura/descarga de los XML ya
+  // generados por el módulo de Facturación Electrónica — no se reinventa esa
+  // lógica, se reusa `listarFacturasDian` tal cual la usa esa página. ──────
+  const clienteIdDian = useMemo(() => getLinkedClienteId(), []);
+  const [facturasDian, setFacturasDian] = useState<FacturaElectronicaDian[]>([]);
+  const [cargandoDian, setCargandoDian] = useState(false);
+  const [busquedaDian, setBusquedaDian] = useState('');
+  const [facturaXmlDian, setFacturaXmlDian] = useState<FacturaElectronicaDian | null>(null);
 
   // ── Cuentas por cobrar: se arma cruzando Taller (saldoPendiente),
   // Apartados (saldo) y Cartera (venta a crédito, ver carteraService.ts).
@@ -598,6 +622,41 @@ export default function ContabilidadPage() {
 
   // Un gasto nuevo puede resolver un recordatorio pendiente — recalcular.
   useEffect(() => { setRecordatorios(calcularRecordatoriosPendientes()); }, [movimientos]);
+
+  // Carga perezosa: solo se consulta Supabase cuando el usuario entra a la
+  // pestaña "Facturación DIAN" (evita una llamada de red innecesaria en el
+  // resto de pestañas), y respeta el mismo rango de fechas del resto del módulo.
+  useEffect(() => {
+    if (!clienteIdDian || tabActiva !== 'dian') return;
+    let cancelado = false;
+    setCargandoDian(true);
+    listarFacturasDian({ clienteId: clienteIdDian, desde: desde || undefined, hasta: hasta || undefined, limite: 300 })
+      .then((lista) => { if (!cancelado) setFacturasDian(lista); })
+      .catch(() => { if (!cancelado) setFacturasDian([]); })
+      .finally(() => { if (!cancelado) setCargandoDian(false); });
+    return () => { cancelado = true; };
+  }, [clienteIdDian, tabActiva, desde, hasta]);
+
+  const facturasDianFiltradas = useMemo(() => {
+    const q = busquedaDian.trim().toLowerCase();
+    if (!q) return facturasDian;
+    return facturasDian.filter((f) =>
+      f.numeroFactura?.toLowerCase().includes(q)
+      || f.adquirente?.nombreORazonSocial?.toLowerCase().includes(q)
+      || f.cufe?.toLowerCase().includes(q)
+    );
+  }, [facturasDian, busquedaDian]);
+
+  const descargarXmlDian = (factura: FacturaElectronicaDian) => {
+    if (!factura.xml) { toast.error('Esta factura todavía no tiene XML generado'); return; }
+    const blob = new Blob([factura.xml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${factura.numeroFactura}.xml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // ── Totales y balance ───────────────────────────────────────────────────
   const todosSinFiltroTipoCat = useMemo(
@@ -1139,6 +1198,7 @@ export default function ContabilidadPage() {
           ['cobrar', 'Cuentas por Cobrar', Users],
           ['rentabilidad', 'Rentabilidad', LineChart],
           ['flujo', 'Flujo de Caja', Activity],
+          ['dian', 'Facturación DIAN', ShieldCheck],
           ['reportes', 'Reportes', FileText],
         ] as [typeof tabActiva, string, any][]).map(([key, label, Icon]) => (
           <button
@@ -1706,6 +1766,115 @@ export default function ContabilidadPage() {
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ PESTAÑA: FACTURACIÓN DIAN (solo lectura) ═════
+          Lista los XML de facturación electrónica ya emitidos (mismos datos
+          que FacturacionElectronicaPage) con opción de ver/descargar cada
+          uno — la emisión y gestión completa de facturas sigue viviendo en
+          esa página; aquí es solo un archivo consultable desde Contabilidad. */}
+      {tabActiva === 'dian' && (
+        <div>
+          {!clienteIdDian ? (
+            <div className={`p-6 rounded-2xl border-2 ${darkMode ? 'bg-amber-900/20 border-amber-700 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
+              Esta instalación todavía no está vinculada a la nube — el historial de XML DIAN necesita que primero
+              vincules el negocio (Configuración → Vinculación con la nube).
+            </div>
+          ) : (
+            <>
+              <div className={`p-4 rounded-[24px] border mb-5 shadow-xl flex flex-wrap items-center gap-3 ${card}`} style={{ boxShadow: panelSombra(darkMode) }}>
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${sub}`} />
+                  <input
+                    value={busquedaDian}
+                    onChange={(e) => setBusquedaDian(e.target.value)}
+                    placeholder="Buscar por número, cliente o CUFE..."
+                    className={`w-full pl-9 pr-3 h-10 rounded-xl border text-sm ${darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-gray-50 border-gray-200 text-slate-900'}`}
+                  />
+                </div>
+                <p className={`text-xs ${sub}`}>{facturasDianFiltradas.length} factura{facturasDianFiltradas.length === 1 ? '' : 's'} en el período seleccionado</p>
+              </div>
+
+              <div className={`rounded-[28px] border overflow-hidden shadow-xl ${card}`} style={{ boxShadow: panelSombra(darkMode) }}>
+                {cargandoDian ? (
+                  <div className="py-16 text-center">
+                    <ShieldCheck className={`w-14 h-14 mx-auto mb-3 ${sub}`} />
+                    <p className={`font-semibold ${sub}`}>Cargando facturas...</p>
+                  </div>
+                ) : facturasDianFiltradas.length === 0 ? (
+                  <div className="py-16 text-center">
+                    <FileText className={`w-14 h-14 mx-auto mb-3 ${sub}`} />
+                    <p className={`font-semibold ${sub}`}>No hay facturas electrónicas en este período</p>
+                    <p className={`text-xs mt-1 ${sub}`}>Se emiten desde el módulo de Facturación Electrónica</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[900px]">
+                      <thead>
+                        <tr className={`border-b ${border} ${darkMode ? 'bg-slate-900/40' : 'bg-gray-50'}`}>
+                          <th className={`px-4 py-3 text-left text-xs font-bold uppercase ${sub}`}>Número</th>
+                          <th className={`px-4 py-3 text-left text-xs font-bold uppercase ${sub}`}>Fecha</th>
+                          <th className={`px-4 py-3 text-left text-xs font-bold uppercase ${sub}`}>Cliente</th>
+                          <th className={`px-4 py-3 text-right text-xs font-bold uppercase ${sub}`}>Total</th>
+                          <th className={`px-4 py-3 text-left text-xs font-bold uppercase ${sub}`}>Estado</th>
+                          <th className={`px-4 py-3 text-center text-xs font-bold uppercase ${sub}`}>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {facturasDianFiltradas.map((f) => {
+                          const info = ESTADO_DIAN_UI[f.estado];
+                          return (
+                            <tr key={f.id} className={`border-b ${border} ${rowBg} transition-colors`}>
+                              <td className={`px-4 py-3 text-sm font-mono ${txt}`}>{f.numeroFactura}</td>
+                              <td className={`px-4 py-3 text-sm ${sub}`}>
+                                <div className="flex items-center gap-1.5"><Calendar className="w-3 h-3" />{format(new Date(f.fechaEmision), 'dd/MM/yy HH:mm', { locale: es })}</div>
+                              </td>
+                              <td className={`px-4 py-3 text-sm max-w-[220px] truncate ${txt}`} title={f.adquirente?.nombreORazonSocial}>{f.adquirente?.nombreORazonSocial || '—'}</td>
+                              <td className={`px-4 py-3 text-right text-sm font-semibold tabular-nums ${txt}`}>{fmt(f.total)}</td>
+                              <td className="px-4 py-3">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: `${info.color}22`, color: info.color }}>
+                                  {info.label}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button onClick={() => setFacturaXmlDian(f)} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-gray-200 text-gray-500'}`} title="Ver XML">
+                                    <FileText className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => descargarXmlDian(f)} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-gray-200 text-gray-500'}`} title="Descargar XML">
+                                    <Download className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Modal: ver XML de una factura DIAN ── */}
+      {facturaXmlDian && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setFacturaXmlDian(null)}>
+          <div className={`w-full max-w-3xl max-h-[80vh] rounded-2xl overflow-hidden flex flex-col border-2 ${card}`} onClick={(e) => e.stopPropagation()}>
+            <div className={`px-5 py-3 border-b ${border} flex items-center justify-between`}>
+              <p className={`font-bold ${txt}`}>{facturaXmlDian.numeroFactura} — XML UBL 2.1</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => descargarXmlDian(facturaXmlDian)} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-gray-200 text-gray-500'}`} title="Descargar XML">
+                  <Download className="w-4 h-4" />
+                </button>
+                <button onClick={() => setFacturaXmlDian(null)} className={sub}>✕</button>
+              </div>
+            </div>
+            <pre className={`flex-1 overflow-auto p-4 text-xs font-mono whitespace-pre-wrap ${txt}`}>{facturaXmlDian.xml || 'Sin XML generado todavía.'}</pre>
           </div>
         </div>
       )}

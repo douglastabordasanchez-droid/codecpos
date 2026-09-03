@@ -3,7 +3,7 @@
  * Provee la tienda activa a toda la aplicación.
  */
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import {
   Tienda,
   listarTiendas,
@@ -42,26 +42,26 @@ export function MultitiendaProvider({ children }: { children: ReactNode }) {
     recargarTiendas();
   }, []); // ✅ Array vacío para cargar solo una vez
 
-  const cambiarTienda = (id: string) => {
+  const cambiarTienda = useCallback((id: string) => {
     setTiendaActivaId(id);
     const lista = listarTiendas();
     const nueva = lista.find(t => t.id === id) || lista[0] || null;
     setTiendaActual(nueva);
-  };
+  }, []);
 
-  const crearNuevaTienda = (datos: Omit<Tienda, 'id' | 'esPrincipal' | 'fechaCreacion' | 'activo'>) => {
+  const crearNuevaTienda = useCallback((datos: Omit<Tienda, 'id' | 'esPrincipal' | 'fechaCreacion' | 'activo'>) => {
     const nueva = crearTienda(datos);
     recargarTiendas();
     return nueva;
-  };
+  }, [recargarTiendas]);
 
-  const editarTienda = (id: string, datos: Partial<Tienda>) => {
+  const editarTienda = useCallback((id: string, datos: Partial<Tienda>) => {
     const updated = actualizarTienda(id, datos);
     recargarTiendas();
     return updated;
-  };
+  }, [recargarTiendas]);
 
-  const borrarTienda = (id: string) => {
+  const borrarTienda = useCallback((id: string) => {
     eliminarTienda(id);
     // Si borramos la activa, cambiar a la principal
     if (tiendaActual?.id === id) {
@@ -69,10 +69,13 @@ export function MultitiendaProvider({ children }: { children: ReactNode }) {
     } else {
       recargarTiendas();
     }
-  };
+  }, [tiendaActual, cambiarTienda, recargarTiendas]);
 
-  return (
-    <MultitiendaContext.Provider value={{
+  // 🚀 FIX rendimiento: este value se recreaba en cada render sin useMemo,
+  // forzando a TODO consumidor de useMultitienda() a re-renderizar aunque
+  // nada de esto hubiera cambiado. Ver auditoría de rendimiento en curso.
+  const value = useMemo(
+    () => ({
       tiendas,
       tiendaActual,
       cambiarTienda,
@@ -80,7 +83,12 @@ export function MultitiendaProvider({ children }: { children: ReactNode }) {
       crearNuevaTienda,
       editarTienda,
       borrarTienda,
-    }}>
+    }),
+    [tiendas, tiendaActual, cambiarTienda, recargarTiendas, crearNuevaTienda, editarTienda, borrarTienda]
+  );
+
+  return (
+    <MultitiendaContext.Provider value={value}>
       {children}
     </MultitiendaContext.Provider>
   );

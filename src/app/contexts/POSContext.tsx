@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 
 const ZOOM_KEY = 'codecpos_zoom_factor';
 
@@ -40,16 +40,25 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
     }
   }, [darkMode]);
 
-  const toggleDarkMode = () => setDarkMode(!darkMode);
-  const triggerRefresh = () => setRefreshTrigger(prev => prev + 1);
-  const setUiScale = (v: number) => {
+  const toggleDarkMode = useCallback(() => setDarkMode(!darkMode), [darkMode]);
+  const triggerRefresh = useCallback(() => setRefreshTrigger(prev => prev + 1), []);
+  const setUiScale = useCallback((v: number) => {
     const clamped = parseFloat(Math.max(0.5, Math.min(1.8, v)).toFixed(2));
     try { localStorage.setItem(ZOOM_KEY, String(clamped)); } catch {}
     setUiScaleState(clamped);
-  };
+  }, []);
+
+  // 🚀 FIX rendimiento: este value se recreaba en cada render sin useMemo,
+  // forzando a TODO consumidor de usePOS() (incluye la pantalla de venta) a
+  // re-renderizar aunque nada de esto hubiera cambiado. Ver auditoría de
+  // rendimiento en curso.
+  const value = useMemo(
+    () => ({ darkMode, toggleDarkMode, refreshTrigger, triggerRefresh, uiScale, setUiScale }),
+    [darkMode, toggleDarkMode, refreshTrigger, triggerRefresh, uiScale, setUiScale]
+  );
 
   return (
-    <POSContext.Provider value={{ darkMode, toggleDarkMode, refreshTrigger, triggerRefresh, uiScale, setUiScale }}>
+    <POSContext.Provider value={value}>
       {children}
     </POSContext.Provider>
   );

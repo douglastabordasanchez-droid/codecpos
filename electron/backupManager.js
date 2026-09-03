@@ -80,13 +80,23 @@ function checksumPath(filePath) {
  * medias por un apagón (escritura interrumpida) o fue alterado/corrompido
  * por un virus, en vez de descubrirlo recién al fallar la restauración.
  */
-export function saveBackup(jsonString) {
+// 🚀 FIX rendimiento: escribía el backup completo (dump entero de IndexedDB,
+// puede ser grande en negocios con mucho historial) con fs.writeFileSync —
+// el proceso principal de Electron es de UN SOLO HILO, así que mientras
+// escribía, TODAS las respuestas IPC de TODAS las ventanas quedaban en cola
+// (se siente como un tirón puntual cada hora, o al cerrar la app). Se pasa a
+// fs.promises (no bloqueante) sin cambiar el comportamiento: el handler IPC
+// que lo llama (`backup:save-safe` en main.js) ya es async y Electron espera
+// su promesa antes de responder al renderer, y el flujo de cierre limpio
+// (`before-quit` en main.js) ya espera esa misma respuesta antes de salir —
+// así que el backup sigue completándose por entero antes de cerrar la app.
+export async function saveBackup(jsonString) {
   ensureBackupsDir();
   const fileName = nombreArchivo();
   const filePath = path.join(BACKUPS_DIR, fileName);
-  fs.writeFileSync(filePath, jsonString, 'utf8');
-  fs.writeFileSync(checksumPath(filePath), sha256(jsonString), 'utf8');
-  rotarBackups();
+  await fs.promises.writeFile(filePath, jsonString, 'utf8');
+  await fs.promises.writeFile(checksumPath(filePath), sha256(jsonString), 'utf8');
+  await rotarBackups();
   return { fileName, filePath, bytes: Buffer.byteLength(jsonString, 'utf8') };
 }
 
@@ -94,14 +104,14 @@ export function saveBackup(jsonString) {
  * Elimina backups con más de MAX_DIAS_HISTORICO días de antigüedad,
  * conservando siempre al menos un backup por cada uno de esos días.
  */
-function rotarBackups() {
+async function rotarBackups() {
   try {
     const archivos = listarArchivos();
     const limite = Date.now() - MAX_DIAS_HISTORICO * 24 * 60 * 60 * 1000;
     for (const a of archivos) {
       if (a.mtimeMs < limite) {
-        try { fs.unlinkSync(a.filePath); } catch { /* no-op */ }
-        try { fs.unlinkSync(checksumPath(a.filePath)); } catch { /* no-op */ }
+        try { await fs.promises.unlink(a.filePath); } catch { /* no-op */ }
+        try { await fs.promises.unlink(checksumPath(a.filePath)); } catch { /* no-op */ }
       }
     }
   } catch (e) {

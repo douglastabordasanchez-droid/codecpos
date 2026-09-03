@@ -45,7 +45,7 @@ export default function CodecVerifyConexionPage() {
   const [generandoToken, setGenerandoToken] = useState(false);
   const [mostrarToken, setMostrarToken] = useState(false);
   const [mostrarGuiaToken, setMostrarGuiaToken] = useState(false);
-  const [copiadoToken, setCopiadoToken] = useState<'token' | 'url' | 'script' | 'gscript_link' | 'apikey' | 'authorization' | null>(null);
+  const [copiadoToken, setCopiadoToken] = useState<'token' | 'url' | 'script' | 'gscript_link' | 'apikey' | 'authorization' | 'shortcuts_json' | null>(null);
 
   // 🔒 La sección de abajo expone el token de automatización + la clave anon
   // de Supabase — cualquiera con eso puede insertar "pagos confirmados"
@@ -246,6 +246,15 @@ export default function CodecVerifyConexionPage() {
     });
   });
 }`
+    : '';
+
+  // Plantilla del cuerpo JSON para la acción "Obtener contenido de URL" de
+  // Atajos (iOS 27+, automatización "Cuando reciba una notificación de...").
+  // El placeholder debe reemplazarse por la variable mágica del texto de la
+  // notificación desde el selector de Atajos — nunca escribirlo a mano, igual
+  // lección que con MacroDroid (ver guía de abajo).
+  const shortcutsJsonNequi = webhookToken
+    ? JSON.stringify({ p_token: webhookToken, p_monto: 'TEXTO_DE_LA_NOTIFICACION_AQUI', p_entidad: 'nequi', p_referencia: 'iphone-atajos' }, null, 2)
     : '';
 
   // Generar el QR de acceso a la PWA una sola vez
@@ -824,9 +833,9 @@ export default function CodecVerifyConexionPage() {
                             <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>iPhone (Nequi, Daviplata, Bancolombia)</p>
                           </div>
                           <p className={`text-xs mb-2 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
-                            Apple no deja que ninguna app lea notificaciones ni SMS de otras apps —
-                            es una restricción de seguridad de iOS, no algo que Codec Verify pueda evitar.
-                            Por eso el camino en iPhone es distinto según la entidad:
+                            Apple no deja que ninguna app (ni siquiera una app propia Codec Verify para iPhone) lea
+                            notificaciones de otras apps — es una restricción de seguridad de iOS, no algo que se
+                            resuelva con más código. Por eso en iPhone el camino es distinto según la entidad:
                           </p>
                           <ol className={`text-xs space-y-1.5 list-decimal list-inside ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
                             <li>
@@ -838,17 +847,64 @@ export default function CodecVerifyConexionPage() {
                             </li>
                             <li>
                               <b>Nequi — no manda correo por cada pago recibido</b> (sus avisos van ligados al número de
-                              celular, no al correo), así que para clientes que solo tienen iPhone hay dos caminos:
-                              <ul className="list-disc list-inside ml-3 mt-1 space-y-1">
-                                <li>iOS 27 trae una automatización nueva en Shortcuts ("Cuando reciba una notificación
-                                  de...") que sí puede leer el texto — gratis y sin apps de terceros, pero es muy
-                                  reciente y aún inestable en sus primeras versiones; pruébala, pero no la dejes como
-                                  único método para cobrar en un negocio todavía.</li>
-                                <li>Camino confiable hoy: un celular Android de respaldo (uno viejo sirve) dedicado solo
-                                  a recibir las notificaciones de Nequi con la app <b>Codec Verify</b> (más confiable
-                                  que las automatizaciones de terceros), mientras el dueño sigue usando su iPhone
-                                  normalmente para todo lo demás.</li>
-                              </ul>
+                              celular, no al correo). Camino recomendado, con <b>iOS 27</b> (disponible desde el 14 de
+                              septiembre de 2026): la app <b>Atajos</b> de Apple ya trae una automatización nativa que sí
+                              puede leer el texto de la notificación de Nequi y reenviarlo — sin apps de terceros, sin
+                              pasar por App Store.
+                              <div className={`mt-2 rounded-lg p-3 border ${darkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-white border-sky-200'}`}>
+                                <p className={`text-[11px] font-semibold mb-1 ${darkMode ? 'text-slate-300' : 'text-gray-800'}`}>Configurar en el iPhone del negocio:</p>
+                                <ol className="text-[11px] space-y-1 list-decimal list-inside">
+                                  <li>Abre <b>Atajos</b> → pestaña <b>Automatización</b> → <b>Crear automatización personal</b> → <b>Notificación</b>.</li>
+                                  <li>Elige la app <b>Nequi</b> como origen. Deja el resto de filtros vacíos (o agrega "Mensaje contiene: te envió" si prefieres filtrar).</li>
+                                  <li>Agrega la acción <b>Obtener contenido de URL</b>: Método <b>POST</b>, pega la URL de abajo. Toca <b>Mostrar más</b> y en <b>Encabezados</b> agrega dos: <code>apikey</code> y <code>Authorization</code>, cada uno con SU PROPIO valor de abajo — <b>no son el mismo valor</b>, cópialos por separado.</li>
+                                  <li>En <b>Cuerpo de la petición</b> elige <b>JSON</b> y agrega 4 campos con "Añadir nuevo campo": <code>p_token</code> (pega el token del negocio), <code>p_monto</code> (toca el valor, abre el selector de variables y elige <b>Detalle de la notificación</b> o <b>Cuerpo</b> — <b>nunca lo escribas a mano</b>, igual que con MacroDroid), <code>p_entidad</code> (escribe <code>nequi</code>) y <code>p_referencia</code> (escribe <code>iphone-atajos</code>). Abajo tienes cómo debe quedar el resultado final, de referencia.</li>
+                                  <li>Al terminar, en las opciones de la automatización desactiva <b>"Preguntar antes de ejecutar"</b> para que corra sola, sin pedir confirmación cada vez.</li>
+                                  <li>Repite todo el proceso para Bancolombia o Daviplata solo si prefieres Atajos en vez de Gmail — <b>una automatización por app</b>, nunca mezcles dos apps en el mismo disparador.</li>
+                                </ol>
+                              </div>
+
+                              <div className="mt-2">
+                                <p className={`text-[11px] font-semibold mb-1 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>Encabezado "apikey"</p>
+                                <div className="flex gap-2">
+                                  <div className={`flex-1 h-9 px-2 rounded-md border flex items-center font-mono text-[10px] overflow-x-auto whitespace-nowrap ${darkMode ? 'bg-slate-900/50 border-slate-700 text-white' : 'bg-purple-50/50 border-purple-300 text-gray-900'}`}>
+                                    {publicConfig?.anonKey || ''}
+                                  </div>
+                                  <button onClick={() => copiarTextoToken(publicConfig?.anonKey || '', 'apikey')} className={`h-9 w-9 rounded-md border flex items-center justify-center shrink-0 ${darkMode ? 'bg-slate-900 border-slate-700 text-slate-300' : 'bg-white border-purple-300 text-gray-600'}`}>
+                                    {copiadoToken === 'apikey' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="mt-2">
+                                <p className={`text-[11px] font-semibold mb-1 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>Encabezado "Authorization" (lleva "Bearer " antes del token — distinto del anterior)</p>
+                                <div className="flex gap-2">
+                                  <div className={`flex-1 h-9 px-2 rounded-md border flex items-center font-mono text-[10px] overflow-x-auto whitespace-nowrap ${darkMode ? 'bg-slate-900/50 border-slate-700 text-white' : 'bg-purple-50/50 border-purple-300 text-gray-900'}`}>
+                                    {publicConfig?.anonKey ? `Bearer ${publicConfig.anonKey}` : ''}
+                                  </div>
+                                  <button onClick={() => copiarTextoToken(publicConfig?.anonKey ? `Bearer ${publicConfig.anonKey}` : '', 'authorization')} className={`h-9 w-9 rounded-md border flex items-center justify-center shrink-0 ${darkMode ? 'bg-slate-900 border-slate-700 text-slate-300' : 'bg-white border-purple-300 text-gray-600'}`}>
+                                    {copiadoToken === 'authorization' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="mt-2 relative">
+                                <p className={`text-[11px] font-semibold mb-1 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>Cómo debe quedar el cuerpo JSON al final (de referencia, no para pegar tal cual)</p>
+                                <pre className={`rounded-lg p-3 text-[10px] overflow-x-auto max-h-40 border ${darkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-purple-200 text-gray-700'}`}>{shortcutsJsonNequi}</pre>
+                                <button
+                                  onClick={() => copiarTextoToken(shortcutsJsonNequi, 'shortcuts_json')}
+                                  className={`absolute top-6 right-2 h-7 w-7 rounded-md flex items-center justify-center ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-purple-100 text-gray-600'}`}
+                                >
+                                  {copiadoToken === 'shortcuts_json' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+
+                              <p className={`text-[11px] mt-2 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+                                Nota: esta automatización de Atajos es nueva en iOS — solo funciona en iPhones ya
+                                actualizados a iOS 27. Si el negocio todavía no actualizó, o la automatización falla,
+                                el camino confiable mientras tanto sigue siendo un celular Android de respaldo (uno
+                                viejo sirve) dedicado solo a Nequi con la app <b>Codec Verify</b>, mientras el dueño usa
+                                su iPhone normalmente para todo lo demás.
+                              </p>
                             </li>
                           </ol>
                         </div>

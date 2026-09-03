@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { useBusinessContext } from '../../contexts/BusinessContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { TIPOS_NEGOCIO } from '../../../data/tipos-negocio';
 import { toast } from 'sonner';
 
@@ -20,11 +21,15 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 export function ConfiguracionTipoNegocio() {
   const { darkMode } = usePOS();
-  const { tipoNegocio: tipoActual, nombreNegocio: nombreActual, setBusinessConfig } = useBusinessContext();
+  const { tipoNegocio: tipoActual, nombreNegocio: nombreActual, propinaActiva: propinaActivaActual, porcentajePropinaPredeterminado: porcentajePropinaActual, setBusinessConfig } = useBusinessContext();
+  const { usuarioActual } = useAuth();
 
   const [tipoSeleccionado, setTipoSeleccionado] = useState(tipoActual);
   const [nombreNegocio, setNombreNegocio] = useState(nombreActual);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
+  const [propinaActiva, setPropinaActiva] = useState(propinaActivaActual);
+  const [porcentajePropina, setPorcentajePropina] = useState(String(porcentajePropinaActual));
+  const esAdministrador = usuarioActual?.rol === 'super_usuario';
 
   const tipos = Object.values(TIPOS_NEGOCIO);
 
@@ -38,7 +43,17 @@ export function ConfiguracionTipoNegocio() {
       toast.error('Por favor ingresa el nombre de tu negocio');
       return;
     }
-    setBusinessConfig({ tipoNegocio: tipoSeleccionado, nombreNegocio: nombreNegocio.trim() });
+    const porcentaje = Number(porcentajePropina);
+    if (esAdministrador && (!Number.isFinite(porcentaje) || porcentaje < 0)) {
+      toast.error('El porcentaje de propina debe ser un valor numérico no negativo');
+      return;
+    }
+    setBusinessConfig({
+      tipoNegocio: tipoSeleccionado,
+      nombreNegocio: nombreNegocio.trim(),
+      propinaActiva: esAdministrador ? propinaActiva : propinaActivaActual,
+      porcentajePropinaPredeterminado: esAdministrador ? porcentaje : porcentajePropinaActual,
+    });
     setCambiosPendientes(false);
     const tipo = TIPOS_NEGOCIO[tipoSeleccionado];
     toast.success('Configuración guardada', {
@@ -147,6 +162,34 @@ export function ConfiguracionTipoNegocio() {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {esAdministrador && (
+        <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-800/50 border border-slate-700' : 'bg-gray-50 border border-gray-200'}`}>
+          <h4 className={`font-bold text-sm mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Propina</h4>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Activar propina</span>
+            <input
+              type="checkbox"
+              checked={propinaActiva}
+              onChange={(e) => { setPropinaActiva(e.target.checked); setCambiosPendientes(true); }}
+              className="h-5 w-5 accent-blue-600"
+            />
+          </label>
+          {propinaActiva && (
+            <div className="mt-4">
+              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Propina predeterminada (%)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={porcentajePropina}
+                onChange={(e) => { setPorcentajePropina(e.target.value); setCambiosPendientes(true); }}
+                className={`w-full px-4 py-3 rounded-xl border-2 ${darkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+              />
+            </div>
+          )}
         </div>
       )}
 

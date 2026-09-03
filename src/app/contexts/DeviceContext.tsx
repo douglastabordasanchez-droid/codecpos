@@ -3,7 +3,7 @@
  * Proporciona detección en tiempo real vía USB y persistencia de defaults por rol.
  */
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import { deviceManager, type DispositivoDetectado } from '../lib/deviceManager';
 import {
@@ -123,8 +123,16 @@ export function DeviceProvider({ children }: { children: React.ReactNode }) {
     deviceManager.setUserTypeOverride(deviceId, tipo);
   }, []);
 
+  // 🚀 FIX rendimiento: este value se recreaba en cada render sin useMemo,
+  // forzando a TODO consumidor de useDevices() a re-renderizar aunque nada
+  // de esto hubiera cambiado. Ver auditoría de rendimiento en curso.
+  const value = useMemo(
+    () => ({ devices, scanning, newDeviceIds, scan, getDefault, setDefault, setUserType }),
+    [devices, scanning, newDeviceIds, scan, getDefault, setDefault, setUserType]
+  );
+
   return (
-    <DeviceContext.Provider value={{ devices, scanning, newDeviceIds, scan, getDefault, setDefault, setUserType }}>
+    <DeviceContext.Provider value={value}>
       {children}
     </DeviceContext.Provider>
   );

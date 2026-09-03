@@ -55,6 +55,8 @@ export default function VenderPage() {
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
   const [carrito, setCarrito] = useState<Record<string, ItemCarritoMovil>>({});
+  const [configPropina, setConfigPropina] = useState({ activa: false, porcentaje: 0 });
+  const [propinaManual, setPropinaManual] = useState<number | null>(null);
   const [mostrarCheckout, setMostrarCheckout] = useState(false);
   const [mostrarScanner, setMostrarScanner] = useState(false);
   const [metodoPago, setMetodoPago] = useState('efectivo');
@@ -88,6 +90,19 @@ export default function VenderPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado?.cliente_id]);
 
+  useEffect(() => {
+    if (!empleado) return;
+    const client = getSupabaseClient();
+    client?.from('clientes_pos')
+      .select('propina_activa, porcentaje_propina_predeterminado')
+      .eq('id', empleado.cliente_id)
+      .maybeSingle()
+      .then(({ data }) => setConfigPropina({
+        activa: data?.propina_activa === true,
+        porcentaje: Math.max(0, Number(data?.porcentaje_propina_predeterminado) || 0),
+      }));
+  }, [empleado?.cliente_id]);
+
   const filtrados = productos.filter(
     (p) =>
       p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -97,6 +112,10 @@ export default function VenderPage() {
 
   const itemsCarrito = Object.values(carrito);
   const totalCarrito = itemsCarrito.reduce((acc, it) => acc + it.cantidad * it.precio, 0);
+  const propinaAplicada = configPropina.activa
+    ? Math.max(0, propinaManual === null ? Math.round(totalCarrito * (configPropina.porcentaje / 100)) : propinaManual)
+    : 0;
+  const totalAPagar = totalCarrito + propinaAplicada;
   const cantidadCarrito = itemsCarrito.reduce((acc, it) => acc + it.cantidad, 0);
 
   const agregarAlCarrito = (p: ProductoFila) => {
@@ -109,7 +128,7 @@ export default function VenderPage() {
   };
 
   const totalMixto = SUBMETODOS_MIXTO.reduce((s, m) => s + (Number(montosMixto[m.valor]) || 0), 0);
-  const diferenciaMixto = totalCarrito - totalMixto;
+  const diferenciaMixto = totalAPagar - totalMixto;
   const mixtoValido = metodoPago !== 'mixto' || Math.abs(diferenciaMixto) < 1;
 
   const cambiarCantidad = (productoId: string, delta: number) => {
@@ -142,11 +161,11 @@ export default function VenderPage() {
           return acc;
         }, {} as MetodosMultiplesMovil)
       : undefined;
-    const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, itemsCarrito, metodoPago, metodosMultiples);
+    const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, itemsCarrito, metodoPago, metodosMultiples, propinaAplicada, configPropina.porcentaje, propinaManual !== null);
     setProcesando(false);
 
     if (resultado.ok && resultado.ventaId && resultado.numero) {
-      setVentaCompletada({ id: resultado.ventaId, numero: resultado.numero, total: totalCarrito, metodoPago });
+      setVentaCompletada({ id: resultado.ventaId, numero: resultado.numero, total: totalAPagar, metodoPago });
       // DIAN directo — nunca bloquea la venta (ya se guardó arriba). Si el
       // cliente identificó su NIT/cédula se intenta Factura (CUFE); si no,
       // Documento Equivalente POS (CUDE) — la decisión la toma
@@ -161,11 +180,12 @@ export default function VenderPage() {
         items: itemsCarrito.map((it) => ({ descripcion: it.nombre, cantidad: it.cantidad, precioUnitario: it.precio, subtotal: it.cantidad * it.precio })),
         subtotal: totalCarrito,
         totalImpuestos: 0,
-        total: totalCarrito,
+        total: totalAPagar,
       }).catch(() => {});
       setDocClienteFactura('');
       setNombreClienteFactura('');
       setCarrito({});
+      setPropinaManual(null);
       cargarProductos();
     } else {
       setError(resultado.error || 'No se pudo registrar la venta');
@@ -205,6 +225,7 @@ export default function VenderPage() {
     setMostrarCheckout(false);
     setMetodoPago('efectivo');
     setMontosMixto({});
+    setPropinaManual(null);
   };
 
   // ---- Escáner de cámara integrado (busca y agrega directo al carrito) ----
@@ -248,7 +269,7 @@ export default function VenderPage() {
       <div className="px-5 mb-5">
         <div className="bg-gradient-to-br from-slate-900 to-slate-900/60 border border-slate-800 rounded-2xl p-5 text-center shadow-xl">
           <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-1">Total a cobrar</p>
-          <p className="text-emerald-400 text-4xl font-black tracking-tight">${totalCarrito.toLocaleString('es-CO')}</p>
+          <p className="text-emerald-400 text-4xl font-black tracking-tight">${totalAPagar.toLocaleString('es-CO')}</p>
           <p className="text-slate-500 text-xs mt-1">{cantidadCarrito} producto{cantidadCarrito !== 1 ? 's' : ''}</p>
         </div>
       </div>
@@ -330,7 +351,7 @@ export default function VenderPage() {
               <ShoppingCart className="w-5 h-5" />
               {cantidadCarrito} producto{cantidadCarrito !== 1 ? 's' : ''}
             </span>
-            <span className="text-white font-black text-lg">${totalCarrito.toLocaleString('es-CO')}</span>
+            <span className="text-white font-black text-lg">${totalAPagar.toLocaleString('es-CO')}</span>
           </button>
         </div>
       )}
@@ -424,6 +445,17 @@ export default function VenderPage() {
                 </div>
 
                 <div className="px-5 mb-4">
+                  {configPropina.activa && (
+                    <div className="mb-4 bg-slate-900/70 border border-slate-800 rounded-xl p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-slate-200 text-sm font-bold">Propina{propinaManual === null ? ` (${configPropina.porcentaje}%)` : ''}</p>
+                          <button type="button" onClick={() => setPropinaManual(0)} className="text-red-400 text-xs">Sin propina</button>
+                        </div>
+                        <Input type="number" min="0" inputMode="numeric" value={propinaManual === null ? propinaAplicada : propinaManual} onChange={(e) => setPropinaManual(Math.max(0, Number(e.target.value) || 0))} className="w-32 h-10 bg-slate-950 border-slate-700 text-white text-right" />
+                      </div>
+                    </div>
+                  )}
                   <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-2">Método de pago</p>
                   <div className="grid grid-cols-3 gap-2">
                     {METODOS_PAGO.map((m) => (
@@ -486,7 +518,7 @@ export default function VenderPage() {
 
                 <div className="px-5 flex items-center justify-between mb-4">
                   <span className="text-slate-400 text-sm">Total</span>
-                  <span className="text-emerald-400 font-black text-2xl">${totalCarrito.toLocaleString('es-CO')}</span>
+                  <span className="text-emerald-400 font-black text-2xl">${totalAPagar.toLocaleString('es-CO')}</span>
                 </div>
 
                 {error && <p className="px-5 text-red-400 text-sm mb-3">{error}</p>}

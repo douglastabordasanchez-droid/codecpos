@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, ReactNode } from 'react';
 
 type Tema = 'dark' | 'light';
 const STORAGE_KEY = 'codecpos-pwa-tema';
@@ -28,9 +28,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, tema);
   }, [tema]);
 
-  const alternarTema = () => setTema((t) => (t === 'dark' ? 'light' : 'dark'));
+  const alternarTema = useCallback(() => setTema((t) => (t === 'dark' ? 'light' : 'dark')), []);
+  const value = useMemo(() => ({ tema, alternarTema }), [tema, alternarTema]);
 
-  return <ThemeContext.Provider value={{ tema, alternarTema }}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { getSupabaseClient } from '../lib/supabase/config';
 import { isLinked } from '../lib/supabase/tenantLink';
 
 export interface BusinessConfig {
   tipoNegocio: string;
   nombreNegocio: string;
+  propinaActiva: boolean;
+  porcentajePropinaPredeterminado: number;
 }
 
 interface BusinessContextType {
@@ -33,15 +35,20 @@ function loadConfig(): BusinessConfig {
       const parsed = JSON.parse(stored);
       const raw = parsed.tipoNegocio ?? 'minimercado';
       const tipoNegocio = ID_MIGRATIONS[raw] ?? raw;
-      return { tipoNegocio, nombreNegocio: parsed.nombreNegocio ?? 'Mi Negocio' };
+      return {
+        tipoNegocio,
+        nombreNegocio: parsed.nombreNegocio ?? 'Mi Negocio',
+        propinaActiva: parsed.propinaActiva === true,
+        porcentajePropinaPredeterminado: Math.max(0, Number(parsed.porcentajePropinaPredeterminado) || 0),
+      };
     }
     const legacyType = localStorage.getItem(LEGACY_KEY);
     if (legacyType) {
       const tipoNegocio = ID_MIGRATIONS[legacyType] ?? legacyType;
-      return { tipoNegocio, nombreNegocio: 'Mi Negocio' };
+      return { tipoNegocio, nombreNegocio: 'Mi Negocio', propinaActiva: false, porcentajePropinaPredeterminado: 0 };
     }
   } catch { /* ignore */ }
-  return { tipoNegocio: 'minimercado', nombreNegocio: 'Mi Negocio' };
+  return { tipoNegocio: 'minimercado', nombreNegocio: 'Mi Negocio', propinaActiva: false, porcentajePropinaPredeterminado: 0 };
 }
 
 const BusinessContext = createContext<BusinessContextType | undefined>(undefined);
@@ -49,7 +56,7 @@ const BusinessContext = createContext<BusinessContextType | undefined>(undefined
 export function BusinessProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<BusinessConfig>(loadConfig);
 
-  const setBusinessConfig = (newConfig: BusinessConfig) => {
+  const setBusinessConfig = useCallback((newConfig: BusinessConfig) => {
     const tipoAnterior = config.tipoNegocio;
     setConfig(newConfig);
     try {
@@ -69,14 +76,36 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
         if (error) console.warn('[BusinessContext] No se pudo sincronizar tipo_negocio a la nube:', error.message);
       });
     }
-  };
+    if (
+      isLinked() &&
+      (newConfig.propinaActiva !== config.propinaActiva || newConfig.porcentajePropinaPredeterminado !== config.porcentajePropinaPredeterminado)
+    ) {
+      const client = getSupabaseClient();
+      client?.rpc('actualizar_configuracion_propina', {
+        p_propina_activa: newConfig.propinaActiva,
+        p_porcentaje_propina_predeterminado: newConfig.porcentajePropinaPredeterminado,
+      }).then(({ error }) => {
+        if (error) console.warn('[BusinessContext] No se pudo sincronizar configuración de propina:', error.message);
+      });
+    }
+  }, [config]);
 
-  return (
-    <BusinessContext.Provider value={{
+  // 🚀 FIX rendimiento: este value se recreaba en cada render sin useMemo,
+  // forzando a TODO consumidor de useBusinessContext() a re-renderizar
+  // aunque nada de esto hubiera cambiado. Ver auditoría de rendimiento en curso.
+  const value = useMemo(
+    () => ({
       tipoNegocio: config.tipoNegocio,
       nombreNegocio: config.nombreNegocio,
+      propinaActiva: config.propinaActiva,
+      porcentajePropinaPredeterminado: config.porcentajePropinaPredeterminado,
       setBusinessConfig,
-    }}>
+    }),
+    [config.tipoNegocio, config.nombreNegocio, config.propinaActiva, config.porcentajePropinaPredeterminado, setBusinessConfig]
+  );
+
+  return (
+    <BusinessContext.Provider value={value}>
       {children}
     </BusinessContext.Provider>
   );

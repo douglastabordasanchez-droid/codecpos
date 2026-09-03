@@ -33,7 +33,7 @@ export default function ReportesPage() {
   const [hasta, setHasta] = useState(() => formatoFechaInput(inicioDeHoy()));
   const [cargando, setCargando] = useState(true);
   const [generando, setGenerando] = useState<'pdf' | 'excel' | null>(null);
-  const [resumen, setResumen] = useState({ cantidad: 0, total: 0 });
+  const [resumen, setResumen] = useState({ cantidad: 0, total: 0, propinas: 0 });
   const [nombreNegocio, setNombreNegocio] = useState('Mi Negocio');
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function ReportesPage() {
       const [{ data: negocio }, { data }] = await Promise.all([
         client.from('clientes_pos').select('nombre_negocio').eq('id', empleado.cliente_id).maybeSingle(),
         tipo === 'ventas'
-          ? client.from('ventas').select('id, total').eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
+          ? client.from('ventas').select('id, total, propina').eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
               .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString())
           : client.from('gastos').select('id, monto').eq('cliente_id', empleado.cliente_id)
               .gte('fecha', inicio.toISOString()).lt('fecha', fin.toISOString()),
@@ -59,10 +59,11 @@ export default function ReportesPage() {
 
       if (cancelado) return;
       setNombreNegocio((negocio as { nombre_negocio: string } | null)?.nombre_negocio || 'Mi Negocio');
-      const filas = (data as { id: string; total?: number; monto?: number }[]) || [];
+      const filas = (data as { id: string; total?: number; propina?: number; monto?: number }[]) || [];
       setResumen({
         cantidad: filas.length,
         total: filas.reduce((a, f) => a + Number(f.total ?? f.monto ?? 0), 0),
+        propinas: filas.reduce((a, f) => a + Number(f.propina ?? 0), 0),
       });
       setCargando(false);
     };
@@ -82,7 +83,7 @@ export default function ReportesPage() {
       if (tipo === 'ventas') {
         const { data: ventasData } = await client
           .from('ventas')
-          .select('id, numero, created_at, total, metodo_pago, cajero_nombre')
+          .select('id, numero, created_at, total, propina, metodo_pago, cajero_nombre')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
           .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString())
           .order('created_at', { ascending: true });
@@ -105,6 +106,7 @@ export default function ReportesPage() {
           items: itemsPorVenta.get(v.id) || [],
           subtotal: Number(v.total),
           iva: 0,
+          propina: Number(v.propina ?? 0),
           total: Number(v.total),
           metodoPago: v.metodo_pago || 'No especificado',
           cajero: v.cajero_nombre || 'N/A',
@@ -136,7 +138,7 @@ export default function ReportesPage() {
       if (tipo === 'ventas') {
         const { data: ventasData } = await client
           .from('ventas')
-          .select('id, numero, created_at, total, metodo_pago, cajero_nombre')
+          .select('id, numero, created_at, total, propina, metodo_pago, cajero_nombre')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
           .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString())
           .order('created_at', { ascending: true });
@@ -147,6 +149,7 @@ export default function ReportesPage() {
           items: [],
           subtotal: Number(v.total),
           iva: 0,
+          propina: Number(v.propina ?? 0),
           total: Number(v.total),
           metodoPago: v.metodo_pago || 'No especificado',
           cajero: v.cajero_nombre || 'N/A',
@@ -231,6 +234,7 @@ export default function ReportesPage() {
               <div className="text-right">
                 <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide">Total</p>
                 <p className={`text-2xl font-black mt-1 ${tipo === 'ventas' ? 'text-emerald-400' : 'text-red-400'}`}>{money(resumen.total)}</p>
+                {tipo === 'ventas' && <p className="text-xs text-amber-400 mt-1">Propinas: {money(resumen.propinas)}</p>}
               </div>
             </div>
           )}
