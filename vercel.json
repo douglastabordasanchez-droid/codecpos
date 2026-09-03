@@ -9,6 +9,12 @@
   ],
   "headers": [
     {
+      "source": "/app/(index.html|index.pwa.html|sw.js|registerSW.js|workbox-.*\\.js|manifest.webmanifest)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
       "source": "/descargas/codec-pos-verify.apk",
       "headers": [
         { "key": "Content-Type", "value": "application/vnd.android.package-archive" },

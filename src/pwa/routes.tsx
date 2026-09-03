@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react';
 import { PwaLayout } from './components/PwaLayout';
 import { ModuloGate } from './components/ModuloGate';
 import { ModuloPOS } from '../app/lib/permissions';
@@ -15,35 +15,51 @@ import PagoResultadoPage from './pages/PagoResultadoPage';
 // y el service worker ni siquiera pudo generarse (límite de precache de
 // Workbox, 2MB). Cada página pesada ahora carga solo cuando se visita —
 // mismo patrón que ya usa Electron en routes-pos.tsx.
-const VentasPage = lazy(() => import('./pages/VentasPage'));
-const PagosPage = lazy(() => import('./pages/PagosPage'));
-const AlertasPage = lazy(() => import('./pages/AlertasPage'));
-const InventarioPage = lazy(() => import('./pages/InventarioPage'));
-const ProductoFormPage = lazy(() => import('./pages/ProductoFormPage'));
-const EscanerPage = lazy(() => import('./pages/EscanerPage'));
-const PerfilPage = lazy(() => import('./pages/PerfilPage'));
-const ConfiguracionPage = lazy(() => import('./pages/ConfiguracionPage'));
-const PlanesPage = lazy(() => import('./pages/PlanesPage'));
-const VenderPage = lazy(() => import('./pages/VenderPage'));
-const GastosPage = lazy(() => import('./pages/GastosPage'));
-const DevolucionesPage = lazy(() => import('./pages/DevolucionesPage'));
-const CierreCajaPage = lazy(() => import('./pages/CierreCajaPage'));
-const PanelDesarrolladorPage = lazy(() => import('./pages/PanelDesarrolladorPage'));
-const FacturacionPage = lazy(() => import('./pages/FacturacionPage'));
-const TallerPage = lazy(() => import('./pages/TallerPage'));
-const PanaderiaPage = lazy(() => import('./pages/PanaderiaPage'));
-const VeterinariaPage = lazy(() => import('./pages/VeterinariaPage'));
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-const ReportesPage = lazy(() => import('./pages/ReportesPage'));
-const CodigosBarrasPage = lazy(() => import('./pages/CodigosBarrasPage'));
-const PromocionesPage = lazy(() => import('./pages/PromocionesPage'));
-const ProveedoresPage = lazy(() => import('./pages/ProveedoresPage'));
-const PersonalPage = lazy(() => import('./pages/PersonalPage'));
-const FidelizacionPage = lazy(() => import('./pages/FidelizacionPage'));
-const ContabilidadPage = lazy(() => import('./pages/ContabilidadPage'));
-const MultitiendaPage = lazy(() => import('./pages/MultitiendaPage'));
-const ArtesGraficasPage = lazy(() => import('./pages/ArtesGraficasPage'));
-const PapeleriaPinateriaPage = lazy(() => import('./pages/PapeleriaPinateriaPage'));
+function lazyConReintento<T extends ComponentType<any>>(cargar: () => Promise<{ default: T }>) {
+  return lazy(async () => {
+    try {
+      const modulo = await cargar();
+      sessionStorage.removeItem('codecpos-pwa-chunk-retry');
+      return modulo;
+    } catch (error) {
+      if (!sessionStorage.getItem('codecpos-pwa-chunk-retry')) {
+        sessionStorage.setItem('codecpos-pwa-chunk-retry', '1');
+        window.location.reload();
+      }
+      throw error;
+    }
+  });
+}
+
+const VentasPage = lazyConReintento(() => import('./pages/VentasPage'));
+const PagosPage = lazyConReintento(() => import('./pages/PagosPage'));
+const AlertasPage = lazyConReintento(() => import('./pages/AlertasPage'));
+const InventarioPage = lazyConReintento(() => import('./pages/InventarioPage'));
+const ProductoFormPage = lazyConReintento(() => import('./pages/ProductoFormPage'));
+const EscanerPage = lazyConReintento(() => import('./pages/EscanerPage'));
+const PerfilPage = lazyConReintento(() => import('./pages/PerfilPage'));
+const ConfiguracionPage = lazyConReintento(() => import('./pages/ConfiguracionPage'));
+const PlanesPage = lazyConReintento(() => import('./pages/PlanesPage'));
+const VenderPage = lazyConReintento(() => import('./pages/VenderPage'));
+const GastosPage = lazyConReintento(() => import('./pages/GastosPage'));
+const DevolucionesPage = lazyConReintento(() => import('./pages/DevolucionesPage'));
+const CierreCajaPage = lazyConReintento(() => import('./pages/CierreCajaPage'));
+const PanelDesarrolladorPage = lazyConReintento(() => import('./pages/PanelDesarrolladorPage'));
+const FacturacionPage = lazyConReintento(() => import('./pages/FacturacionPage'));
+const TallerPage = lazyConReintento(() => import('./pages/TallerPage'));
+const PanaderiaPage = lazyConReintento(() => import('./pages/PanaderiaPage'));
+const VeterinariaPage = lazyConReintento(() => import('./pages/VeterinariaPage'));
+const DashboardPage = lazyConReintento(() => import('./pages/DashboardPage'));
+const ReportesPage = lazyConReintento(() => import('./pages/ReportesPage'));
+const CodigosBarrasPage = lazyConReintento(() => import('./pages/CodigosBarrasPage'));
+const PromocionesPage = lazyConReintento(() => import('./pages/PromocionesPage'));
+const ProveedoresPage = lazyConReintento(() => import('./pages/ProveedoresPage'));
+const PersonalPage = lazyConReintento(() => import('./pages/PersonalPage'));
+const FidelizacionPage = lazyConReintento(() => import('./pages/FidelizacionPage'));
+const ContabilidadPage = lazyConReintento(() => import('./pages/ContabilidadPage'));
+const MultitiendaPage = lazyConReintento(() => import('./pages/MultitiendaPage'));
+const ArtesGraficasPage = lazyConReintento(() => import('./pages/ArtesGraficasPage'));
+const PapeleriaPinateriaPage = lazyConReintento(() => import('./pages/PapeleriaPinateriaPage'));
 
 function Cargando() {
   return (

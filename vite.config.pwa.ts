@@ -27,6 +27,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      cleanupOutdatedCaches: true,
       includeAssets: ['logo.png'],
       // 🌐 Fase 5 (arquitectura unificada): la PWA ahora comparte dominio con
       // la landing comercial (`landing/`, servida en la raíz del mismo
@@ -50,6 +51,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
       },
     }),
