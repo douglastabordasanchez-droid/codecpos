@@ -40,6 +40,7 @@ import {
   esModuloPermitidoLicenciaDesarrollador,
   type ConfiguracionModulosGlobal,
 } from '../../lib/permissions';
+import { guardarConfiguracionEmpresaEnNube, marcarConfiguracionEmpresaPendiente } from '../../lib/supabase/empresaConfigSyncService';
 
 interface ConfiguracionEmpresa {
   // Datos de la empresa
@@ -432,7 +433,7 @@ export default function ConfiguracionPage() {
     setModulosWorkspaceDirty(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
     
     // Validaciones básicas
@@ -469,8 +470,15 @@ export default function ConfiguracionPage() {
     try {
       // Guardar en localStorage
       localStorage.setItem('codec_pos_config', JSON.stringify(config));
+      marcarConfiguracionEmpresaPendiente();
       guardarModulosGlobales(modulosGlobalesConfig);
       setModulosWorkspaceDirty(false);
+      try {
+        await guardarConfiguracionEmpresaEnNube(config as unknown as Record<string, unknown>);
+      } catch (syncError) {
+        console.warn('[configuración] La copia en nube quedó pendiente:', syncError);
+        toast.warning('Configuración guardada localmente; se reintentará al recuperar conexión.');
+      }
       
       toast.success('¡Configuración guardada exitosamente!', {
         description: 'Los cambios se han aplicado correctamente'

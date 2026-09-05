@@ -119,7 +119,7 @@ async function rotarBackups() {
   }
 }
 
-function listarArchivos() {
+async function listarArchivos() {
   ensureBackupsDir();
   return fs.readdirSync(BACKUPS_DIR)
     .filter(f => f.startsWith('CODECPOS_backup_') && f.endsWith('.json'))

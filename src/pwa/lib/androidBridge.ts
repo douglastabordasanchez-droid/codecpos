@@ -21,6 +21,9 @@ interface AndroidCodecVerifyBridge {
   guardarSesion(webhookToken: string, nombreNegocio: string): void;
   cerrarSesion(): void;
   abrirAjustesNotificaciones(): void;
+  pedirPermisoNotificaciones(): void;
+  permisoNotificacionesConcedido(): boolean;
+  avisarCambioComanda(titulo: string, cuerpo: string, estado: string, tag: string): void;
   autenticarConHuella(requestId: string): void;
   huellaDisponible(): boolean;
 }
@@ -93,6 +96,30 @@ export function abrirAjustesNotificacionesAndroid(): void {
     getBridge()?.abrirAjustesNotificaciones();
   } catch {
     /* no crítico */
+  }
+}
+
+/** Solicita el permiso del sistema para los avisos de cocina dentro de la app Android. */
+export function activarAvisosPedidosAndroid(): boolean | null {
+  const bridge = getBridge();
+  if (!bridge) return null;
+  try {
+    if (!bridge.permisoNotificacionesConcedido()) bridge.pedirPermisoNotificaciones();
+    return bridge.permisoNotificacionesConcedido();
+  } catch {
+    return false;
+  }
+}
+
+/** Entrega los avisos de comandas al canal de notificaciones nativo del teléfono. */
+export function avisarCambioComandaAndroid(titulo: string, cuerpo: string, estado: string, tag: string): boolean {
+  const bridge = getBridge();
+  if (!bridge) return false;
+  try {
+    bridge.avisarCambioComanda(titulo, cuerpo, estado, tag);
+    return true;
+  } catch {
+    return false;
   }
 }
 

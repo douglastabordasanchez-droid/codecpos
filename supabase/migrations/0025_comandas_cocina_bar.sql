@@ -32,4 +32,17 @@ create policy panaderia_comandas_tenant on public.panaderia_comandas
 
 -- Realtime: la pantalla de Cocina/Bar ve el pedido apenas el mesero lo envía,
 -- y el mesero ve el cambio de estado (listo/entregado) sin refrescar.
-alter publication supabase_realtime add table public.panaderia_comandas;
+-- PostgreSQL no ofrece `ADD TABLE IF NOT EXISTS` para publicaciones. Conserva
+-- una suscripción ya configurada y agrega la tabla solo cuando hace falta.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'panaderia_comandas'
+  ) then
+    execute 'alter publication supabase_realtime add table public.panaderia_comandas';
+  end if;
+end
+$$;

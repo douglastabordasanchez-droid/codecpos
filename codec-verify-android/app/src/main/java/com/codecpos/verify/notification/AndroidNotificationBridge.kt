@@ -1,8 +1,18 @@
 package com.codecpos.verify.notification
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.codecpos.verify.R
 import com.codecpos.verify.data.Prefs
 
 /**
@@ -17,8 +27,10 @@ import com.codecpos.verify.data.Prefs
  * estado de Compose, así que se despacha al hilo principal con un Handler.
  */
 class AndroidNotificationBridge(
+    private val context: Context,
     private val prefs: Prefs,
     private val onAbrirAjustes: () -> Unit,
+    private val onPedirPermisoNotificaciones: () -> Unit,
     private val onAutenticarConHuella: (requestId: String) -> Unit,
     private val huellaDisponibleEnDispositivo: () -> Boolean,
 ) {
@@ -42,6 +54,54 @@ class AndroidNotificationBridge(
     @JavascriptInterface
     fun abrirAjustesNotificaciones() {
         mainHandler.post { onAbrirAjustes() }
+    }
+
+    /**
+     * Los WebView no implementan de forma uniforme Notification.requestPermission().
+     * Esta entrada permite que el botón de avisos de Alimentos y Bebidas use el
+     * diálogo real de Android en lugar de quedarse sin respuesta.
+     */
+    @JavascriptInterface
+    fun pedirPermisoNotificaciones() {
+        mainHandler.post { onPedirPermisoNotificaciones() }
+    }
+
+    @JavascriptInterface
+    fun permisoNotificacionesConcedido(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    /** Muestra el aviso de una comanda con el canal nativo, aun dentro del WebView. */
+    @JavascriptInterface
+    fun avisarCambioComanda(titulo: String, cuerpo: String, estado: String, tag: String) {
+        if (!permisoNotificacionesConcedido()) return
+
+        val channelId = "pedidos_comandas"
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Pedidos y comandas",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Avisos cuando cocina cambia el estado de un pedido"
+                enableVibration(true)
+                vibrationPattern = if (estado == "listo") longArrayOf(0, 260, 110, 260, 110, 360) else longArrayOf(0, 150, 80, 150)
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(titulo.take(80))
+            .setContentText(cuerpo.take(180))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(cuerpo.take(360)))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setAutoCancel(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(tag.take(100), tag.hashCode(), notification)
     }
 
     /**

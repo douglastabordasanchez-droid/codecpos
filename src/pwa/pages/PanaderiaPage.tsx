@@ -11,7 +11,7 @@
  * `actualizado_en: 'pwa'`; Electron lo recibe por Realtime (ver
  * panaderiaSyncService) y lo cobra desde la caja.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Coffee, X, Loader2, Plus, Minus, Users, Search, Check,
@@ -40,10 +40,13 @@ import {
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import {
   activarAvisosPedidos,
+  avisarCambioComanda,
+  desbloquearAvisosPedidos,
   guardarPreferenciasAvisosPedidos,
   obtenerPreferenciasAvisosPedidos,
   permisoAvisosPedidos,
 } from '../lib/pedidoAlerts';
+import { estaEnAppAndroid } from '../lib/androidBridge';
 
 const ESTADO_COMANDA_LABEL: Record<string, string> = {
   pendiente: '🕓 En cola',
@@ -73,6 +76,20 @@ export default function PanaderiaPage() {
   const [permisoAvisos, setPermisoAvisos] = useState(() => permisoAvisosPedidos());
   const [preferenciasAvisos, setPreferenciasAvisos] = useState(() => obtenerPreferenciasAvisosPedidos());
   const [mostrarAjustesAvisos, setMostrarAjustesAvisos] = useState(false);
+  const [alertaComanda, setAlertaComanda] = useState<Comanda | null>(null);
+  const [flashAlerta, setFlashAlerta] = useState(false);
+  const temporizadorFlash = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mostrarAlertaComanda = useCallback((comanda: Comanda) => {
+    setAlertaComanda(comanda);
+    setFlashAlerta(true);
+    if (temporizadorFlash.current) clearTimeout(temporizadorFlash.current);
+    temporizadorFlash.current = setTimeout(() => setFlashAlerta(false), 600);
+  }, []);
+
+  useEffect(() => () => {
+    if (temporizadorFlash.current) clearTimeout(temporizadorFlash.current);
+  }, []);
 
   const cambiarPreferenciaAvisos = (campo: 'voz' | 'vibracion') => {
     setPreferenciasAvisos((actuales) => {
@@ -89,8 +106,10 @@ export default function PanaderiaPage() {
       toast.success('Avisos del mesero activados', { description: 'Recibirás vibración, notificación y voz al cambiar una comanda.' });
     } else if (permiso === 'denied') {
       toast.error('Las notificaciones están bloqueadas', { description: 'Actívalas en los permisos de este sitio o de la app CODEC POS.' });
+    } else if (estaEnAppAndroid()) {
+      toast.info('Confirma el permiso de notificaciones de Android para activar los avisos de pedidos.');
     } else {
-      toast.info('Este navegador no ofrece notificaciones del sistema. La vibración y los avisos en pantalla seguirán activos.');
+      toast.success('Alertas de pedidos activadas', { description: 'Safari mostrará un aviso en pantalla y reproducirá sonido mientras la app esté abierta.' });
     }
   };
 
@@ -142,15 +161,20 @@ export default function PanaderiaPage() {
           const { [comanda.mesaLocalId]: _omitida, ...resto } = prev;
           return resto;
         }
-        if (comanda.estado === 'listo' && prev[comanda.mesaLocalId]?.estado !== 'listo') {
-          toast.success(`✅ ${comanda.mesaNombre || 'Pedido'} listo para servir`);
+        const anterior = prev[comanda.mesaLocalId];
+        if (
+          (comanda.estado === 'preparando' || comanda.estado === 'listo') &&
+          anterior && anterior.estado !== comanda.estado
+        ) {
+          avisarCambioComanda(comanda, comanda.estado);
+          mostrarAlertaComanda(comanda);
         }
         return { ...prev, [comanda.mesaLocalId]: comanda };
       });
     });
 
     return () => { cancelado = true; unsubscribe?.(); };
-  }, [empleado?.cliente_id]);
+  }, [empleado?.cliente_id, mostrarAlertaComanda]);
 
   const guardar = async (mesa: PanaderiaMesa, items: ItemCuenta[]) => {
     if (!empleado) return;
@@ -325,7 +349,7 @@ export default function PanaderiaPage() {
                   initial={{ opacity: 0, scale: 0.94 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                  onClick={() => setMesaAbierta(mesa)}
+                  onClick={() => { void desbloquearAvisosPedidos(); setMesaAbierta(mesa); }}
                   className={`relative aspect-square rounded-2xl p-3 flex flex-col items-center justify-center gap-1 border transition-all active:scale-95 ${
                     comanda?.estado === 'listo'
                       ? 'bg-gradient-to-br from-emerald-500/20 to-teal-600/20 border-emerald-500/50'
@@ -357,6 +381,28 @@ export default function PanaderiaPage() {
           </div>
         </div>
       )}
+
+      <AnimatePresence>
+        {alertaComanda && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className="fixed left-4 right-4 top-4 z-[80] mx-auto max-w-sm rounded-2xl border border-amber-300 bg-amber-50 p-4 text-slate-900 shadow-2xl"
+            role="alert"
+          >
+            <div className="flex items-start gap-3">
+              <BellRing className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div className="min-w-0 flex-1">
+                <p className="font-black">{alertaComanda.estado === 'listo' ? 'Pedido listo para servir' : 'Pedido en preparación'}</p>
+                <p className="text-sm text-slate-600">{alertaComanda.mesaNombre || alertaComanda.mesaLocalId}</p>
+              </div>
+              <button type="button" onClick={() => setAlertaComanda(null)} className="text-xs font-bold text-slate-500">Cerrar</button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {flashAlerta && <div className="pointer-events-none fixed inset-0 z-[75] animate-pulse bg-amber-300/35" aria-hidden="true" />}
 
       {error && (
         <p className="px-5 mt-4 text-red-400 text-sm flex items-center gap-1.5">

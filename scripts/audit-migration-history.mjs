@@ -1,0 +1,13 @@
+import { config } from 'dotenv';
+import pg from 'pg';
+config({ path: '.env.local' });
+config();
+const client = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+await client.connect();
+const publication = await client.query("select schemaname, tablename from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'panaderia_comandas'");
+const history = await client.query("select name, applied_at from public._migrations where name like '0025%' or name >= '0026' or name like '202609%' order by name");
+const rows = await client.query('select count(*)::int as count from public.panaderia_comandas');
+const officialColumns = await client.query("select column_name from information_schema.columns where table_schema = 'supabase_migrations' and table_name = 'schema_migrations' order by ordinal_position");
+const official = await client.query('select * from supabase_migrations.schema_migrations order by version');
+console.log(JSON.stringify({ publication: publication.rows, history: history.rows, comandas: rows.rows[0], officialColumns: officialColumns.rows, official: official.rows }, null, 2));
+await client.end();

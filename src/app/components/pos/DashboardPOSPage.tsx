@@ -1,6 +1,6 @@
 
 
-code/**
+/**
  * CODEC POS v2.0 - Dashboard Premium
  * ✅ Tarjetas compactas tech con glow
  * ✅ Modo oscuro glassmorphism

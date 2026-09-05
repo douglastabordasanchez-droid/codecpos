@@ -112,13 +112,24 @@ function crearTiendaPrincipalDefault(): Tienda {
   return principal;
 }
 
-function saveTiendas(tiendas: Tienda[]) {
+function saveTiendas(tiendas: Tienda[], publicar = true) {
   localStorage.setItem(KEY_TIENDAS, JSON.stringify(tiendas));
+  if (!publicar) return;
   // ☁️ Espeja el directorio de tiendas en la nube para que la PWA lo pueda
   // ver — best-effort, ver tiendasSyncService.ts.
   import('./supabase/tiendasSyncService')
     .then(({ publicarTiendas }) => publicarTiendas(tiendas))
     .catch(() => {});
+}
+
+/** Reemplazo controlado tras un pull remoto; no lo vuelve a publicar y evita bucles. */
+export function reemplazarTiendasDesdeNube(tiendas: Tienda[]): void {
+  if (tiendas.length === 0) return;
+  saveTiendas(tiendas, false);
+  const activa = getTiendaActivaId();
+  if (!tiendas.some((t) => t.id === activa && t.activo !== false)) {
+    setTiendaActivaId(tiendas.find((t) => t.esPrincipal)?.id || tiendas[0].id);
+  }
 }
 
 export function crearTienda(datos: Omit<Tienda, 'id' | 'esPrincipal' | 'fechaCreacion' | 'activo'>): Tienda {

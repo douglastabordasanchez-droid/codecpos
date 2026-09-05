@@ -12,9 +12,20 @@
 import { dbManager, Producto, Venta } from './indexedDB';
 import { getSupabaseClient } from './supabase/config';
 import { getLinkedClienteId, restablecerSesionSync } from './supabase/tenantLink';
-import { listarTiendas, getStockResumenTienda, ejecutarTransferencia } from './multitiendaService';
+import { listarTiendas, getStockResumenTienda, ejecutarTransferencia, reemplazarTiendasDesdeNube } from './multitiendaService';
+import { descargarTiendas } from './supabase/tiendasSyncService';
+import { descargarConfiguracionEmpresaDesdeNube, sincronizarConfiguracionEmpresaPendiente } from './supabase/empresaConfigSyncService';
 
 const SYNC_INTERVAL = 30000; // 30 segundos
+const STEP_TIMEOUT_MS = 20_000;
+
+function withStepTimeout<T>(promise: Promise<T>, name: string): Promise<T> {
+  let timer: number | undefined;
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => { timer = window.setTimeout(() => reject(new Error(`El paso ${name} excedió ${STEP_TIMEOUT_MS / 1000}s`)), STEP_TIMEOUT_MS); }),
+  ]).finally(() => { if (timer) window.clearTimeout(timer); });
+}
 
 /**
  * 🛡️ Hallazgo en verificación en vivo: la pantalla de venta activa
@@ -211,6 +222,15 @@ class SyncService {
     // propio error: uno fallido se registra pero no bloquea a los demás, y
     // el heartbeat siempre llega a ejecutarse.
     const pasos: Array<[string, () => Promise<void>]> = [
+      ['push_configuracion_empresa', async () => { await sincronizarConfiguracionEmpresaPendiente(); }],
+      ['pull_configuracion_empresa', async () => { await descargarConfiguracionEmpresaDesdeNube(); }],
+      ['pull_tiendas', async () => {
+        const tiendas = await descargarTiendas();
+        if (tiendas?.length) {
+          reemplazarTiendasDesdeNube(tiendas);
+          window.dispatchEvent(new CustomEvent('codecpos:tiendas-sincronizadas'));
+        }
+      }],
       ['pull_productos', () => this.pullProductosRemotos(client, clienteId)],
       ['pull_ventas', () => this.pullVentasRemotas(client, clienteId)],
       ['pull_gastos', () => this.pullGastosRemotos(client, clienteId)],
@@ -231,7 +251,7 @@ class SyncService {
     let primerError: unknown = null;
     for (const [nombre, paso] of pasos) {
       try {
-        await paso();
+        await withStepTimeout(paso(), nombre);
       } catch (error) {
         primerError = primerError ?? error;
         console.error(`[sync] Falló el paso "${nombre}":`, error);

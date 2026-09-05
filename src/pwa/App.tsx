@@ -31,11 +31,38 @@ export default function App() {
   // ningún useEffect vuelve a correr. Forzar un reload real cuando el evento
   // trae persisted=true replica lo que Chrome/Android sí hace solo.
   useEffect(() => {
+    const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!esIOS) return;
+
+    // WebKit puede reanudar una PWA suspendida sin disparar `pageshow` ni
+    // volver a montar React. Al regresar desde segundo plano se hace un pull
+    // inicial nuevo desde Supabase, igual que cuando Android abre la PWA.
+    let estuvoEnSegundoPlano = document.visibilityState === 'hidden';
+    const recargarDatosCentrales = () => {
+      if (document.visibilityState !== 'visible' || !estuvoEnSegundoPlano || !navigator.onLine) return;
+      estuvoEnSegundoPlano = false;
+      window.location.reload();
+    };
+    const alCambiarVisibilidad = () => {
+      if (document.visibilityState === 'hidden') {
+        estuvoEnSegundoPlano = true;
+        return;
+      }
+      recargarDatosCentrales();
+    };
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) window.location.reload();
     };
+
+    document.addEventListener('visibilitychange', alCambiarVisibilidad);
     window.addEventListener('pageshow', handlePageShow);
-    return () => window.removeEventListener('pageshow', handlePageShow);
+    window.addEventListener('online', recargarDatosCentrales);
+    return () => {
+      document.removeEventListener('visibilitychange', alCambiarVisibilidad);
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('online', recargarDatosCentrales);
+    };
   }, []);
 
   return (

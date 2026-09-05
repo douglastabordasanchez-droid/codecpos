@@ -1070,6 +1070,17 @@ class ElectronStoreService {
     }
   }
 
+  /** Elimina productos únicamente del inventario local compartido por los módulos. */
+  async eliminarProductos(productoIds: string[]): Promise<void> {
+    const ids = new Set(productoIds.map(String));
+    if (ids.size === 0) return;
+    const productos = this.leerProductosLS();
+    const actualizados = productos.filter((producto: any) => !ids.has(String(producto?.id)));
+    if (actualizados.length === productos.length) return;
+    this.escribirProductosLS(actualizados);
+    ids.forEach((productoId) => storeEvents.emit('inventario:actualizado', { productoId }));
+  }
+
   async obtenerDevolucionesDelDia(filtro?: FiltroDashboard): Promise<DevolucionDia[]> {
     try {
       // 🚀 FIX rendimiento: mismo patrón que getLSCached en otros lados de

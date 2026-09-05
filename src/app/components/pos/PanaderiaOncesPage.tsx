@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type ComponentPropsWithoutRef } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Coffee, Package2, BookOpen, Trash2, Plus, Save, Upload, Download, Armchair, Edit,
   Croissant, Cake, Cookie, Wine, Beer, IceCream, Flame, Utensils, ShoppingBag, Star, Heart,
   Pizza, Leaf, Check, CupSoda, Ham, Candy, Cherry, Soup,
-  GripVertical, ChevronDown, AlertTriangle, ShoppingCart, BarChart3, TrendingUp,
+  UsersRound, GlassWater, CirclePlus, PackageOpen, Drumstick, Wheat, Salad, CookingPot,
+  Martini, Milk, Donut, CakeSlice, Sandwich, Popcorn, Beef, Shrimp, Shell, ChefHat, PackageCheck, PackagePlus,
+  GripVertical, ChevronDown, ChevronLeft, ChevronRight, AlertTriangle, ShoppingCart, BarChart3, TrendingUp,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePOS } from '../../contexts/POSContext';
@@ -15,8 +17,140 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from 'sonner';
 
+// Lucide 0.487 no incluye hamburguesa, perro caliente ni papas fritas. Estos
+// SVG mantienen su color mediante `currentColor`, como los iconos de Lucide.
+type FoodIconProps = ComponentPropsWithoutRef<'svg'>;
+
+function HamburguesaIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M4 10.5C4.8 7.5 7.5 5.5 12 5.5s7.2 2 8 5" />
+    <path d="M3.5 11h17" />
+    <path d="M4 14h16" />
+    <path d="M4.5 17.5h15c-.6 1.2-1.8 2-3.2 2H7.7c-1.4 0-2.6-.8-3.2-2Z" />
+    <path d="M7 12.5h2M15 12.5h2" />
+  </svg>;
+}
+
+function PerroCalienteIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M4.3 16.8c-1.2-1.2-1.2-3.2 0-4.4l7.9-7.9c1.2-1.2 3.2-1.2 4.4 0l3 3c1.2 1.2 1.2 3.2 0 4.4l-7.9 7.9c-1.2 1.2-3.2 1.2-4.4 0l-3-3Z" />
+    <path d="m6.8 15.5 7.9-7.9c.7-.7 1.8-.7 2.5 0l.8.8c.7.7.7 1.8 0 2.5l-7.9 7.9" />
+    <path d="m10.2 12.1 1.7 1.7m.6-4 1.7 1.7" />
+  </svg>;
+}
+
+function PapasFritasIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="m5.2 18.9 2.2-8.1 2.7.7-2.2 8.1zM10.1 19.2l.8-11 2.8.2-.8 11zM15 19l-1.3-8.2 2.7-.4 1.3 8.2z" />
+    <path d="m4.2 9.2 4.1-1.1m1.7-2.5 4.1.3m.4 1.7 3.9-1.5" />
+  </svg>;
+}
+
+function PapasEnCajaIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M7.2 11V5.5h2.4V11m1.2 0V4.5h2.4V11m1.2 0V5.5h2.4V11" />
+    <path d="M5.2 10.5h13.6l-1.3 8.2c-.1.8-.8 1.3-1.6 1.3H8.1c-.8 0-1.5-.6-1.6-1.3l-1.3-8.2Z" />
+    <path d="M10 13.5v4m4-4v4" />
+  </svg>;
+}
+
+function VasoConPitilloIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M8 5h8l-1 14H9L8 5Z" /><path d="M7 5h10M12 5V2.5h3" /><path d="m10.5 10 3 3m-3 1 3-3" />
+  </svg>;
+}
+
+function BebidaParaLlevarIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M7 7h10l-1 12H8L7 7Z" /><path d="M6 7h12M11 7V3h3" /><path d="M9.5 11.5h5M10 15h4" />
+  </svg>;
+}
+
+function ComboComidaIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M3 13.5c.5-2.1 2.2-3.5 5-3.5s4.5 1.4 5 3.5M3 14.5h10M3.5 17.5h9" /><path d="M4 16h8" />
+    <path d="M16 7h4l-.6 11h-2.8L16 7Z" /><path d="M15.5 7h5M18 7V4.5h1.5" />
+  </svg>;
+}
+
+function TacoIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M4 17c0-5.2 3.1-8.5 8-8.5s8 3.3 8 8.5H4Z" /><path d="M6 13.5c1.2-1.4 2.5 1.3 4 0 1.5-1.4 2.5 1.2 4 0 1.3-1.3 2.3.8 3.5-.3" /><path d="M6.5 17h11" />
+  </svg>;
+}
+
+function BurritoIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M5 7.5c0-1.4 1.1-2.5 2.5-2.5h9C17.9 5 19 6.1 19 7.5v9c0 1.4-1.1 2.5-2.5 2.5h-9C6.1 19 5 17.9 5 16.5v-9Z" /><path d="m7 8 3 3m7-3-3 3M8 16h8" />
+  </svg>;
+}
+
+function NachosIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="m4 18 4.2-10L12 18H4ZM10 18l4-12 5.5 12H10Z" /><path d="M8.2 14.5h.1m5.5-.5h.1m2 2h.1" />
+  </svg>;
+}
+
+function PolloAsadoIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M5 14c0-4.1 3-7 7.1-7 3.5 0 6.4 2.4 6.4 5.7 0 3.6-3.2 6.3-7.7 6.3H7.5C6.1 19 5 17.4 5 16v-2Z" /><path d="M5.3 15.2 3.8 17c-.6.7-.5 1.7.2 2.2.7.5 1.6.4 2.1-.2l1.2-1.5" /><path d="M12 10.5c1.3.4 2.2 1.5 2.5 2.8" />
+  </svg>;
+}
+
+function AlitasIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M4.5 9.5c1.7-1.7 4.5-1.7 6.2 0l1.1 1.1-3.5 3.5-1.1-1.1c-1.7-1.7-1.7-4.5 0-6.2" /><path d="M12.2 10.6l1.1-1.1c1.7-1.7 4.5-1.7 6.2 0 1.7 1.7 1.7 4.5 0 6.2l-1.1 1.1-3.5-3.5" /><path d="m9.5 13.5 5 5" />
+  </svg>;
+}
+
+function ArrozIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M4 13.5h16c0 3.7-3.2 6.5-8 6.5s-8-2.8-8-6.5Z" /><path d="M5.5 13.5c.7-2.3 3-3.8 6.5-3.8s5.8 1.5 6.5 3.8" /><path d="M8 9V6.5m4 2V5m4 4V6.5" />
+  </svg>;
+}
+
+function PlatoComidaIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M3.5 18.5h17" /><path d="M5 17.5c.5-4.8 3-7.5 7-7.5s6.5 2.7 7 7.5H5Z" /><path d="M9 8c0-1.3.8-1.7.8-3M13 8c0-1.3.8-1.7.8-3" />
+  </svg>;
+}
+
+function TazaIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M5 8h10v7.5A3.5 3.5 0 0 1 11.5 19h-3A3.5 3.5 0 0 1 5 15.5V8Z" /><path d="M15 10h1.5a2.5 2.5 0 0 1 0 5H15M8 5.5c0-1.1.9-1.3.9-2.5" />
+  </svg>;
+}
+
+function TeIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M5 10h10v5.5A3.5 3.5 0 0 1 11.5 19h-3A3.5 3.5 0 0 1 5 15.5V10Z" /><path d="M15 12h1.5a2.5 2.5 0 0 1 0 5H15M8 7c0-1.1.9-1.3.9-2.5M12 7c0-1.1.9-1.3.9-2.5" /><path d="m9 13 2 2 2-2" />
+  </svg>;
+}
+
+function BotellaIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M10 3h4v4l2.6 3.2c.5.6.8 1.4.8 2.2v5.1c0 1.3-1 2.3-2.3 2.3H8.9c-1.3 0-2.3-1-2.3-2.3v-5.1c0-.8.3-1.6.8-2.2L10 7V3Z" /><path d="M10 3h4M7 14h10" />
+  </svg>;
+}
+
+function JugoIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M7 5h8l1 14H8L7 5Z" /><path d="M7 5h8l-2-2h-4L7 5ZM12 5v-3h3" /><circle cx="11.5" cy="13" r="2.2" />
+  </svg>;
+}
+
+function CupcakeIcon(props: FoodIconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="M6 12.5h12l-1.2 6.2c-.1.8-.8 1.3-1.6 1.3H8.8c-.8 0-1.5-.5-1.6-1.3L6 12.5Z" /><path d="M6.5 12.5c-.2-2 1.2-3.5 3-3.5.2-2.3 3.5-2.7 4.2-.5 2-.7 3.8.8 3.8 2.8v1.2H6.5Z" /><path d="M10 15v3m4-3v3" />
+  </svg>;
+}
+
 // ── Biblioteca de íconos Lucide para panadería ────────────────────────────────
 const ICON_LIBRARY = [
+  { key: 'hamburguesa', label: 'Hamburguesa', Component: HamburguesaIcon },
+  { key: 'perro_caliente', label: 'Perro caliente', Component: PerroCalienteIcon },
+  { key: 'papas_fritas', label: 'Papas fritas', Component: PapasFritasIcon },
+  { key: 'papas_caja', label: 'Papas en caja', Component: PapasEnCajaIcon },
   { key: 'pan',      label: 'Croissant',    Component: Croissant  },
   { key: 'cafe',     label: 'Café',         Component: Coffee     },
   { key: 'pizza',    label: 'Pizza',        Component: Pizza      },
@@ -37,6 +171,42 @@ const ICON_LIBRARY = [
   { key: 'postre',   label: 'Postres',      Component: Cake       },
   { key: 'desayuno', label: 'Desayuno',     Component: Heart      },
   { key: 'general',  label: 'General',      Component: Package2   },
+  { key: 'compartir', label: 'Para compartir', Component: UsersRound },
+  { key: 'vaso', label: 'Vaso de bebida', Component: GlassWater },
+  { key: 'vaso_pitillo', label: 'Vaso con pitillo', Component: VasoConPitilloIcon },
+  { key: 'bebida_llevar', label: 'Bebida para llevar', Component: BebidaParaLlevarIcon },
+  { key: 'adiciones', label: 'Adiciones', Component: CirclePlus },
+  { key: 'combo_comida', label: 'Combo de comida', Component: ComboComidaIcon },
+  { key: 'caja_llevar', label: 'Caja para llevar', Component: PackageOpen },
+  { key: 'taco', label: 'Taco', Component: TacoIcon },
+  { key: 'burrito', label: 'Burrito', Component: BurritoIcon },
+  { key: 'nachos', label: 'Nachos', Component: NachosIcon },
+  { key: 'pollo', label: 'Pollo asado', Component: PolloAsadoIcon },
+  { key: 'pierna_pollo', label: 'Pierna de pollo', Component: Drumstick },
+  { key: 'alitas', label: 'Alitas de pollo', Component: AlitasIcon },
+  { key: 'ensalada', label: 'Ensalada', Component: Salad },
+  { key: 'plato_comida', label: 'Plato de comida', Component: PlatoComidaIcon },
+  { key: 'arroz', label: 'Arroz', Component: ArrozIcon },
+  { key: 'olla', label: 'Olla', Component: CookingPot },
+  { key: 'taza', label: 'Taza', Component: TazaIcon },
+  { key: 'te', label: 'Té', Component: TeIcon },
+  { key: 'copa', label: 'Copa', Component: Wine },
+  { key: 'coctel', label: 'Cóctel', Component: Martini },
+  { key: 'botella', label: 'Botella', Component: BotellaIcon },
+  { key: 'jugo', label: 'Jugo', Component: JugoIcon },
+  { key: 'dona', label: 'Dona', Component: Donut },
+  { key: 'pastel', label: 'Pastel', Component: CakeSlice },
+  { key: 'torta', label: 'Torta', Component: Cake },
+  { key: 'cupcake', label: 'Cupcake', Component: CupcakeIcon },
+  { key: 'sandwich', label: 'Sándwich', Component: Sandwich },
+  { key: 'palomitas', label: 'Palomitas', Component: Popcorn },
+  { key: 'carne', label: 'Carne', Component: Beef },
+  { key: 'camarones', label: 'Camarones', Component: Shrimp },
+  { key: 'mariscos', label: 'Mariscos', Component: Shell },
+  { key: 'trigo', label: 'Pan y trigo', Component: Wheat },
+  { key: 'chef', label: 'Chef', Component: ChefHat },
+  { key: 'caja_combo', label: 'Caja de combo', Component: PackageCheck },
+  { key: 'ingrediente', label: 'Ingrediente extra', Component: PackagePlus },
 ] as const;
 
 type IconKey = (typeof ICON_LIBRARY)[number]['key'];
@@ -259,10 +429,64 @@ export default function PanaderiaOncesPage() {
   const [productoRecetaLineas, setProductoRecetaLineas] = useState<RecetaLinea[]>([{ ingredientId: '', cantidad: '', unidad: 'g' }]);
   const [showCategoriaForm, setShowCategoriaForm] = useState(false);
   const [showProductoForm, setShowProductoForm] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [categoriaEditando, setCategoriaEditando] = useState<CategoriaPos | null>(null);
   const [productoEditando, setProductoEditando] = useState<ProductoPos | null>(null);
+  const nombreCategoriaRef = useRef<HTMLInputElement>(null);
+  const categoriasScrollRef = useRef<HTMLDivElement>(null);
+  const [categoriaScroll, setCategoriaScroll] = useState({ hasOverflow: false, canScrollLeft: false, canScrollRight: false });
   const [dragCategoriaIndex, setDragCategoriaIndex] = useState<number | null>(null);
   const [dragProductoIndex, setDragProductoIndex] = useState<number | null>(null);
+
+  // El formulario se monta tras seleccionar "Editar". Enfocar en la fase de
+  // layout garantiza que el campo ya existe, sin usar retrasos arbitrarios ni
+  // competir con eventos de puntero/drag de la tarjeta de categoría.
+  useLayoutEffect(() => {
+    if (showCategoriaForm) nombreCategoriaRef.current?.focus();
+  }, [showCategoriaForm]);
+
+  const actualizarNavegacionCategorias = useCallback(() => {
+    const contenedor = categoriasScrollRef.current;
+    if (!contenedor) return;
+
+    const maxScroll = Math.max(0, contenedor.scrollWidth - contenedor.clientWidth);
+    const siguiente = {
+      hasOverflow: maxScroll > 1,
+      canScrollLeft: contenedor.scrollLeft > 1,
+      canScrollRight: contenedor.scrollLeft < maxScroll - 1,
+    };
+
+    setCategoriaScroll((actual) => (
+      actual.hasOverflow === siguiente.hasOverflow
+      && actual.canScrollLeft === siguiente.canScrollLeft
+      && actual.canScrollRight === siguiente.canScrollRight
+        ? actual
+        : siguiente
+    ));
+  }, []);
+
+  // El mismo carril conserva swipe/trackpad; ResizeObserver solo actualiza los
+  // controles cuando su tamaño o sus categorías cambian, sin polling.
+  useLayoutEffect(() => {
+    const contenedor = categoriasScrollRef.current;
+    if (!contenedor) return;
+
+    const resizeObserver = new ResizeObserver(actualizarNavegacionCategorias);
+    contenedor.addEventListener('scroll', actualizarNavegacionCategorias, { passive: true });
+    resizeObserver.observe(contenedor);
+    actualizarNavegacionCategorias();
+
+    return () => {
+      resizeObserver.disconnect();
+      contenedor.removeEventListener('scroll', actualizarNavegacionCategorias);
+    };
+  }, [actualizarNavegacionCategorias, categoriasPos]);
+
+  const desplazarCategorias = (direccion: -1 | 1) => {
+    const contenedor = categoriasScrollRef.current;
+    if (!contenedor) return;
+    contenedor.scrollBy({ left: direccion * Math.max(240, Math.floor(contenedor.clientWidth * 0.7)), behavior: 'smooth' });
+  };
 
   // ── Orden y estado de secciones ──────────────────────────────────────────────
   const [sectionOrder, setSectionOrder] = useState<SectionId[]>(() => {
@@ -298,6 +522,62 @@ export default function PanaderiaOncesPage() {
   };
 
   useEffect(() => { cargar(); }, []);
+
+  // El catálogo de Alimentos y Bebidas comparte productos con Inventario.
+  // Al entrar, se completa cualquier producto histórico que aún no estuviera
+  // en el inventario general y se reflejan allí los cambios de stock/precio.
+  useEffect(() => {
+    let activo = true;
+    const sincronizarConInventario = async () => {
+      const inventario = await electronStore.obtenerProductos();
+      const porId = new Map(inventario.map((producto: any) => [String(producto.id), producto]));
+      const sincronizados: ProductoPos[] = [];
+      for (const producto of productosPos) {
+        const existente = porId.get(producto.id);
+        if (!existente) {
+          const categoria = categoriasPos.find((item) => item.id === producto.categoriaId);
+          await electronStore.upsertProducto({
+            id: producto.id, codigo: producto.codigo, nombre: producto.nombre, precio: producto.precio,
+            costo: producto.costo, stock: producto.stock, categoria: categoria?.nombre || 'Alimentos y Bebidas',
+            categoriaId: producto.categoriaId, tipoInventario: producto.tipoInventario, recipeId: producto.recipeId,
+          });
+          sincronizados.push(producto);
+        } else {
+          sincronizados.push({ ...producto, nombre: existente.nombre, precio: existente.precio, costo: existente.costo, stock: existente.stock, codigo: existente.codigo, tipoInventario: existente.tipoInventario || producto.tipoInventario, recipeId: existente.recipeId || producto.recipeId });
+        }
+      }
+      if (activo) {
+        setProductosPos(sincronizados);
+        localStorage.setItem('codecpos_panaderia_prods', JSON.stringify(sincronizados));
+      }
+    };
+    sincronizarConInventario();
+    return () => { activo = false; };
+  // Solo se ejecuta al abrir el módulo; los guardados posteriores ya actualizan ambos orígenes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const reflejarInventarioEnAlimentos = useCallback(async () => {
+    const inventario = await electronStore.obtenerProductos();
+    const porId = new Map(inventario.map((producto: any) => [String(producto.id), producto]));
+    setProductosPos((actuales) => {
+      const actualizados = actuales.flatMap((producto) => {
+        const inventarioProducto = porId.get(producto.id);
+        // Vaciar Inventario no borra la configuración visual del menú de
+        // Alimentos: así una restauración posterior conserva sus iconos,
+        // colores y categorías y vuelve a enlazarse por el mismo ID.
+        if (!inventarioProducto) return [producto];
+        return [{ ...producto, nombre: inventarioProducto.nombre, precio: inventarioProducto.precio, costo: inventarioProducto.costo, stock: inventarioProducto.stock, codigo: inventarioProducto.codigo, tipoInventario: inventarioProducto.tipoInventario || producto.tipoInventario, recipeId: inventarioProducto.recipeId || producto.recipeId }];
+      });
+      localStorage.setItem('codecpos_panaderia_prods', JSON.stringify(actualizados));
+      return actualizados;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('codecpos:inventario-actualizado', reflejarInventarioEnAlimentos);
+    return () => window.removeEventListener('codecpos:inventario-actualizado', reflejarInventarioEnAlimentos);
+  }, [reflejarInventarioEnAlimentos]);
 
   useEffect(() => {
     try {
@@ -521,7 +801,11 @@ export default function PanaderiaOncesPage() {
       localStorage.setItem(GLOBAL_CATS_KEY, JSON.stringify([...deOtrosModulos, ...nuevas.map(c => ({ id: c.id, nombre: c.nombre, color: c.color }))]));
     } catch { localStorage.setItem(GLOBAL_CATS_KEY, JSON.stringify(nuevas.map(c => ({ id: c.id, nombre: c.nombre, color: c.color })))); }
   };
-  const guardarProductosPos = (nuevos: ProductoPos[]) => { setProductosPos(nuevos); localStorage.setItem('codecpos_panaderia_prods', JSON.stringify(nuevos)); };
+  const guardarProductosPos = (nuevos: ProductoPos[]) => {
+    setProductosPos(nuevos);
+    localStorage.setItem('codecpos_panaderia_prods', JSON.stringify(nuevos));
+    window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
+  };
 
   const abrirEdicionCategoria = (categoria: CategoriaPos) => {
     if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
@@ -545,11 +829,13 @@ export default function PanaderiaOncesPage() {
     setCategoriaEditando(null); setShowCategoriaForm(false); setNuevaCat({ nombre: '', icono: 'pan', color: '#2563eb' });
   };
 
-  const confirmarEliminarCategoria = (id: string) => {
+  const confirmarEliminarCategoria = async (id: string) => {
     if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
     const categoria = categoriasPos.find(c => c.id === id);
     if (!categoria) return;
     if (!window.confirm(`Eliminar categoría "${categoria.nombre}" y todos sus productos asociados?`)) return;
+    const idsProductos = productosPos.filter((producto) => producto.categoriaId === id).map((producto) => producto.id);
+    await electronStore.eliminarProductos(idsProductos);
     const nuevas = categoriasPos.filter(c => c.id !== id);
     guardarCategorias(nuevas); guardarProductosPos(productosPos.filter(p => p.categoriaId !== id));
     if (catSeleccionada === id) setCatSeleccionada(nuevas[0]?.id || '');
@@ -572,7 +858,7 @@ export default function PanaderiaOncesPage() {
     const isReceta = productoForm.tipoInventario === 'receta';
     const lineasValidas = productoRecetaLineas.filter((l) => l.ingredientId && Number(l.cantidad) > 0);
     if (isReceta && lineasValidas.length === 0) return toast.error('Agrega al menos un ingrediente para la receta');
-    const productoPayload: Partial<InventarioProductoItem> = { id: productoEditando?.id || `pprod-${Date.now()}`, codigo: codigoFinal, nombre: productoForm.nombre.trim(), precio: precioVenta, costo: precioCosto, stock: stockInicial, categoria: categoriaNombre, categoriaId: catId, pesable: false, aplicaIVA: false, tipoInventario: isReceta ? 'receta' : 'directo', recipeId: isReceta ? recipeId : undefined };
+    const productoPayload: Partial<InventarioProductoItem> = { id: productoEditando?.id || `pprod-${Date.now()}`, codigo: codigoFinal, nombre: productoForm.nombre.trim(), precio: precioVenta, costo: precioCosto, stock: stockInicial, categoria: categoriaNombre, categoriaId: catId, icono: productoForm.icono, color: productoForm.color, pesable: false, aplicaIVA: false, tipoInventario: isReceta ? 'receta' : 'directo', recipeId: isReceta ? recipeId : undefined };
     try {
       const productoGuardado = await electronStore.upsertProducto(productoPayload);
       const productoPos: ProductoPos = { id: productoGuardado.id, categoriaId: catId, nombre: productoGuardado.nombre, precio: productoGuardado.precio, costo: productoGuardado.costo, stock: productoGuardado.stock, codigo: productoGuardado.codigo, icono: productoForm.icono, color: productoForm.color, tipoInventario: productoGuardado.tipoInventario, recipeId: productoGuardado.recipeId };
@@ -591,26 +877,27 @@ export default function PanaderiaOncesPage() {
     } catch (error) { console.error('Error guardando producto:', error); toast.error('No se pudo guardar el producto.'); }
   };
 
-  const confirmarEliminarProducto = (id: string) => {
+  const confirmarEliminarProducto = async (id: string) => {
     if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
     const producto = productosPos.find(p => p.id === id);
     if (!producto) return;
     if (!window.confirm(`Eliminar producto "${producto.nombre}"?`)) return;
+    await electronStore.eliminarProductos([id]);
     guardarProductosPos(productosPos.filter(p => p.id !== id)); toast.success('Producto eliminado');
   };
 
-  const handleDragStartCategoria = (event: React.DragEvent<HTMLButtonElement>, index: number) => { setDragCategoriaIndex(index); event.dataTransfer.effectAllowed = 'move'; };
-  const handleDragOverCategoria = (event: React.DragEvent<HTMLButtonElement>) => { event.preventDefault(); };
-  const handleDropCategoria = (event: React.DragEvent<HTMLButtonElement>, index: number) => {
+  const handleDragStartCategoria = (event: React.DragEvent<HTMLElement>, index: number) => { setDragCategoriaIndex(index); event.dataTransfer.effectAllowed = 'move'; };
+  const handleDragOverCategoria = (event: React.DragEvent<HTMLElement>) => { event.preventDefault(); };
+  const handleDropCategoria = (event: React.DragEvent<HTMLElement>, index: number) => {
     event.preventDefault();
     if (dragCategoriaIndex === null || dragCategoriaIndex === index) return;
     const nueva = [...categoriasPos]; const [moved] = nueva.splice(dragCategoriaIndex, 1); nueva.splice(index, 0, moved);
     guardarCategorias(nueva); setDragCategoriaIndex(null);
   };
 
-  const handleDragStartProducto = (event: React.DragEvent<HTMLButtonElement>, index: number) => { setDragProductoIndex(index); event.dataTransfer.effectAllowed = 'move'; };
-  const handleDragOverProducto = (event: React.DragEvent<HTMLButtonElement>) => { event.preventDefault(); };
-  const handleDropProducto = (event: React.DragEvent<HTMLButtonElement>, index: number) => {
+  const handleDragStartProducto = (event: React.DragEvent<HTMLElement>, index: number) => { setDragProductoIndex(index); event.dataTransfer.effectAllowed = 'move'; };
+  const handleDragOverProducto = (event: React.DragEvent<HTMLElement>) => { event.preventDefault(); };
+  const handleDropProducto = (event: React.DragEvent<HTMLElement>, index: number) => {
     event.preventDefault();
     if (dragProductoIndex === null || dragProductoIndex === index) return;
     const ordenFiltrada = [...productosCategoriaActual]; const [moved] = ordenFiltrada.splice(dragProductoIndex, 1); ordenFiltrada.splice(index, 0, moved);
@@ -680,27 +967,101 @@ export default function PanaderiaOncesPage() {
     }
   };
 
-  const cargarProductosDesdeExcel = async (file: File) => {
+  const COLUMNAS_EXPORTACION_PRODUCTOS = ['tipoRegistro', 'id', 'categoriaId', 'categoria', 'categoriaIcono', 'categoriaColor', 'ordenCategoria', 'nombre', 'precioVenta', 'precioCosto', 'stock', 'codigo', 'icono', 'color', 'tipoInventario', 'recipeId'];
+
+  const obtenerFilasExportacionProductos = () => {
+    const categorias = categoriasPos.map((categoria, ordenCategoria) => ({
+      tipoRegistro: 'categoria', id: categoria.id, categoriaId: categoria.id, categoria: categoria.nombre,
+      categoriaIcono: categoria.icono, categoriaColor: categoria.color, ordenCategoria,
+      nombre: '', precioVenta: '', precioCosto: '', stock: '', codigo: '', icono: '', color: '', tipoInventario: '', recipeId: '',
+    }));
+    const productos = productosPos.map((producto) => {
+      const categoria = categoriasPos.find((item) => item.id === producto.categoriaId);
+      return {
+        tipoRegistro: 'producto', id: producto.id, categoriaId: producto.categoriaId, categoria: categoria?.nombre || '',
+        categoriaIcono: categoria?.icono || '', categoriaColor: categoria?.color || '', ordenCategoria: categoria ? categoriasPos.indexOf(categoria) : '',
+        nombre: producto.nombre, precioVenta: producto.precio, precioCosto: producto.costo, stock: producto.stock, codigo: producto.codigo,
+        icono: producto.icono, color: producto.color, tipoInventario: producto.tipoInventario || 'directo', recipeId: producto.recipeId || '',
+      };
+    });
+    return { categorias, productos, combinadas: [...categorias, ...productos] };
+  };
+
+  const descargarProductosCSV = () => {
+    if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
+    const { combinadas } = obtenerFilasExportacionProductos();
+    const escaparCSV = (valor: unknown) => `"${String(valor ?? '').replace(/"/g, '""')}"`;
+    const contenido = [COLUMNAS_EXPORTACION_PRODUCTOS.join(','), ...combinadas.map((fila) => COLUMNAS_EXPORTACION_PRODUCTOS.map((columna) => escaparCSV(fila[columna as keyof typeof fila])).join(','))].join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF', contenido], { type: 'text/csv;charset=utf-8' }));
+    const enlace = document.createElement('a');
+    enlace.href = url; enlace.download = 'productos_y_categorias_alimentos_bebidas.csv'; enlace.click();
+    URL.revokeObjectURL(url);
+    setShowExportMenu(false);
+    toast.success('Productos y categorías exportados en CSV');
+  };
+
+  const descargarProductosExcel = async () => {
     if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
     try {
-      const XLSX = await import('xlsx'); const data = await file.arrayBuffer(); const wb = XLSX.read(data); const ws = wb.Sheets[wb.SheetNames[0]]; const rows = XLSX.utils.sheet_to_json(ws) as Array<any>;
-      if (!Array.isArray(rows) || rows.length === 0) { toast.error('El archivo Excel está vacío'); return; }
+      const XLSX = await import('xlsx');
+      const { categorias, productos } = obtenerFilasExportacionProductos();
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(categorias, { header: COLUMNAS_EXPORTACION_PRODUCTOS }), 'Categorias');
+      XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(productos, { header: COLUMNAS_EXPORTACION_PRODUCTOS }), 'Productos');
+      XLSX.writeFile(libro, 'productos_y_categorias_alimentos_bebidas.xlsx');
+      setShowExportMenu(false);
+      toast.success('Productos y categorías exportados en Excel');
+    } catch {
+      toast.error('No se pudo generar el archivo Excel de productos');
+    }
+  };
+
+  const cargarProductosDesdeArchivo = async (file: File) => {
+    if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
+    try {
+      const XLSX = await import('xlsx'); const data = await file.arrayBuffer(); const wb = XLSX.read(data); const filasDeHoja = (nombre: string) => nombre ? XLSX.utils.sheet_to_json(wb.Sheets[nombre]) as Array<any> : [];
+      const hojaCategorias = wb.SheetNames.find((nombre) => nombre.toLowerCase() === 'categorias');
+      const hojaProductos = wb.SheetNames.find((nombre) => nombre.toLowerCase() === 'productos');
+      const filasCombinadas = !hojaCategorias && !hojaProductos ? filasDeHoja(wb.SheetNames[0]) : [];
+      const filasCategorias = hojaCategorias ? filasDeHoja(hojaCategorias) : filasCombinadas.filter((fila) => String(fila.tipoRegistro || '').toLowerCase() === 'categoria');
+      const rows = hojaProductos ? filasDeHoja(hojaProductos) : filasCombinadas.filter((fila) => String(fila.tipoRegistro || '').toLowerCase() !== 'categoria');
+      if (filasCategorias.length === 0 && rows.length === 0) { toast.error('El archivo está vacío'); return; }
       let cargados = 0;
       const categoriasMap = new Map(categoriasPos.map((cat) => [cat.nombre.toLowerCase(), cat]));
+      const categoriasPorId = new Map(categoriasPos.map((cat) => [cat.id, cat]));
       const nuevasCategorias = [...categoriasPos];
       const productosActualizados = [...productosPos];
+      const ordenCategoriasImportadas = new Map<string, number>();
+      const resolverCategoria = (fila: any, index: number) => {
+        const categoriaNombre = String(fila.categoria || fila.nombreCategoria || fila.categoriaId || 'Panadería').trim();
+        const categoriaId = String(fila.categoriaId || '').trim();
+        const categoriaClave = categoriaNombre.toLowerCase();
+        let categoria = (categoriaId && categoriasPorId.get(categoriaId)) || categoriasMap.get(categoriaClave);
+        const iconoCategoria = String(fila.categoriaIcono || fila.iconoCategoria || '').trim() as IconKey;
+        const colorCategoria = String(fila.categoriaColor || fila.colorCategoria || '').trim();
+        if (categoria) {
+          const actualizada = { ...categoria, nombre: categoriaNombre || categoria.nombre, icono: iconoCategoria || categoria.icono, color: colorCategoria || categoria.color };
+          const posicion = nuevasCategorias.findIndex((item) => item.id === categoria!.id);
+          nuevasCategorias[posicion] = actualizada;
+          categoria = actualizada;
+        } else {
+          categoria = { id: categoriaId || `cat-${Date.now()}-${index}`, nombre: categoriaNombre, icono: iconoCategoria || 'pan', color: colorCategoria || '#2563eb' };
+          nuevasCategorias.push(categoria);
+        }
+        categoriasMap.set(categoria.nombre.toLowerCase(), categoria);
+        categoriasPorId.set(categoria.id, categoria);
+        if (String(fila.ordenCategoria ?? '').trim() !== '' && Number.isFinite(Number(fila.ordenCategoria))) {
+          ordenCategoriasImportadas.set(categoria.id, Number(fila.ordenCategoria));
+        }
+        return categoria;
+      };
+
+      filasCategorias.forEach((fila, index) => resolverCategoria(fila, index));
       for (let index = 0; index < rows.length; index++) {
         const row = rows[index];
         const nombre = String(row.nombre || '').trim();
         if (!nombre) continue;
-        const categoriaNombre = String(row.categoria || row.categoriaId || 'Panadería').trim();
-        const categoriaClave = categoriaNombre.toLowerCase();
-        let categoria = categoriasMap.get(categoriaClave);
-        if (!categoria) {
-          categoria = { id: `cat-${Date.now()}-${index}`, nombre: categoriaNombre, icono: 'pan', color: '#2563eb' };
-          categoriasMap.set(categoriaClave, categoria);
-          nuevasCategorias.push(categoria);
-        }
+        const categoria = resolverCategoria(row, index + filasCategorias.length);
         const precioVenta = Number(row.precioVenta || row.precio || 0) || 0;
         const precioCosto = Number(row.precioCosto || row.costo || 0) || 0;
         const stock = Math.max(0, Number(row.stock || 0) || 0);
@@ -718,10 +1079,12 @@ export default function PanaderiaOncesPage() {
           stock,
           categoria: categoria.nombre,
           categoriaId: categoria.id,
+          icono,
+          color,
           pesable: false,
           aplicaIVA: false,
           tipoInventario,
-          recipeId: tipoInventario === 'receta' ? `REC-${Date.now()}-${index}` : undefined,
+          recipeId: tipoInventario === 'receta' ? String(row.recipeId || `REC-${Date.now()}-${index}`) : undefined,
         };
         const productoGuardado = await electronStore.upsertProducto(productoPayload);
         const productoPos: ProductoPos = {
@@ -745,13 +1108,16 @@ export default function PanaderiaOncesPage() {
         }
         cargados++;
       }
-      guardarCategorias(nuevasCategorias);
+      const categoriasOrdenadas = ordenCategoriasImportadas.size > 0
+        ? [...nuevasCategorias].sort((a, b) => (ordenCategoriasImportadas.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (ordenCategoriasImportadas.get(b.id) ?? Number.MAX_SAFE_INTEGER))
+        : nuevasCategorias;
+      guardarCategorias(categoriasOrdenadas);
       guardarProductosPos(productosActualizados);
       await cargar();
       toast.success(`Productos importados: ${cargados}`);
     } catch (error) {
       console.error('Error importando productos:', error);
-      toast.error('Error importando Excel. Verifica columnas: categoria, nombre, precioVenta, precioCosto, stock, codigo');
+      toast.error('Error importando archivo. Verifica las columnas de productos y categorías');
     }
   };
 
@@ -978,16 +1344,36 @@ export default function PanaderiaOncesPage() {
                   </Button>
                   <label className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-sm font-semibold transition ${!puedeAdministrarPanaderia ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50'}`}>
                     <Upload className="w-4 h-4" />Cargar productos
-                    <input type="file" accept=".xlsx,.xls" className="hidden" disabled={!puedeAdministrarPanaderia} onChange={async (e) => { if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); e.currentTarget.value = ''; return; } const file = e.target.files?.[0]; if (file) await cargarProductosDesdeExcel(file); e.currentTarget.value = ''; }} />
+                    <input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={!puedeAdministrarPanaderia} onChange={async (e) => { if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); e.currentTarget.value = ''; return; } const file = e.target.files?.[0]; if (file) await cargarProductosDesdeArchivo(file); e.currentTarget.value = ''; }} />
                   </label>
+                  <div className="relative">
+                    <Button variant="outline" className={`h-10 px-4 font-semibold ${!puedeAdministrarPanaderia ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={!puedeAdministrarPanaderia} onClick={() => setShowExportMenu((visible) => !visible)}>
+                      <Download className="w-4 h-4 mr-2" />Exportar productos
+                    </Button>
+                    {showExportMenu && (
+                      <div className={`absolute right-0 top-11 z-30 min-w-[190px] overflow-hidden rounded-xl border shadow-xl ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'}`}>
+                        <button type="button" onClick={descargarProductosCSV} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><Download className="w-4 h-4" />Descargar CSV</button>
+                        <button type="button" onClick={descargarProductosExcel} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><Download className="w-4 h-4" />Descargar Excel</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Categorías */}
-                <div className="flex gap-3 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-1 snap-x snap-mandatory">
+                <div className="relative">
+                  <div ref={categoriasScrollRef} className="flex gap-3 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-1 snap-x snap-mandatory">
                   {categoriasPos.map((cat, index) => {
                     const light = isColorLight(cat.color);
                     return (
-                      <button key={cat.id} type="button" onClick={() => setCatSeleccionada(cat.id)} draggable
+                      <div key={cat.id} role="button" tabIndex={0} onClick={() => setCatSeleccionada(cat.id)}
+                        onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setCatSeleccionada(cat.id);
+                          }
+                        }}
+                        draggable
                         onDragStart={(event) => handleDragStartCategoria(event, index)}
                         onDragOver={handleDragOverCategoria}
                         onDrop={(event) => handleDropCategoria(event, index)}
@@ -999,15 +1385,40 @@ export default function PanaderiaOncesPage() {
                         </span>
                         <span className={`truncate ${light ? 'text-slate-900' : 'text-white'}`}>{cat.nombre}</span>
                         <div className="absolute right-2 top-2 hidden items-center gap-1 group-hover:flex">
-                          <button type="button" disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); abrirEdicionCategoria(cat); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Edit className="w-3 h-3" /></button>
-                          <button type="button" disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); confirmarEliminarCategoria(cat.id); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Trash2 className="w-3 h-3" /></button>
+                          <button type="button" draggable={false} disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); abrirEdicionCategoria(cat); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Edit className="w-3 h-3" /></button>
+                          <button type="button" draggable={false} disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); confirmarEliminarCategoria(cat.id); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Trash2 className="w-3 h-3" /></button>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                   <button type="button" disabled={!puedeAdministrarPanaderia} onClick={confirmarNuevoCategoria} className={`flex-shrink-0 snap-start min-w-[160px] rounded-2xl border border-dashed border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-700 transition ${puedeAdministrarPanaderia ? 'hover:-translate-y-0.5 hover:border-slate-400' : 'opacity-50 cursor-not-allowed'}`}>
                     + Categoría
-                  </button>
+                    </button>
+                  </div>
+                  {categoriaScroll.hasOverflow && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Ver categorías anteriores"
+                        title="Categorías anteriores"
+                        disabled={!categoriaScroll.canScrollLeft}
+                        onClick={() => desplazarCategorias(-1)}
+                        className={`absolute left-2 top-1/2 -translate-y-1/2 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/30 bg-slate-900/55 text-white shadow-lg backdrop-blur-sm transition-all ${categoriaScroll.canScrollLeft ? 'hover:scale-105 hover:bg-slate-900/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80' : 'pointer-events-none opacity-35'}`}
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Ver más categorías"
+                        title="Más categorías"
+                        disabled={!categoriaScroll.canScrollRight}
+                        onClick={() => desplazarCategorias(1)}
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/30 bg-slate-900/55 text-white shadow-lg backdrop-blur-sm transition-all ${categoriaScroll.canScrollRight ? 'hover:scale-105 hover:bg-slate-900/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80' : 'pointer-events-none opacity-35'}`}
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Formulario categoría */}
@@ -1017,7 +1428,7 @@ export default function PanaderiaOncesPage() {
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: nuevaCat.color }}>
                         {renderIcon(nuevaCat.icono, `w-5 h-5 ${isColorLight(nuevaCat.color) ? 'text-slate-900' : 'text-white'}`)}
                       </div>
-                      <Input className="h-11 flex-1" placeholder="Nombre de la categoría" value={nuevaCat.nombre} onChange={e => setNuevaCat(s => ({ ...s, nombre: e.target.value }))} />
+                      <Input ref={nombreCategoriaRef} className="h-11 flex-1" placeholder="Nombre de la categoría" value={nuevaCat.nombre} onChange={e => setNuevaCat(s => ({ ...s, nombre: e.target.value }))} />
                       <Button className="h-11 px-5 bg-emerald-600 hover:bg-emerald-700 flex-shrink-0" onClick={guardarCategoriaForm}>
                         <Check className="w-4 h-4 mr-1" />{categoriaEditando ? 'Guardar' : 'Crear'}
                       </Button>
@@ -1047,7 +1458,15 @@ export default function PanaderiaOncesPage() {
                     {productosCategoriaActual.map((prod, index) => {
                       const light = isColorLight(prod.color);
                       return (
-                        <button key={prod.id} type="button" onClick={() => toqueRapidoProducto(prod)} draggable
+                        <div key={prod.id} role="button" tabIndex={0} onClick={() => toqueRapidoProducto(prod)}
+                          onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return;
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              toqueRapidoProducto(prod);
+                            }
+                          }}
+                          draggable
                           onDragStart={(event) => handleDragStartProducto(event, index)}
                           onDragOver={handleDragOverProducto}
                           onDrop={(event) => handleDropProducto(event, index)}
@@ -1060,10 +1479,10 @@ export default function PanaderiaOncesPage() {
                           <div className={`text-sm font-black leading-tight ${light ? 'text-slate-900' : 'text-white'}`}>{prod.nombre}</div>
                           <div className={`text-sm font-semibold ${light ? 'text-amber-700' : 'text-white/90'}`}>${prod.precio.toLocaleString('es-CO')}</div>
                           <div className="absolute right-2.5 top-2.5 hidden gap-1.5 group-hover:flex">
-                            <button type="button" disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); abrirEdicionProducto(prod); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Edit className="w-3.5 h-3.5" /></button>
-                            <button type="button" disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); confirmarEliminarProducto(prod.id); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Trash2 className="w-3.5 h-3.5" /></button>
+                            <button type="button" draggable={false} disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); abrirEdicionProducto(prod); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Edit className="w-3.5 h-3.5" /></button>
+                            <button type="button" draggable={false} disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); confirmarEliminarProducto(prod.id); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                     <button type="button" disabled={!puedeAdministrarPanaderia} onClick={confirmarNuevoProducto} className={`w-40 h-40 sm:w-44 sm:h-44 rounded-[32px] border border-dashed border-slate-300 p-4 flex flex-col items-center justify-center gap-2 text-slate-600 bg-slate-100 shadow-lg transition ${puedeAdministrarPanaderia ? 'hover:-translate-y-1 hover:border-slate-400' : 'opacity-50 cursor-not-allowed'}`}>

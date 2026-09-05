@@ -13,6 +13,7 @@ import {
   AlertCircle, TrendingDown, AlertTriangle, FileSpreadsheet,
   X, Loader2, TrendingUp, FlaskConical, PackagePlus, RefreshCw,
   ShoppingBasket, BarChart2, ArrowUpCircle, CheckCircle2, Globe,
+  Download,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -45,6 +46,10 @@ interface Producto {
   fechaVencimiento?: string;
   tipoNegocio?: string;
   aplicaIVA?: boolean;
+  icono?: string;
+  color?: string;
+  tipoInventario?: 'directo' | 'receta';
+  recipeId?: string;
 }
 
 interface CategoriaGlobal {
@@ -96,6 +101,7 @@ export default function ProductosPage() {
   const [productToEdit, setProductToEdit] = useState<Producto | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showMargenModal, setShowMargenModal] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [categoriasGlobal, setCategoriasGlobal] = useState<CategoriaGlobal[]>([]);
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'productos' | 'ingredientes'>('productos');
@@ -124,6 +130,16 @@ export default function ProductosPage() {
   // ========== CARGAR PRODUCTOS ==========
   useEffect(() => {
     loadProductos();
+  }, [tiendaActual?.id]);
+
+  // Permite que Alimentos y Bebidas refresque esta vista al guardar, importar
+  // o eliminar un producto del inventario compartido, sin depender de recargar.
+  useEffect(() => {
+    const actualizarInventario = () => loadProductos();
+    window.addEventListener('codecpos:inventario-actualizado', actualizarInventario);
+    return () => window.removeEventListener('codecpos:inventario-actualizado', actualizarInventario);
+  // loadProductos no depende de estado externo salvo la tienda activa.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tiendaActual?.id]);
 
   // Cargar categorías globales y categorías de panadería (para filtrado por módulo)
@@ -257,6 +273,7 @@ export default function ProductosPage() {
       const updated = productos.filter(p => p.id !== productoId);
       localStorage.setItem('pos-productos', JSON.stringify(updated));
       setProductos(updated);
+      window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
 
       // 🛡️ FIX: esto solo tocaba localStorage — la fila en Supabase se
       // quedaba `activo:true` para siempre y la PWA (que lee directo de la
@@ -278,6 +295,7 @@ export default function ProductosPage() {
       console.log('🗑️ Eliminando todos los productos...');
       localStorage.removeItem('pos-productos');
       setProductos([]);
+      window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
       setShowDeleteAllModal(false);
 
       // 🛡️ Mismo fix que arriba, para el vaciado masivo.
@@ -291,22 +309,41 @@ export default function ProductosPage() {
     }
   };
 
-  const handleExport = () => {
+  const COLUMNAS_EXPORTACION = ['id', 'codigo', 'nombre', 'stock', 'costo', 'precio', 'categoria', 'categoriaId', 'minStock', 'fechaVencimiento', 'aplicaIVA', 'tipoNegocio', 'icono', 'color', 'tipoInventario', 'recipeId'];
+
+  const filasExportacion = () => productosBase.map((producto) => ({
+    id: producto.id,
+    codigo: producto.codigo,
+    nombre: producto.nombre,
+    stock: producto.stock,
+    costo: producto.costo,
+    precio: producto.precio,
+    categoria: producto.categoria,
+    categoriaId: producto.categoriaId || '',
+    minStock: producto.minStock || 10,
+    fechaVencimiento: producto.fechaVencimiento || '',
+    aplicaIVA: producto.aplicaIVA ? 'true' : 'false',
+    tipoNegocio: producto.tipoNegocio || '',
+    icono: producto.icono || '',
+    color: producto.color || '',
+    tipoInventario: producto.tipoInventario || 'directo',
+    recipeId: producto.recipeId || '',
+  }));
+
+  const validarExportacion = () => {
     if (productosBase.length === 0) {
       toast.error('No hay productos para exportar');
-      return;
+      return false;
     }
+    return true;
+  };
 
+  const descargarCSV = () => {
+    if (!validarExportacion()) return;
     try {
-      console.log(`📤 Exportando ${productosBase.length} productos...`);
-      
-      let csv = 'Código;Nombre;Stock;Costo;Precio;Categoría;MinStock;FechaVencimiento\n';
-      productosBase.forEach(p => {
-        csv += `${p.codigo};${p.nombre};${p.stock};${p.costo};${p.precio};${p.categoria};${p.minStock || 10};${p.fechaVencimiento || ''}\n`;
-      });
-
-      const BOM = '\uFEFF';
-      const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+      const escapar = (valor: unknown) => `"${String(valor ?? '').replace(/"/g, '""')}"`;
+      const csv = [COLUMNAS_EXPORTACION.join(','), ...filasExportacion().map((fila) => COLUMNAS_EXPORTACION.map((columna) => escapar(fila[columna as keyof typeof fila])).join(','))].join('\r\n');
+      const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -314,11 +351,27 @@ export default function ProductosPage() {
       a.download = `inventario_${fecha}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
-      
+      setShowExportMenu(false);
       toast.success(`✅ ${productosBase.length} productos exportados`);
     } catch (error) {
       console.error('❌ Error exportando:', error);
       toast.error('Error al exportar');
+    }
+  };
+
+  const descargarExcel = async () => {
+    if (!validarExportacion()) return;
+    try {
+      const XLSX = await import('xlsx');
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filasExportacion(), { header: COLUMNAS_EXPORTACION }), 'Inventario');
+      const fecha = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(libro, `inventario_${fecha}.xlsx`);
+      setShowExportMenu(false);
+      toast.success(`✅ ${productosBase.length} productos exportados en Excel`);
+    } catch (error) {
+      console.error('❌ Error exportando Excel:', error);
+      toast.error('Error al exportar Excel');
     }
   };
 
@@ -330,18 +383,21 @@ export default function ProductosPage() {
   const handleImportComplete = () => {
     setShowImportModal(false);
     loadProductos();
+    window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
     triggerRefresh();
   };
 
   const handleProductCreated = () => {
     setShowNewProductModal(false);
     loadProductos();
+    window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
     triggerRefresh();
   };
 
   const handleProductUpdated = () => {
     setShowEditModal(false);
     loadProductos();
+    window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
     triggerRefresh();
   };
 
@@ -454,14 +510,22 @@ export default function ProductosPage() {
               Ganancia
             </Button>
 
-            <Button
-              onClick={handleExport}
-              variant="outline"
-              className={`rounded-2xl ${darkMode ? 'border-emerald-600 text-emerald-400' : 'border-emerald-500 text-emerald-600'}`}
-            >
-              <FileSpreadsheet className="w-5 h-5 mr-2" />
-              Exportar
-            </Button>
+            <div className="relative">
+              <Button
+                onClick={() => setShowExportMenu((visible) => !visible)}
+                variant="outline"
+                className={`rounded-2xl ${darkMode ? 'border-emerald-600 text-emerald-400' : 'border-emerald-500 text-emerald-600'}`}
+              >
+                <FileSpreadsheet className="w-5 h-5 mr-2" />
+                Exportar
+              </Button>
+              {showExportMenu && (
+                <div className={`absolute right-0 top-12 z-30 min-w-[180px] overflow-hidden rounded-xl border shadow-xl ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'}`}>
+                  <button type="button" onClick={descargarCSV} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><Download className="w-4 h-4" />Descargar CSV</button>
+                  <button type="button" onClick={descargarExcel} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><FileSpreadsheet className="w-4 h-4" />Descargar Excel</button>
+                </div>
+              )}
+            </div>
             
             <Button
               onClick={() => setShowImportModal(true)}

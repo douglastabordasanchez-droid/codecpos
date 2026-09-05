@@ -121,9 +121,30 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
   const parseCSV = (text: string): any[] => {
     try {
       console.log('🔍 Iniciando parseo de CSV...');
+
+      // Respeta comillas dobles y comillas escapadas: necesario para que un
+      // CSV exportado pueda volver a importarse incluso si un nombre contiene
+      // comas, punto y coma o comillas.
+      const dividirFila = (fila: string, delimitador: string) => {
+        const valores: string[] = [];
+        let valor = '';
+        let entreComillas = false;
+        for (let i = 0; i < fila.length; i++) {
+          const caracter = fila[i];
+          if (caracter === '"') {
+            if (entreComillas && fila[i + 1] === '"') { valor += '"'; i++; }
+            else entreComillas = !entreComillas;
+          } else if (caracter === delimitador && !entreComillas) {
+            valores.push(valor.trim()); valor = '';
+          } else valor += caracter;
+        }
+        valores.push(valor.trim());
+        return valores;
+      };
       
       // Detectar delimitador automáticamente
-      const delimiter = text.includes(';') ? ';' : text.includes('\t') ? '\t' : ',';
+      const primeraLinea = text.split(/\r?\n/, 1)[0] || '';
+      const delimiter = primeraLinea.includes(';') ? ';' : primeraLinea.includes('\t') ? '\t' : ',';
       console.log('📋 Delimitador detectado:', delimiter === ';' ? 'punto y coma' : delimiter === '\t' ? 'tab' : 'coma');
       
       // Dividir en líneas y limpiar
@@ -140,7 +161,7 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
 
       // Parsear headers
       const headerLine = lines[0];
-      const headers = headerLine.split(delimiter).map(h => h.trim().replace(/["']/g, ''));
+      const headers = dividirFila(headerLine, delimiter).map(h => h.trim().replace(/^\uFEFF/, ''));
       console.log('📋 Headers detectados:', headers);
 
       // Mapeo de nombres de columnas (flexible)
@@ -148,6 +169,7 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
       headers.forEach((header, index) => {
         const normalized = header.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         
+        if (normalized === 'id' || normalized.includes('productoid')) headerMap.id = index;
         if (normalized.includes('codigo') || normalized.includes('code')) headerMap.codigo = index;
         // 🛡️ FIX: "TipoProducto" contiene "producto" y "PrecioPorKilo" contiene
         // "precio" -- sin el `&& !normalized.includes(...)` estas dos columnas
@@ -158,7 +180,8 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
         if (normalized.includes('stock') || normalized.includes('cantidad') || normalized.includes('inventario')) headerMap.stock = index;
         if (normalized.includes('costo') || normalized.includes('cost')) headerMap.costo = index;
         if ((normalized.includes('precio') || normalized.includes('price') || normalized.includes('valor')) && !normalized.includes('porkilo') && !normalized.includes('porgramo')) headerMap.precio = index;
-        if (normalized.includes('categoria') || normalized.includes('category')) headerMap.categoria = index;
+        if (normalized.includes('categoriaid') || normalized.includes('categoryid')) headerMap.categoriaId = index;
+        else if (normalized.includes('categoria') || normalized.includes('category')) headerMap.categoria = index;
         if (normalized.includes('minstock') || normalized.includes('min') || normalized.includes('minimo')) headerMap.minStock = index;
         if (normalized.includes('vencimiento') || normalized.includes('expira') || normalized.includes('expiry')) headerMap.fechaVencimiento = index;
         // 🐾 Veterinaria / Pet Shop
@@ -170,6 +193,12 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
         if (normalized.includes('lote')) headerMap.lote = index;
         if (normalized.includes('especie')) headerMap.especie = index;
         if (normalized.includes('receta')) headerMap.requiereReceta = index;
+        if (normalized.includes('aplicaiva') || normalized === 'iva') headerMap.aplicaIVA = index;
+        if (normalized.includes('tiponegocio')) headerMap.tipoNegocio = index;
+        if (normalized === 'icono' || normalized === 'icon') headerMap.icono = index;
+        if (normalized === 'color') headerMap.color = index;
+        if (normalized.includes('tipoinventario')) headerMap.tipoInventario = index;
+        if (normalized === 'recipeid') headerMap.recipeId = index;
       });
 
       console.log('📊 Índices de columnas:', headerMap);
@@ -191,7 +220,7 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
           if (!line || line.trim() === '') continue;
 
           // Parsear valores
-          const values = line.split(delimiter).map(v => v.trim().replace(/["']/g, ''));
+          const values = dividirFila(line, delimiter);
 
           // Extraer datos con validación
           const codigo = values[headerMap.codigo]?.trim();
@@ -230,6 +259,13 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
           const fechaVencimiento = headerMap.fechaVencimiento !== undefined
             ? values[headerMap.fechaVencimiento]?.trim() || undefined
             : undefined;
+          const categoriaId = headerMap.categoriaId !== undefined ? values[headerMap.categoriaId]?.trim() || undefined : undefined;
+          const aplicaIVA = headerMap.aplicaIVA !== undefined && /^(si|sí|s|yes|y|true|1)$/i.test(values[headerMap.aplicaIVA]?.trim() || '');
+          const tipoNegocioArchivo = headerMap.tipoNegocio !== undefined ? values[headerMap.tipoNegocio]?.trim() || tipoNegocioGlobal : tipoNegocioGlobal;
+          const icono = headerMap.icono !== undefined ? values[headerMap.icono]?.trim() || undefined : undefined;
+          const color = headerMap.color !== undefined ? values[headerMap.color]?.trim() || undefined : undefined;
+          const tipoInventario = headerMap.tipoInventario !== undefined ? values[headerMap.tipoInventario]?.trim() === 'receta' ? 'receta' : 'directo' : undefined;
+          const recipeId = headerMap.recipeId !== undefined ? values[headerMap.recipeId]?.trim() || undefined : undefined;
 
           // 🐾 Veterinaria / Pet Shop — solo se llenan si la plantilla trae esas
           // columnas (headerMap.* queda undefined para el resto de negocios).
@@ -266,7 +302,7 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
 
           // Crear producto
           const producto = {
-            id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`,
+            id: headerMap.id !== undefined ? values[headerMap.id]?.trim() || `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}` : `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`,
             codigo,
             nombre,
             precio: precioFinal,
@@ -275,8 +311,14 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
             minStock,
             ...(esGranel && { pesable: true }),
             categoria,
+            ...(categoriaId && { categoriaId }),
             fechaVencimiento,
-            tipoNegocio: tipoNegocioGlobal,
+            tipoNegocio: tipoNegocioArchivo,
+            aplicaIVA,
+            ...(icono && { icono }),
+            ...(color && { color }),
+            ...(tipoInventario && { tipoInventario }),
+            ...(recipeId && { recipeId }),
             ...(tipoProducto !== undefined && { tipoProducto }),
             ...(esBulto !== undefined && { esBulto }),
             ...(pesoBultoKg !== undefined && { pesoBultoKg }),
@@ -313,8 +355,9 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
    * MANEJO DE ARCHIVO - ROBUSTO
    */
   const handleFileSelect = async (file: File) => {
-    if (!file.name.endsWith('.csv')) {
-      toast.error('Solo se permiten archivos CSV (.csv)');
+    const nombreArchivo = file.name.toLowerCase();
+    if (!nombreArchivo.endsWith('.csv') && !nombreArchivo.endsWith('.xlsx') && !nombreArchivo.endsWith('.xls')) {
+      toast.error('Solo se permiten archivos CSV o Excel (.xlsx, .xls)');
       return;
     }
 
@@ -326,7 +369,15 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
 
     try {
       console.log('📖 Leyendo archivo...');
-      const text = await file.text();
+      let text: string;
+      if (nombreArchivo.endsWith('.csv')) {
+        text = await file.text();
+      } else {
+        const XLSX = await import('xlsx');
+        const libro = XLSX.read(await file.arrayBuffer());
+        const primeraHoja = libro.Sheets[libro.SheetNames[0]];
+        text = XLSX.utils.sheet_to_csv(primeraHoja);
+      }
       console.log('✅ Archivo leído:', text.length, 'caracteres');
       
       const productos = parseCSV(text);
@@ -661,7 +712,7 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
               >
                 <input
                   type="file"
-                  accept=".csv"
+                  accept=".csv,.xlsx,.xls"
                   onChange={handleInputChange}
                   className="hidden"
                   id="file-upload"

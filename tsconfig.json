@@ -35,6 +35,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*", "electron/**/*", "scripts/**/*"],
-  "exclude": ["node_modules", "dist", "dist-electron"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "exclude": ["node_modules", "dist", "dist-electron"]
 }

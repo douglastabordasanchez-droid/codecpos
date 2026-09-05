@@ -42,6 +42,12 @@ export function MultitiendaProvider({ children }: { children: ReactNode }) {
     recargarTiendas();
   }, []); // ✅ Array vacío para cargar solo una vez
 
+  useEffect(() => {
+    const actualizar = () => recargarTiendas();
+    window.addEventListener('codecpos:tiendas-sincronizadas', actualizar);
+    return () => window.removeEventListener('codecpos:tiendas-sincronizadas', actualizar);
+  }, [recargarTiendas]);
+
   const cambiarTienda = useCallback((id: string) => {
     setTiendaActivaId(id);
     const lista = listarTiendas();

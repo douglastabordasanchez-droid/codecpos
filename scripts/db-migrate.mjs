@@ -36,6 +36,24 @@ async function main() {
     .filter((f) => f.endsWith('.sql'))
     .sort();
 
+  // `_migrations` es un registro auxiliar histórico. La fuente de verdad
+  // para archivos ya ejecutados por Supabase CLI es su historial interno.
+  // Conciliar por versión+nombre evita repetir SQL que ya vive en producción.
+  const cliHistory = new Set(
+    (await client.query('select version, name from supabase_migrations.schema_migrations'))
+      .rows
+      .map((row) => `${row.version}:${row.name}`)
+  );
+  let reconciled = 0;
+  for (const file of files) {
+    const match = file.match(/^(\d+)_(.+)\.sql$/);
+    if (!match || applied.has(file) || !cliHistory.has(`${match[1]}:${match[2]}`)) continue;
+    await client.query('insert into public._migrations (name) values ($1) on conflict do nothing', [file]);
+    applied.add(file);
+    reconciled++;
+  }
+  if (reconciled > 0) console.log(`- Historial auxiliar conciliado: ${reconciled} migración(es) ya aplicadas por Supabase CLI.`);
+
   let ranAny = false;
 
   for (const file of files) {

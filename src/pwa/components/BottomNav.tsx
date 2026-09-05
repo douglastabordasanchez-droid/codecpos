@@ -1,12 +1,8 @@
-import { useState } from 'react';
 import { NavLink } from 'react-router';
 import { toast } from 'sonner';
 import { Home, Receipt, DollarSign, Bell, Coffee, Wrench, Lock, Package, User, Wallet, RotateCcw, Menu as MenuIcon, LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper, PackagePlus, type LucideIcon } from 'lucide-react';
-import { useModulosActivos } from '../hooks/useModulosActivos';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { MENU_INFERIOR_CATALOGO, type MenuInferiorItemId } from '../../app/lib/menuInferiorCatalogo';
-import { ModuloPOS } from '../../app/lib/permissions';
-import { SideMenu } from './SideMenu';
 import logo from '/logo.png';
 
 const ICONOS: Record<MenuInferiorItemId, LucideIcon> = {
@@ -46,34 +42,18 @@ const ICONOS: Record<MenuInferiorItemId, LucideIcon> = {
  * la config.
  */
 export function BottomNav() {
-  const { tieneModulo, menuInferior } = useModulosActivos();
   const { soloLectura, tiendaActiva } = usePwaAuth();
-  const [menuAbierto, setMenuAbierto] = useState(false);
-
-  const resolverLado = (ids: MenuInferiorItemId[]) =>
-    ids
-      .map((id) => MENU_INFERIOR_CATALOGO[id])
-      .filter((item) => item && (!item.moduloRequerido || tieneModulo(item.moduloRequerido)));
-
-  const izquierda = resolverLado(menuInferior.izquierda);
-  const derechaConfigurada = resolverLado(menuInferior.derecha);
-  const derecha = derechaConfigurada.some((item) => item.id === 'nuevo_producto') || !tieneModulo(ModuloPOS.PRODUCTOS)
-    ? derechaConfigurada
-    : [...derechaConfigurada, MENU_INFERIOR_CATALOGO.nuevo_producto];
+  // La barra operativa móvil es estable en cualquier navegador: Inicio |
+  // Ventas | Vender | Caja | Producto. La configuración administrativa no
+  // puede inyectar una sexta acción ni diferenciar iOS de Android.
+  const izquierda = [MENU_INFERIOR_CATALOGO.inicio, MENU_INFERIOR_CATALOGO.ventas];
+  const derecha = [MENU_INFERIOR_CATALOGO.caja, MENU_INFERIOR_CATALOGO.nuevo_producto];
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `flex flex-col items-center gap-1 py-3 px-2 min-w-0 flex-1 ${isActive ? 'text-amber-400' : 'text-slate-500'}`;
 
   const renderItem = (item: (typeof izquierda)[number]) => {
     const Icon = ICONOS[item.id];
-    if (item.id === 'menu') {
-      return (
-        <button key={item.id} onClick={() => setMenuAbierto(true)} className={`flex flex-col items-center gap-1 py-3 px-2 min-w-0 flex-1 text-slate-500`}>
-          <Icon className="w-5 h-5 shrink-0" />
-          <span className="text-[9px] font-semibold truncate max-w-full">{item.label}</span>
-        </button>
-      );
-    }
     return (
       <NavLink key={item.id} to={item.to!} end={item.id === 'inicio'} className={linkClass}>
         <Icon className="w-5 h-5 shrink-0" />
@@ -121,8 +101,6 @@ export function BottomNav() {
 
         {derecha.map(renderItem)}
       </nav>
-
-      <SideMenu open={menuAbierto} onClose={() => setMenuAbierto(false)} />
     </>
   );
 }

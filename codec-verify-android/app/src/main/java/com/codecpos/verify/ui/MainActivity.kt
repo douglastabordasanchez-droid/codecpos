@@ -175,6 +175,12 @@ private fun CodecVerifyApp(viewModel: CodecVerifyViewModel, activity: FragmentAc
         }
     }
 
+    // Permiso que usan los avisos de comandas ("listo para servir" / "en preparación").
+    // En un WebView el navegador no muestra este diálogo por sí mismo.
+    val pedidosNotifPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
     // 📷🖼️ ProductoFormPage y PerfilPage usan <input type="file" accept="image/*">
     // para la foto del producto/perfil -- eso NO pasa por getUserMedia (el
     // bloque de arriba), sino por onShowFileChooser del WebChromeClient. Sin
@@ -248,8 +254,16 @@ private fun CodecVerifyApp(viewModel: CodecVerifyViewModel, activity: FragmentAc
                     settings.loadWithOverviewMode = true
                     addJavascriptInterface(
                         AndroidNotificationBridge(
-                            viewModel.prefs,
+                            context = ctx.applicationContext,
+                            prefs = viewModel.prefs,
                             onAbrirAjustes = { mostrarAjustes = true },
+                            onPedirPermisoNotificaciones = {
+                                if (PermissionsHelper.requierePermisoNotificacionesRuntime() &&
+                                    ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    pedidosNotifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            },
                             onAutenticarConHuella = { requestId -> autenticarConHuellaNativa(activity, this, requestId) },
                             huellaDisponibleEnDispositivo = { huellaDisponibleEnDispositivo(activity) },
                         ),
