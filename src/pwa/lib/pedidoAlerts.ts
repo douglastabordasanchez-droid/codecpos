@@ -24,15 +24,18 @@ async function desbloquearAudio(): Promise<boolean> {
   const contexto = obtenerContextoAudio();
   if (!contexto) return false;
   try {
-    await contexto.resume();
+    // No esperar aquí: en Safari el oscilador debe iniciarse dentro de la
+    // misma pila del toque. Un `await` antes de start() puede perder el gesto.
+    const reanudar = contexto.resume();
     // Pulso prácticamente silencioso: Safari registra la reproducción sin
     // molestar al mesero al abrir la mesa o tocar la campana.
     const ganancia = contexto.createGain();
     ganancia.gain.setValueAtTime(0.00001, contexto.currentTime);
     const oscilador = contexto.createOscillator();
     oscilador.connect(ganancia).connect(contexto.destination);
-    oscilador.start();
+    oscilador.start(contexto.currentTime);
     oscilador.stop(contexto.currentTime + 0.02);
+    await reanudar;
     return true;
   } catch {
     return false;
@@ -162,10 +165,17 @@ export async function desbloquearAvisosPedidos(): Promise<boolean> {
   return audioActivo;
 }
 
+export function audioAvisosPedidosActivo(): boolean {
+  return contextoAudio?.state === 'running';
+}
+
 export async function activarAvisosPedidos(): Promise<NotificationPermission | 'unsupported'> {
   const permisoAndroid = activarAvisosPedidosAndroid();
   if (permisoAndroid !== null) return permisoAndroid ? 'granted' : 'default';
-  await desbloquearAvisosPedidos();
+  const audioActivo = await desbloquearAvisosPedidos();
+  // La campana funciona también como prueba: así el mesero confirma en el
+  // acto que Safari aceptó el audio antes de esperar una comanda de cocina.
+  if (audioActivo) reproducirTono('listo');
   // En Safari abierto como pestaña, la Notification API no entrega avisos
   // utilizables. No mostramos un permiso que no resolvería los avisos: el
   // banner y Web Audio son la vía principal hasta que se instale como PWA.

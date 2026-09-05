@@ -40,6 +40,7 @@ import {
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import {
   activarAvisosPedidos,
+  audioAvisosPedidosActivo,
   avisarCambioComanda,
   desbloquearAvisosPedidos,
   guardarPreferenciasAvisosPedidos,
@@ -74,6 +75,7 @@ export default function PanaderiaPage() {
   // si cocina/bar ya la está preparando o ya está lista para servir.
   const [comandasPorMesa, setComandasPorMesa] = useState<Record<string, Comanda>>({});
   const [permisoAvisos, setPermisoAvisos] = useState(() => permisoAvisosPedidos());
+  const [audioAvisosActivo, setAudioAvisosActivo] = useState(() => audioAvisosPedidosActivo());
   const [preferenciasAvisos, setPreferenciasAvisos] = useState(() => obtenerPreferenciasAvisosPedidos());
   const [mostrarAjustesAvisos, setMostrarAjustesAvisos] = useState(false);
   const [alertaComanda, setAlertaComanda] = useState<Comanda | null>(null);
@@ -102,6 +104,7 @@ export default function PanaderiaPage() {
   const activarAvisos = async () => {
     const permiso = await activarAvisosPedidos();
     setPermisoAvisos(permiso);
+    setAudioAvisosActivo(audioAvisosPedidosActivo());
     if (permiso === 'granted') {
       toast.success('Avisos del mesero activados', { description: 'Recibirás vibración, notificación y voz al cambiar una comanda.' });
     } else if (permiso === 'denied') {
@@ -253,18 +256,18 @@ export default function PanaderiaPage() {
               type="button"
               onClick={activarAvisos}
               className={`shrink-0 rounded-xl border p-3 active:scale-95 transition-transform ${
-                permisoAvisos === 'granted'
+                (permisoAvisos === 'granted' || audioAvisosActivo)
                   ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
                   : 'border-slate-700 bg-slate-900 text-slate-300'
               }`}
               aria-label="Activar notificaciones de pedidos"
-              title={permisoAvisos === 'granted' ? 'Notificaciones de pedidos activas' : 'Activar notificaciones de pedidos'}
+              title={audioAvisosActivo ? 'Alertas sonoras activas' : 'Activar alertas de pedidos'}
             >
               <BellRing className="w-5 h-5" />
             </button>
           </div>
         </div>
-        {permisoAvisos !== 'granted' && (
+        {!audioAvisosActivo && permisoAvisos !== 'granted' && (
           <button onClick={activarAvisos} className="mt-3 text-xs font-semibold text-amber-400 text-left">
             Activa los avisos para recibir vibración, voz y notificaciones de cocina.
           </button>
@@ -349,7 +352,7 @@ export default function PanaderiaPage() {
                   initial={{ opacity: 0, scale: 0.94 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                  onClick={() => { void desbloquearAvisosPedidos(); setMesaAbierta(mesa); }}
+                  onClick={() => { void desbloquearAvisosPedidos().then(setAudioAvisosActivo); setMesaAbierta(mesa); }}
                   className={`relative aspect-square rounded-2xl p-3 flex flex-col items-center justify-center gap-1 border transition-all active:scale-95 ${
                     comanda?.estado === 'listo'
                       ? 'bg-gradient-to-br from-emerald-500/20 to-teal-600/20 border-emerald-500/50'
