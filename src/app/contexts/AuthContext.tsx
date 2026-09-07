@@ -903,6 +903,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
               electronStore.iniciarTurno(usuarioDesdeLicencia.id, usuarioDesdeLicencia.nombreCompleto).catch(() => {});
 
+              // 🛡️ FIX: hasta aquí el login del dueño era 100% local -- nunca
+              // se establecía una sesión real de Supabase Auth, así que
+              // auth.uid() quedaba null para cualquier RPC posterior
+              // (invitar_empleado, actualizar_empleado_admin, etc.), que
+              // fallarían con "No tienes permiso" justo para el usuario más
+              // común. signInSupabase ya sabe resolver el usuario de
+              // licencia al correo sintético del dueño y autenticar de
+              // verdad (mismo mecanismo que ya usa la PWA, migración 0014);
+              // si la cuenta aún no existe (clientes creados antes de que
+              // esto se provisionara en el alta), se repara en el momento.
+              try {
+                const resultadoSesion = await signInSupabase(usernameNormalizado, passwordNormalizado);
+                if (!resultadoSesion.ok) {
+                  await client.rpc('provisionar_dueno_pwa', {
+                    p_cliente_id: clienteId,
+                    p_usuario_licencia: usernameNormalizado,
+                    p_password_licencia: passwordNormalizado,
+                    p_nombre_negocio: clienteRow.nombre_negocio,
+                  });
+                  await signInSupabase(usernameNormalizado, passwordNormalizado);
+                }
+              } catch (e) {
+                console.error('[Auth] No se pudo establecer sesión real de Supabase para el dueño:', e);
+              }
+
               console.log('✅ AUTENTICACIÓN POR LICENCIA EN LA NUBE COMPLETADA');
               console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
               return true;

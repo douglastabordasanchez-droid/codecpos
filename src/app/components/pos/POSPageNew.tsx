@@ -28,6 +28,11 @@ import {
   Maximize2,
   Bike,
   Landmark,
+  Shirt,
+  Palette,
+  Ruler,
+  Tag,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -35,6 +40,7 @@ import { Card, CardContent } from '../ui/card';
 import { usePOS } from '../../contexts/POSContext';
 import { toast } from 'sonner';
 import { TicketReceipt } from './TicketReceipt';
+import { BoutiqueCatalog, type BoutiqueProduct } from './BoutiqueCatalog';
 import { 
   useBarcodeScanner, 
   useSerialScale, 
@@ -94,6 +100,11 @@ interface Producto {
   stock: number;
   categoria: string;
   costo: number;
+  talla?: string;
+  color?: string;
+  material?: string;
+  marca?: string;
+  genero?: string;
   pesable?: boolean; // Producto se vende por peso
   aplicaIVA?: boolean; // 🆕 Producto aplica IVA
   tipoInventario?: 'directo' | 'receta';
@@ -198,10 +209,23 @@ function leerConfigEmpresaCacheada(): any {
   return getCached<any>('codec_pos_config', {});
 }
 
+const COLOR_PRENDA: Record<string, string> = {
+  negro: '#111827', blanco: '#f8fafc', gris: '#94a3b8', azul: '#2563eb',
+  rojo: '#dc2626', verde: '#16a34a', amarillo: '#eab308', naranja: '#f97316',
+  rosado: '#ec4899', rosa: '#ec4899', morado: '#7c3aed', beige: '#d6b78a',
+  cafe: '#78350f', marron: '#78350f', café: '#78350f', marrón: '#78350f',
+  azulmarino: '#1e3a8a', celeste: '#38bdf8', vino: '#9f1239',
+};
+
+function colorDePrenda(color?: string): string {
+  const normalizado = String(color || '').toLocaleLowerCase('es-CO').replace(/[\s-]/g, '');
+  return COLOR_PRENDA[normalizado] || '#64748b';
+}
+
 export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: POSPageNewProps = {}) {
   const navigate = useNavigate();
   const { darkMode, triggerRefresh, uiScale, setUiScale } = usePOS();
-  const { propinaActiva, porcentajePropinaPredeterminado } = useBusinessContext();
+  const { propinaActiva, porcentajePropinaPredeterminado, tipoNegocio } = useBusinessContext();
   const { emitLanEvent } = useLanContext();
   const [productos, setProductos] = useState<Producto[]>([]);
   const [combosOnces, setCombosOnces] = useState<Producto[]>([]);
@@ -210,6 +234,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [transferLoaded, setTransferLoaded] = useState(false);
   const transferLoadedRef = useRef(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoriaRopaActiva, setCategoriaRopaActiva] = useState('');
+  const [tallaRopaActiva, setTallaRopaActiva] = useState('');
+  const [colorRopaActivo, setColorRopaActivo] = useState('');
+  const [boutiqueEditingIndex, setBoutiqueEditingIndex] = useState<number | null>(null);
   const [codigoBarras, setCodigoBarras] = useState('');
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1098,7 +1126,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       const coincidencias = productos.filter(p =>
         p.codigo.toLowerCase().includes(t) ||
         p.nombre.toLowerCase().includes(t) ||
-        String(p.keyword || '').toLowerCase().includes(t)
+        String(p.keyword || '').toLowerCase().includes(t) ||
+        String(p.categoria || '').toLowerCase().includes(t) ||
+        String(p.marca || '').toLowerCase().includes(t) ||
+        String(p.talla || '').toLowerCase().includes(t) ||
+        String(p.color || '').toLowerCase().includes(t)
       ).slice(0, 8); // Limitar a 8 resultados
 
       if (coincidencias.length > 0) {
@@ -1616,6 +1648,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               id: item.producto.id,
               codigo: item.producto.codigo,
               nombre: item.producto.nombre,
+              talla: item.producto.talla,
+              color: item.producto.color,
               cantidad: cantidadVenta,
               precio: item.producto.precio,
               precioVenta: precioFinal,
@@ -2037,6 +2071,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               id: item.producto.id,
               codigo: item.producto.codigo,
               nombre: item.producto.nombre,
+              talla: item.producto.talla,
+              color: item.producto.color,
               cantidad: cantidadVenta,
               precio: item.producto.precio,
               precioVenta: precioFinal,
@@ -2268,6 +2304,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             id: item.producto.id,
             codigo: item.producto.codigo,
             nombre: item.producto.nombre,
+            talla: item.producto.talla,
+            color: item.producto.color,
             cantidad: cantidadVenta,
             precio: item.producto.precio,
             precioVenta: precioFinal,
@@ -2459,10 +2497,43 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // ningún lugar del componente (confirmado por búsqueda completa) — trabajo
   // puro desperdiciado en cada tecla/click. Eliminado.
 
+  const esTiendaRopa = ['ropa', 'clothing', 'fashion'].includes(tipoNegocio);
+  const boutiqueProducts = useMemo(() => productos.filter(producto => !producto.esComboOnces).map((producto) => ({
+    ...producto,
+    // Compatibilidad con inventarios donde la talla vino incluida en el nombre.
+    talla: producto.talla || (producto.nombre.match(/\b(XXXL|XXL|XL|XS|S|M|L)\b/i)?.[1]?.toUpperCase() || undefined),
+  })) as BoutiqueProduct[], [productos]);
+  const cambiarVarianteCarrito = useCallback((nuevaVariante: BoutiqueProduct) => {
+    if (boutiqueEditingIndex === null) {
+      seleccionarProductoSugerido(nuevaVariante as Producto);
+      return;
+    }
+    setCarrito(actual => {
+      const actualItem = actual[boutiqueEditingIndex];
+      if (!actualItem || actualItem.producto.id === nuevaVariante.id) return actual;
+      const cantidadPermitida = Math.min(actualItem.cantidad, Math.max(1, Number(nuevaVariante.stock) || 0));
+      const destinoIndex = actual.findIndex((item, index) => index !== boutiqueEditingIndex && item.producto.id === nuevaVariante.id);
+      if (destinoIndex >= 0) {
+        const destino = actual[destinoIndex];
+        const capacidad = Math.max(0, Number(nuevaVariante.stock) - destino.cantidad);
+        if (capacidad < cantidadPermitida) { toast.error('No hay stock suficiente para mover toda la cantidad a esa variante'); return actual; }
+        const movida = cantidadPermitida;
+        return actual.filter((_, index) => index !== boutiqueEditingIndex).map((item, index) =>
+          index === (destinoIndex > boutiqueEditingIndex ? destinoIndex - 1 : destinoIndex)
+            ? { ...item, cantidad: item.cantidad + movida }
+            : item
+        );
+      }
+      return actual.map((item, index) => index === boutiqueEditingIndex ? { ...item, producto: nuevaVariante as Producto, cantidad: cantidadPermitida } : item);
+    });
+    setBoutiqueEditingIndex(null);
+    toast.success('Variante actualizada');
+  }, [boutiqueEditingIndex, seleccionarProductoSugerido]);
+
   const total = calcularTotal();
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className={`h-screen flex flex-col ${esTiendaRopa ? 'boutique-pos-mode' : ''}`}>
       {/* Barra de Periféricos Compacta con Logo */}
       <div className={`px-3 py-2 border-b flex-shrink-0 ${
         darkMode ? 'bg-slate-800/30 border-slate-700' : 'bg-gray-50/50 border-gray-200'
@@ -2509,6 +2580,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               }`}>
                 {nombreComercial}
               </span>
+            )}
+            {esTiendaRopa && (
+              <div className="hidden items-center gap-1.5 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-[10px] font-black tracking-wide text-blue-700 shadow-sm lg:flex dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+                <Sparkles className="h-3.5 w-3.5 text-emerald-500" /> MODO ROPA
+              </div>
             )}
           </div>
           
@@ -2679,6 +2755,18 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                               <p className={`text-xs mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                                 {item.producto.codigo}
                               </p>
+                              {esTiendaRopa && (item.producto.talla || item.producto.color) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setBoutiqueEditingIndex(index)}
+                                  className={`mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold transition hover:border-[#b9537d] hover:bg-[#f9e8ef] ${darkMode ? 'border-fuchsia-400/25 bg-fuchsia-500/10 text-fuchsia-200 hover:bg-fuchsia-500/20' : 'border-[#ead1dc] bg-[#fff8fa] text-[#7b3657]'}`}
+                                  title="Cambiar talla o color"
+                                >
+                                  {item.producto.talla && <span className="rounded bg-[#7c3b5c] px-1.5 py-0.5 text-white">{item.producto.talla}</span>}
+                                  {item.producto.color && <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full border border-black/15" style={{ backgroundColor: colorDePrenda(item.producto.color) }} />{item.producto.color}</span>}
+                                  <span className="ml-0.5 text-[#b04f78]">Cambiar</span>
+                                </button>
+                              )}
                               
                               {item.peso ? (
                                 <div className="flex items-center gap-2">
@@ -2965,6 +3053,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 </div>
               </CardContent>
             </Card>
+
+            {esTiendaRopa && (
+              <BoutiqueCatalog
+                products={boutiqueProducts}
+                darkMode={darkMode}
+                openFor={boutiqueEditingIndex === null ? null : carrito[boutiqueEditingIndex]?.producto}
+                onCloseVariantRequest={() => setBoutiqueEditingIndex(null)}
+                onSelect={cambiarVarianteCarrito}
+              />
+            )}
 
             {/* DISPLAY GIGANTE DEL TOTAL - FIJO Y SIEMPRE VISIBLE */}
             <div className="flex-shrink-0 flex flex-col items-center justify-center relative z-0 py-6">

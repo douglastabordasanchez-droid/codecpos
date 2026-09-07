@@ -11,7 +11,7 @@ import {
   Phone, Briefcase, DollarSign, Calendar, X, ToggleLeft,
   Search, Wallet, Coffee, Lock, Wrench, LayoutGrid,
   TrendingUp, BarChart3, Clock, Activity, ChevronRight,
-  CreditCard, Banknote, Smartphone, ChevronLeft, ShoppingCart, Bike,
+  CreditCard, Banknote, Smartphone, ChevronLeft, ShoppingCart, Bike, Cloud,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -36,6 +36,7 @@ import {
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useNavigate } from 'react-router';
 
 // ─── Tipos de estadísticas por empleado ──────────────────────────────────────
 interface EstadoTurno {
@@ -165,6 +166,7 @@ const FORM_EMPTY: FormState = {
 export function UsuariosPage() {
   const { darkMode } = usePOS();
   const { usuarios, usuarioActual, crearUsuario, actualizarUsuario, eliminarUsuario, cambiarPassword } = useAuth();
+  const navigate = useNavigate();
 
   // ── Búsqueda global ──
   const [busqueda, setBusqueda] = useState('');
@@ -517,13 +519,23 @@ export function UsuariosPage() {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={abrirCrear}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold shadow-lg h-11 px-5 rounded-xl"
-            >
-              <UserPlus className="w-5 h-5 mr-2" />
-              Nuevo Personal
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => navigate('/usuarios/organizacion')}
+                variant="outline"
+                className={`font-semibold shadow h-11 px-4 rounded-xl ${dm ? 'border-slate-600 text-slate-200 hover:bg-slate-700' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+              >
+                <Cloud className="w-5 h-5 mr-2" />
+                Usuarios de la organización (nube)
+              </Button>
+              <Button
+                onClick={abrirCrear}
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold shadow-lg h-11 px-5 rounded-xl"
+              >
+                <UserPlus className="w-5 h-5 mr-2" />
+                Nuevo Personal
+              </Button>
+            </div>
           </div>
 
           {/* Stats */}

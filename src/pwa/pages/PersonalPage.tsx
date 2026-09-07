@@ -54,6 +54,20 @@ export default function PersonalPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado?.cliente_id]);
 
+  // Altas/cambios de rol/activo hechos desde Electron o el Admin Web deben
+  // verse aquí sin recargar la app.
+  useEffect(() => {
+    if (!empleado?.cliente_id) return;
+    const client = getSupabaseClient();
+    if (!client) return;
+    const canal = client
+      .channel(`empleados-pwa-personal-${empleado.cliente_id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'empleados', filter: `cliente_id=eq.${empleado.cliente_id}` }, () => cargar())
+      .subscribe();
+    return () => { client.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empleado?.cliente_id]);
+
   // 🛡️ FIX: la única política de UPDATE sobre `empleados` es
   // `empleados_update_self` (id = auth.uid()) — un admin editando OTRA fila
   // desde aquí quedaba filtrado por RLS silenciosamente (0 filas afectadas,

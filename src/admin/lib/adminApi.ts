@@ -153,6 +153,32 @@ export async function actualizarEmpleadoAdmin(empleadoId: string, cambios: { act
   if (error) throw new Error(error.message);
 }
 
+/** Empleados de UN cliente puntual, con email real -- para la sección de
+ *  usuarios embebida en ClienteDetallePage (admin_listar_usuarios es global). */
+export async function listarEmpleadosCliente(clienteId: string) {
+  const { data, error } = await cliente().rpc('admin_listar_empleados_cliente', { p_cliente_id: clienteId });
+  if (error) throw new Error(error.message);
+  return data as { id: string; nombre_completo: string; email: string; rol: string; activo: boolean; telefono: string | null; created_at: string }[];
+}
+
+export async function crearEmpleadoAdmin(clienteId: string, datos: { email: string; password: string; nombreCompleto: string; rol: string; telefono?: string }) {
+  const { data, error } = await cliente().rpc('admin_crear_empleado', {
+    p_cliente_id: clienteId,
+    p_email: datos.email,
+    p_password: datos.password,
+    p_nombre_completo: datos.nombreCompleto,
+    p_rol: datos.rol,
+    p_telefono: datos.telefono ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function eliminarEmpleadoAdmin(empleadoId: string) {
+  const { error } = await cliente().rpc('admin_eliminar_empleado', { p_empleado_id: empleadoId });
+  if (error) throw new Error(error.message);
+}
+
 /**
  * Fija una contraseña NUEVA para el empleado (soporte cuando un cliente se
  * bloquea) -- nunca revela la contraseña actual, eso es imposible por diseño

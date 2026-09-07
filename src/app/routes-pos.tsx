@@ -28,6 +28,7 @@ const ContabilidadPage = lazy(() => import('./components/pos/ContabilidadPage'))
 const DevolucionesPage = lazy(() => import('./components/pos/DevolucionesPage'));
 const DispositivosPage = lazy(() => import('./components/devices/DispositivosPage'));
 const UsuariosPage = lazy(() => import('./components/usuarios/UsuariosPage').then(m => ({ default: m.UsuariosPage })).catch(() => ({ default: () => <div>Error cargando Usuarios</div> })));
+const OrganizacionUsuariosPage = lazy(() => import('./components/usuarios/OrganizacionUsuariosPage').catch(() => ({ default: () => <div>Error cargando Usuarios de la organización</div> })));
 const CodecVerifyConexionPage = lazy(() => import('./components/codecVerify/CodecVerifyConexionPage'));
 const DeveloperPanel = lazy(() => import('./components/developer/DeveloperPanel').then(m => ({ default: m.DeveloperPanel })).catch(() => ({ default: () => <div>Error cargando Developer</div> })));
 const StaffLoginGate = lazy(() => import('./components/developer/StaffLoginGate').then(m => ({ default: m.StaffLoginGate })));
@@ -180,6 +181,14 @@ export const router = createHashRouter([
         element: (
           <Suspense fallback={<LoadingFallback />}>
             <UsuariosPage />
+          </Suspense>
+        )
+      },
+      {
+        path: 'usuarios/organizacion',
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <OrganizacionUsuariosPage />
           </Suspense>
         )
       },

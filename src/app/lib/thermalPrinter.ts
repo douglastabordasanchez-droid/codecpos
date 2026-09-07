@@ -62,6 +62,8 @@ export interface TicketData {
     cantidad: number;
     precio: number;
     total: number;
+    talla?: string;
+    color?: string;
   }>;
   subtotal: number;
   impuestos?: number;
@@ -80,6 +82,8 @@ export interface VentaTicketInput {
     cantidad: number;
     precio: number;
     subtotal: number;
+    talla?: string;
+    color?: string;
   }>;
   total: number;
   subtotal?: number;
@@ -400,6 +404,10 @@ export class ThermalPrinter {
       for (const item of data.items) {
         const itemNameLines = this.wrapText(item.nombre, this.maxChars);
         itemNameLines.forEach((line) => bytes.push(...this.addLine(line)));
+        if (item.talla || item.color) {
+          const variante = `VARIANTE: ${item.talla ? `Talla ${item.talla}` : ''}${item.talla && item.color ? ' | ' : ''}${item.color ? `Color ${item.color}` : ''}`;
+          this.wrapText(variante, this.maxChars).forEach((line) => bytes.push(...this.addLine(line)));
+        }
         
         const cantidadPrecio = `${item.cantidad} x ${this.formatMoney(item.precio)}`;
         const total = this.formatMoney(item.total);
@@ -985,6 +993,8 @@ export async function printSaleReceipt(
       cantidad: item.cantidad,
       precio: item.precio,
       total: item.subtotal,
+      talla: item.talla,
+      color: item.color,
     })),
     subtotal: venta.subtotal ?? venta.total,
     impuestos: venta.iva ?? 0,

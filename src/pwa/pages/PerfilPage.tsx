@@ -129,6 +129,20 @@ export default function PerfilPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado?.cliente_id]);
 
+  // Altas/cambios de rol/activo hechos desde Electron o el Admin Web deben
+  // verse aquí sin recargar la app.
+  useEffect(() => {
+    if (!empleado?.cliente_id) return;
+    const client = getSupabaseClient();
+    if (!client) return;
+    const canal = client
+      .channel(`empleados-pwa-perfil-${empleado.cliente_id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'empleados', filter: `cliente_id=eq.${empleado.cliente_id}` }, () => cargarEquipo())
+      .subscribe();
+    return () => { client.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empleado?.cliente_id]);
+
   const handleAgregar = async (e: FormEvent) => {
     e.preventDefault();
     if (!nombre.trim() || !email.trim() || password.length < 6) {

@@ -7,6 +7,7 @@ import {
   PageHeader, SectionCard, LoadingState, ErrorState, EstadoBadge, PlanBadge,
   formatoMoneda, formatoFecha, formatoFechaHora,
 } from '../components/ui';
+import { GestionEmpleadosCliente } from '../components/GestionEmpleadosCliente';
 import { MODULOS_CATALOGO } from '../../app/lib/permissions';
 
 const MODALIDADES = ['MENSUAL', 'TRIMESTRAL', 'ANUAL', 'VITALICIA'];
@@ -269,6 +270,8 @@ export function ClienteDetallePage() {
           </div>
         </SectionCard>
       </div>
+
+      {id && <GestionEmpleadosCliente clienteId={id} onCambio={cargar} />}
 
       {detalle.addons_activos.length > 0 && (
         <SectionCard title="Add-ons activos" className="mb-6">

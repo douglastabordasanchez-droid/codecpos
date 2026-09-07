@@ -22,6 +22,8 @@ interface ItemVenta {
   cantidad: number;
   precio: number;
   subtotal: number;
+  talla?: string;
+  color?: string;
 }
 
 interface PagoMixto {
@@ -588,6 +590,9 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
                   <td style={{ fontSize: '11px' }}>
                     {item.nombre}
                     <br />
+                    {(item.talla || item.color) && (
+                      <><span style={{ fontSize: '10px', fontWeight: 'bold' }}>VARIANTE: {item.talla ? `Talla ${item.talla}` : ''}{item.talla && item.color ? ' · ' : ''}{item.color ? `Color ${item.color}` : ''}</span><br /></>
+                    )}
                     <span style={{ fontSize: '10px' }}>
                       ${item.precio.toLocaleString('es-CO')} c/u
                     </span>
