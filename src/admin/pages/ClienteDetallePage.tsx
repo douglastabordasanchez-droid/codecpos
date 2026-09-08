@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X } from 'lucide-react';
-import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, editarDiasPruebaActiva, actualizarModulosCliente } from '../lib/adminApi';
+import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, actualizarModulosCliente } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import {
   PageHeader, SectionCard, LoadingState, ErrorState, EstadoBadge, PlanBadge,
@@ -125,15 +125,18 @@ export function ClienteDetallePage() {
       return;
     }
     setProcesando(true);
-    const enPruebaYa = detalle?.licencia_vigente?.estado === 'TRIAL';
     try {
-      if (enPruebaYa) {
-        await editarDiasPruebaActiva(id, dias);
-        await registrarAuditoria('EDITAR_DIAS_PRUEBA', id, 'EXITO', { dias });
-      } else {
-        await activarPruebaAdmin(id, dias);
-        await registrarAuditoria('ACTIVAR_PRUEBA_GRATIS', id, 'EXITO', { dias });
-      }
+      // 🛡️ FIX: antes se intentaba "adivinar" si el cliente ya estaba en
+      // prueba (leyendo `licencia_vigente.estado`) para elegir entre activar
+      // o editar -- para clientes con datos viejos del sistema legacy esa
+      // detección podía fallar y la RPC de "editar" rechazaba con "Este
+      // cliente no tiene una prueba gratuita activa", bloqueando a un staff
+      // que sí tenía autorización. activar_prueba_admin ya maneja los dos
+      // casos internamente (reemplaza cualquier licencia vigente por una
+      // TRIAL nueva de los días indicados) y nunca restringe a un
+      // administrador -- se llama siempre, sin condición.
+      await activarPruebaAdmin(id, dias);
+      await registrarAuditoria('ACTIVAR_PRUEBA_GRATIS', id, 'EXITO', { dias });
       setMostrarPrueba(false);
       cargar();
     } catch (e: any) {
@@ -179,7 +182,7 @@ export function ClienteDetallePage() {
                 <RefreshCw className="w-4 h-4" /> {lic ? 'Cambiar plan' : 'Activar licencia'}
               </button>
               <button onClick={() => setMostrarPrueba((v) => !v)} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg px-3 py-2 disabled:opacity-50">
-                <Gift className="w-4 h-4" /> {lic?.estado === 'TRIAL' ? 'Editar días de prueba' : 'Activar prueba gratis'}
+                <Gift className="w-4 h-4" /> Días de prueba
               </button>
               <button onClick={() => setMostrarModulos((value) => !value)} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2 disabled:opacity-50">
                 <Check className="w-4 h-4" /> Activar / desactivar módulos
@@ -245,7 +248,7 @@ export function ClienteDetallePage() {
         <SectionCard className="mb-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             <div className="flex-1">
-              <p className="text-slate-300 text-xs mb-1">Días de prueba{lic?.estado === 'TRIAL' ? ' (totales, desde que inició)' : ''}</p>
+              <p className="text-slate-300 text-xs mb-1">Días de prueba</p>
               <input
                 type="number"
                 min={1}
@@ -259,7 +262,7 @@ export function ClienteDetallePage() {
               disabled={procesando}
               className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-semibold rounded-lg px-4 py-2 text-sm"
             >
-              {lic?.estado === 'TRIAL' ? 'Guardar días' : 'Activar prueba'}
+              Días de prueba
             </button>
           </div>
         </SectionCard>

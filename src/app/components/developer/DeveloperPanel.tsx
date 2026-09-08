@@ -64,7 +64,6 @@ import {
   actualizarModulosClienteAdmin,
   actualizarAppMovilClienteAdmin,
   activarPruebaGratisAdmin,
-  editarDiasPruebaActivaAdmin,
   ClienteAdmin,
 } from '../../lib/supabase/clientesAdminService';
 
@@ -252,13 +251,15 @@ export function DeveloperPanel() {
     try {
       if (editingCliente) {
         const actualizado = await actualizarClienteAdmin(editingCliente.id, datos);
-        // Licencia real (tabla `licencias`) además del update legacy de arriba
-        // -- si ya estaba en prueba, se ajustan los días sin resetear su
-        // fecha de inicio; si no, se activa una prueba nueva. Best-effort:
-        // el cliente ya quedó guardado aunque esto falle.
+        // Licencia real (tabla `licencias`) además del update legacy de
+        // arriba -- activar_prueba_admin siempre reemplaza cualquier
+        // licencia vigente por una TRIAL nueva de los días indicados, sin
+        // condicionar según el estado previo (evita el bug donde una
+        // detección de "ya está en prueba" desactualizada terminaba
+        // rechazando el ajuste). Best-effort: el cliente ya quedó guardado
+        // aunque esto falle.
         if (enPrueba) {
-          const rpc = editingCliente.enPrueba ? editarDiasPruebaActivaAdmin : activarPruebaGratisAdmin;
-          rpc(editingCliente.id, formData.diasPrueba).catch((e) =>
+          activarPruebaGratisAdmin(editingCliente.id, formData.diasPrueba).catch((e) =>
             console.error('[DeveloperPanel] No se pudo sincronizar la licencia de prueba:', e)
           );
         }

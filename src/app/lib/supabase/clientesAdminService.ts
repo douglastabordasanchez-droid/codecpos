@@ -312,14 +312,6 @@ export async function activarPruebaGratisAdmin(clienteId: string, dias: number =
   if (error) throw new Error(error.message);
 }
 
-/** Ajusta los días TOTALES de una prueba YA activa, sin resetear su fecha de inicio ni crear una licencia nueva. */
-export async function editarDiasPruebaActivaAdmin(clienteId: string, dias: number): Promise<void> {
-  const client = getSupabaseClient();
-  if (!client) throw new Error('nuestra base de datos no está configurada');
-  const { error } = await client.rpc('editar_dias_prueba_activa', { p_cliente_id: clienteId, p_dias: dias });
-  if (error) throw new Error(error.message);
-}
-
 /** Activa/desactiva el acceso a la app móvil (PWA) para este cliente — gate de pago, ver migración 0026. */
 export async function actualizarAppMovilClienteAdmin(clienteId: string, habilitada: boolean): Promise<void> {
   const client = getSupabaseClient();

@@ -224,12 +224,6 @@ export async function activarPruebaAdmin(clienteId: string, dias: number) {
   if (error) throw new Error(error.message);
 }
 
-/** Ajusta los días TOTALES de una prueba YA activa, sin resetear su fecha de inicio. */
-export async function editarDiasPruebaActiva(clienteId: string, dias: number) {
-  const { error } = await cliente().rpc('editar_dias_prueba_activa', { p_cliente_id: clienteId, p_dias: dias });
-  if (error) throw new Error(error.message);
-}
-
 export async function actualizarModulosCliente(clienteId: string, modulos: string[]) {
   const { error } = await cliente().from('clientes_pos').update({ modulos_activos: modulos }).eq('id', clienteId);
   if (error) throw new Error(error.message);

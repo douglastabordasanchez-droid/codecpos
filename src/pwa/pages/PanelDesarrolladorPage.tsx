@@ -13,7 +13,6 @@ import {
   actualizarClienteAdmin,
   actualizarModulosClienteAdmin,
   activarPruebaGratisAdmin,
-  editarDiasPruebaActivaAdmin,
   cambiarEstadoClienteAdmin,
   crearAccesoMovilDueno,
   ClienteAdmin,
@@ -186,13 +185,15 @@ export default function PanelDesarrolladorPage() {
     }
     setGuardando(true);
     try {
-      if (c.enPrueba) {
-        await editarDiasPruebaActivaAdmin(c.id, dias);
-        toast.success(`Días de prueba de ${c.nombreNegocio} ajustados a ${dias}`);
-      } else {
-        await activarPruebaGratisAdmin(c.id, dias);
-        toast.success(`Prueba gratis de ${dias} días activada para ${c.nombreNegocio}`);
-      }
+      // 🛡️ FIX: antes se decidía entre activar/editar según `c.enPrueba` --
+      // esa columna puede quedar desactualizada para clientes con datos
+      // viejos del sistema legacy, y la RPC de "editar" rechazaba con "Este
+      // cliente no tiene una prueba gratuita activa" aunque el staff sí
+      // tuviera autorización. activar_prueba_admin ya reemplaza cualquier
+      // licencia vigente por una TRIAL nueva de los días indicados y nunca
+      // restringe a un administrador -- se llama siempre, sin condición.
+      await activarPruebaGratisAdmin(c.id, dias);
+      toast.success(`Días de prueba de ${c.nombreNegocio} fijados en ${dias}`);
       setSeleccionado(null);
       cargar();
     } catch (e) {
@@ -340,7 +341,7 @@ export default function PanelDesarrolladorPage() {
                     className="h-12 flex-1 bg-gradient-to-r from-emerald-500 to-green-600 px-2"
                   >
                     {guardando ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Gift className="w-4 h-4 mr-1.5" />}
-                    {seleccionado.enPrueba ? 'Editar días' : 'Prueba gratis'}
+                    Días de prueba
                   </Button>
                 </div>
               </div>

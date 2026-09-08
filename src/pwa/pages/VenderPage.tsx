@@ -24,6 +24,7 @@ const METODOS_PAGO = [
   { valor: 'efectivo', label: 'Efectivo', emoji: '💵' },
   { valor: 'nequi', label: 'Nequi', emoji: '💜' },
   { valor: 'daviplata', label: 'Daviplata', emoji: '❤️' },
+  { valor: 'bre_b', label: 'Bre-B', emoji: '🔵' },
   { valor: 'tarjeta', label: 'Tarjeta', emoji: '💳' },
   { valor: 'transferencia', label: 'Transferencia', emoji: '🏦' },
   { valor: 'rappi', label: 'Rappi', emoji: '🛵' },
@@ -451,6 +452,7 @@ export default function VenderPage() {
                             )}
                             <input
                               type="number"
+                              inputMode="numeric"
                               min={0}
                               value={it.precio}
                               onChange={(e) => editarPrecioItem(it.productoId, e.target.value === '' ? 0 : Number(e.target.value))}
