@@ -16,6 +16,7 @@ import { listarTiendas, getStockResumenTienda, ejecutarTransferencia, reemplazar
 import { descargarTiendas } from './supabase/tiendasSyncService';
 import { descargarConfiguracionEmpresaDesdeNube, sincronizarConfiguracionEmpresaPendiente } from './supabase/empresaConfigSyncService';
 import { listarCuentasCartera, guardarCuentaCarteraRaw, registrarAbonoEnCierre, CuentaCartera } from './carteraService';
+import { listarClientes, guardarClienteRaw, Cliente } from './fidelizacionService';
 
 const SYNC_INTERVAL = 30000; // 30 segundos
 const STEP_TIMEOUT_MS = 20_000;
@@ -238,6 +239,7 @@ class SyncService {
       ['pull_cierres', () => this.pullCierresRemotos(client, clienteId)],
       ['pull_devoluciones', () => this.pullDevolucionesRemotas(client, clienteId)],
       ['pull_cartera', () => this.pullCarteraRemota(client, clienteId)],
+      ['pull_clientes_fidelizacion', () => this.pullClientesFidelizacionRemotos(client, clienteId)],
       ['push_productos', () => this.pushProductosPendientes(client, clienteId)],
       ['push_productos_localstorage', () => this.pushProductosLocalStorage(client, clienteId)],
       ['push_gastos', () => this.pushGastosLocalStorage(client, clienteId)],
@@ -790,6 +792,57 @@ class SyncService {
 
     await dbManager.addLog('pull_cartera', `${data.length} cuenta(s) de cartera sincronizadas`);
     await dbManager.setConfig('lastPullCartera', new Date().toISOString());
+  }
+
+  /**
+   * Clientes de fidelización creados desde la PWA (FidelizacionPage.tsx) —
+   * solo trae altas nuevas (la PWA no edita clientes existentes, así que no
+   * hace falta resolver conflictos de última escritura aquí, a diferencia de
+   * cartera/productos). Mismo patrón que pullVentasRemotas: filtra por
+   * `local_id is null` y dedupe por supabaseId ya conocido localmente.
+   */
+  private async pullClientesFidelizacionRemotos(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const lastPull = await dbManager.getConfig('lastPullClientesFidelizacion');
+    let query = client.from('clientes_fidelizacion').select('*').eq('cliente_id', clienteId).is('local_id', null);
+    if (lastPull) query = query.gt('updated_at', lastPull);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      await dbManager.setConfig('lastPullClientesFidelizacion', new Date().toISOString());
+      return;
+    }
+
+    const clientesLocales = await listarClientes(false);
+    const yaExisten = new Set(clientesLocales.filter((c) => c.supabaseId).map((c) => c.supabaseId));
+    let nuevos = 0;
+    for (const remote of data) {
+      if (yaExisten.has(remote.id)) continue;
+      const nuevoCliente: Cliente = {
+        id: `remote-${remote.id}`,
+        nombre: remote.nombre,
+        documento: remote.documento || '',
+        telefono: remote.telefono || undefined,
+        email: remote.email || undefined,
+        puntos: Number(remote.puntos) || 0,
+        puntosAcumulados: Number(remote.puntos_acumulados) || 0,
+        puntosRedimidos: 0,
+        nivelFidelidad: remote.nivel_fidelidad || 'bronce',
+        fechaRegistro: new Date().toISOString(),
+        totalCompras: Number(remote.total_compras) || 0,
+        numeroCompras: Number(remote.numero_compras) || 0,
+        activo: remote.activo !== false,
+        supabaseId: remote.id,
+        updatedAt: new Date(remote.updated_at).getTime(),
+      };
+      await guardarClienteRaw(nuevoCliente);
+      nuevos++;
+    }
+
+    if (nuevos > 0) {
+      await dbManager.addLog('pull_clientes_fidelizacion', `${nuevos} cliente(s) nuevos desde la app móvil`);
+    }
+    await dbManager.setConfig('lastPullClientesFidelizacion', new Date().toISOString());
   }
 
   // ==================== PUSH ====================

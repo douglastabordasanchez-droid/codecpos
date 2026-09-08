@@ -7,11 +7,13 @@
  * real en el momento) — ver fidelizacionService.ts.
  */
 import { useState } from 'react';
-import { Search, Award, Loader2, UserCircle2 } from 'lucide-react';
+import { Search, Award, Loader2, UserCircle2, Plus, X } from 'lucide-react';
 import { Input } from '../../app/components/ui/input';
 import { Button } from '../../app/components/ui/button';
+import { Label } from '../../app/components/ui/label';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { toast } from 'sonner';
 
 interface ClienteFila {
   nombre: string;
@@ -39,6 +41,11 @@ export default function FidelizacionPage() {
   const [buscando, setBuscando] = useState(false);
   const [resultados, setResultados] = useState<ClienteFila[]>([]);
   const [buscado, setBuscado] = useState(false);
+  const [mostrarCrear, setMostrarCrear] = useState(false);
+  const [nombreNuevo, setNombreNuevo] = useState('');
+  const [documentoNuevo, setDocumentoNuevo] = useState('');
+  const [telefonoNuevo, setTelefonoNuevo] = useState('');
+  const [creando, setCreando] = useState(false);
 
   const buscar = async () => {
     if (!empleado || !busqueda.trim()) return;
@@ -56,11 +63,48 @@ export default function FidelizacionPage() {
     setBuscando(false);
   };
 
+  /** Escribe directo en `clientes_fidelizacion` con `local_id` nulo -- syncService.ts
+   *  (Electron) lo reconoce como creado remotamente y lo baja en su próximo ciclo. */
+  const crearCliente = async () => {
+    if (!empleado || !nombreNuevo.trim()) {
+      toast.error('Ingresa el nombre del cliente');
+      return;
+    }
+    setCreando(true);
+    const client = getSupabaseClient()!;
+    const { error } = await client.from('clientes_fidelizacion').insert({
+      cliente_id: empleado.cliente_id,
+      nombre: nombreNuevo.trim(),
+      documento: documentoNuevo.trim() || null,
+      telefono: telefonoNuevo.trim() || null,
+    });
+    setCreando(false);
+    if (error) {
+      toast.error('No se pudo crear el cliente', { description: error.message });
+      return;
+    }
+    toast.success(`${nombreNuevo.trim()} agregado`);
+    setMostrarCrear(false);
+    setNombreNuevo('');
+    setDocumentoNuevo('');
+    setTelefonoNuevo('');
+    if (busqueda.trim()) buscar();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
-      <div className="px-5 pt-8 pb-4">
-        <h1 className="text-white text-xl font-black">Fidelización</h1>
-        <p className="text-slate-400 text-sm">Consulta puntos de un cliente</p>
+      <div className="px-5 pt-8 pb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-white text-xl font-black">Fidelización</h1>
+          <p className="text-slate-400 text-sm">Consulta puntos de un cliente</p>
+        </div>
+        <button
+          onClick={() => setMostrarCrear(true)}
+          className="h-11 w-11 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0"
+          aria-label="Crear cliente nuevo"
+        >
+          <Plus className="w-5 h-5 text-white" />
+        </button>
       </div>
 
       <div className="px-5 flex gap-2 mb-5">
@@ -115,6 +159,38 @@ export default function FidelizacionPage() {
           );
         })}
       </div>
+
+      {mostrarCrear && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end">
+          <div className="w-full bg-slate-950 rounded-t-3xl border-t border-slate-800 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <h2 className="text-white font-bold text-lg">Nuevo cliente</h2>
+              <button onClick={() => setMostrarCrear(false)} className="text-slate-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-5 pb-8 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">Nombre completo</Label>
+                <Input value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)} className="h-12 bg-slate-900 border-slate-700 text-white" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">Documento (opcional)</Label>
+                <Input value={documentoNuevo} onChange={(e) => setDocumentoNuevo(e.target.value)} className="h-12 bg-slate-900 border-slate-700 text-white" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">Teléfono (opcional)</Label>
+                <Input value={telefonoNuevo} onChange={(e) => setTelefonoNuevo(e.target.value)} className="h-12 bg-slate-900 border-slate-700 text-white" />
+              </div>
+              <Button onClick={crearCliente} disabled={creando} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600">
+                {creando && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {creando ? 'Creando...' : 'Crear cliente'}
+              </Button>
+              <p className="text-slate-500 text-xs text-center">Este cliente también quedará disponible en Electron.</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

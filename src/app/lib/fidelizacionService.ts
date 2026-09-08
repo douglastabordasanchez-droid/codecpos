@@ -32,6 +32,11 @@ export interface Cliente {
   codigoBarras?: string; // Para tarjeta de fidelidad
   activo: boolean;
   notas?: string;
+
+  /** uuid en Supabase (tabla `clientes_fidelizacion`) una vez sincronizado -- ver syncService.ts. */
+  supabaseId?: string;
+  /** epoch ms del último cambio local. */
+  updatedAt?: number;
 }
 
 export interface MovimientoPuntos {
@@ -144,6 +149,7 @@ export async function crearCliente(datos: Partial<Cliente>): Promise<Cliente> {
       codigoBarras: generarCodigoBarrasCliente(),
       activo: true,
       notas: datos.notas,
+      updatedAt: Date.now(),
     };
 
     await db.put('clientes', cliente);
@@ -169,6 +175,12 @@ export async function crearCliente(datos: Partial<Cliente>): Promise<Cliente> {
     console.error('Error creando cliente:', error);
     throw error;
   }
+}
+
+/** Escribe un cliente tal cual (sin recalcular nada) -- usado por syncService.ts al aplicar un pull remoto. */
+export async function guardarClienteRaw(cliente: Cliente): Promise<void> {
+  const db = await openDB();
+  await db.put('clientes', cliente);
 }
 
 /**
@@ -265,7 +277,7 @@ export async function actualizarCliente(
       throw new Error('Cliente no encontrado');
     }
 
-    const actualizado = { ...cliente, ...datos };
+    const actualizado = { ...cliente, ...datos, updatedAt: Date.now() };
     await db.put('clientes', actualizado);
     publicarClienteEnLaNube(actualizado);
 

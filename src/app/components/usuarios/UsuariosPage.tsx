@@ -37,6 +37,8 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useNavigate } from 'react-router';
+import { getSupabaseClient } from '../../lib/supabase/config';
+import { isLinked } from '../../lib/supabase/tenantLink';
 
 // ─── Tipos de estadísticas por empleado ──────────────────────────────────────
 interface EstadoTurno {
@@ -180,7 +182,14 @@ export function UsuariosPage() {
   const [permisos, setPermisos] = useState<PermisosUsuario>(PERMISOS_CAJERO_DEFAULT);
   const [mostrarPass, setMostrarPass] = useState(false);
   const [mostrarPassNueva, setMostrarPassNueva] = useState(false);
-  const [rolFormulario, setRolFormulario] = useState<'cajero' | 'tecnico'>('cajero');
+  const [rolFormulario, setRolFormulario] = useState<'cajero' | 'tecnico' | 'admin_nube'>('cajero');
+  // "Administrador" no es un rol local (PIN) -- crea una cuenta real en
+  // Supabase (misma que usa "Usuarios de la organización") para que también
+  // pueda entrar por PWA/Android/web, con acceso total. Campos aparte porque
+  // usa correo+contraseña, no usuario+PIN.
+  const [emailAdminNube, setEmailAdminNube] = useState('');
+  const [passwordAdminNube, setPasswordAdminNube] = useState('');
+  const [creandoAdminNube, setCreandoAdminNube] = useState(false);
 
   // ── Modal de módulos (PermisosUsuarioModal existente) ──
   const [modalModulos, setModalModulos] = useState(false);
@@ -357,6 +366,8 @@ export function UsuariosPage() {
     setForm(FORM_EMPTY);
     setPermisos(PERMISOS_CAJERO_DEFAULT);
     setRolFormulario('cajero');
+    setEmailAdminNube('');
+    setPasswordAdminNube('');
     setModoEdicion(false);
     setUsuarioEditando(null);
     setTabActivo('info');
@@ -392,9 +403,44 @@ export function UsuariosPage() {
     setUsuarioEditando(null);
   };
 
+  // ─── Crear administrador (cuenta real en Supabase, no local) ────────────────
+  const handleCrearAdminNube = async () => {
+    if (!form.nombreCompleto.trim()) { toast.error('El nombre completo es requerido'); return; }
+    if (!emailAdminNube.trim() || !emailAdminNube.includes('@')) { toast.error('Ingresa un correo válido'); return; }
+    if (passwordAdminNube.length < 6) { toast.error('La contraseña debe tener al menos 6 caracteres'); return; }
+    if (!isLinked()) {
+      toast.error('Esta instalación no está vinculada a la nube — vincúlala primero en Configuración');
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) { toast.error('Supabase no está configurado'); return; }
+
+    setCreandoAdminNube(true);
+    const { error } = await client.rpc('invitar_empleado', {
+      p_email: emailAdminNube.trim(),
+      p_password: passwordAdminNube,
+      p_nombre_completo: form.nombreCompleto.trim(),
+      p_rol: 'admin',
+    });
+    setCreandoAdminNube(false);
+
+    if (error) {
+      toast.error('No se pudo crear el administrador', { description: error.message });
+      return;
+    }
+    toast.success(`Administrador "${form.nombreCompleto}" creado — ya puede entrar por Electron, PWA y Android`);
+    cerrarModal();
+    navigate('/usuarios/organizacion');
+  };
+
   // ─── Guardar (crear o editar) ────────────────────────────────────────────────
   const handleGuardar = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!modoEdicion && rolFormulario === 'admin_nube') {
+      handleCrearAdminNube();
+      return;
+    }
 
     if (!form.nombreCompleto.trim()) { toast.error('El nombre completo es requerido'); return; }
     if (!form.cedula.trim() || !/^\d{7,10}$/.test(form.cedula)) {
@@ -453,7 +499,9 @@ export function UsuariosPage() {
         fechaContratacion: form.fechaContratacion || undefined,
         username: form.username,
         password: form.password,
-        rol: rolFormulario,
+        // rolFormulario ya no puede ser 'admin_nube' aquí -- ese caso hace
+        // return antes, más arriba en handleGuardar, vía handleCrearAdminNube.
+        rol: rolFormulario as 'cajero' | 'tecnico',
         activo: true,
         creadoPor: usuarioActual?.id || 'SISTEMA',
         permisos,
@@ -1255,8 +1303,8 @@ export function UsuariosPage() {
                       </Label>
                       <div className="grid grid-cols-2 gap-2">
                         {([
-                          { value: 'cajero', label: 'Cajero / Operario', desc: 'Ventas y caja' },
-                          { value: 'tecnico', label: 'Técnico', desc: 'Taller de reparaciones' },
+                          { value: 'cajero', label: 'Cajero / Operario', desc: 'Ventas y caja', color: 'indigo' },
+                          { value: 'tecnico', label: 'Técnico', desc: 'Taller de reparaciones', color: 'cyan' },
                         ] as const).map(r => (
                           <button
                             key={r.value}
@@ -1280,6 +1328,23 @@ export function UsuariosPage() {
                             <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{r.desc}</p>
                           </button>
                         ))}
+                        <button
+                          type="button"
+                          onClick={() => setRolFormulario('admin_nube')}
+                          className={`col-span-2 p-3 rounded-xl border-2 text-left transition-all flex items-center gap-2 ${
+                            rolFormulario === 'admin_nube'
+                              ? 'border-amber-500 bg-amber-500/10'
+                              : dm
+                              ? 'border-slate-600 bg-slate-800 hover:border-slate-500'
+                              : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                          }`}
+                        >
+                          <Cloud className={`w-4 h-4 shrink-0 ${rolFormulario === 'admin_nube' ? 'text-amber-400' : dm ? 'text-gray-400' : 'text-gray-500'}`} />
+                          <span>
+                            <p className={`text-sm font-bold ${rolFormulario === 'admin_nube' ? 'text-amber-400' : dm ? 'text-white' : 'text-gray-900'}`}>Administrador</p>
+                            <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Permisos totales — también puede entrar por PWA/Android/web</p>
+                          </span>
+                        </button>
                       </div>
                     </div>
                   )}
@@ -1288,7 +1353,46 @@ export function UsuariosPage() {
             )}
 
             {/* ── TAB: ACCESO ───────────────────────────────────────────── */}
-            {tabActivo === 'acceso' && (
+            {tabActivo === 'acceso' && !modoEdicion && rolFormulario === 'admin_nube' ? (
+              <div className="space-y-3">
+                <p className={`text-xs rounded-lg p-2.5 ${dm ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
+                  Esta cuenta entra con correo y contraseña (no PIN local) — funciona igual en Electron, PWA y la versión web.
+                </p>
+                <div className="space-y-1.5">
+                  <Label className={dm ? 'text-gray-300' : ''}>
+                    <User className="w-3.5 h-3.5 inline mr-1" />
+                    Correo *
+                  </Label>
+                  <Input
+                    type="email"
+                    value={emailAdminNube}
+                    onChange={e => setEmailAdminNube(e.target.value)}
+                    placeholder="ej: maria@negocio.com"
+                    className={`h-11 ${dm ? 'bg-slate-800 border-slate-600 text-white' : ''}`}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className={dm ? 'text-gray-300' : ''}>
+                    <Lock className="w-3.5 h-3.5 inline mr-1" />
+                    Contraseña *
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type={mostrarPass ? 'text' : 'password'}
+                      value={passwordAdminNube}
+                      onChange={e => setPasswordAdminNube(e.target.value)}
+                      placeholder="Mínimo 6 caracteres"
+                      className={`h-11 pr-10 ${dm ? 'bg-slate-800 border-slate-600 text-white' : ''}`}
+                    />
+                    <button type="button" tabIndex={-1}
+                      onClick={() => setMostrarPass(!mostrarPass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                      {mostrarPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : tabActivo === 'acceso' && (
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <Label className={dm ? 'text-gray-300' : ''}>
@@ -1483,9 +1587,9 @@ export function UsuariosPage() {
               <Button type="button" variant="outline" onClick={cerrarModal} className="flex-1">
                 Cancelar
               </Button>
-              <Button type="submit" className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 font-bold">
+              <Button type="submit" disabled={creandoAdminNube} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 font-bold disabled:opacity-50">
                 <Save className="w-4 h-4 mr-2" />
-                {modoEdicion ? 'Guardar Cambios' : 'Crear Personal'}
+                {modoEdicion ? 'Guardar Cambios' : rolFormulario === 'admin_nube' ? (creandoAdminNube ? 'Creando...' : 'Crear Administrador') : 'Crear Personal'}
               </Button>
             </div>
           </form>
