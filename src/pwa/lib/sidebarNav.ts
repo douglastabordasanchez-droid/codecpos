@@ -1,6 +1,6 @@
 import {
   Home, ShoppingCart, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
-  DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee, Palette, PartyPopper,
+  DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee, Palette, PartyPopper, CreditCard,
 } from 'lucide-react';
 import { ModuloPOS } from '../../app/lib/permissions';
 
@@ -41,6 +41,7 @@ export const NAV_HERRAMIENTAS: ItemNavSidebar[] = [
   { icon: RotateCcw, label: 'Devoluciones', path: '/devoluciones', modulo: ModuloPOS.DEVOLUCIONES },
   { icon: ScanLine, label: 'Escáner', path: '/escaner', modulo: ModuloPOS.PRODUCTOS },
   { icon: DollarSign, label: 'Pagos', path: '/pagos', modulo: ModuloPOS.CODEC_VERIFY },
+  { icon: CreditCard, label: 'Cartera', path: '/cartera', modulo: ModuloPOS.PUNTO_DE_VENTA },
   { icon: Bell, label: 'Alertas', path: '/alertas' },
 ];
 

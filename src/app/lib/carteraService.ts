@@ -47,16 +47,25 @@ export interface CuentaCartera {
   fechaUltimoRecordatorio?: string;
 
   notas?: string;
+
+  /** uuid en Supabase (tabla `cuentas_cartera`) una vez sincronizada -- ver syncService.ts. */
+  supabaseId?: string;
+  /** epoch ms del último cambio -- resuelve conflictos "gana el más reciente" con la PWA. */
+  updatedAt?: number;
 }
 
 const LS_ABONOS_CARTERA = 'pos-abonos-cartera';
 
 /** Registra un abono en el mecanismo plano que CierreCajaPage lee para
- *  sumarlo al cuadre del día en que se recibe — mismo patrón que 'pos-gastos'. */
-function registrarAbonoEnCierre(abono: AbonoCartera & { cuentaId: string; clienteNombre: string }): void {
+ *  sumarlo al cuadre del día en que se recibe — mismo patrón que 'pos-gastos'.
+ *  Exportada para que syncService.ts también la use al bajar (pull) un abono
+ *  registrado desde la PWA -- si no, ese dinero nunca aparecería en el cuadre
+ *  de caja de Electron aunque la cuenta de cartera sí quede sincronizada. */
+export function registrarAbonoEnCierre(abono: AbonoCartera & { cuentaId: string; clienteNombre: string }): void {
   try {
     const lista = JSON.parse(localStorage.getItem(LS_ABONOS_CARTERA) || '[]');
     const arr = Array.isArray(lista) ? lista : [];
+    if (arr.some((a: any) => a.id === abono.id)) return; // ya registrado -- evita duplicar el cuadre
     arr.push({
       id: abono.id,
       cuentaId: abono.cuentaId,
@@ -135,6 +144,7 @@ export async function crearCuentaCartera(datos: {
       sesionCajaId: datos.sesionCajaId,
       usuarioCreador: datos.usuarioCreador,
       notas: datos.notas,
+      updatedAt: Date.now(),
     };
 
     await db.put('cartera', cuenta);
@@ -251,6 +261,7 @@ export async function registrarAbono(
       saldo: Math.max(0, nuevoSaldo),
       estado: nuevoEstado,
       fechaPagoCompleto: nuevoEstado === 'pagada' ? new Date().toISOString() : cuenta.fechaPagoCompleto,
+      updatedAt: Date.now(),
     };
 
     await db.put('cartera', actualizada);
@@ -302,6 +313,12 @@ export async function obtenerCuentasProximasVencer(dias = 3): Promise<CuentaCart
     console.error('Error obteniendo cuentas de cartera próximas a vencer:', error);
     return [];
   }
+}
+
+/** Escribe una cuenta tal cual (sin recalcular nada) -- usado por syncService.ts al aplicar un pull remoto. */
+export async function guardarCuentaCarteraRaw(cuenta: CuentaCartera): Promise<void> {
+  const db = await openDB();
+  await db.put('cartera', cuenta);
 }
 
 export async function marcarRecordatorioEnviado(cuentaId: string): Promise<void> {

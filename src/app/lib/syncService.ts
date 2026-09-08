@@ -15,6 +15,7 @@ import { getLinkedClienteId, restablecerSesionSync } from './supabase/tenantLink
 import { listarTiendas, getStockResumenTienda, ejecutarTransferencia, reemplazarTiendasDesdeNube } from './multitiendaService';
 import { descargarTiendas } from './supabase/tiendasSyncService';
 import { descargarConfiguracionEmpresaDesdeNube, sincronizarConfiguracionEmpresaPendiente } from './supabase/empresaConfigSyncService';
+import { listarCuentasCartera, guardarCuentaCarteraRaw, registrarAbonoEnCierre, CuentaCartera } from './carteraService';
 
 const SYNC_INTERVAL = 30000; // 30 segundos
 const STEP_TIMEOUT_MS = 20_000;
@@ -236,6 +237,7 @@ class SyncService {
       ['pull_gastos', () => this.pullGastosRemotos(client, clienteId)],
       ['pull_cierres', () => this.pullCierresRemotos(client, clienteId)],
       ['pull_devoluciones', () => this.pullDevolucionesRemotas(client, clienteId)],
+      ['pull_cartera', () => this.pullCarteraRemota(client, clienteId)],
       ['push_productos', () => this.pushProductosPendientes(client, clienteId)],
       ['push_productos_localstorage', () => this.pushProductosLocalStorage(client, clienteId)],
       ['push_gastos', () => this.pushGastosLocalStorage(client, clienteId)],
@@ -245,6 +247,7 @@ class SyncService {
       ['procesar_transferencias', () => this.procesarSolicitudesTransferencia(client, clienteId)],
       ['push_cierres', () => this.pushCierresPendientes(client, clienteId)],
       ['push_devoluciones', () => this.pushDevolucionesLocalStorage(client, clienteId)],
+      ['push_cartera', () => this.pushCarteraPendiente(client, clienteId)],
       ['push_heartbeat', () => this.pushSesionActivaHeartbeat(client, clienteId)],
     ];
 
@@ -692,6 +695,101 @@ class SyncService {
     }
 
     await dbManager.setConfig('lastPullDevoluciones', new Date().toISOString());
+  }
+
+  /**
+   * Cartera bidireccional: trae cambios hechos desde la PWA (cuentas nuevas
+   * sin local_id, o abonos registrados sobre una cuenta que Electron ya
+   * había subido) y resuelve conflictos "gana el más reciente" por
+   * updated_at -- mismo criterio que pullProductosRemotos.
+   */
+  private async pullCarteraRemota(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const lastPull = await dbManager.getConfig('lastPullCartera');
+    let query = client.from('cuentas_cartera').select('*').eq('cliente_id', clienteId);
+    if (lastPull) query = query.gt('updated_at', lastPull);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      await dbManager.setConfig('lastPullCartera', new Date().toISOString());
+      return;
+    }
+
+    const cuentasLocales = await listarCuentasCartera();
+    for (const remote of data) {
+      const remoteUpdatedAt = new Date(remote.updated_at).getTime();
+      const local = cuentasLocales.find((c) => c.id === remote.local_id || (remote.id && c.supabaseId === remote.id));
+
+      if (local) {
+        if ((local.updatedAt || 0) >= remoteUpdatedAt) continue; // local ya al día o más reciente
+
+        // 🛡️ Un abono registrado desde la PWA solo llega a la cuenta de
+        // cartera acá -- sin esto, ese dinero nunca aparecería en el cuadre
+        // de caja de Electron (CierreCajaPage lee 'pos-abonos-cartera',
+        // mecanismo aparte que solo alimentan las escrituras LOCALES).
+        const idsLocales = new Set(local.abonos.map((a) => a.id));
+        const abonosRemotos = (remote.abonos || []) as CuentaCartera['abonos'];
+        for (const abono of abonosRemotos) {
+          if (!idsLocales.has(abono.id)) {
+            registrarAbonoEnCierre({ ...abono, cuentaId: local.id, clienteNombre: remote.cliente_cartera_nombre });
+          }
+        }
+
+        const actualizada: CuentaCartera = {
+          ...local,
+          clienteNombre: remote.cliente_cartera_nombre,
+          clienteTelefono: remote.cliente_cartera_telefono || undefined,
+          clienteDocumento: remote.cliente_cartera_documento || undefined,
+          total: Number(remote.total),
+          totalAbonado: Number(remote.total_abonado),
+          saldo: Number(remote.saldo),
+          estado: remote.estado,
+          fechaVencimiento: remote.fecha_vencimiento,
+          diasCredito: Number(remote.dias_credito),
+          fechaPagoCompleto: remote.fecha_pago_completo || undefined,
+          notas: remote.notas || undefined,
+          abonos: abonosRemotos,
+          supabaseId: remote.id,
+          updatedAt: remoteUpdatedAt,
+        };
+        await guardarCuentaCarteraRaw(actualizada);
+      } else {
+        // Cuenta creada desde la PWA -- se le asigna un id local nuevo.
+        // `clienteId` (fidelización) se deja vacío: la PWA no depende de un
+        // registro de cliente sincronizado, guarda el nombre suelto.
+        const nuevaCuenta: CuentaCartera = {
+          id: remote.local_id || `remote-${remote.id}`,
+          ventaId: remote.venta_local_id || '',
+          numeroFactura: remote.numero_factura || '',
+          clienteId: '',
+          clienteNombre: remote.cliente_cartera_nombre,
+          clienteTelefono: remote.cliente_cartera_telefono || undefined,
+          clienteDocumento: remote.cliente_cartera_documento || undefined,
+          total: Number(remote.total),
+          abonos: remote.abonos || [],
+          totalAbonado: Number(remote.total_abonado),
+          saldo: Number(remote.saldo),
+          estado: remote.estado,
+          fechaVenta: remote.fecha_venta,
+          fechaVencimiento: remote.fecha_vencimiento,
+          diasCredito: Number(remote.dias_credito),
+          fechaPagoCompleto: remote.fecha_pago_completo || undefined,
+          usuarioCreador: remote.usuario_creador || 'App móvil',
+          notas: remote.notas || undefined,
+          supabaseId: remote.id,
+          updatedAt: remoteUpdatedAt,
+        };
+        await guardarCuentaCarteraRaw(nuevaCuenta);
+        // El abono inicial (si lo hubo) también debe sumar al cuadre de caja
+        // -- es dinero recibido, aunque la venta en sí se registre a crédito.
+        for (const abono of nuevaCuenta.abonos) {
+          registrarAbonoEnCierre({ ...abono, cuentaId: nuevaCuenta.id, clienteNombre: nuevaCuenta.clienteNombre });
+        }
+      }
+    }
+
+    await dbManager.addLog('pull_cartera', `${data.length} cuenta(s) de cartera sincronizadas`);
+    await dbManager.setConfig('lastPullCartera', new Date().toISOString());
   }
 
   // ==================== PUSH ====================
@@ -1266,6 +1364,65 @@ class SyncService {
 
     localStorage.setItem('pos-cierres-caja', JSON.stringify(cierres));
     await dbManager.addLog('push_cierres', `${pendientes.length} cierres subidos`);
+  }
+
+  /**
+   * Sube TODAS las cuentas de cartera locales en cada ciclo (upsert por
+   * cliente_id+local_id, idempotente) -- a diferencia de ventas/productos no
+   * hay un índice de "pendientes" propio: el volumen de ventas a crédito es
+   * bajo comparado con el de ventas normales, así que reenviar el estado
+   * completo cada 30s es más simple que mantener un flag "dirty" por cuenta,
+   * y cubre tanto cuentas nuevas como abonos agregados después.
+   */
+  private async pushCarteraPendiente(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const cuentas = await listarCuentasCartera();
+    if (cuentas.length === 0) return;
+
+    for (const cuenta of cuentas) {
+      const campos = {
+        venta_local_id: cuenta.ventaId || null,
+        numero_factura: cuenta.numeroFactura || null,
+        cliente_cartera_nombre: cuenta.clienteNombre,
+        cliente_cartera_telefono: cuenta.clienteTelefono || null,
+        cliente_cartera_documento: cuenta.clienteDocumento || null,
+        total: cuenta.total,
+        total_abonado: cuenta.totalAbonado,
+        saldo: cuenta.saldo,
+        estado: cuenta.estado,
+        fecha_venta: cuenta.fechaVenta,
+        fecha_vencimiento: cuenta.fechaVencimiento,
+        dias_credito: cuenta.diasCredito,
+        fecha_pago_completo: cuenta.fechaPagoCompleto || null,
+        usuario_creador: cuenta.usuarioCreador || null,
+        notas: cuenta.notas || null,
+        abonos: cuenta.abonos,
+        updated_at: new Date(cuenta.updatedAt || Date.now()).toISOString(),
+      };
+
+      // 🛡️ Si ya se conoce el uuid remoto, se actualiza esa fila por id en
+      // vez de volver a hacer upsert por (cliente_id, local_id) -- una cuenta
+      // creada originalmente en la PWA (local_id nulo en Supabase) recibe acá
+      // un id local nuevo ("remote-..."), y un upsert con ESE local_id
+      // insertaría una fila DUPLICADA en vez de actualizar la existente.
+      if (cuenta.supabaseId) {
+        const { error } = await client.from('cuentas_cartera').update(campos).eq('id', cuenta.supabaseId);
+        if (error) console.error(`[sync] Error actualizando cuenta de cartera de ${cuenta.clienteNombre}:`, error.message);
+        continue;
+      }
+
+      const { data, error } = await client.from('cuentas_cartera').upsert(
+        { ...campos, cliente_id: clienteId, local_id: cuenta.id },
+        { onConflict: 'cliente_id,local_id' }
+      ).select('id').single();
+
+      if (error) {
+        console.error(`[sync] Error subiendo cuenta de cartera de ${cuenta.clienteNombre}:`, error.message);
+        continue;
+      }
+      if (data?.id) {
+        await guardarCuentaCarteraRaw({ ...cuenta, supabaseId: data.id });
+      }
+    }
   }
 
   /**

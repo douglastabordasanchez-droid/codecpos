@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera, Share2, Receipt, Printer } from 'lucide-react';
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
+import { toast } from 'sonner';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil } from '../lib/ventaMovilService';
+import { crearCuentaCarteraMovil } from '../lib/carteraMovilService';
 import { compartirRecibo, verFactura } from '../lib/compartirFactura';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
@@ -29,6 +31,7 @@ const METODOS_PAGO = [
   { valor: 'transferencia', label: 'Transferencia', emoji: '🏦' },
   { valor: 'rappi', label: 'Rappi', emoji: '🛵' },
   { valor: 'mixto', label: 'Mixto', emoji: '🔀' },
+  { valor: 'cartera', label: 'Cartera', emoji: '📒' },
 ];
 
 /** Mismos sub-métodos que el pago mixto de Electron (PagoMixtoModal.tsx). */
@@ -63,6 +66,11 @@ export default function VenderPage() {
   const [mostrarScanner, setMostrarScanner] = useState(false);
   const [metodoPago, setMetodoPago] = useState('efectivo');
   const [montosMixto, setMontosMixto] = useState<Record<string, string>>({});
+  const [carteraNombre, setCarteraNombre] = useState('');
+  const [carteraTelefono, setCarteraTelefono] = useState('');
+  const [carteraDocumento, setCarteraDocumento] = useState('');
+  const [carteraDias, setCarteraDias] = useState('30');
+  const [carteraAbonoInicial, setCarteraAbonoInicial] = useState('');
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ventaCompletada, setVentaCompletada] = useState<VentaCompletada | null>(null);
@@ -169,6 +177,10 @@ export default function VenderPage() {
       setError(diferenciaMixto > 0 ? `Faltan ${money(diferenciaMixto)} por distribuir` : `Sobran ${money(-diferenciaMixto)} distribuidos de más`);
       return;
     }
+    if (metodoPago === 'cartera' && !carteraNombre.trim()) {
+      setError('Ingresa el nombre del cliente para vender a crédito');
+      return;
+    }
     setProcesando(true);
     setError(null);
     const metodosMultiples: MetodosMultiplesMovil | undefined = metodoPago === 'mixto'
@@ -179,10 +191,36 @@ export default function VenderPage() {
         }, {} as MetodosMultiplesMovil)
       : undefined;
     const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, itemsCarrito, metodoPago, metodosMultiples, propinaAplicada, configPropina.porcentaje, propinaManual !== null);
+
+    // La venta ya quedó registrada (arriba) -- crear la cuenta de cartera es
+    // un paso aparte, igual que en Electron (electronStore.registrarVenta +
+    // crearCuentaCartera). Best-effort: si falla, la venta no se pierde,
+    // pero el saldo a crédito no quedaría registrado -- se avisa igual.
+    if (resultado.ok && metodoPago === 'cartera' && resultado.ventaId) {
+      const abonoInicial = Math.max(0, Number(carteraAbonoInicial) || 0);
+      const carteraResultado = await crearCuentaCarteraMovil(empleado.cliente_id, {
+        ventaLocalId: resultado.ventaId,
+        numeroFactura: resultado.numero ? String(resultado.numero) : undefined,
+        clienteNombre: carteraNombre.trim(),
+        clienteTelefono: carteraTelefono.trim() || undefined,
+        clienteDocumento: carteraDocumento.trim() || undefined,
+        total: totalAPagar,
+        abonoInicial,
+        diasCredito: Math.max(1, Number(carteraDias) || 30),
+        usuarioCreador: empleado.nombre_completo,
+      });
+      if (!carteraResultado.ok) {
+        toast.error('La venta se registró, pero no se pudo crear la cuenta de cartera', { description: carteraResultado.error });
+      }
+    }
     setProcesando(false);
 
     if (resultado.ok && resultado.ventaId && resultado.numero) {
       setVentaCompletada({ id: resultado.ventaId, numero: resultado.numero, total: totalAPagar, metodoPago });
+      setCarteraNombre('');
+      setCarteraTelefono('');
+      setCarteraDocumento('');
+      setCarteraAbonoInicial('');
       // DIAN directo — nunca bloquea la venta (ya se guardó arriba). Si el
       // cliente identificó su NIT/cédula se intenta Factura (CUFE); si no,
       // Documento Equivalente POS (CUDE) — la decisión la toma
@@ -527,6 +565,50 @@ export default function VenderPage() {
                       <div className={`flex items-center justify-between pt-2 border-t border-slate-800 text-sm ${mixtoValido ? 'text-emerald-400' : 'text-amber-400'}`}>
                         <span>{mixtoValido ? 'Cuadra ✓' : diferenciaMixto > 0 ? 'Falta distribuir' : 'Sobra distribuido'}</span>
                         <span className="font-bold">{money(Math.abs(diferenciaMixto))}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {metodoPago === 'cartera' && (
+                    <div className="mt-3 bg-slate-900/70 border border-slate-800 rounded-xl p-3 space-y-2">
+                      <p className="text-slate-400 text-[11px]">Venta a crédito -- se registra el saldo pendiente del cliente:</p>
+                      <Input
+                        value={carteraNombre}
+                        onChange={(e) => setCarteraNombre(e.target.value)}
+                        placeholder="Nombre del cliente *"
+                        className="h-10 bg-slate-950 border-slate-700 text-white text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <Input
+                          value={carteraTelefono}
+                          onChange={(e) => setCarteraTelefono(e.target.value)}
+                          placeholder="Teléfono (opcional)"
+                          className="h-10 bg-slate-950 border-slate-700 text-white text-sm"
+                        />
+                        <Input
+                          value={carteraDocumento}
+                          onChange={(e) => setCarteraDocumento(e.target.value)}
+                          placeholder="Documento (opcional)"
+                          className="h-10 bg-slate-950 border-slate-700 text-white text-sm"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-300 text-xs w-28 shrink-0">Días de crédito</span>
+                        <Input
+                          type="number" inputMode="numeric" min={1}
+                          value={carteraDias}
+                          onChange={(e) => setCarteraDias(e.target.value)}
+                          className="h-10 bg-slate-950 border-slate-700 text-white text-sm"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-300 text-xs w-28 shrink-0">Abono inicial</span>
+                        <Input
+                          type="number" inputMode="numeric" min={0} placeholder="0"
+                          value={carteraAbonoInicial}
+                          onChange={(e) => setCarteraAbonoInicial(e.target.value)}
+                          className="h-10 bg-slate-950 border-slate-700 text-white text-sm"
+                        />
                       </div>
                     </div>
                   )}
