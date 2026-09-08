@@ -213,14 +213,20 @@ export async function cancelarLicencia(licenciaId: string, motivo: string) {
   if (error) throw new Error(error.message);
 }
 
-export async function activarPruebaGratis(clienteId: string) {
-  const fechaInicio = new Date();
-  const fechaFin = new Date(fechaInicio.getTime() + 14 * 86_400_000);
-  const { error } = await cliente().from('clientes_pos').update({
-    plan: 'PREMIUM', duracion: '1_MES', fecha_activacion: fechaInicio.toISOString(),
-    fecha_expiracion: fechaFin.toISOString(), estado: 'ACTIVA', en_prueba: true,
-    dias_prueba_restantes: 14,
-  }).eq('id', clienteId);
+/**
+ * Activa una prueba gratuita nueva con la cantidad de días elegida, vía el
+ * motor real de licencias (mismo camino que ya usa el Panel Desarrollador
+ * móvil) -- reemplaza el update directo sobre clientes_pos que existía antes
+ * aquí (no tocaba `licencias` ni dejaba historial, y tenía 14 días fijos).
+ */
+export async function activarPruebaAdmin(clienteId: string, dias: number) {
+  const { error } = await cliente().rpc('activar_prueba_admin', { p_cliente_id: clienteId, p_dias: dias });
+  if (error) throw new Error(error.message);
+}
+
+/** Ajusta los días TOTALES de una prueba YA activa, sin resetear su fecha de inicio. */
+export async function editarDiasPruebaActiva(clienteId: string, dias: number) {
+  const { error } = await cliente().rpc('editar_dias_prueba_activa', { p_cliente_id: clienteId, p_dias: dias });
   if (error) throw new Error(error.message);
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X } from 'lucide-react';
-import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaGratis, actualizarModulosCliente } from '../lib/adminApi';
+import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, editarDiasPruebaActiva, actualizarModulosCliente } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import {
   PageHeader, SectionCard, LoadingState, ErrorState, EstadoBadge, PlanBadge,
@@ -45,6 +45,8 @@ export function ClienteDetallePage() {
   const [nuevoPlan, setNuevoPlan] = useState({ planCodigo: '', modalidad: 'MENSUAL' });
   const [mostrarModulos, setMostrarModulos] = useState(false);
   const [modulos, setModulos] = useState<string[]>([]);
+  const [mostrarPrueba, setMostrarPrueba] = useState(false);
+  const [diasPrueba, setDiasPrueba] = useState('14');
 
   const cargar = () => {
     if (id) obtenerDetalleCliente(id).then((data) => {
@@ -117,13 +119,25 @@ export function ClienteDetallePage() {
 
   const handlePruebaGratis = async () => {
     if (!id) return;
+    const dias = Number(diasPrueba);
+    if (!Number.isFinite(dias) || dias <= 0) {
+      alert('Ingresa una cantidad de días válida');
+      return;
+    }
     setProcesando(true);
+    const enPruebaYa = detalle?.licencia_vigente?.estado === 'TRIAL';
     try {
-      await activarPruebaGratis(id);
-      await registrarAuditoria('ACTIVAR_PRUEBA_14_DIAS', id, 'EXITO');
+      if (enPruebaYa) {
+        await editarDiasPruebaActiva(id, dias);
+        await registrarAuditoria('EDITAR_DIAS_PRUEBA', id, 'EXITO', { dias });
+      } else {
+        await activarPruebaAdmin(id, dias);
+        await registrarAuditoria('ACTIVAR_PRUEBA_GRATIS', id, 'EXITO', { dias });
+      }
+      setMostrarPrueba(false);
       cargar();
     } catch (e: any) {
-      alert('No se pudo activar la prueba: ' + e.message);
+      alert('No se pudo activar/editar la prueba: ' + e.message);
     } finally { setProcesando(false); }
   };
 
@@ -164,8 +178,8 @@ export function ClienteDetallePage() {
               >
                 <RefreshCw className="w-4 h-4" /> {lic ? 'Cambiar plan' : 'Activar licencia'}
               </button>
-              <button onClick={handlePruebaGratis} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg px-3 py-2 disabled:opacity-50">
-                <Gift className="w-4 h-4" /> Activar prueba gratis (14 días)
+              <button onClick={() => setMostrarPrueba((v) => !v)} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg px-3 py-2 disabled:opacity-50">
+                <Gift className="w-4 h-4" /> {lic?.estado === 'TRIAL' ? 'Editar días de prueba' : 'Activar prueba gratis'}
               </button>
               <button onClick={() => setMostrarModulos((value) => !value)} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2 disabled:opacity-50">
                 <Check className="w-4 h-4" /> Activar / desactivar módulos
@@ -222,6 +236,30 @@ export function ClienteDetallePage() {
               className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-semibold rounded-lg px-4 py-2 text-sm"
             >
               Confirmar
+            </button>
+          </div>
+        </SectionCard>
+      )}
+
+      {mostrarPrueba && (
+        <SectionCard className="mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            <div className="flex-1">
+              <p className="text-slate-300 text-xs mb-1">Días de prueba{lic?.estado === 'TRIAL' ? ' (totales, desde que inició)' : ''}</p>
+              <input
+                type="number"
+                min={1}
+                value={diasPrueba}
+                onChange={(e) => setDiasPrueba(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-500"
+              />
+            </div>
+            <button
+              onClick={handlePruebaGratis}
+              disabled={procesando}
+              className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-semibold rounded-lg px-4 py-2 text-sm"
+            >
+              {lic?.estado === 'TRIAL' ? 'Guardar días' : 'Activar prueba'}
             </button>
           </div>
         </SectionCard>

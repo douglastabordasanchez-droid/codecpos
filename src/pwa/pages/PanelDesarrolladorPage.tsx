@@ -13,6 +13,7 @@ import {
   actualizarClienteAdmin,
   actualizarModulosClienteAdmin,
   activarPruebaGratisAdmin,
+  editarDiasPruebaActivaAdmin,
   cambiarEstadoClienteAdmin,
   crearAccesoMovilDueno,
   ClienteAdmin,
@@ -68,6 +69,7 @@ export default function PanelDesarrolladorPage() {
   const [seleccionado, setSeleccionado] = useState<ClienteAdmin | null>(null);
   const [modulosSel, setModulosSel] = useState<Set<ModuloPOS>>(new Set());
   const [guardando, setGuardando] = useState(false);
+  const [diasPruebaSel, setDiasPruebaSel] = useState('14');
 
   const [mostrarCrear, setMostrarCrear] = useState(false);
   const [formNuevo, setFormNuevo] = useState(FORM_VACIO);
@@ -111,6 +113,7 @@ export default function PanelDesarrolladorPage() {
   const abrirDetalle = (c: ClienteAdmin) => {
     setSeleccionado(c);
     setModulosSel(new Set((c.modulosActivos as ModuloPOS[] | null) || []));
+    setDiasPruebaSel(String(c.diasPruebaRestantes || 14));
   };
 
   const abrirCrear = () => {
@@ -176,14 +179,24 @@ export default function PanelDesarrolladorPage() {
   };
 
   const activarPruebaGratis = async (c: ClienteAdmin) => {
+    const dias = Number(diasPruebaSel);
+    if (!Number.isFinite(dias) || dias <= 0) {
+      toast.error('Ingresa una cantidad de días válida');
+      return;
+    }
     setGuardando(true);
     try {
-      await activarPruebaGratisAdmin(c.id);
-      toast.success(`Prueba gratis de 14 días activada para ${c.nombreNegocio}`);
+      if (c.enPrueba) {
+        await editarDiasPruebaActivaAdmin(c.id, dias);
+        toast.success(`Días de prueba de ${c.nombreNegocio} ajustados a ${dias}`);
+      } else {
+        await activarPruebaGratisAdmin(c.id, dias);
+        toast.success(`Prueba gratis de ${dias} días activada para ${c.nombreNegocio}`);
+      }
       setSeleccionado(null);
       cargar();
     } catch (e) {
-      toast.error('No se pudo activar la prueba', { description: e instanceof Error ? e.message : undefined });
+      toast.error('No se pudo activar/editar la prueba', { description: e instanceof Error ? e.message : undefined });
     } finally {
       setGuardando(false);
     }
@@ -313,14 +326,23 @@ export default function PanelDesarrolladorPage() {
                   <Power className="w-4 h-4 mr-2" />
                   {seleccionado.estado === 'ACTIVA' ? 'Suspender' : 'Reactivar'}
                 </Button>
-                <Button
-                  onClick={() => activarPruebaGratis(seleccionado)}
-                  disabled={guardando}
-                  className="h-12 bg-gradient-to-r from-emerald-500 to-green-600"
-                >
-                  {guardando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Gift className="w-4 h-4 mr-2" />}
-                  Activar prueba gratis (14 días)
-                </Button>
+                <div className="flex gap-1.5">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={diasPruebaSel}
+                    onChange={(e) => setDiasPruebaSel(e.target.value)}
+                    className="h-12 w-16 px-2 bg-slate-900/50 border-slate-700 text-white text-center"
+                  />
+                  <Button
+                    onClick={() => activarPruebaGratis(seleccionado)}
+                    disabled={guardando}
+                    className="h-12 flex-1 bg-gradient-to-r from-emerald-500 to-green-600 px-2"
+                  >
+                    {guardando ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Gift className="w-4 h-4 mr-1.5" />}
+                    {seleccionado.enPrueba ? 'Editar días' : 'Prueba gratis'}
+                  </Button>
+                </div>
               </div>
 
               <Button

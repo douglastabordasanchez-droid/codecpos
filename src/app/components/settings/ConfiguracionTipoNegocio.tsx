@@ -21,7 +21,12 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 export function ConfiguracionTipoNegocio() {
   const { darkMode } = usePOS();
-  const { tipoNegocio: tipoActual, nombreNegocio: nombreActual, propinaActiva: propinaActivaActual, porcentajePropinaPredeterminado: porcentajePropinaActual, setBusinessConfig } = useBusinessContext();
+  const {
+    tipoNegocio: tipoActual, nombreNegocio: nombreActual,
+    propinaActiva: propinaActivaActual, porcentajePropinaPredeterminado: porcentajePropinaActual,
+    permitirModificarPrecio: permitirModificarPrecioActual,
+    setBusinessConfig,
+  } = useBusinessContext();
   const { usuarioActual } = useAuth();
 
   const [tipoSeleccionado, setTipoSeleccionado] = useState(tipoActual);
@@ -29,6 +34,7 @@ export function ConfiguracionTipoNegocio() {
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
   const [propinaActiva, setPropinaActiva] = useState(propinaActivaActual);
   const [porcentajePropina, setPorcentajePropina] = useState(String(porcentajePropinaActual));
+  const [permitirModificarPrecio, setPermitirModificarPrecio] = useState(permitirModificarPrecioActual);
   const esAdministrador = usuarioActual?.rol === 'super_usuario';
 
   const tipos = Object.values(TIPOS_NEGOCIO);
@@ -53,6 +59,7 @@ export function ConfiguracionTipoNegocio() {
       nombreNegocio: nombreNegocio.trim(),
       propinaActiva: esAdministrador ? propinaActiva : propinaActivaActual,
       porcentajePropinaPredeterminado: esAdministrador ? porcentaje : porcentajePropinaActual,
+      permitirModificarPrecio: esAdministrador ? permitirModificarPrecio : permitirModificarPrecioActual,
     });
     setCambiosPendientes(false);
     const tipo = TIPOS_NEGOCIO[tipoSeleccionado];
@@ -190,6 +197,25 @@ export function ConfiguracionTipoNegocio() {
               />
             </div>
           )}
+        </div>
+      )}
+
+      {esAdministrador && (
+        <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-800/50 border border-slate-700' : 'bg-gray-50 border border-gray-200'}`}>
+          <h4 className={`font-bold text-sm mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Modificar precio manualmente</h4>
+          <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Permite editar el precio de un producto en el carrito al momento de cobrar — útil para dar rebajas puntuales.
+            El descuento queda registrado en Reportes y Contabilidad, no se pierde en el margen.
+          </p>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Permitir modificar el valor</span>
+            <input
+              type="checkbox"
+              checked={permitirModificarPrecio}
+              onChange={(e) => { setPermitirModificarPrecio(e.target.checked); setCambiosPendientes(true); }}
+              className="h-5 w-5 accent-blue-600"
+            />
+          </label>
         </div>
       )}
 

@@ -40,7 +40,7 @@ import { Card, CardContent } from '../ui/card';
 import { usePOS } from '../../contexts/POSContext';
 import { toast } from 'sonner';
 import { TicketReceipt } from './TicketReceipt';
-import { BoutiqueCatalog, type BoutiqueProduct } from './BoutiqueCatalog';
+import { BoutiqueCatalog, type BoutiqueProduct, colorDePrenda } from './BoutiqueCatalog';
 import { 
   useBarcodeScanner, 
   useSerialScale, 
@@ -133,6 +133,7 @@ interface ItemCarrito {
   producto: Producto;
   cantidad: number;
   peso?: number; // Para productos pesables
+  precioEditado?: number; // Precio manual (override) del catálogo+modificadores, solo si "permitirModificarPrecio" está activo
   modifiersSeleccionados?: Array<{
     modifierOptionId: string;
     nombre: string;
@@ -209,23 +210,24 @@ function leerConfigEmpresaCacheada(): any {
   return getCached<any>('codec_pos_config', {});
 }
 
-const COLOR_PRENDA: Record<string, string> = {
-  negro: '#111827', blanco: '#f8fafc', gris: '#94a3b8', azul: '#2563eb',
-  rojo: '#dc2626', verde: '#16a34a', amarillo: '#eab308', naranja: '#f97316',
-  rosado: '#ec4899', rosa: '#ec4899', morado: '#7c3aed', beige: '#d6b78a',
-  cafe: '#78350f', marron: '#78350f', café: '#78350f', marrón: '#78350f',
-  azulmarino: '#1e3a8a', celeste: '#38bdf8', vino: '#9f1239',
-};
+// Precio de catálogo + modificadores de un ítem, ANTES de cualquier edición
+// manual — es la referencia contra la que se calcula el descuento cuando
+// "permitirModificarPrecio" está activo.
+function precioCatalogoConMods(item: ItemCarrito): number {
+  const extraMods = (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.precioVenta) || 0), 0);
+  return (Number(item.producto.precio) || 0) + extraMods;
+}
 
-function colorDePrenda(color?: string): string {
-  const normalizado = String(color || '').toLocaleLowerCase('es-CO').replace(/[\s-]/g, '');
-  return COLOR_PRENDA[normalizado] || '#64748b';
+function calcularDescuentoItem(item: ItemCarrito): number {
+  if (item.precioEditado == null) return 0;
+  const cantidadVenta = item.producto.pesable ? (item.peso || 0) : item.cantidad;
+  return Math.max(0, precioCatalogoConMods(item) - item.precioEditado) * cantidadVenta;
 }
 
 export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: POSPageNewProps = {}) {
   const navigate = useNavigate();
   const { darkMode, triggerRefresh, uiScale, setUiScale } = usePOS();
-  const { propinaActiva, porcentajePropinaPredeterminado, tipoNegocio } = useBusinessContext();
+  const { propinaActiva, porcentajePropinaPredeterminado, tipoNegocio, permitirModificarPrecio } = useBusinessContext();
   const { emitLanEvent } = useLanContext();
   const [productos, setProductos] = useState<Producto[]>([]);
   const [combosOnces, setCombosOnces] = useState<Producto[]>([]);
@@ -237,7 +239,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [categoriaRopaActiva, setCategoriaRopaActiva] = useState('');
   const [tallaRopaActiva, setTallaRopaActiva] = useState('');
   const [colorRopaActivo, setColorRopaActivo] = useState('');
-  const [boutiqueEditingIndex, setBoutiqueEditingIndex] = useState<number | null>(null);
+  const [boutiqueEditingProductoId, setBoutiqueEditingProductoId] = useState<string | null>(null);
   const [codigoBarras, setCodigoBarras] = useState('');
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1229,27 +1231,32 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }
   };
 
-  const agregarAlCarritoDirecto = (producto: Producto, modifiersElegidos?: ItemCarrito['modifiersSeleccionados']) => {
+  const agregarAlCarritoDirecto = (producto: Producto, modifiersElegidos?: ItemCarrito['modifiersSeleccionados'], cantidadInicial: number = 1) => {
     if (producto.stock <= 0) {
       toast.error('Producto sin stock');
       return;
     }
 
     const itemExistente = carrito.find(item => item.producto.id === producto.id);
-    
+
     if (itemExistente) {
-      if (itemExistente.cantidad >= producto.stock) {
+      const nuevaCantidad = itemExistente.cantidad + cantidadInicial;
+      if (nuevaCantidad > producto.stock) {
         toast.error('No hay suficiente stock');
         return;
       }
       setCarrito(carrito.map(item =>
         item.producto.id === producto.id
-          ? { ...item, cantidad: item.cantidad + 1 }
+          ? { ...item, cantidad: nuevaCantidad }
           : item
       ));
     } else {
+      if (cantidadInicial > producto.stock) {
+        toast.error('No hay suficiente stock');
+        return;
+      }
       // 🆕 AGREGADO AL INICIO (unshift) - Último producto aparece primero
-      setCarrito([{ producto, cantidad: 1, modifiersSeleccionados: modifiersElegidos || (producto.modifiersConfig || []).map(m => ({ ...m, precioVenta: Number(m.precioVenta) || 0 })) }, ...carrito]);
+      setCarrito([{ producto, cantidad: cantidadInicial, modifiersSeleccionados: modifiersElegidos || (producto.modifiersConfig || []).map(m => ({ ...m, precioVenta: Number(m.precioVenta) || 0 })) }, ...carrito]);
     }
 
     toast.success(`${producto.nombre} agregado al carrito`);
@@ -1438,11 +1445,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // cada punto de la UI que ya las llama como calcularSubtotal().
   const subtotalMemo = useMemo(() => {
     return carritoItemsValidos().reduce((total, item) => {
-      const extraMods = (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.precioVenta) || 0), 0);
+      const precioFinal = item.precioEditado ?? precioCatalogoConMods(item);
       if (item.producto.pesable && item.peso) {
-        return total + ((item.producto.precio + extraMods) * item.peso);
+        return total + (precioFinal * item.peso);
       }
-      return total + ((item.producto.precio + extraMods) * item.cantidad);
+      return total + (precioFinal * item.cantidad);
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrito]);
@@ -1641,9 +1648,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         numeroFactura: numeroFacturaCompleto,
         items: carrito.map(item => ({
           ...(function() {
-            const extraMods = (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.precioVenta) || 0), 0);
             const cantidadVenta = item.producto.pesable ? (item.peso || 0) : item.cantidad;
-            const precioFinal = (Number(item.producto.precio) || 0) + extraMods;
+            const precioFinal = item.precioEditado ?? precioCatalogoConMods(item);
             return {
               id: item.producto.id,
               codigo: item.producto.codigo,
@@ -1676,6 +1682,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         subtotal: configIVA.ivaHabilitado ? subtotal : undefined,
         iva: configIVA.ivaHabilitado ? iva : undefined,
         porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : undefined,
+        descuento: carrito.reduce((s, item) => s + calcularDescuentoItem(item), 0),
         total,
         propina: propinaAplicada,
         porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
@@ -1830,7 +1837,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             subtotal: configIVA.ivaHabilitado ? subtotal : total,
             iva: configIVA.ivaHabilitado ? iva : 0,
             porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
-            descuento: 0,
+            descuento: carrito.reduce((s, item) => s + calcularDescuentoItem(item), 0),
             total,
             propina: propinaAplicada,
             porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
@@ -2064,9 +2071,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         numeroFactura: numeroFacturaCompleto,
         items: carrito.map(item => ({
           ...(function() {
-            const extraMods = (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.precioVenta) || 0), 0);
             const cantidadVenta = item.producto.pesable ? (item.peso || 0) : item.cantidad;
-            const precioFinal = (Number(item.producto.precio) || 0) + extraMods;
+            const precioFinal = item.precioEditado ?? precioCatalogoConMods(item);
             return {
               id: item.producto.id,
               codigo: item.producto.codigo,
@@ -2099,6 +2105,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         subtotal: configIVA.ivaHabilitado ? subtotal : undefined,
         iva: configIVA.ivaHabilitado ? iva : undefined,
         porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : undefined,
+        descuento: carrito.reduce((s, item) => s + calcularDescuentoItem(item), 0),
         total,
         propina: propinaAplicada,
         porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
@@ -2163,7 +2170,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             subtotal: configIVA.ivaHabilitado ? subtotal : total,
             iva: configIVA.ivaHabilitado ? iva : 0,
             porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
-            descuento: 0,
+            descuento: carrito.reduce((s, item) => s + calcularDescuentoItem(item), 0),
             total,
             propina: propinaAplicada,
             porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
@@ -2297,9 +2304,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
       const itemsVenta = carrito.map(item => ({
         ...(function() {
-          const extraMods = (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.precioVenta) || 0), 0);
           const cantidadVenta = item.producto.pesable ? (item.peso || 0) : item.cantidad;
-          const precioFinal = (Number(item.producto.precio) || 0) + extraMods;
+          const precioFinal = item.precioEditado ?? precioCatalogoConMods(item);
           return {
             id: item.producto.id,
             codigo: item.producto.codigo,
@@ -2357,6 +2363,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         subtotal: configIVA.ivaHabilitado ? subtotal : undefined,
         iva: configIVA.ivaHabilitado ? iva : undefined,
         porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : undefined,
+        descuento: carrito.reduce((s, item) => s + calcularDescuentoItem(item), 0),
         total,
         propina: propinaAplicada,
         porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
@@ -2401,7 +2408,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             subtotal: configIVA.ivaHabilitado ? subtotal : total,
             iva: configIVA.ivaHabilitado ? iva : 0,
             porcentajeIVA: configIVA.ivaHabilitado ? configIVA.porcentajeIVA : 0,
-            descuento: 0,
+            descuento: carrito.reduce((s, item) => s + calcularDescuentoItem(item), 0),
             total,
             propina: propinaAplicada,
             porcentajePropinaSugerido: propinaActiva ? porcentajePropinaPredeterminado : 0,
@@ -2497,38 +2504,51 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // ningún lugar del componente (confirmado por búsqueda completa) — trabajo
   // puro desperdiciado en cada tecla/click. Eliminado.
 
-  const esTiendaRopa = ['ropa', 'clothing', 'fashion'].includes(tipoNegocio);
+  const esTiendaRopa = tipoNegocio === 'ropa';
   const boutiqueProducts = useMemo(() => productos.filter(producto => !producto.esComboOnces).map((producto) => ({
     ...producto,
     // Compatibilidad con inventarios donde la talla vino incluida en el nombre.
     talla: producto.talla || (producto.nombre.match(/\b(XXXL|XXL|XL|XS|S|M|L)\b/i)?.[1]?.toUpperCase() || undefined),
   })) as BoutiqueProduct[], [productos]);
-  const cambiarVarianteCarrito = useCallback((nuevaVariante: BoutiqueProduct) => {
-    if (boutiqueEditingIndex === null) {
-      seleccionarProductoSugerido(nuevaVariante as Producto);
+  const cambiarVarianteCarrito = useCallback((nuevaVariante: BoutiqueProduct, qty: number) => {
+    if (boutiqueEditingProductoId === null) {
+      // Nuevo producto elegido desde el catálogo boutique (no edición de una
+      // línea existente) — se agrega con la cantidad elegida en el modal.
+      agregarAlCarritoDirecto(nuevaVariante as Producto, undefined, qty);
       return;
     }
-    setCarrito(actual => {
-      const actualItem = actual[boutiqueEditingIndex];
-      if (!actualItem || actualItem.producto.id === nuevaVariante.id) return actual;
-      const cantidadPermitida = Math.min(actualItem.cantidad, Math.max(1, Number(nuevaVariante.stock) || 0));
-      const destinoIndex = actual.findIndex((item, index) => index !== boutiqueEditingIndex && item.producto.id === nuevaVariante.id);
-      if (destinoIndex >= 0) {
-        const destino = actual[destinoIndex];
-        const capacidad = Math.max(0, Number(nuevaVariante.stock) - destino.cantidad);
-        if (capacidad < cantidadPermitida) { toast.error('No hay stock suficiente para mover toda la cantidad a esa variante'); return actual; }
-        const movida = cantidadPermitida;
-        return actual.filter((_, index) => index !== boutiqueEditingIndex).map((item, index) =>
-          index === (destinoIndex > boutiqueEditingIndex ? destinoIndex - 1 : destinoIndex)
-            ? { ...item, cantidad: item.cantidad + movida }
-            : item
-        );
+    // 🐛 FIX: `boutiqueEditingProductoId` (antes un índice crudo) identifica la
+    // línea del carrito por `producto.id`, no por posición — una mutación
+    // concurrente del carrito (escaneo, báscula) ya no apunta a la línea
+    // equivocada. El resultado se calcula contra el `carrito` actual (no un
+    // updater funcional) para poder decidir de forma determinista qué toast
+    // mostrar, sin arriesgar un "Variante actualizada" falso cuando no hubo
+    // ningún cambio real.
+    const editingIndex = carrito.findIndex(item => item.producto.id === boutiqueEditingProductoId);
+    const actualItem = editingIndex >= 0 ? carrito[editingIndex] : undefined;
+    setBoutiqueEditingProductoId(null);
+    if (!actualItem || actualItem.producto.id === nuevaVariante.id) return;
+
+    const cantidadPermitida = Math.min(actualItem.cantidad, Math.max(1, Number(nuevaVariante.stock) || 0));
+    const destinoIndex = carrito.findIndex((item, index) => index !== editingIndex && item.producto.id === nuevaVariante.id);
+    if (destinoIndex >= 0) {
+      const destino = carrito[destinoIndex];
+      const capacidad = Math.max(0, Number(nuevaVariante.stock) - destino.cantidad);
+      if (capacidad < cantidadPermitida) {
+        toast.error('No hay stock suficiente para mover toda la cantidad a esa variante');
+        return;
       }
-      return actual.map((item, index) => index === boutiqueEditingIndex ? { ...item, producto: nuevaVariante as Producto, cantidad: cantidadPermitida } : item);
-    });
-    setBoutiqueEditingIndex(null);
+      const movida = cantidadPermitida;
+      setCarrito(carrito.filter((_, index) => index !== editingIndex).map((item, index) =>
+        index === (destinoIndex > editingIndex ? destinoIndex - 1 : destinoIndex)
+          ? { ...item, cantidad: item.cantidad + movida }
+          : item
+      ));
+    } else {
+      setCarrito(carrito.map((item, index) => index === editingIndex ? { ...item, producto: nuevaVariante as Producto, cantidad: cantidadPermitida } : item));
+    }
     toast.success('Variante actualizada');
-  }, [boutiqueEditingIndex, seleccionarProductoSugerido]);
+  }, [boutiqueEditingProductoId, carrito, agregarAlCarritoDirecto]);
 
   const total = calcularTotal();
 
@@ -2721,10 +2741,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 ) : (
                   <div className="space-y-2 pb-2">
                     {carrito.map((item, index) => {
-                      const extraMods = (item.modifiersSeleccionados || []).reduce((s, m) => s + (Number(m.precioVenta) || 0), 0);
-                      const subtotal = item.peso 
-                        ? (item.producto.precio + extraMods) * item.peso 
-                        : (item.producto.precio + extraMods) * item.cantidad;
+                      const precioCatalogo = precioCatalogoConMods(item);
+                      const precioLinea = item.precioEditado ?? precioCatalogo;
+                      const subtotal = item.peso
+                        ? precioLinea * item.peso
+                        : precioLinea * item.cantidad;
 
                       return (
                         <motion.div
@@ -2758,7 +2779,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                               {esTiendaRopa && (item.producto.talla || item.producto.color) && (
                                 <button
                                   type="button"
-                                  onClick={() => setBoutiqueEditingIndex(index)}
+                                  onClick={() => setBoutiqueEditingProductoId(item.producto.id)}
                                   className={`mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold transition hover:border-[#b9537d] hover:bg-[#f9e8ef] ${darkMode ? 'border-fuchsia-400/25 bg-fuchsia-500/10 text-fuchsia-200 hover:bg-fuchsia-500/20' : 'border-[#ead1dc] bg-[#fff8fa] text-[#7b3657]'}`}
                                   title="Cambiar talla o color"
                                 >
@@ -2843,9 +2864,39 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                                     </Button>
                                   </div>
                                   
-                                  <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                    × ${(item.producto.precio + extraMods).toLocaleString('es-CO')}
-                                  </span>
+                                  {permitirModificarPrecio ? (
+                                    <div className="flex items-center gap-1.5">
+                                      {item.precioEditado != null && item.precioEditado !== precioCatalogo && (
+                                        <span className={`text-xs line-through ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                          ${precioCatalogo.toLocaleString('es-CO')}
+                                        </span>
+                                      )}
+                                      <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>×</span>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={item.precioEditado ?? precioCatalogo}
+                                        onChange={(e) => {
+                                          const valor = e.target.value === '' ? 0 : Number(e.target.value);
+                                          setCarrito(carrito.map((c, i) => i === index ? {
+                                            ...c,
+                                            precioEditado: valor === precioCatalogo ? undefined : Math.max(0, valor),
+                                          } : c));
+                                        }}
+                                        onFocus={(e) => e.target.select()}
+                                        title="Modificar precio manualmente"
+                                        className={`w-24 text-sm font-semibold bg-transparent border rounded-lg px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                                          item.precioEditado != null && item.precioEditado !== precioCatalogo
+                                            ? 'border-amber-500 text-amber-500'
+                                            : darkMode ? 'border-slate-600 text-gray-300' : 'border-gray-300 text-gray-600'
+                                        }`}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                      × ${precioCatalogo.toLocaleString('es-CO')}
+                                    </span>
+                                  )}
                                 </div>
                               )}
 
@@ -3058,8 +3109,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               <BoutiqueCatalog
                 products={boutiqueProducts}
                 darkMode={darkMode}
-                openFor={boutiqueEditingIndex === null ? null : carrito[boutiqueEditingIndex]?.producto}
-                onCloseVariantRequest={() => setBoutiqueEditingIndex(null)}
+                openFor={boutiqueEditingProductoId === null ? null : carrito.find(i => i.producto.id === boutiqueEditingProductoId)?.producto ?? null}
+                onCloseVariantRequest={() => setBoutiqueEditingProductoId(null)}
                 onSelect={cambiarVarianteCarrito}
               />
             )}

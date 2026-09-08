@@ -180,6 +180,20 @@ export async function crearClienteAdmin(datos: DatosClienteForm): Promise<Client
     if (error) console.error('[clientesAdminService] No se pudo provisionar el acceso móvil del dueño:', error.message);
   });
 
+  // Si se marcó "activar prueba" en el formulario, se crea también la
+  // licencia TRIAL real (tabla `licencias`, motor comercial) -- el insert de
+  // arriba solo dejó un valor inicial en las columnas legacy de
+  // clientes_pos; el trigger de sincronización las corrige apenas esta RPC
+  // inserte la licencia. Best-effort: no bloquea la creación del cliente.
+  if (datos.enPrueba) {
+    client.rpc('activar_prueba_admin', {
+      p_cliente_id: clienteRow.id,
+      p_dias: datos.diasPruebaRestantes || 14,
+    }).then(({ error }) => {
+      if (error) console.error('[clientesAdminService] No se pudo activar la licencia de prueba:', error.message);
+    });
+  }
+
   return mapCliente(clienteRow as ClientePosRow, credRow as UsuarioClienteRow);
 }
 
@@ -291,10 +305,18 @@ export async function actualizarModulosClienteAdmin(clienteId: string, modulosAc
   if (error) throw new Error(error.message);
 }
 
-export async function activarPruebaGratisAdmin(clienteId: string): Promise<void> {
+export async function activarPruebaGratisAdmin(clienteId: string, dias: number = 14): Promise<void> {
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
-  const { error } = await client.rpc('activar_prueba_admin', { p_cliente_id: clienteId });
+  const { error } = await client.rpc('activar_prueba_admin', { p_cliente_id: clienteId, p_dias: dias });
+  if (error) throw new Error(error.message);
+}
+
+/** Ajusta los días TOTALES de una prueba YA activa, sin resetear su fecha de inicio ni crear una licencia nueva. */
+export async function editarDiasPruebaActivaAdmin(clienteId: string, dias: number): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { error } = await client.rpc('editar_dias_prueba_activa', { p_cliente_id: clienteId, p_dias: dias });
   if (error) throw new Error(error.message);
 }
 

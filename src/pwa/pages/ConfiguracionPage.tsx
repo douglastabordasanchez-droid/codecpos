@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
-import { Store, Save, Loader2, Layers, Crown, Zap, ShieldCheck, Eye, EyeOff, Copy, Check, RefreshCw, ChevronDown, Mail, Smartphone, PanelLeft, FileText, ChevronRight, Download, Share, SquarePlus, MoreVertical } from 'lucide-react';
+import { Store, Save, Loader2, Layers, Crown, Zap, ShieldCheck, Eye, EyeOff, Copy, Check, RefreshCw, ChevronDown, Mail, Smartphone, PanelLeft, FileText, ChevronRight, Download, Share, SquarePlus, MoreVertical, Tag } from 'lucide-react';
 import { Link } from 'react-router';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
@@ -35,6 +35,8 @@ export default function ConfiguracionPage() {
   const [copiado, setCopiado] = useState<'token' | 'url' | 'script' | 'gscript_link' | null>(null);
   const [mostrarGuia, setMostrarGuia] = useState(false);
   const [, forceUpdateSidebar] = useState(0);
+  const [permitirModificarPrecio, setPermitirModificarPrecio] = useState(false);
+  const [guardandoPrecioManual, setGuardandoPrecioManual] = useState(false);
 
   const puedeVer = empleado && ['admin', 'super_usuario'].includes(empleado.rol);
   const enAppAndroid = estaEnAppAndroid();
@@ -48,11 +50,11 @@ export default function ConfiguracionPage() {
     }
     client
       .from('clientes_pos')
-      .select('nombre_negocio, nit, contacto, telefono, email, plan, webhook_token')
+      .select('nombre_negocio, nit, contacto, telefono, email, plan, webhook_token, permitir_modificar_precio')
       .eq('id', empleado.cliente_id)
       .maybeSingle()
       .then(({ data }) => {
-        const row = data as NegocioForm | null;
+        const row = data as (NegocioForm & { permitir_modificar_precio?: boolean }) | null;
         setForm({
           nombre_negocio: row?.nombre_negocio || '',
           nit: row?.nit || '',
@@ -62,6 +64,7 @@ export default function ConfiguracionPage() {
           plan: row?.plan || 'BASICO',
           webhook_token: row?.webhook_token || null,
         });
+        setPermitirModificarPrecio(row?.permitir_modificar_precio === true);
         setCargando(false);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,6 +87,19 @@ export default function ConfiguracionPage() {
       setMensaje({ tipo: 'error', texto: error.message });
     } else {
       setMensaje({ tipo: 'ok', texto: 'Cambios guardados' });
+    }
+  };
+
+  const handleGuardarPrecioManual = async (nuevoValor: boolean) => {
+    if (!empleado) return;
+    setPermitirModificarPrecio(nuevoValor);
+    setGuardandoPrecioManual(true);
+    const client = getSupabaseClient();
+    const { error } = await client!.rpc('actualizar_configuracion_precio_manual', { p_permitir: nuevoValor });
+    setGuardandoPrecioManual(false);
+    if (error) {
+      setPermitirModificarPrecio(!nuevoValor);
+      setMensaje({ tipo: 'error', texto: error.message });
     }
   };
 
@@ -251,6 +267,36 @@ export default function ConfiguracionPage() {
                 Los módulos se gestionan desde el Panel Desarrollador de Codec Studio. Contáctalos para activar o desactivar alguno.
               </p>
             </div>
+
+            {esAdmin && (
+              <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Tag className="w-4 h-4 text-amber-400" />
+                  <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Modificar precio manualmente</span>
+                </div>
+                <p className="text-slate-500 text-xs mb-4">
+                  Permite editar el precio de un producto en el carrito al momento de cobrar — útil para dar rebajas puntuales.
+                  El descuento queda registrado en la venta, no se pierde en el margen.
+                </p>
+                <label className="flex items-center justify-between gap-4 cursor-pointer">
+                  <span className="text-white text-sm font-semibold">Permitir modificar el valor</span>
+                  <button
+                    type="button"
+                    disabled={guardandoPrecioManual}
+                    onClick={() => handleGuardarPrecioManual(!permitirModificarPrecio)}
+                    className={`shrink-0 w-11 h-6 rounded-full relative transition-colors disabled:opacity-50 ${
+                      permitirModificarPrecio ? 'bg-emerald-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    {guardandoPrecioManual ? (
+                      <Loader2 className="w-4 h-4 text-white animate-spin absolute top-1 left-1" />
+                    ) : (
+                      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${permitirModificarPrecio ? 'right-0.5' : 'left-0.5'}`} />
+                    )}
+                  </button>
+                </label>
+              </div>
+            )}
 
             <Link
               to="/facturacion"

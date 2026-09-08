@@ -63,6 +63,8 @@ import {
   cambiarEstadoClienteAdmin,
   actualizarModulosClienteAdmin,
   actualizarAppMovilClienteAdmin,
+  activarPruebaGratisAdmin,
+  editarDiasPruebaActivaAdmin,
   ClienteAdmin,
 } from '../../lib/supabase/clientesAdminService';
 
@@ -250,6 +252,16 @@ export function DeveloperPanel() {
     try {
       if (editingCliente) {
         const actualizado = await actualizarClienteAdmin(editingCliente.id, datos);
+        // Licencia real (tabla `licencias`) además del update legacy de arriba
+        // -- si ya estaba en prueba, se ajustan los días sin resetear su
+        // fecha de inicio; si no, se activa una prueba nueva. Best-effort:
+        // el cliente ya quedó guardado aunque esto falle.
+        if (enPrueba) {
+          const rpc = editingCliente.enPrueba ? editarDiasPruebaActivaAdmin : activarPruebaGratisAdmin;
+          rpc(editingCliente.id, formData.diasPrueba).catch((e) =>
+            console.error('[DeveloperPanel] No se pudo sincronizar la licencia de prueba:', e)
+          );
+        }
         setClientes(prev => prev.map(c => c.id === editingCliente.id ? actualizado : c));
         toast.success('Cliente actualizado correctamente');
       } else {
@@ -1105,8 +1117,14 @@ export function DeveloperPanel() {
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
-                          <Label className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Duración</Label>
-                          <div className={`h-10 px-3 rounded-md border flex items-center text-sm ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-100 border-gray-300'}`}>14 días exactos</div>
+                          <Label className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Días de prueba</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={formData.diasPrueba}
+                            onChange={(e) => setFormData({ ...formData, diasPrueba: Math.max(1, Number(e.target.value) || 1) })}
+                            className={darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-100 border-gray-300'}
+                          />
                         </div>
                         <div className="space-y-1.5">
                           <Label className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Expira el</Label>

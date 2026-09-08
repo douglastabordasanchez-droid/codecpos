@@ -38,6 +38,7 @@ interface Venta {
   items: ItemVenta[];
   total: number;
   subtotal?: number;
+  descuento?: number;
   iva?: number;
   porcentajeIVA?: number;
   propina?: number;
@@ -310,6 +311,9 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       right('Subtotal:', `$${venta.subtotal.toLocaleString('es-CO')}`);
       right(`IVA (${venta.porcentajeIVA || 19}%):`, `$${venta.iva.toLocaleString('es-CO')}`);
       separator();
+    }
+    if (venta.descuento) {
+      right('Descuento:', `-$${venta.descuento.toLocaleString('es-CO')}`);
     }
     if (venta.propina !== undefined) {
       right(venta.porcentajePropinaSugerido ? `Propina (${venta.porcentajePropinaSugerido}%):` : 'Propina:', `$${venta.propina!.toLocaleString('es-CO')}`);
@@ -623,6 +627,12 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
                   </tr>
                   <tr><td colSpan={2}><div className="line"></div></td></tr>
                 </>
+              )}
+              {!!venta.descuento && (
+                <tr>
+                  <td>Descuento:</td>
+                  <td className="right">-${venta.descuento.toLocaleString('es-CO')}</td>
+                </tr>
               )}
               {venta.propina !== undefined && (
                 <tr>

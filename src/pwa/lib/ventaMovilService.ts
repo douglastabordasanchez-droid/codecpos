@@ -15,6 +15,10 @@ export interface ItemCarritoMovil {
   nombre: string;
   cantidad: number;
   precio: number;
+  /** Precio de catálogo al momento de agregar al carrito -- referencia para
+   *  calcular el descuento si "permitirModificarPrecio" está activo y `precio`
+   *  termina siendo distinto (editado manualmente). Si no se edita, es igual a `precio`. */
+  precioOriginal?: number;
 }
 
 /** Mismo shape que `PagoMixtoDetalle` de Electron (electronStore.ts) — así el historial se ve igual en las dos plataformas. */
@@ -45,6 +49,7 @@ export async function crearVentaMovil(
   const totalProductos = items.reduce((acc, it) => acc + it.cantidad * it.precio, 0);
   const propinaValida = Math.max(0, Number(propina) || 0);
   const total = totalProductos + propinaValida;
+  const descuento = items.reduce((acc, it) => acc + Math.max(0, (it.precioOriginal ?? it.precio) - it.precio) * it.cantidad, 0);
 
   const { data: ultimaVenta } = await client
     .from('ventas')
@@ -64,6 +69,7 @@ export async function crearVentaMovil(
       numero,
       cajero_nombre: cajeroNombre,
       total,
+      descuento,
       propina: propinaValida,
       porcentaje_propina_sugerido: Math.max(0, Number(porcentajePropinaSugerido) || 0),
       propina_modificada: propinaModificada,
@@ -82,6 +88,7 @@ export async function crearVentaMovil(
     nombre: it.nombre,
     cantidad: it.cantidad,
     precio_unitario: it.precio,
+    precio_original: it.precioOriginal ?? it.precio,
     subtotal: it.cantidad * it.precio,
   }));
 

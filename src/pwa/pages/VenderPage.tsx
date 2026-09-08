@@ -56,6 +56,7 @@ export default function VenderPage() {
   const [cargando, setCargando] = useState(true);
   const [carrito, setCarrito] = useState<Record<string, ItemCarritoMovil>>({});
   const [configPropina, setConfigPropina] = useState({ activa: false, porcentaje: 0 });
+  const [permitirModificarPrecio, setPermitirModificarPrecio] = useState(false);
   const [propinaManual, setPropinaManual] = useState<number | null>(null);
   const [mostrarCheckout, setMostrarCheckout] = useState(false);
   const [mostrarScanner, setMostrarScanner] = useState(false);
@@ -94,13 +95,16 @@ export default function VenderPage() {
     if (!empleado) return;
     const client = getSupabaseClient();
     client?.from('clientes_pos')
-      .select('propina_activa, porcentaje_propina_predeterminado')
+      .select('propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio')
       .eq('id', empleado.cliente_id)
       .maybeSingle()
-      .then(({ data }) => setConfigPropina({
-        activa: data?.propina_activa === true,
-        porcentaje: Math.max(0, Number(data?.porcentaje_propina_predeterminado) || 0),
-      }));
+      .then(({ data }) => {
+        setConfigPropina({
+          activa: data?.propina_activa === true,
+          porcentaje: Math.max(0, Number(data?.porcentaje_propina_predeterminado) || 0),
+        });
+        setPermitirModificarPrecio(data?.permitir_modificar_precio === true);
+      });
   }, [empleado?.cliente_id]);
 
   const filtrados = productos.filter(
@@ -123,7 +127,19 @@ export default function VenderPage() {
       const actual = prev[p.id];
       const cantidad = (actual?.cantidad || 0) + 1;
       if (cantidad > p.stock) return prev;
-      return { ...prev, [p.id]: { productoId: p.id, nombre: p.nombre, precio: p.precio_venta, cantidad } };
+      return {
+        ...prev,
+        [p.id]: { productoId: p.id, nombre: p.nombre, precio: actual?.precio ?? p.precio_venta, precioOriginal: p.precio_venta, cantidad },
+      };
+    });
+  };
+
+  /** Ajusta el precio manual de una línea del carrito -- solo tiene efecto si "permitirModificarPrecio" está activo en Configuración. */
+  const editarPrecioItem = (productoId: string, nuevoPrecio: number) => {
+    setCarrito((prev) => {
+      const actual = prev[productoId];
+      if (!actual) return prev;
+      return { ...prev, [productoId]: { ...actual, precio: Math.max(0, nuevoPrecio) } };
     });
   };
 
@@ -427,9 +443,28 @@ export default function VenderPage() {
                     <div key={it.productoId} className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl p-3">
                       <div className="min-w-0">
                         <p className="text-white text-sm font-semibold truncate">{it.nombre}</p>
-                        <p className="text-slate-500 text-xs">
-                          {it.cantidad} × ${it.precio.toLocaleString('es-CO')}
-                        </p>
+                        {permitirModificarPrecio ? (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-slate-500 text-xs">{it.cantidad} ×</span>
+                            {it.precioOriginal != null && it.precio !== it.precioOriginal && (
+                              <span className="text-slate-600 text-xs line-through">${it.precioOriginal.toLocaleString('es-CO')}</span>
+                            )}
+                            <input
+                              type="number"
+                              min={0}
+                              value={it.precio}
+                              onChange={(e) => editarPrecioItem(it.productoId, e.target.value === '' ? 0 : Number(e.target.value))}
+                              onFocus={(e) => e.target.select()}
+                              className={`w-20 text-xs font-semibold bg-transparent border rounded-lg px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
+                                it.precioOriginal != null && it.precio !== it.precioOriginal ? 'border-amber-500 text-amber-400' : 'border-slate-700 text-slate-300'
+                              }`}
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-slate-500 text-xs">
+                            {it.cantidad} × ${it.precio.toLocaleString('es-CO')}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="text-white font-bold text-sm">${(it.cantidad * it.precio).toLocaleString('es-CO')}</span>

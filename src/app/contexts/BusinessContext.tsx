@@ -7,11 +7,15 @@ export interface BusinessConfig {
   nombreNegocio: string;
   propinaActiva: boolean;
   porcentajePropinaPredeterminado: number;
+  permitirModificarPrecio: boolean;
 }
 
 interface BusinessContextType {
   tipoNegocio: string;
   nombreNegocio: string;
+  propinaActiva: boolean;
+  porcentajePropinaPredeterminado: number;
+  permitirModificarPrecio: boolean;
   setBusinessConfig: (config: BusinessConfig) => void;
 }
 
@@ -40,15 +44,16 @@ function loadConfig(): BusinessConfig {
         nombreNegocio: parsed.nombreNegocio ?? 'Mi Negocio',
         propinaActiva: parsed.propinaActiva === true,
         porcentajePropinaPredeterminado: Math.max(0, Number(parsed.porcentajePropinaPredeterminado) || 0),
+        permitirModificarPrecio: parsed.permitirModificarPrecio === true,
       };
     }
     const legacyType = localStorage.getItem(LEGACY_KEY);
     if (legacyType) {
       const tipoNegocio = ID_MIGRATIONS[legacyType] ?? legacyType;
-      return { tipoNegocio, nombreNegocio: 'Mi Negocio', propinaActiva: false, porcentajePropinaPredeterminado: 0 };
+      return { tipoNegocio, nombreNegocio: 'Mi Negocio', propinaActiva: false, porcentajePropinaPredeterminado: 0, permitirModificarPrecio: false };
     }
   } catch { /* ignore */ }
-  return { tipoNegocio: 'minimercado', nombreNegocio: 'Mi Negocio', propinaActiva: false, porcentajePropinaPredeterminado: 0 };
+  return { tipoNegocio: 'minimercado', nombreNegocio: 'Mi Negocio', propinaActiva: false, porcentajePropinaPredeterminado: 0, permitirModificarPrecio: false };
 }
 
 const BusinessContext = createContext<BusinessContextType | undefined>(undefined);
@@ -88,6 +93,14 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
         if (error) console.warn('[BusinessContext] No se pudo sincronizar configuración de propina:', error.message);
       });
     }
+    if (isLinked() && newConfig.permitirModificarPrecio !== config.permitirModificarPrecio) {
+      const client = getSupabaseClient();
+      client?.rpc('actualizar_configuracion_precio_manual', {
+        p_permitir: newConfig.permitirModificarPrecio,
+      }).then(({ error }) => {
+        if (error) console.warn('[BusinessContext] No se pudo sincronizar configuración de precio manual:', error.message);
+      });
+    }
   }, [config]);
 
   // 🚀 FIX rendimiento: este value se recreaba en cada render sin useMemo,
@@ -99,9 +112,10 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       nombreNegocio: config.nombreNegocio,
       propinaActiva: config.propinaActiva,
       porcentajePropinaPredeterminado: config.porcentajePropinaPredeterminado,
+      permitirModificarPrecio: config.permitirModificarPrecio,
       setBusinessConfig,
     }),
-    [config.tipoNegocio, config.nombreNegocio, config.propinaActiva, config.porcentajePropinaPredeterminado, setBusinessConfig]
+    [config.tipoNegocio, config.nombreNegocio, config.propinaActiva, config.porcentajePropinaPredeterminado, config.permitirModificarPrecio, setBusinessConfig]
   );
 
   return (

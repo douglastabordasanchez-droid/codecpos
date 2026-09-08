@@ -67,6 +67,7 @@ export interface TicketData {
   }>;
   subtotal: number;
   impuestos?: number;
+  descuento?: number;
   total: number;
   cajero?: string;
   metodoPago?: string;
@@ -89,6 +90,7 @@ export interface VentaTicketInput {
   subtotal?: number;
   iva?: number;
   porcentajeIVA?: number;
+  descuento?: number;
   propina?: number;
   porcentajePropinaSugerido?: number;
   metodoPago?: string;
@@ -423,6 +425,9 @@ export class ThermalPrinter {
       
       if (data.impuestos) {
         bytes.push(...this.addColumns('IVA:', this.formatMoney(data.impuestos)));
+      }
+      if (data.descuento) {
+        bytes.push(...this.addColumns('DESCUENTO:', '-' + this.formatMoney(data.descuento)));
       }
       if (data.propina !== undefined) {
         bytes.push(...this.addColumns(data.porcentajePropinaSugerido ? `PROPINA (${data.porcentajePropinaSugerido}%):` : 'PROPINA:', this.formatMoney(data.propina)));
@@ -998,6 +1003,7 @@ export async function printSaleReceipt(
     })),
     subtotal: venta.subtotal ?? venta.total,
     impuestos: venta.iva ?? 0,
+    descuento: venta.descuento ?? 0,
     propina: venta.propina ?? 0,
     porcentajePropinaSugerido: venta.porcentajePropinaSugerido,
     total: venta.total,

@@ -988,6 +988,7 @@ class SyncService {
             numero: v.numero,
             cajero_nombre: v.cajero,
             total: v.total,
+            descuento: v.descuento || 0,
             propina: v.propina || 0,
             porcentaje_propina_sugerido: v.porcentajePropinaSugerido || 0,
             propina_modificada: v.propinaModificada === true,
@@ -1025,7 +1026,14 @@ class SyncService {
         producto_id: idMap.get(it.id || it.productoId) || null,
         nombre: it.nombre,
         cantidad: it.cantidad,
-        precio_unitario: it.precio,
+        // 🛡️ FIX: antes se guardaba `it.precio` (precio de CATÁLOGO) como
+        // `precio_unitario` -- perdía cualquier diferencia con lo realmente
+        // cobrado (modificadores, y ahora precio editado manualmente).
+        // `precioVenta` es el precio unitario real de la venta; `precio`
+        // queda como referencia en `precio_original` para poder mostrar el
+        // descuento en reportes cross-dispositivo.
+        precio_unitario: it.precioVenta ?? it.precio,
+        precio_original: it.precio,
         subtotal: it.subtotal,
       }));
       if (items.length > 0) {
@@ -1073,7 +1081,8 @@ class SyncService {
         producto_id: idMap.get(it.id || it.productoId) || null,
         nombre: it.nombre,
         cantidad: it.cantidad,
-        precio_unitario: it.precio,
+        precio_unitario: it.precioVenta ?? it.precio,
+        precio_original: it.precio,
         subtotal: it.subtotal,
       }));
       if (items.length === 0 || !items.some((i) => i.producto_id)) continue;
