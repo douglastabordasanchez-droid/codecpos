@@ -65,6 +65,13 @@ async function main() {
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
     console.log(`> Aplicando ${file}...`);
 
+    // Códigos de "ya existe" (objeto duplicado): en este proyecto varias
+    // migraciones se aplicaron manualmente contra producción antes de que
+    // existiera este registro de control. Si el error es de este tipo, se
+    // asume que el efecto de la migración ya está presente y solo se
+    // concilia el registro -- nunca se ignoran otros errores.
+    const CODIGOS_YA_EXISTE = new Set(['42P07', '42710', '42701', '42P06', '42723']);
+
     try {
       await client.query('begin');
       await client.query(sql);
@@ -74,6 +81,12 @@ async function main() {
       ranAny = true;
     } catch (err) {
       await client.query('rollback');
+      if (CODIGOS_YA_EXISTE.has(err.code)) {
+        console.warn(`  YA EXISTÍA (efecto ya aplicado manualmente), conciliando registro: ${file} — ${err.message}`);
+        await client.query('insert into public._migrations (name) values ($1) on conflict do nothing', [file]);
+        applied.add(file);
+        continue;
+      }
       console.error(`  FALLO en ${file}:`, err.message);
       process.exitCode = 1;
       break;

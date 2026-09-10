@@ -265,6 +265,11 @@ export function ClienteDetallePage() {
               Días de prueba
             </button>
           </div>
+          {Number(diasPrueba) > 0 && (
+            <p className="text-xs text-slate-400 mt-2">
+              Vence el {new Date(Date.now() + Number(diasPrueba) * 86_400_000).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          )}
         </SectionCard>
       )}
 

@@ -345,6 +345,11 @@ export default function PanelDesarrolladorPage() {
                   </Button>
                 </div>
               </div>
+              {Number(diasPruebaSel) > 0 && (
+                <p className="text-[11px] text-slate-400 -mt-2">
+                  Vence el {new Date(Date.now() + Number(diasPruebaSel) * 86_400_000).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+              )}
 
               <Button
                 onClick={() => generarAccesoMovil(seleccionado)}
