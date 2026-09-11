@@ -162,6 +162,31 @@ export function usePlanRestrictions() {
       }
 
       try {
+        // 🛡️ FIX: condición de carrera real en el login. AuthContext.iniciarSesion
+        // establece la sesión REAL de Supabase (signInSupabase) en segundo plano,
+        // sin esperarla ("priming best-effort", ver comentario ahí) — pero este
+        // hook se dispara casi en el mismo instante en que cambia `usuarioActual`.
+        // Si todavía no hay sesión de Supabase lista, `mi_licencia_vigente()` y
+        // `mis_entitlements()` igual RESPONDEN (sin error), pero vacíos, porque
+        // `current_cliente_id()` no puede resolver auth.uid() -- eso se leía como
+        // "esta cuenta no tiene licencia Premium" para un cliente que sí la
+        // tiene. Antes de confiar en una respuesta vacía, se confirma que
+        // realmente hay una sesión; si no, se espera un momento (la sesión suele
+        // quedar lista en menos de 1-2s) y se reintenta una vez.
+        let { data: { session } } = await client.auth.getSession();
+        if (!session) {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (cancelado) return;
+          ({ data: { session } } = await client.auth.getSession());
+        }
+        if (!session) {
+          // Sigue sin sesión real -- no es seguro concluir "no tiene Premium"
+          // (current_cliente_id() daría null y la RPC volvería vacía sin
+          // error). Se trata igual que un fallo de red: usa el último plan
+          // confirmado si está dentro de la ventana de tolerancia offline.
+          throw new Error('Sin sesión de Supabase activa todavía');
+        }
+
         const [{ data: licenciaRows, error: errorLicencia }, { data: entitlementRows, error: errorEntitlements }] =
           await Promise.all([
             client.rpc('mi_licencia_vigente'),

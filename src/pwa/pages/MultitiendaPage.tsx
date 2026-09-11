@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { Button } from '../../app/components/ui/button';
+import { IconoTienda } from '../../app/lib/tiendaIconos';
 
 interface TiendaFila {
   id: string;
@@ -201,10 +202,10 @@ export default function MultitiendaPage() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0"
-                    style={{ background: `${t.color || '#f59e0b'}33` }}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: `${t.color || '#f59e0b'}33`, color: t.color || '#f59e0b' }}
                   >
-                    {t.emoji || '🏪'}
+                    <IconoTienda tienda={t} className="w-5 h-5" />
                   </div>
                   <p className="text-white font-bold text-sm truncate">{t.nombre}</p>
                 </div>
@@ -248,7 +249,7 @@ export default function MultitiendaPage() {
                   >
                     <option value="">Selecciona...</option>
                     {tiendas.map((t) => (
-                      <option key={t.id} value={t.id} disabled={t.id === destinoId}>{t.emoji} {t.nombre}</option>
+                      <option key={t.id} value={t.id} disabled={t.id === destinoId}>{t.nombre}</option>
                     ))}
                   </select>
                 </div>
@@ -261,7 +262,7 @@ export default function MultitiendaPage() {
                   >
                     <option value="">Selecciona...</option>
                     {tiendas.map((t) => (
-                      <option key={t.id} value={t.id} disabled={t.id === origenId}>{t.emoji} {t.nombre}</option>
+                      <option key={t.id} value={t.id} disabled={t.id === origenId}>{t.nombre}</option>
                     ))}
                   </select>
                 </div>

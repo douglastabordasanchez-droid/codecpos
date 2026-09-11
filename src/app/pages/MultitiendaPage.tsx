@@ -20,6 +20,7 @@ import {
 } from '../lib/multitiendaService';
 import { useMultitienda } from '../contexts/MultitiendaContext';
 import { ModalQRTienda } from '../components/pos/ModalQRTienda';
+import { ICONOS_TIENDA_PRESET, IconoTienda } from '../lib/tiendaIconos';
 import { toast } from 'sonner';
 import { usePOS } from '../contexts/POSContext';
 
@@ -31,7 +32,6 @@ const COLORES_PRESET = [
   '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b',
   '#ef4444', '#06b6d4', '#ec4899', '#84cc16',
 ];
-const EMOJIS_PRESET = ['🏪', '🏬', '🏦', '🛒', '🏢', '🏭', '🏠', '🌟'];
 
 function fmt(n: number) { return n.toLocaleString('es-CO'); }
 
@@ -54,7 +54,7 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
     direccion: '',
     telefono: '',
     color: '#10b981',
-    emoji: '🏪',
+    emoji: 'store',
     notas: '',
     tipo: 'tienda' as TipoTienda,
   });
@@ -72,7 +72,7 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
           tipo: tiendaEditar.tipo || 'tienda',
         });
       } else {
-        setForm({ nombre: '', direccion: '', telefono: '', color: '#10b981', emoji: '🏪', notas: '', tipo: 'tienda' });
+        setForm({ nombre: '', direccion: '', telefono: '', color: '#10b981', emoji: 'store', notas: '', tipo: 'tienda' });
       }
     }
   }, [isOpen, tiendaEditar]);
@@ -114,7 +114,7 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
             <div className="absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none"
               style={{ background: `${form.color}20` }} />
             <div className="relative flex items-center gap-3">
-              <div className="text-4xl">{form.emoji}</div>
+              <div className="w-10 h-10 flex items-center justify-center text-white"><IconoTienda tienda={form} className="w-9 h-9" /></div>
               <div>
                 <h2 className="text-xl font-bold text-white">
                   {tiendaEditar ? 'Editar Tienda' : 'Nueva Tienda'}
@@ -230,17 +230,18 @@ function ModalTienda({ isOpen, onClose, onSuccess, tiendaEditar }: ModalTiendaPr
               </div>
             </div>
 
-            {/* Emoji */}
+            {/* Ícono */}
             <div>
               <label className="block text-sm font-semibold text-white/80 mb-2">Ícono</label>
               <div className="flex items-center gap-2 flex-wrap">
-                {EMOJIS_PRESET.map(e => (
+                {ICONOS_TIENDA_PRESET.map(({ key, Icon }) => (
                   <button
-                    key={e}
-                    onClick={() => setForm({ ...form, emoji: e })}
-                    className={`text-2xl p-2 rounded-xl transition-all ${form.emoji === e ? 'bg-white/20 scale-110' : 'hover:bg-white/10'}`}
+                    key={key}
+                    type="button"
+                    onClick={() => setForm({ ...form, emoji: key })}
+                    className={`p-2.5 rounded-xl transition-all text-white ${form.emoji === key ? 'bg-white/20 scale-110' : 'hover:bg-white/10'}`}
                   >
-                    {e}
+                    <Icon className="w-5 h-5" />
                   </button>
                 ))}
               </div>
@@ -432,7 +433,7 @@ function ModalTransferencia({ isOpen, onClose, onSuccess, tiendas, tiendaOrigenD
                   <option value="" className="bg-slate-800">Seleccionar origen...</option>
                   {tiendas.map(t => (
                     <option key={t.id} value={t.id} className="bg-slate-800">
-                      {t.emoji} {t.nombre} {(t.tipo || 'tienda') === 'bodega' ? '(Bodega)' : ''}
+                      {t.nombre} {(t.tipo || 'tienda') === 'bodega' ? '(Bodega)' : ''}
                     </option>
                   ))}
                 </select>
@@ -450,7 +451,7 @@ function ModalTransferencia({ isOpen, onClose, onSuccess, tiendas, tiendaOrigenD
                   <option value="" className="bg-slate-800">Seleccionar destino...</option>
                   {tiendas.filter(t => t.id !== tiendaOrigen).map(t => (
                     <option key={t.id} value={t.id} className="bg-slate-800">
-                      {t.emoji} {t.nombre} {(t.tipo || 'tienda') === 'bodega' ? '(Bodega)' : ''}
+                      {t.nombre} {(t.tipo || 'tienda') === 'bodega' ? '(Bodega)' : ''}
                     </option>
                   ))}
                 </select>
@@ -464,7 +465,7 @@ function ModalTransferencia({ isOpen, onClose, onSuccess, tiendas, tiendaOrigenD
               <h3 className="font-bold text-white/90 flex items-center gap-2">
                 <Package className="w-4 h-4 text-blue-400" />
                 Productos disponibles
-                {origenInfo && <span className="text-xs text-white/40 font-normal">— {origenInfo.emoji} {origenInfo.nombre}</span>}
+                {origenInfo && <span className="inline-flex items-center gap-1 text-xs text-white/40 font-normal">— <IconoTienda tienda={origenInfo} className="w-3.5 h-3.5" /> {origenInfo.nombre}</span>}
               </h3>
 
               {tiendaOrigen ? (
@@ -577,10 +578,10 @@ function ModalTransferencia({ isOpen, onClose, onSuccess, tiendas, tiendaOrigenD
               {items.length > 0 && origenInfo && destinoInfo && (
                 <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 space-y-1">
                   <div className="flex items-center gap-2">
-                    <span>{origenInfo.emoji}</span>
+                    <IconoTienda tienda={origenInfo} className="w-3.5 h-3.5" />
                     <span className="font-semibold">{origenInfo.nombre}</span>
                     <MoveRight className="w-3 h-3" />
-                    <span>{destinoInfo.emoji}</span>
+                    <IconoTienda tienda={destinoInfo} className="w-3.5 h-3.5" />
                     <span className="font-semibold">{destinoInfo.nombre}</span>
                   </div>
                   <p>{items.length} producto(s) · {items.reduce((s, i) => s + (parseInt(i.cantidad) || 0), 0)} unidades totales</p>
@@ -658,7 +659,9 @@ function TarjetaTienda({ tienda, stats, esActiva, onSeleccionar, onEditar, onEli
       <div className="relative p-5 pl-6">
         {/* Cabecera */}
         <div className="flex items-start gap-3 mb-4">
-          <div className="text-3xl">{tienda.emoji}</div>
+          <div className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ background: `${tienda.color}20`, color: tienda.color }}>
+            <IconoTienda tienda={tienda} className="w-6 h-6" />
+          </div>
           <div className="flex-1 min-w-0 pr-16">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className={`font-bold text-lg leading-tight ${dm('text-white', 'text-gray-900')}`}>{tienda.nombre}</h3>
@@ -774,7 +777,7 @@ function HistorialTransferencias({ tiendas }: { tiendas: Tienda[] }) {
         >
           <option value="todas">Todas las tiendas</option>
           {tiendas.map(t => (
-            <option key={t.id} value={t.id}>{t.emoji} {t.nombre}</option>
+            <option key={t.id} value={t.id}>{t.nombre}</option>
           ))}
         </select>
         <span className={`text-sm ${dm('text-white/40', 'text-gray-400')}`}>{filtrado.length} transferencias</span>
@@ -789,18 +792,20 @@ function HistorialTransferencias({ tiendas }: { tiendas: Tienda[] }) {
       ) : (
         <div className="space-y-3">
           {filtrado.map(t => {
-            const origenColor = tiendas.find(ti => ti.id === t.tiendaOrigenId)?.color || '#64748b';
-            const destinoColor = tiendas.find(ti => ti.id === t.tiendaDestinoId)?.color || '#64748b';
+            const tiendaOrigenObj = tiendas.find(ti => ti.id === t.tiendaOrigenId);
+            const tiendaDestinoObj = tiendas.find(ti => ti.id === t.tiendaDestinoId);
+            const origenColor = tiendaOrigenObj?.color || '#64748b';
+            const destinoColor = tiendaDestinoObj?.color || '#64748b';
             return (
               <div key={t.id} className={`rounded-2xl border overflow-hidden ${dm('border-white/10 bg-white/5 backdrop-blur-xl', 'border-gray-200 bg-white shadow-sm')}`}>
                 <div className={`flex items-center gap-4 p-4 border-b ${dm('border-white/5', 'border-gray-100')}`}>
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="font-bold text-sm truncate" style={{ color: origenColor }}>
-                      {tiendas.find(ti => ti.id === t.tiendaOrigenId)?.emoji} {t.tiendaOrigenNombre}
+                    <span className="inline-flex items-center gap-1 font-bold text-sm truncate" style={{ color: origenColor }}>
+                      {tiendaOrigenObj && <IconoTienda tienda={tiendaOrigenObj} className="w-3.5 h-3.5 shrink-0" />} {t.tiendaOrigenNombre}
                     </span>
                     <ArrowLeftRight className={`w-4 h-4 shrink-0 ${dm('text-white/30', 'text-gray-300')}`} />
-                    <span className="font-bold text-sm truncate" style={{ color: destinoColor }}>
-                      {tiendas.find(ti => ti.id === t.tiendaDestinoId)?.emoji} {t.tiendaDestinoNombre}
+                    <span className="inline-flex items-center gap-1 font-bold text-sm truncate" style={{ color: destinoColor }}>
+                      {tiendaDestinoObj && <IconoTienda tienda={tiendaDestinoObj} className="w-3.5 h-3.5 shrink-0" />} {t.tiendaDestinoNombre}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -883,7 +888,7 @@ function InventarioPorTienda({ tiendas }: { tiendas: Tienda[] }) {
               boxShadow: tiendaActual?.id === t.id ? `0 4px 20px ${t.color}40` : undefined,
             }}
           >
-            <span>{t.emoji}</span>
+            <IconoTienda tienda={t} className="w-4 h-4 shrink-0" />
             {t.nombre}
           </button>
         ))}
@@ -1058,7 +1063,7 @@ export default function MultitiendaPage() {
                       : 'bg-white/15 text-white/80 hover:bg-white/25'
                   }`}
                 >
-                  {t.emoji} {t.nombre}
+                  <IconoTienda tienda={t} className="w-3.5 h-3.5 shrink-0" /> {t.nombre}
                 </button>
               ))}
             </div>

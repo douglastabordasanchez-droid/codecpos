@@ -3,6 +3,7 @@ import { X, RefreshCw, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePOS } from '../../contexts/POSContext';
 import type { Tienda } from '../../lib/multitiendaService';
+import { IconoTienda } from '../../lib/tiendaIconos';
 
 /**
  * Modal de QR de sucursal — compartido por Multi-Tienda (una tarjeta por
@@ -77,7 +78,7 @@ export function ModalQRTienda({ isOpen, onClose, tienda }: ModalQRTiendaProps) {
             <X className="w-4 h-4" />
           </button>
 
-          <div className="text-3xl mb-1">{tienda.emoji}</div>
+          <div className="flex justify-center mb-1" style={{ color: tienda.color }}><IconoTienda tienda={tienda} className="w-8 h-8" /></div>
           <h3 className={`text-lg font-bold ${dm('text-white', 'text-gray-900')}`}>{tienda.nombre}</h3>
           <p className={`text-xs mb-5 ${dm('text-white/50', 'text-gray-500')}`}>QR de conexión de sucursal</p>
 
