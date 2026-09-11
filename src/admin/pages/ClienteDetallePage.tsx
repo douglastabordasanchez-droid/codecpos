@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X } from 'lucide-react';
+import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X, KeyRound } from 'lucide-react';
 import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, actualizarModulosCliente } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import {
@@ -8,6 +8,7 @@ import {
   formatoMoneda, formatoFecha, formatoFechaHora,
 } from '../components/ui';
 import { GestionEmpleadosCliente } from '../components/GestionEmpleadosCliente';
+import { CredencialesLicenciaModal } from '../components/CredencialesLicenciaModal';
 import { MODULOS_CATALOGO } from '../../app/lib/permissions';
 
 const MODALIDADES = ['MENSUAL', 'TRIMESTRAL', 'ANUAL', 'VITALICIA'];
@@ -47,6 +48,7 @@ export function ClienteDetallePage() {
   const [modulos, setModulos] = useState<string[]>([]);
   const [mostrarPrueba, setMostrarPrueba] = useState(false);
   const [diasPrueba, setDiasPrueba] = useState('14');
+  const [mostrarCredenciales, setMostrarCredenciales] = useState(false);
 
   const cargar = () => {
     if (id) obtenerDetalleCliente(id).then((data) => {
@@ -194,6 +196,13 @@ export function ClienteDetallePage() {
               >
                 <Plus className="w-4 h-4" /> Agregar sucursal
               </button>
+              <button
+                onClick={() => setMostrarCredenciales(true)}
+                disabled={procesando}
+                className="flex items-center gap-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2 disabled:opacity-50"
+              >
+                <KeyRound className="w-4 h-4" /> Reparar acceso del dueño
+              </button>
               {lic && (
                 <button
                   onClick={handleCancelar}
@@ -316,6 +325,14 @@ export function ClienteDetallePage() {
           </div>
         </SectionCard>
       </div>
+
+      {mostrarCredenciales && id && (
+        <CredencialesLicenciaModal
+          clienteId={id}
+          nombreNegocio={detalle.cliente.nombre_negocio}
+          onCerrar={() => { setMostrarCredenciales(false); cargar(); }}
+        />
+      )}
 
       {id && <GestionEmpleadosCliente clienteId={id} onCambio={cargar} />}
 

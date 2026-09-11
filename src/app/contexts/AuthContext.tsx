@@ -928,6 +928,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 cedula: '',
                 username: usernameNormalizado,
                 password: hashPassword(passwordNormalizado),
+                // 🐛 FIX: sin `email`, el priming de sesión Supabase de la
+                // Prioridad 1 (línea ~705) nunca se ejecutaba para el dueño en
+                // logins posteriores al primero — si la sesión de Supabase
+                // expiraba, RPCs como invitar_empleado (crear personal que
+                // sirva en todos lados) volvían a fallar con "No tienes
+                // permiso" hasta el próximo reinicio de la app. signInSupabase
+                // ya sabe resolver esto tanto si es un correo real como el
+                // usuario de licencia (ver migración 0014).
+                email: usernameNormalizado,
                 rol: 'super_usuario',
                 permisos: construirPermisosDesdeModulos(modulosReales as ModuloPOS[], undefined),
                 activo: true,
@@ -1016,20 +1025,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // local a partir de la fila de `empleados`, quedando disponible para
     // logins futuros sin depender de internet.
     //
-    // 🛡️ Seguridad: solo se acepta si esta instalación YA está vinculada
-    // (isLinked()) al MISMO negocio del empleado (empleado.cliente_id). No se
-    // auto-vincula con credenciales de empleado — eso requiere la licencia
-    // del dueño (ver PRIORIDAD 3) para que un empleado no pueda "reclamar"
-    // una instalación sin vincular o de otro negocio.
+    // 🛡️ Seguridad: si esta instalación YA está vinculada a OTRO negocio,
+    // nunca se acepta — ni dueño ni empleado pueden "reclamar" una
+    // instalación de otro negocio. Un cajero/técnico tampoco puede vincular
+    // una instalación nueva (solo la licencia del dueño puede, ver
+    // PRIORIDAD 3 y la excepción de abajo).
+    //
+    // 🐛 FIX: el registro público de prueba gratuita (crear_cuenta_prueba,
+    // migración 0052) crea al dueño directamente en auth.users/empleados y
+    // JAMÁS pasa por `usuarios_clientes` — la única tabla que consulta la
+    // PRIORIDAD 3. Resultado: un cliente que se registró con "Probar 14 días
+    // gratis" no tenía NINGÚN camino para entrar a Electron en una
+    // instalación nueva, sin importar la contraseña. Igual que la Prioridad
+    // 3 vincula la instalación con la licencia, aquí se vincula cuando quien
+    // inicia sesión es el propio dueño/admin del negocio (verificado de
+    // verdad contra Supabase Auth) y esta máquina todavía no está vinculada
+    // a ningún otro negocio.
     if (navigator.onLine) {
       try {
         const resultadoEmpleado = await signInSupabase(usernameNormalizado, passwordNormalizado);
         if (resultadoEmpleado.ok && resultadoEmpleado.empleado) {
           const empleadoRemoto = resultadoEmpleado.empleado;
+          const esRolAdministrativo = empleadoRemoto.rol === 'admin' || empleadoRemoto.rol === 'super_usuario';
 
-          if (!isLinked() || getLinkedClienteId() !== empleadoRemoto.cliente_id) {
-            console.log('❌ Empleado válido en Supabase pero esta instalación no está vinculada a su negocio');
+          if (isLinked() && getLinkedClienteId() !== empleadoRemoto.cliente_id) {
+            console.log('❌ Empleado válido en Supabase pero esta instalación ya está vinculada a otro negocio');
             return false;
+          }
+          if (!isLinked()) {
+            if (!esRolAdministrativo) {
+              console.log('❌ Esta instalación no está vinculada — solo el dueño/admin puede vincularla, no un empleado operativo');
+              return false;
+            }
+            await activarEmpresaLocal(empleadoRemoto.cliente_id, {
+              usuario: usernameNormalizado,
+              password: passwordNormalizado,
+            }).catch((e) => {
+              console.error('[Auth] No se pudo vincular esta instalación nueva al negocio del dueño:', e);
+            });
           }
           if (!empleadoRemoto.activo) {
             console.log('❌ Cuenta de empleado desactivada');
@@ -1048,7 +1081,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             cedula: empleadoRemoto.telefono || '',
             username: usernameNormalizado,
             password: hashPassword(passwordNormalizado),
-            rol: (empleadoRemoto.rol as RolUsuario) || 'cajero',
+            // Ver el mismo fix en usuarioDesdeLicencia (Prioridad 3) más arriba.
+            email: usernameNormalizado,
+            // 🐛 FIX: RolUsuario local solo tiene 3 valores (super_usuario/cajero/
+            // técnico) pero `empleados.rol` en la nube admite más ('admin',
+            // 'cocina', 'barra', 'mesero'). Un simple `as RolUsuario` dejaba el
+            // string tal cual sin validar contra la unión — un empleado con rol
+            // 'admin' quedaba con rol local 'admin', que ningún gate de la UI
+            // (sidebar, permisos) reconoce como administrador, mostrándole una
+            // interfaz rota/restringida pese a ser dueño legítimo del negocio.
+            rol: esRolAdministrativo ? 'super_usuario' : empleadoRemoto.rol === 'tecnico' ? 'tecnico' : 'cajero',
             permisos: construirPermisosDesdeModulos(modulosHabilitados, undefined),
             activo: true,
             fechaCreacion: new Date().toISOString(),
@@ -1362,6 +1404,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUsuarios(prev => prev.map(u =>
       u.id === usuarioId ? { ...u, password: hashPassword(passwordNueva) } : u
     ));
+
+    // 🐛 FIX: cambiar la contraseña acá solo la actualizaba en localStorage/
+    // IndexedDB de esta PC -- la PWA/celular seguía validando contra la
+    // contraseña vieja (o contra una cuenta que nunca llegó a existir), así
+    // que el dueño quedaba bloqueado fuera de Electron justo después de
+    // cambiarla. Solo se sincroniza cuando quien cambia SU PROPIA
+    // contraseña es quien tiene la sesión activa (la sesión de Supabase en
+    // este momento es la suya, no la de un tercero) y su cuenta tiene una
+    // contraparte en la nube (`email`, ver PRIORIDAD 3/4 más arriba).
+    if (usuario.email && usuarioId === sesionActiva?.usuarioId) {
+      const client = getSupabaseClient();
+      if (client) {
+        client.auth.updateUser({ password: passwordNueva }).catch((e) => {
+          console.error('[Auth] No se pudo sincronizar la nueva contraseña con la nube:', e);
+        });
+      }
+    }
 
     return true;
   };

@@ -156,12 +156,14 @@ interface FormState {
   password: string;
   passwordAnterior: string;
   passwordNueva: string;
+  /** Opcional en cajero/técnico -- si se da, el usuario también se crea en la nube (ver handleGuardar) para que sirva en PWA/Android, no solo en esta PC. */
+  email: string;
 }
 
 const FORM_EMPTY: FormState = {
   nombreCompleto: '', cedula: '', cargo: '', telefono: '',
   salario: '', fechaContratacion: '', username: '',
-  password: '', passwordAnterior: '', passwordNueva: '',
+  password: '', passwordAnterior: '', passwordNueva: '', email: '',
 };
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -387,6 +389,7 @@ export function UsuariosPage() {
       fechaContratacion: u.fechaContratacion || '',
       username: u.username,
       password: '',
+      email: '',
       passwordAnterior: u.password,
       passwordNueva: '',
     });
@@ -489,6 +492,9 @@ export function UsuariosPage() {
       if (usuarios.some(u => u.cedula === form.cedula)) {
         toast.error('Esa cédula ya está registrada'); return;
       }
+      if (form.email.trim() && !form.email.includes('@')) {
+        toast.error('El correo no es válido'); return;
+      }
 
       const ok = crearUsuario({
         nombreCompleto: form.nombreCompleto,
@@ -509,11 +515,40 @@ export function UsuariosPage() {
 
       if (ok) {
         toast.success(`${rolFormulario === 'tecnico' ? 'Técnico' : 'Cajero'} "${form.nombreCompleto}" creado correctamente`);
+        sincronizarPersonalConNube(form.nombreCompleto, form.email.trim(), form.password, rolFormulario as 'cajero' | 'tecnico');
         cerrarModal();
       } else {
         toast.error('Error al crear el usuario');
       }
     }
+  };
+
+  // ─── Sincronizar personal recién creado con la nube (best-effort) ───────────
+  // 🐛 FIX: "Nuevo Personal" (cajero/técnico) solo creaba el usuario en el
+  // localStorage/IndexedDB de esta PC -- nunca llegaba a Supabase, así que
+  // ese empleado JAMÁS podía entrar desde la PWA/celular, solo desde esta
+  // misma PC (u otra de la misma red LAN). La creación local nunca debe
+  // depender de internet (regla dura del proyecto), así que esto corre
+  // aparte, después, sin bloquear ni deshacer la creación local si falla.
+  const sincronizarPersonalConNube = async (nombreCompleto: string, email: string, password: string, rol: 'cajero' | 'tecnico') => {
+    if (!email) return; // sin correo, el dueño decidió que este usuario sea solo local
+    if (!isLinked()) {
+      toast.warning('Se creó localmente, pero esta instalación no está vinculada a la nube — no puede entrar por celular todavía.');
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) return;
+    const { error } = await client.rpc('invitar_empleado', {
+      p_email: email,
+      p_password: password,
+      p_nombre_completo: nombreCompleto,
+      p_rol: rol,
+    });
+    if (error) {
+      toast.warning(`Se creó localmente, pero no se pudo sincronizar con la nube (${error.message}) — por ahora solo entra desde esta PC.`);
+      return;
+    }
+    toast.success('También sincronizado con la nube — ya puede entrar desde el celular/PWA.');
   };
 
   // ─── Eliminar ────────────────────────────────────────────────────────────────
@@ -1428,7 +1463,30 @@ export function UsuariosPage() {
                       </button>
                     </div>
                   </div>
-                ) : (
+                ) : null}
+
+                {!modoEdicion && (
+                  <div className="space-y-1.5">
+                    <Label className={dm ? 'text-gray-300' : ''}>
+                      <User className="w-3.5 h-3.5 inline mr-1" />
+                      Correo (opcional)
+                    </Label>
+                    <Input
+                      type="email"
+                      value={form.email}
+                      onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="Solo si también debe entrar por celular/PWA"
+                      className={`h-11 ${dm ? 'bg-slate-800 border-slate-600 text-white' : ''}`}
+                    />
+                    <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {isLinked()
+                        ? 'Sin correo, este usuario solo funciona en esta PC (y otras de la misma red). Con correo, también entra desde el celular.'
+                        : 'Esta instalación no está vinculada a la nube — este usuario solo funcionará localmente aunque agregues correo.'}
+                    </p>
+                  </div>
+                )}
+
+                {modoEdicion && (
                   <div className={`p-3 rounded-xl space-y-3 ${dm ? 'bg-slate-800' : 'bg-gray-50'}`}>
                     <p className={`text-xs font-bold uppercase tracking-wide ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
                       Cambiar Contraseña (opcional)

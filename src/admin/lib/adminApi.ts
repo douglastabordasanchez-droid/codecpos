@@ -192,6 +192,22 @@ export async function resetearPasswordEmpleadoAdmin(empleadoId: string, password
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Fija (o corrige) el usuario/contraseña de licencia de un cliente y
+ * sincroniza en el mismo paso su cuenta de dueño en Supabase Auth -- ver
+ * migración 0095. Repara clientes que quedaron sin forma de iniciar sesión
+ * en Electron con un "usuario" corto (no correo), típicamente cuentas de
+ * prueba gratuita (crear_cuenta_prueba nunca escribe en usuarios_clientes).
+ */
+export async function fijarCredencialesLicenciaAdmin(clienteId: string, username: string, passwordNueva: string) {
+  const { error } = await cliente().rpc('admin_fijar_credenciales_licencia', {
+    p_cliente_id: clienteId,
+    p_username: username,
+    p_password: passwordNueva,
+  });
+  if (error) throw new Error(error.message);
+}
+
 // ---- Licencias --------------------------------------------------------
 export async function listarLicencias() {
   const { data, error } = await cliente()
