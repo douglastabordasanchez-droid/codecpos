@@ -6,9 +6,17 @@
  * normalmente el dueño moviéndose entre locales, elige qué sucursal ve en
  * ESTE dispositivo/sesión) — misma cámara, mismo formato de QR, dos usos
  * distintos del resultado.
+ *
+ * Se monta vía portal directo a `document.body`: quien lo abre (ej. el ícono
+ * de la barra inferior) vive dentro de contenedores angostos con `flex-1`,
+ * así que si el overlay se renderizara en su lugar normal del árbol React
+ * heredaría ese ancho reducido. El portal lo saca de ahí para que siempre
+ * ocupe la pantalla completa sin importar desde dónde se abra.
  */
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
+import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -36,10 +44,17 @@ export function EscanerTiendaQR({ clienteIdEsperado, titulo, subtitulo, onResult
   useEffect(() => {
     if (!videoRef.current) return;
     setErrorCamara(null);
-    const reader = new BrowserMultiFormatReader();
+
+    // TRY_HARDER + restringir a QR ayuda bastante cuando se escanea un QR
+    // mostrado en una pantalla (brillo/reflejo) en vez de impreso en papel.
+    const hints = new Map<DecodeHintType, unknown>();
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+    const reader = new BrowserMultiFormatReader(hints);
+
     reader
       .decodeFromConstraints(
-        { video: { facingMode: { ideal: 'environment' } } },
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 1280 } } },
         videoRef.current,
         (result, _err, controls) => {
           controlsRef.current = controls;
@@ -75,34 +90,68 @@ export function EscanerTiendaQR({ clienteIdEsperado, titulo, subtitulo, onResult
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteIdEsperado]);
 
-  return (
-    <div className="min-h-screen bg-slate-950 pb-10">
-      <div className="px-5 pt-8 pb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-white text-lg font-black">{titulo || 'Escanear QR de sucursal'}</h1>
-          {subtitulo && <p className="text-slate-400 text-sm">{subtitulo}</p>}
+  return createPortal(
+    <div className="fixed inset-0 z-[100] bg-black">
+      <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" muted playsInline autoPlay />
+
+      {/* Scrim oscuro con recorte cuadrado centrado — guía visual de encuadre */}
+      <div className="absolute inset-0 flex flex-col pointer-events-none">
+        <div className="flex-1 bg-black/70" />
+        <div className="flex items-stretch shrink-0" style={{ height: 'min(72vw, 320px)' }}>
+          <div className="flex-1 bg-black/70" />
+          <div className="relative shrink-0" style={{ width: 'min(72vw, 320px)' }}>
+            <div className="absolute inset-0 rounded-3xl ring-1 ring-white/30" />
+            <span className="absolute -top-px -left-px w-9 h-9 border-t-[3px] border-l-[3px] border-violet-400 rounded-tl-3xl" />
+            <span className="absolute -top-px -right-px w-9 h-9 border-t-[3px] border-r-[3px] border-violet-400 rounded-tr-3xl" />
+            <span className="absolute -bottom-px -left-px w-9 h-9 border-b-[3px] border-l-[3px] border-violet-400 rounded-bl-3xl" />
+            <span className="absolute -bottom-px -right-px w-9 h-9 border-b-[3px] border-r-[3px] border-violet-400 rounded-br-3xl" />
+          </div>
+          <div className="flex-1 bg-black/70" />
         </div>
-        <button onClick={onCerrar} className="p-2 rounded-full bg-slate-900 text-slate-400">
+        <div className="flex-1 bg-black/70" />
+      </div>
+
+      {/* Encabezado flotante */}
+      <div
+        className="absolute top-0 inset-x-0 px-5 pb-5 flex items-start justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent"
+        style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}
+      >
+        <div className="min-w-0 pr-3">
+          <h1 className="text-white text-lg font-black leading-tight">{titulo || 'Escanear QR de sucursal'}</h1>
+          {subtitulo && <p className="text-slate-300 text-sm mt-0.5">{subtitulo}</p>}
+        </div>
+        <button
+          onClick={onCerrar}
+          className="p-2.5 rounded-full bg-white/10 backdrop-blur-md text-white shrink-0 active:bg-white/20"
+        >
           <X className="w-5 h-5" />
         </button>
       </div>
-      <div className="px-5">
-        <div className="relative rounded-2xl overflow-hidden bg-black aspect-square">
-          <video ref={videoRef} className="w-full h-full object-cover" muted playsInline autoPlay />
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-4/5 h-2/3 border-2 border-violet-400/70 rounded-xl" />
-          </div>
-        </div>
-        {errorCamara && (
-          <div className="mt-4 text-center">
-            <p className="text-red-400 text-sm mb-3">{errorCamara}</p>
-            <button onClick={onCerrar} className="px-4 py-2 rounded-xl bg-slate-900 text-slate-300 text-sm border border-slate-700">
+
+      {/* Pie flotante */}
+      <div
+        className="absolute bottom-0 inset-x-0 px-8 pt-10 text-center bg-gradient-to-t from-black/80 via-black/40 to-transparent"
+        style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
+      >
+        <p className="text-slate-200 text-sm font-medium">
+          Apunta la cámara al QR generado en Electron &gt; Multi-Tienda
+        </p>
+      </div>
+
+      {errorCamara && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-950 px-8">
+          <div className="text-center max-w-xs">
+            <p className="text-red-400 text-sm mb-4">{errorCamara}</p>
+            <button
+              onClick={onCerrar}
+              className="px-5 py-2.5 rounded-xl bg-slate-800 text-slate-200 text-sm font-semibold border border-slate-700 active:bg-slate-700"
+            >
               Cerrar
             </button>
           </div>
-        )}
-        <p className="text-slate-500 text-xs text-center mt-4">Apunta la cámara al QR generado en Electron &gt; Multi-Tienda</p>
-      </div>
-    </div>
+        </div>
+      )}
+    </div>,
+    document.body
   );
 }

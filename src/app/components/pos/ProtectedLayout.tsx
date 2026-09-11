@@ -8,6 +8,7 @@ import { useRegistrarInstalacion } from '../../hooks/useRegistrarInstalacion';
 import { useDeveloperShortcut } from '../../hooks/useDeveloperShortcut';
 import { useSyncModulosNube } from '../../hooks/useSyncModulosNube';
 import { LanProvider } from '../../contexts/LanContext';
+import { precargarModulosEnSegundoPlano } from '../../lib/prefetchModulos';
 
 /**
  * Wrapper para proteger el layout y asegurar que el AuthContext esté disponible
@@ -36,6 +37,15 @@ export default function ProtectedLayout() {
       navigate('/login', { replace: true });
     }
   }, [estaAutenticado, navigate]);
+
+  // ⚡ FIX FLUIDEZ (app compilada): precarga en ocioso los chunks de los
+  // módulos del sidebar apenas hay sesión — ver comentario en
+  // prefetchModulos.ts. En dev no se nota (Vite ya es rápido sirviendo cada
+  // módulo), pero en la app instalada evita la lectura de disco/asar "en
+  // frío" justo cuando el usuario hace clic por primera vez.
+  useEffect(() => {
+    if (estaAutenticado) precargarModulosEnSegundoPlano();
+  }, [estaAutenticado]);
 
   // Si no está autenticado, mostrar loading mientras redirige
   if (!estaAutenticado) {

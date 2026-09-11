@@ -54,10 +54,12 @@ export function ModalQRTienda({ isOpen, onClose, tienda }: ModalQRTiendaProps) {
           tienda_nombre: tienda.nombre,
         });
         const dataUrl = await QRCodeGenerator.toDataURL(payload, {
-          width: 300,
+          width: 320,
           margin: 2,
           color: { dark: '#1f2937', light: '#ffffff' },
-          errorCorrectionLevel: 'M',
+          // 'H' (alta) en vez de 'M': el QR se escanea desde una pantalla
+          // (brillo/reflejo, no papel impreso) — más tolerancia a ruido.
+          errorCorrectionLevel: 'H',
         });
         setQrDataUrl(dataUrl);
       } catch {
