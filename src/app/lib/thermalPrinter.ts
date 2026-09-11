@@ -1,3 +1,4 @@
+matches: 0
 /**
  * ============================================
  * THERMAL PRINTER DRIVER - CODEC POS v2.0
@@ -43,16 +44,19 @@ function resolveDefaultPrinterPort(): string {
 }
 
 export interface TicketData {
-  header?: string;
+  header?: string; // nombre comercial
   razonSocial?: string;
   nit?: string;
+  eslogan?: string;
   direccion?: string;
   ciudad?: string;
   telefono?: string;
   email?: string;
-  numeroFactura?: string;
-  fechaFactura?: string;
   regimenTributario?: string;
+  facturaElectronica?: boolean;
+  numeroFactura?: string;
+  /** Fecha/hora de la venta — se formatea en dos líneas (Fecha:/Hora:) igual que la vista previa. */
+  fecha?: string;
   resolucionDian?: string;
   rangoDesde?: string;
   rangoHasta?: string;
@@ -67,12 +71,21 @@ export interface TicketData {
   }>;
   subtotal: number;
   impuestos?: number;
+  porcentajeIVA?: number;
   descuento?: number;
+  propina?: number;
+  porcentajePropinaSugerido?: number;
   total: number;
   cajero?: string;
   metodoPago?: string;
   cambio?: number;
-  footer?: string;
+  /** Mensajes personalizados del pie — se imprimen en el mismo orden que la vista previa (Arriba → Eslogan → Bajo). */
+  mensajeTirillaArriba?: string;
+  mensajeTirillaBajo?: string;
+  contingencia?: boolean;
+  facturaEstado?: 'SINCRONIZADA' | 'PENDIENTE_SINCRONIZAR' | 'LOCAL';
+  folioElectronico?: string;
+  cufe?: string;
   referencia_mesa?: string;
 }
 
@@ -106,6 +119,7 @@ export interface VentaTicketInput {
   folioElectronico?: string;
   qrData?: string;
   contingencia?: boolean;
+  facturaEstado?: 'SINCRONIZADA' | 'PENDIENTE_SINCRONIZAR' | 'LOCAL';
 }
 
 export interface TallerTicketInput {
@@ -159,6 +173,26 @@ export interface CierreCajaTicketInput {
 const ESC = 0x1B;
 const GS = 0x1D;
 
+// 🛡️ FIX CODIFICACIÓN: las impresoras térmicas ESC/POS no hablan UTF-8 — usan
+// una tabla de un solo byte por carácter (codepage), seleccionable con el
+// comando `ESC t n`. Sin seleccionar ninguna, la mayoría arranca en PC437
+// (USA), que NO tiene tildes ni ñ en las mismas posiciones que Latin-1/UTF-8.
+// Antes `textToBytes` tomaba el código Unicode de cada carácter y se quedaba
+// con el byte bajo (`& 0xFF`) — para 'á' (U+00E1) eso da 0xE1, que en UTF-8/
+// Latin-1 SÍ es 'á', pero en la tabla PC437 que la impresora realmente usa,
+// 0xE1 es 'ß' — de ahí "Bogotá" saliendo como "Bogotß" en el ticket físico.
+// La tabla PC850 (Multilingüe) sí incluye los caracteres del español en las
+// posiciones de abajo — n=2 en `ESC t n` la selecciona en prácticamente
+// cualquier clon ESC/POS (Epson, Star, Bixolon, Oneposi, Zjiang siguen la
+// misma tabla de codepages de Epson). Ver `commands.init()` más abajo.
+const CP850_MAP: Record<string, number> = {
+  'á': 0xA0, 'é': 0x82, 'í': 0xA1, 'ó': 0xA2, 'ú': 0xA3,
+  'ñ': 0xA4, 'Ñ': 0xA5, 'ü': 0x81, 'Ü': 0x9A,
+  'Á': 0xB5, 'É': 0x90, 'Í': 0xD6, 'Ó': 0xE0, 'Ú': 0xE9,
+  '¿': 0xA8, '¡': 0xAD, '°': 0xF8, 'ª': 0xA6, 'º': 0xA7,
+  'Ç': 0x80, 'ç': 0x87,
+};
+
 export class ThermalPrinter {
   private puerto: string;
   private printerName: string | undefined;
@@ -178,8 +212,10 @@ export class ThermalPrinter {
    * Comandos básicos ESC/POS
    */
   private commands = {
-    // Inicialización
-    init: () => [ESC, 0x40],
+    // Inicialización + selección de codepage PC850 (multilingüe, incluye
+    // tildes/ñ) — sin esto la impresora se queda en su tabla por defecto
+    // (típicamente PC437, sin caracteres del español).
+    init: () => [ESC, 0x40, ESC, 0x74, 0x02],
     
     // Alineación
     alignLeft: () => [ESC, 0x61, 0x00],
@@ -230,10 +266,15 @@ export class ThermalPrinter {
   };
 
   private textToBytes(text: string): number[] {
-    const clean = text.replace(/ /g, ' ');
+    const clean = String(text ?? '').replace(/ /g, ' ');
     const bytes: number[] = [];
-    for (let i = 0; i < clean.length; i++) {
-      bytes.push(clean.charCodeAt(i) & 0xFF);
+    // Recorre por punto de codigo (no por unidad UTF-16) para no partir un
+    // caracter fuera del BMP en dos bytes basura.
+    for (const ch of clean) {
+      const mapeado = CP850_MAP[ch];
+      if (mapeado !== undefined) { bytes.push(mapeado); continue; }
+      const code = ch.codePointAt(0) || 0;
+      bytes.push(code <= 0xFF ? code : 0x3F);
     }
     return bytes;
   }
@@ -270,6 +311,43 @@ export class ThermalPrinter {
     const line = leftPart + spaces + safeRight;
     
     bytes.push(...this.textToBytes(line), 0x0A);
+    return bytes;
+  }
+
+  /**
+   * Línea de 3 columnas (CANT / DESCRIPCIÓN / VALOR) — igual a la tabla de
+   * ítems de la vista previa. `cant` y `valor` son campos cortos fijos;
+   * `desc` toma el espacio restante y se trunca si no cabe (el nombre del
+   * ítem ya se imprime completo, envuelto, en una línea propia antes de
+   * esta — ver printTicket).
+   */
+  // 🛡️ FIX: sin un espacio de separación GARANTIZADO entre columnas, un valor
+  // que ocupa exactamente el ancho de su columna (p. ej. "CANT", 4 caracteres,
+  // en una columna de 4) queda pegado al siguiente texto — se vio literalmente
+  // "CANTDESCRIPCIÓN" en el encabezado de la tabla. Los anchos reservan
+  // explícitamente 1 espacio de separación a cada lado de la columna central.
+  // Centralizado en un método propio (no solo constantes dentro de
+  // addColumns3) porque el llamador también necesita `descWidth`/`cantWidth`
+  // para envolver nombres largos en vez de truncarlos — ver printTicket.
+  private anchosColumnas3() {
+    const GAP = 1;
+    const cantWidth = 4;
+    const valorWidth = Math.max(8, Math.floor(this.maxChars * 0.30));
+    const descWidth = Math.max(1, this.maxChars - cantWidth - valorWidth - GAP * 2);
+    return { GAP, cantWidth, descWidth, valorWidth };
+  }
+
+  private addColumns3(cant: string, desc: string, valor: string): number[] {
+    const bytes: number[] = [];
+    bytes.push(...this.commands.alignLeft());
+
+    const { GAP, cantWidth, descWidth, valorWidth } = this.anchosColumnas3();
+    const cantPart = String(cant || '').slice(0, cantWidth).padEnd(cantWidth, ' ');
+    const descPart = String(desc || '').slice(0, descWidth).padEnd(descWidth, ' ');
+    const valorPart = String(valor || '').slice(0, valorWidth).padStart(valorWidth, ' ');
+
+    const linea = cantPart + ' '.repeat(GAP) + descPart + ' '.repeat(GAP) + valorPart;
+    bytes.push(...this.textToBytes(linea), 0x0A);
     return bytes;
   }
 
@@ -327,14 +405,23 @@ export class ThermalPrinter {
   /**
    * Imprimir ticket de venta
    */
+  // 🧾 REESTRUCTURADO: el orden, los rótulos y los saltos de línea de este
+  // método ahora replican EXACTAMENTE `TicketReceipt.tsx` (la vista previa
+  // en pantalla) — encabezado (nombre → razón social → NIT → eslogan →
+  // dirección/ciudad/tel/email → régimen), título FACTURA DE VENTA/N°/
+  // cajero/fecha/hora, tabla CANT/DESCRIPCIÓN/VALOR, totales, y el mismo pie
+  // de mensajes personalizados + créditos. Antes el ticket físico omitía por
+  // completo el título "FACTURA DE VENTA", el eslogan del encabezado y el
+  // mensaje superior, e imprimía "CODEC POS v2.0" suelto en medio del
+  // encabezado — ninguna de esas líneas existe en la vista previa.
   async printTicket(data: TicketData): Promise<boolean> {
     try {
       const bytes: number[] = [];
-      
-      // Inicializar
+
+      // Inicializar (incluye selección de codepage — ver commands.init())
       bytes.push(...this.commands.init());
-      
-      // Header (centrado, negrita, grande)
+
+      // ── Encabezado del negocio ──────────────────────────────────────
       if (data.header) {
         bytes.push(...this.commands.fontLarge());
         bytes.push(...this.commands.boldOn());
@@ -342,13 +429,18 @@ export class ThermalPrinter {
         bytes.push(...this.commands.boldOff());
         bytes.push(...this.commands.fontNormal());
       }
-      
       if (data.razonSocial) {
         bytes.push(...this.addLine(data.razonSocial, 'center'));
       }
       if (data.nit) {
         bytes.push(...this.addLine(`NIT: ${data.nit}`, 'center'));
       }
+      if (data.eslogan) {
+        bytes.push(...this.addLine(data.eslogan, 'center'));
+      }
+
+      bytes.push(...this.addSeparator());
+
       if (data.direccion) {
         this.wrapText(data.direccion).forEach((line) => bytes.push(...this.addLine(line, 'center')));
       }
@@ -361,126 +453,170 @@ export class ThermalPrinter {
       if (data.email) {
         bytes.push(...this.addLine(data.email, 'center'));
       }
+
       if (data.regimenTributario) {
+        bytes.push(...this.addSeparator());
         bytes.push(...this.addLine(`Régimen ${data.regimenTributario}`, 'center'));
       }
-      if (data.numeroFactura) {
-        bytes.push(...this.addLine(`FACTURA: ${data.numeroFactura}`, 'center'));
-      }
-      bytes.push(...this.addLine('CODEC POS v2.0', 'center'));
-      bytes.push(...this.addLine(data.fechaFactura || new Date().toLocaleString('es-CO'), 'center'));
-      if (data.cajero) {
-        bytes.push(...this.addLine(`Cajero: ${data.cajero}`, 'center'));
-      }
-      // 🧾 Requisito DIAN: la resolución de facturación y su rango autorizado
-      // ya se mostraban en pantalla y en el PDF, pero faltaban en la tirilla
-      // térmica real — quedaba un recibo físico incompleto para el cliente.
-      if (data.resolucionDian) {
-        bytes.push(...this.addLine(`Resolución DIAN: ${data.resolucionDian}`, 'center'));
-        if (data.rangoDesde && data.rangoHasta) {
-          bytes.push(...this.addLine(
-            `Rango: ${data.prefijoFactura || ''}${data.rangoDesde} al ${data.prefijoFactura || ''}${data.rangoHasta}`,
-            'center'
-          ));
-        }
-      }
+
       bytes.push(...this.addSeparator('='));
 
+      // ── Datos de la transacción ──────────────────────────────────────
+      bytes.push(...this.commands.boldOn());
+      bytes.push(...this.addLine(data.facturaElectronica ? 'FACTURA ELECTRÓNICA' : 'FACTURA DE VENTA', 'center'));
+      bytes.push(...this.commands.boldOff());
+      if (data.numeroFactura) {
+        bytes.push(...this.commands.boldOn());
+        bytes.push(...this.addLine(`N° ${data.numeroFactura}`, 'center'));
+        bytes.push(...this.commands.boldOff());
+      }
       if (data.referencia_mesa) {
-        bytes.push(...this.commands.feed(1));
-        bytes.push(...this.addSeparator());
         bytes.push(...this.commands.boldOn());
         bytes.push(...this.addLine(`UBICACIÓN: ${data.referencia_mesa}`, 'center'));
         bytes.push(...this.commands.boldOff());
-        bytes.push(...this.addSeparator());
+      }
+      if (data.cajero) {
+        bytes.push(...this.addLine(`Cajero: ${data.cajero}`));
+      }
+      const fechaVenta = data.fecha ? new Date(data.fecha) : new Date();
+      bytes.push(...this.addLine(`Fecha: ${fechaVenta.toLocaleDateString('es-CO', { year: 'numeric', month: '2-digit', day: '2-digit' })}`));
+      bytes.push(...this.addLine(`Hora: ${fechaVenta.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`));
+
+      // 🧾 Requisito DIAN: la resolución de facturación y su rango autorizado.
+      if (data.resolucionDian) {
+        bytes.push(...this.addLine(`Resolución DIAN: ${data.resolucionDian}`));
+        if (data.rangoDesde && data.rangoHasta) {
+          bytes.push(...this.addLine(
+            `Rango: ${data.prefijoFactura || ''}${data.rangoDesde} al ${data.prefijoFactura || ''}${data.rangoHasta}`
+          ));
+        }
       }
 
-      bytes.push(...this.commands.feed(1));
+      bytes.push(...this.addSeparator('='));
 
-      // Items
+      // ── Cuerpo del detalle ────────────────────────────────────────────
       bytes.push(...this.commands.boldOn());
-      bytes.push(...this.addColumns('PRODUCTO', 'TOTAL'));
+      bytes.push(...this.addColumns3('CANT', 'DESCRIPCIÓN', 'VALOR'));
       bytes.push(...this.commands.boldOff());
       bytes.push(...this.addSeparator());
-      
+
+      // 🛡️ FIX: `addColumns3` trunca lo que no cabe en su columna — pasarle
+      // el nombre completo de un producto largo lo cortaba en silencio (p.
+      // ej. "Croissant de Almendra y Miel Artesanal" perdía "Artesanal" sin
+      // ningún indicio). La vista previa en pantalla nunca pierde texto,
+      // solo lo envuelve en más líneas — aquí se hace lo mismo: la columna
+      // CANT/VALOR solo va en la PRIMERA línea del nombre; el resto del
+      // nombre envuelto queda indentado debajo, alineado bajo DESCRIPCIÓN.
+      const { cantWidth, GAP, descWidth } = this.anchosColumnas3();
+      const indent = ' '.repeat(cantWidth + GAP);
       for (const item of data.items) {
-        const itemNameLines = this.wrapText(item.nombre, this.maxChars);
-        itemNameLines.forEach((line) => bytes.push(...this.addLine(line)));
+        const nombreLineas = this.wrapText(item.nombre, descWidth);
+        bytes.push(...this.addColumns3(String(item.cantidad), nombreLineas[0] || '', this.formatMoney(item.total)));
+        nombreLineas.slice(1).forEach((line) => bytes.push(...this.addLine(`${indent}${line}`)));
         if (item.talla || item.color) {
           const variante = `VARIANTE: ${item.talla ? `Talla ${item.talla}` : ''}${item.talla && item.color ? ' | ' : ''}${item.color ? `Color ${item.color}` : ''}`;
-          this.wrapText(variante, this.maxChars).forEach((line) => bytes.push(...this.addLine(line)));
+          this.wrapText(variante, this.maxChars - indent.length).forEach((line) => bytes.push(...this.addLine(`${indent}${line}`)));
         }
-        
-        const cantidadPrecio = `${item.cantidad} x ${this.formatMoney(item.precio)}`;
-        const total = this.formatMoney(item.total);
-        bytes.push(...this.addColumns(cantidadPrecio, total));
+        bytes.push(...this.addLine(`${indent}${this.formatMoney(item.precio)} c/u`));
       }
-      
+
       bytes.push(...this.addSeparator('='));
-      bytes.push(...this.commands.feed(1));
-      
-      // Totales
-      bytes.push(...this.commands.fontBold());
-      bytes.push(...this.addColumns('SUBTOTAL:', this.formatMoney(data.subtotal)));
-      
+
+      // ── Totales y pago ────────────────────────────────────────────────
+      bytes.push(...this.addColumns('Subtotal:', this.formatMoney(data.subtotal)));
+
       if (data.impuestos) {
-        bytes.push(...this.addColumns('IVA:', this.formatMoney(data.impuestos)));
+        bytes.push(...this.addColumns(`IVA (${data.porcentajeIVA || 19}%):`, this.formatMoney(data.impuestos)));
       }
       if (data.descuento) {
-        bytes.push(...this.addColumns('DESCUENTO:', '-' + this.formatMoney(data.descuento)));
+        bytes.push(...this.addColumns('Descuento:', '-' + this.formatMoney(data.descuento)));
       }
       if (data.propina !== undefined) {
-        bytes.push(...this.addColumns(data.porcentajePropinaSugerido ? `PROPINA (${data.porcentajePropinaSugerido}%):` : 'PROPINA:', this.formatMoney(data.propina)));
+        bytes.push(...this.addColumns(data.porcentajePropinaSugerido ? `Propina (${data.porcentajePropinaSugerido}%):` : 'Propina:', this.formatMoney(data.propina)));
       }
-      
-      bytes.push(...this.commands.fontBold());
+
+      bytes.push(...this.commands.boldOn());
       bytes.push(...this.addColumns('TOTAL:', this.formatMoney(data.total)));
-      bytes.push(...this.commands.fontNormal());
-      
+      bytes.push(...this.commands.boldOff());
+
       if (data.metodoPago) {
-        bytes.push(...this.commands.feed(1));
         // `metodoPago` puede traer varias líneas (p.ej. "EFECTIVO\n  Recibido: $X"
         // o "PAGO MIXTO\n  NEQUI: $X\n  TARJETA: $Y"). `addColumns` está pensado
         // para un único valor de línea — pasarle un string con \n embebidos
         // cortaba y desalineaba el texto en la impresora física. Cada línea
         // adicional ahora se imprime aparte, igual que en pantalla/PDF.
         const metodoPagoLineas = String(data.metodoPago).split('\n').map((l) => l.trim()).filter(Boolean);
-        bytes.push(...this.addColumns('PAGO:', metodoPagoLineas[0] || data.metodoPago));
+        bytes.push(...this.addColumns('Método de Pago:', metodoPagoLineas[0] || data.metodoPago));
         metodoPagoLineas.slice(1).forEach((line) => bytes.push(...this.addLine(`  ${line}`)));
 
         if (data.cambio && data.cambio > 0) {
-          bytes.push(...this.addColumns('CAMBIO:', this.formatMoney(data.cambio)));
+          bytes.push(...this.commands.boldOn());
+          bytes.push(...this.addColumns('Cambio:', this.formatMoney(data.cambio)));
+          bytes.push(...this.commands.boldOff());
         }
       }
-      
+
       bytes.push(...this.addSeparator('='));
-      bytes.push(...this.commands.feed(1));
-      
-      // Footer
-      if (data.footer) {
-        const footerLines = String(data.footer).split('\n');
-        footerLines.forEach((line) => bytes.push(...this.addLine(line, 'center')));
+
+      // ── Pie de página: mensajes personalizados ──────────────────────────
+      if (data.mensajeTirillaArriba) {
+        bytes.push(...this.commands.boldOn());
+        this.wrapText(data.mensajeTirillaArriba).forEach((line) => bytes.push(...this.addLine(line, 'center')));
+        bytes.push(...this.commands.boldOff());
       }
-      
-      // 🧾 Antes esto imprimía "Gracias por su compra!" (duplicado — ya venía
-      // en `data.footer` desde printSaleReceipt) y una URL que no aparece en
-      // ningún otro lado de la factura (pantalla ni PDF). Ahora imprime el
-      // mismo pie de marca que se ve en pantalla, para que el recibo físico
-      // sea igual al que vio el cajero antes de imprimir.
+      if (data.eslogan) {
+        this.wrapText(data.eslogan).forEach((line) => bytes.push(...this.addLine(line, 'center')));
+      }
+      if (data.mensajeTirillaBajo) {
+        bytes.push(...this.commands.boldOn());
+        this.wrapText(data.mensajeTirillaBajo).forEach((line) => bytes.push(...this.addLine(line, 'center')));
+        bytes.push(...this.commands.boldOff());
+      }
+
+      if (data.facturaElectronica) {
+        // 🧾 FIX: faltaba el mismo aviso de estado que muestra la vista
+        // previa (contingencia / sincronizada) — se omiten los emojis (⚠️/✓)
+        // porque la tabla de caracteres de la impresora no los tiene.
+        if (data.contingencia) {
+          bytes.push(...this.commands.boldOn());
+          bytes.push(...this.addLine('[CONTINGENCIA] Pendiente de sincronización DIAN', 'center'));
+          bytes.push(...this.commands.boldOff());
+        } else if (data.facturaEstado === 'SINCRONIZADA') {
+          bytes.push(...this.addLine('Factura Electrónica Válida - Sincronizada con DIAN', 'center'));
+        }
+        bytes.push(...this.addLine('Este documento es una representación', 'center'));
+        bytes.push(...this.addLine('impresa de una factura electrónica', 'center'));
+        bytes.push(...this.addLine('generada y validada por la DIAN', 'center'));
+        if (data.folioElectronico) {
+          bytes.push(...this.addLine(`Folio: ${data.folioElectronico}`, 'center'));
+        }
+        if (data.cufe) {
+          bytes.push(...this.commands.boldOn());
+          bytes.push(...this.addLine('CUFE:', 'center'));
+          bytes.push(...this.commands.boldOff());
+          this.wrapText(data.cufe).forEach((line) => bytes.push(...this.addLine(line, 'center')));
+        }
+      }
+
+      // ── Créditos del software — igual al bloque final en pantalla ──────
+      bytes.push(...this.addSeparator());
+      bytes.push(...this.commands.boldOn());
+      bytes.push(...this.addLine('CODEC POS v2.0', 'center'));
+      bytes.push(...this.commands.boldOff());
+      bytes.push(...this.addLine(`Software POS - Facturación ${data.facturaElectronica ? 'Electrónica' : 'Tradicional'}`, 'center'));
       bytes.push(...this.addLine('Desarrollado por Codec Studio', 'center'));
       bytes.push(...this.addLine('Diseño de software personalizado', 'center'));
       bytes.push(...this.addLine('Bogotá, Colombia', 'center'));
+      bytes.push(...this.commands.boldOn());
       bytes.push(...this.addLine('Tel: 3238646844', 'center'));
-      
-      // QR Code (opcional)
-      // bytes.push(...this.commands.qrCode(`TICKET-${Date.now()}`));
-      
+      bytes.push(...this.commands.boldOff());
+
       bytes.push(...this.commands.feed(3));
       bytes.push(...this.commands.cut());
-      
+
       // Enviar a la impresora
       return await this.sendToPrinter(bytes);
-      
+
     } catch (error) {
       console.error('Error imprimiendo ticket:', error);
       return false;
@@ -506,15 +642,18 @@ export class ThermalPrinter {
       bytes.push(...this.addSeparator('='));
       bytes.push(...this.commands.feed(1));
       
-      bytes.push(...this.addLine('✓ Impresora conectada correctamente', 'center'));
-      bytes.push(...this.addLine(`✓ Puerto: ${this.puerto}`, 'center'));
-      bytes.push(...this.addLine(`✓ Ancho: ${this.ancho}mm`, 'center'));
-      bytes.push(...this.addLine(`✓ Fecha: ${new Date().toLocaleString('es-CO')}`, 'center'));
-      
+      // 🛡️ FIX: '✓' no existe en la tabla de caracteres de la impresora
+      // (PC850) — se imprimía como un carácter basura, justo en el ticket
+      // pensado para CONFIRMAR que la codificación funciona bien.
+      bytes.push(...this.addLine('OK Impresora conectada correctamente', 'center'));
+      bytes.push(...this.addLine(`OK Puerto: ${this.puerto}`, 'center'));
+      bytes.push(...this.addLine(`OK Ancho: ${this.ancho}mm`, 'center'));
+      bytes.push(...this.addLine(`OK Fecha: ${new Date().toLocaleString('es-CO')}`, 'center'));
+
       bytes.push(...this.commands.feed(1));
       bytes.push(...this.addSeparator());
-      
-      bytes.push(...this.addLine('Oneposi 85 Compatible ✓', 'center'));
+
+      bytes.push(...this.addLine('Oneposi 85 Compatible OK', 'center'));
       bytes.push(...this.addLine('ESC/POS estándar', 'center'));
       
       bytes.push(...this.commands.feed(3));
@@ -903,15 +1042,16 @@ export async function testPrinter(puerto: string, ancho: 58 | 80 = 80): Promise<
   return await printer.printTestTicket();
 }
 
+// 🧾 FIX: replicaba una lógica de etiquetas personalizadas
+// (`codecpos_metodos_pago_config`) que la vista previa (TicketReceipt.tsx,
+// función `labelMetodoPagoTirilla`) NUNCA usa — ese modal simplemente pone
+// el método en MAYÚSCULA (con el caso especial "BRE-B"). Con la config por
+// defecto (sin personalizar), esto hacía que el ticket físico mostrara
+// "nequi" en minúscula mientras la pantalla mostraba "NEQUI". Ahora es
+// exactamente la misma función que usa la vista previa.
 function resolveMetodoPagoLabel(key: string | undefined): string | undefined {
   if (!key) return undefined;
-  try {
-    const raw = localStorage.getItem('codecpos_metodos_pago_config');
-    if (!raw) return key;
-    const cfg: Array<{ id: string; label: string; tipo: string }> = JSON.parse(raw);
-    const match = cfg.find(m => m.id === key || m.tipo === key);
-    return match?.label ?? key;
-  } catch { return key; }
+  return key.toLowerCase() === 'bre_b' ? 'BRE-B' : key.toUpperCase();
 }
 
 export async function printSaleReceipt(
@@ -955,22 +1095,6 @@ export async function printSaleReceipt(
     metodoPagoLineas = `EFECTIVO\n  Recibido: $${venta.efectivoRecibido.toLocaleString('es-CO')}`;
   }
 
-  // Construir footer
-  const footerParts: string[] = [];
-  if (mensajeTirillaArriba) footerParts.push(mensajeTirillaArriba);
-  if (eslogan) footerParts.push(`"${eslogan}"`);
-  footerParts.push(mensajeTirillaBajo || 'Gracias por su compra');
-  if (venta.facturaElectronica) {
-    footerParts.push('--------------------------------');
-    if (venta.contingencia) {
-      footerParts.push('CONTINGENCIA: Pendiente DIAN');
-    } else {
-      footerParts.push('Factura Electronica validada DIAN');
-    }
-    if (venta.folioElectronico) footerParts.push(`Folio: ${venta.folioElectronico}`);
-    if (venta.cufe) footerParts.push(`CUFE:\n${venta.cufe}`);
-  }
-
   const mesaDisplay = venta.referencia_mesa
     || (venta.mesa && venta.mesa !== 'General' && venta.mesa !== 'general' ? venta.mesa : undefined);
 
@@ -978,12 +1102,20 @@ export async function printSaleReceipt(
     header: nombreComercial,
     razonSocial,
     nit: nitCompleto,
+    // 🧾 FIX: el eslogan y el mensaje superior nunca se imprimían en el
+    // encabezado del ticket físico (solo se metían al pie) — la vista previa
+    // (TicketReceipt.tsx) SÍ muestra el eslogan justo debajo del NIT. Ahora
+    // se pasan como campos propios y `printTicket` los ubica en el mismo
+    // lugar que la pantalla (eslogan en el encabezado; mensajeTirillaArriba/
+    // eslogan/mensajeTirillaBajo, en ese orden, en el pie — igual que el modal).
+    eslogan,
     direccion: cfg.direccion,
     ciudad: cfg.ciudad ? `${cfg.ciudad}${cfg.departamento ? ` - ${cfg.departamento}` : ''}` : undefined,
     telefono: cfg.telefono,
     email: config.email || cfg.email,
+    facturaElectronica: !!venta.facturaElectronica,
     numeroFactura: venta.numeroFactura,
-    fechaFactura: venta.fecha ? new Date(venta.fecha).toLocaleString('es-CO') : new Date().toLocaleString('es-CO'),
+    fecha: venta.fecha,
     cajero: venta.cajero,
     // Nombres reales guardados por ConfiguracionPage.tsx (no "regimenTributario"/
     // "resolucionDian" — esos nunca existieron en el config real, por lo que
@@ -1003,13 +1135,27 @@ export async function printSaleReceipt(
     })),
     subtotal: venta.subtotal ?? venta.total,
     impuestos: venta.iva ?? 0,
+    porcentajeIVA: venta.porcentajeIVA,
     descuento: venta.descuento ?? 0,
-    propina: venta.propina ?? 0,
+    // 🧾 FIX: antes forzaba `?? 0`, así que TODA venta (incluso sin propina
+    // habilitada) imprimía una línea "Propina: $0" que la vista previa nunca
+    // muestra (esta solo aparece cuando `venta.propina` viene definido). Se
+    // deja pasar tal cual, igual que ya hace TicketReceipt.tsx.
+    propina: venta.propina,
     porcentajePropinaSugerido: venta.porcentajePropinaSugerido,
     total: venta.total,
     metodoPago: metodoPagoLineas,
     cambio: venta.metodoPago?.toLowerCase() === 'efectivo' ? (venta.cambio ?? 0) : undefined,
-    footer: footerParts.filter(Boolean).join('\n'),
+    mensajeTirillaArriba,
+    // 🧾 FIX: la vista previa (TicketReceipt.tsx) SOLO imprime este mensaje si
+    // el negocio lo configuró — no tiene ningún texto de respaldo. El ticket
+    // físico antes forzaba "Gracias por su compra" cuando el campo estaba
+    // vacío, una línea que la vista previa nunca mostraba.
+    mensajeTirillaBajo,
+    contingencia: venta.contingencia,
+    facturaEstado: venta.facturaEstado,
+    folioElectronico: venta.folioElectronico,
+    cufe: venta.cufe,
     referencia_mesa: mesaDisplay,
   });
 }

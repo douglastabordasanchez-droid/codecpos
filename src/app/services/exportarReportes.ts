@@ -325,9 +325,18 @@ class ExportadorReportes {
     const totalNeto = resumen.totalVentasNetas ?? resumen.totalVentas ?? 0;
 
     // ── Bloque resumen ──
+    // 🧾 FIX: `totalPropinas` y `totalRecaudado` (con propinas) ya se calculaban
+    // en reportesService.generarReporteVentas() pero nunca se mostraban en
+    // ningún reporte exportado — las propinas del día quedaban invisibles para
+    // el cuadre de caja. `resumen.totalVentas` es venta de PRODUCTOS (ya excluye
+    // propina); `resumen.totalRecaudado` es lo que realmente entró a caja.
     const resItems: Array<{ label: string; valor: string; bold?: boolean }> = [
       { label: 'Total Ventas Brutas',   valor: fmtCOP(resumen.totalVentas || 0) },
     ];
+    if ((resumen.totalPropinas || 0) > 0) {
+      resItems.push({ label: 'Total Propinas Recaudadas', valor: fmtCOP(resumen.totalPropinas) });
+      resItems.push({ label: 'Total Recaudado (con propinas)', valor: fmtCOP(resumen.totalRecaudado || 0), bold: true });
+    }
     if (typeof resumen.totalDevoluciones === 'number' && resumen.totalDevoluciones > 0)
       resItems.push({ label: '(-) Devoluciones',      valor: `-${fmtCOP(resumen.totalDevoluciones)}` });
     if (typeof resumen.totalVentasNetas === 'number')
@@ -357,6 +366,13 @@ class ExportadorReportes {
         ...this.tablaOpts({ columnStyles: { 1: { cellWidth: 32 }, 2: { cellWidth: 32 } } }),
       });
       y = (doc as any).lastAutoTable.finalY + 8;
+      if ((resumen.totalPropinas || 0) > 0) {
+        doc.setFontSize(7.5);
+        doc.setTextColor(120, 120, 120);
+        doc.text('* El total por método de pago incluye la propina cobrada en esa misma transacción.', 10, y);
+        doc.setTextColor(0, 0, 0);
+        y += 6;
+      }
     }
 
     // ── Ventas por categoría ──
@@ -1037,6 +1053,8 @@ class ExportadorReportes {
     const wsRV = XLSX.utils.aoa_to_sheet([
       ['RESUMEN DE VENTAS'],
       ['Total Ventas Brutas',  resumen.totalVentas || 0],
+      ['Total Propinas Recaudadas', resumen.totalPropinas || 0],
+      ['Total Recaudado (con propinas)', resumen.totalRecaudado || 0],
       ['Total Devoluciones',   resumen.totalDevoluciones || 0],
       ['Ventas Netas',         resumen.totalVentasNetas || resumen.totalVentas || 0],
       ['Transacciones',        resumen.cantidadTransacciones || 0],
@@ -1453,6 +1471,8 @@ ${cuerpo}
         return `
 <div class="sec">RESUMEN</div>
 <div class="row"><span>Total Ventas:</span><span>${f(resumen.totalVentas)}</span></div>
+${(resumen.totalPropinas || 0) > 0 ? `<div class="row"><span>Total Propinas:</span><span>${f(resumen.totalPropinas)}</span></div>
+<div class="row b"><span>Total Recaudado (con propinas):</span><span>${f(resumen.totalRecaudado || 0)}</span></div>` : ''}
 ${typeof resumen.totalDevoluciones === 'number' ? `<div class="row"><span>Devoluciones:</span><span>-${f(resumen.totalDevoluciones)}</span></div>` : ''}
 ${typeof resumen.totalVentasNetas === 'number' ? `<div class="row b"><span>Ventas Netas:</span><span>${f(resumen.totalVentasNetas)}</span></div>` : ''}
 <div class="row"><span>Transacciones:</span><span>${resumen.cantidadTransacciones || 0}</span></div>

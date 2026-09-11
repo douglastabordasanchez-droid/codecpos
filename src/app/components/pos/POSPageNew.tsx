@@ -634,7 +634,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           import('../../lib/supabase/panaderiaSyncService'),
         ]).then(([{ getLinkedClienteId }, { guardarCuentaMesa }]) => {
           const clienteId = getLinkedClienteId();
-          if (clienteId) return guardarCuentaMesa(clienteId, origen, [], 'electron');
+          if (!clienteId) return;
+          // 🏪 La cuenta debe quedar liberada con la MISMA sucursal de la mesa
+          // (si no, el upsert la reescribe con tienda_id=null y la RLS de esa
+          // mesa deja de coincidir con la sucursal del mesero que la atiende).
+          let tiendaId: string | null = null;
+          try {
+            const mesasConfig = JSON.parse(localStorage.getItem('codecpos_mesas_config') || '[]');
+            tiendaId = (Array.isArray(mesasConfig) ? mesasConfig : []).find((m: any) => m.id === origen)?.tiendaId || null;
+          } catch {}
+          return guardarCuentaMesa(clienteId, origen, [], 'electron', undefined, tiendaId);
         }).catch(() => {});
       }
       localStorage.removeItem('codecpos_panaderia_origen');

@@ -5,6 +5,7 @@ import { Input } from '../../app/components/ui/input';
 import { Button } from '../../app/components/ui/button';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
 interface ProductoFila {
   id: string;
@@ -24,6 +25,12 @@ export default function InventarioPage() {
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
 
+  // 🏪 Misma sucursal efectiva que Vender/Alimentos y Bebidas — ver sucursalActiva.ts.
+  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const [sucursalActiva, setSucursalActivaLocal] = useState(getSucursalActiva());
+  useEffect(() => suscribirSucursalActiva(() => setSucursalActivaLocal(getSucursalActiva())), []);
+  const tiendaEfectiva = esAdmin ? (sucursalActiva?.id ?? null) : (empleado?.tienda_id ?? null);
+
   const cargar = async () => {
     if (!empleado) return;
     setCargando(true);
@@ -33,14 +40,29 @@ export default function InventarioPage() {
       .select('id, nombre, categoria, precio_venta, stock, stock_minimo, foto_url, activo')
       .eq('cliente_id', empleado.cliente_id)
       .order('nombre');
-    setProductos((data as ProductoFila[]) || []);
+    let filas = (data as ProductoFila[]) || [];
+
+    // 🏪 Multi-Tienda: mostrar el stock de la sucursal activa (tiendas_stock),
+    // no siempre el de Tienda Principal (productos.stock) — mismo criterio
+    // que VenderPage.tsx.
+    if (tiendaEfectiva && tiendaEfectiva !== 'tienda_principal') {
+      const { data: stockTienda } = await client!
+        .from('tiendas_stock')
+        .select('producto_id, cantidad')
+        .eq('cliente_id', empleado.cliente_id)
+        .eq('tienda_id', tiendaEfectiva);
+      const stockPorProducto = new Map((stockTienda || []).map((s: any) => [s.producto_id, Number(s.cantidad) || 0]));
+      filas = filas.map((p) => ({ ...p, stock: stockPorProducto.get(p.id) ?? 0 }));
+    }
+
+    setProductos(filas);
     setCargando(false);
   };
 
   useEffect(() => {
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empleado?.cliente_id]);
+  }, [empleado?.cliente_id, tiendaEfectiva]);
 
   const filtrados = productos.filter((p) =>
     p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||

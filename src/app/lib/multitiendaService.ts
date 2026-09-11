@@ -281,6 +281,33 @@ export function productosConStockDeTienda(tiendaId: string): any[] {
   } catch { return []; }
 }
 
+/**
+ * 🧾 FIX UX: una tienda recién creada arranca con su mapa de stock vacío a
+ * propósito (ver comentario de `crearTienda`) — así una tienda nueva nunca
+ * "hereda" cantidades que en realidad no tiene físicamente. Pero eso hacía
+ * que, apenas creada, se viera "en 0" sin ninguna acción disponible para
+ * arrancarla salvo transferir producto por producto a mano. Esta función da
+ * un atajo explícito y reversible (el admin decide cuándo usarlo, nunca es
+ * automático): copia las cantidades ACTUALES del catálogo (Tienda Principal)
+ * como punto de partida editable — pensado para el caso "esta sucursal nueva
+ * recibió exactamente el mismo surtido inicial que la principal". No
+ * descuenta nada de la tienda principal (a diferencia de una transferencia);
+ * si el stock real de la sucursal es distinto, se ajusta después con
+ * Transferir o editando el stock de esa tienda directamente.
+ */
+export function inicializarStockDesdeCatalogo(tiendaId: string): void {
+  if (tiendaId === 'tienda_principal' || esTiendaPrincipal(tiendaId)) return;
+  const raw = localStorage.getItem('pos-productos');
+  const productos: any[] = raw ? JSON.parse(raw) : [];
+  const map = getStockMap();
+  const nuevo: Record<string, number> = {};
+  for (const p of productos) {
+    nuevo[p.id] = Number(p.stock) || 0;
+  }
+  map[tiendaId] = nuevo;
+  saveStockMap(map);
+}
+
 // ──────────────────────────────────────────────
 //  TRANSFERENCIAS
 // ──────────────────────────────────────────────

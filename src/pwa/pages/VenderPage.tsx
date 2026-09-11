@@ -7,6 +7,7 @@ import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil } from '../lib/ventaMovilService';
+import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { crearCuentaCarteraMovil } from '../lib/carteraMovilService';
 import { compartirRecibo, verFactura } from '../lib/compartirFactura';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
@@ -81,6 +82,15 @@ export default function VenderPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
 
+  // 🏪 Sucursal efectiva para Vender — misma regla que Alimentos y Bebidas
+  // (ver sucursalActiva.ts): operativo con sucursal fija = siempre la suya;
+  // admin = la conectada por QR desde el TopBar, o ninguna (Tienda Principal
+  // por defecto) si no ha escaneado nada.
+  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const [sucursalActiva, setSucursalActivaLocal] = useState(getSucursalActiva());
+  useEffect(() => suscribirSucursalActiva(() => setSucursalActivaLocal(getSucursalActiva())), []);
+  const tiendaEfectiva = esAdmin ? (sucursalActiva?.id ?? null) : (empleado?.tienda_id ?? null);
+
   const cargarProductos = async () => {
     if (!empleado) return;
     setCargando(true);
@@ -91,14 +101,33 @@ export default function VenderPage() {
       .eq('cliente_id', empleado.cliente_id)
       .eq('activo', true)
       .order('nombre');
-    setProductos((data as ProductoFila[]) || []);
+    let filas = (data as ProductoFila[]) || [];
+
+    // 🏪 Multi-Tienda: si hay una sucursal distinta de la principal activa
+    // (fija para el empleado, o conectada por QR si es admin), NO se vende
+    // contra `productos.stock` (eso es Tienda Principal) -- el stock real
+    // vive en `tiendas_stock` (ver migración 0092). Sin este merge, se
+    // vería y podría "vender" cantidades que físicamente están en otra
+    // sucursal.
+    const tiendaId = tiendaEfectiva;
+    if (tiendaId && tiendaId !== 'tienda_principal') {
+      const { data: stockTienda } = await client!
+        .from('tiendas_stock')
+        .select('producto_id, cantidad')
+        .eq('cliente_id', empleado.cliente_id)
+        .eq('tienda_id', tiendaId);
+      const stockPorProducto = new Map((stockTienda || []).map((s: any) => [s.producto_id, Number(s.cantidad) || 0]));
+      filas = filas.map((p) => ({ ...p, stock: stockPorProducto.get(p.id) ?? 0 }));
+    }
+
+    setProductos(filas);
     setCargando(false);
   };
 
   useEffect(() => {
     cargarProductos();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empleado?.cliente_id]);
+  }, [empleado?.cliente_id, tiendaEfectiva]);
 
   useEffect(() => {
     if (!empleado) return;
@@ -190,7 +219,7 @@ export default function VenderPage() {
           return acc;
         }, {} as MetodosMultiplesMovil)
       : undefined;
-    const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, itemsCarrito, metodoPago, metodosMultiples, propinaAplicada, configPropina.porcentaje, propinaManual !== null);
+    const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, itemsCarrito, metodoPago, metodosMultiples, propinaAplicada, configPropina.porcentaje, propinaManual !== null, tiendaEfectiva);
 
     // La venta ya quedó registrada (arriba) -- crear la cuenta de cartera es
     // un paso aparte, igual que en Electron (electronStore.registrarVenta +

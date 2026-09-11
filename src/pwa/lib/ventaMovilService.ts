@@ -41,6 +41,10 @@ export async function crearVentaMovil(
   propina: number = 0,
   porcentajePropinaSugerido: number = 0,
   propinaModificada: boolean = false,
+  /** Sucursal asignada al empleado que vende (empleado.tienda_id) — descuenta
+   *  el stock de ESA sucursal (tiendas_stock) en vez de Tienda Principal.
+   *  undefined/null/'tienda_principal' => comportamiento de siempre. */
+  tiendaId?: string | null,
 ): Promise<{ ok: boolean; error?: string; numero?: number; ventaId?: string }> {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
@@ -97,7 +101,11 @@ export async function crearVentaMovil(
 
   await Promise.all(
     items.map((it) =>
-      client.rpc('descontar_stock_producto', { p_producto_id: it.productoId, p_cantidad: it.cantidad }).then(
+      client.rpc('descontar_stock_producto', {
+        p_producto_id: it.productoId,
+        p_cantidad: it.cantidad,
+        p_tienda_id: tiendaId || null,
+      }).then(
         ({ error }) => {
           if (error) console.error(`Error descontando stock de ${it.nombre}:`, error.message);
         }

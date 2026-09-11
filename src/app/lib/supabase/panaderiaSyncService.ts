@@ -45,6 +45,8 @@ export interface PanaderiaMesa {
   id: string;
   nombre: string;
   activa: boolean;
+  /** Sucursal (tiendas.local_id) a la que pertenece esta mesa — ver migración 0093. undefined/null = Tienda Principal. */
+  tiendaId?: string | null;
 }
 
 export interface ItemCuenta {
@@ -158,6 +160,7 @@ export async function pushCatalogoPanaderia(datos: {
         nombre: m.nombre,
         activa: m.activa !== false,
         orden: i,
+        tienda_id: m.tiendaId || null,
       })),
       { onConflict: 'cliente_id,local_id' }
     );
@@ -197,7 +200,13 @@ export async function sincronizarPanaderiaDesdeLocal(): Promise<{
 
 // ── Catálogo: nube → PWA ─────────────────────────────────────────────────────
 
-export async function obtenerCatalogoPanaderia(clienteId: string): Promise<{
+/**
+ * @param tiendaId Sucursal a la que filtrar las MESAS (categorías/productos
+ *   del menú siguen compartidos entre sucursales, igual que el catálogo
+ *   principal de `productos`). undefined = sin filtrar (ve todas -- uso del
+ *   admin); null o 'tienda_principal' = solo las mesas sin sucursal asignada.
+ */
+export async function obtenerCatalogoPanaderia(clienteId: string, tiendaId?: string | null): Promise<{
   categorias: PanaderiaCategoria[];
   productos: PanaderiaProducto[];
   mesas: PanaderiaMesa[];
@@ -206,10 +215,19 @@ export async function obtenerCatalogoPanaderia(clienteId: string): Promise<{
   const vacio = { categorias: [], productos: [], mesas: [] };
   if (!client) return vacio;
 
+  let mesasQuery = client.from('panaderia_mesas').select('*').eq('cliente_id', clienteId).order('orden');
+  if (tiendaId === undefined) {
+    // sin filtrar -- admin viendo todas las sucursales a la vez
+  } else if (!tiendaId || tiendaId === 'tienda_principal') {
+    mesasQuery = mesasQuery.is('tienda_id', null);
+  } else {
+    mesasQuery = mesasQuery.eq('tienda_id', tiendaId);
+  }
+
   const [cats, prods, mesas] = await Promise.all([
     client.from('panaderia_categorias').select('*').eq('cliente_id', clienteId).order('orden'),
     client.from('panaderia_productos').select('*').eq('cliente_id', clienteId).eq('activo', true).order('nombre'),
-    client.from('panaderia_mesas').select('*').eq('cliente_id', clienteId).order('orden'),
+    mesasQuery,
   ]);
 
   return {
@@ -231,7 +249,7 @@ export async function obtenerCatalogoPanaderia(clienteId: string): Promise<{
     })),
     mesas: (mesas.data || [])
       .filter((r: any) => r.activa !== false)
-      .map((r: any) => ({ id: r.local_id, nombre: r.nombre, activa: r.activa !== false })),
+      .map((r: any) => ({ id: r.local_id, nombre: r.nombre, activa: r.activa !== false, tiendaId: r.tienda_id || null })),
   };
 }
 
@@ -249,13 +267,19 @@ function mapCuenta(r: any): CuentaMesa {
   };
 }
 
-export async function obtenerCuentasMesa(clienteId: string): Promise<CuentaMesa[]> {
+/** @param tiendaId igual que en obtenerCatalogoPanaderia -- undefined = todas (admin). */
+export async function obtenerCuentasMesa(clienteId: string, tiendaId?: string | null): Promise<CuentaMesa[]> {
   const client = getSupabaseClient();
   if (!client) return [];
-  const { data, error } = await client
-    .from('panaderia_cuentas')
-    .select('*')
-    .eq('cliente_id', clienteId);
+  let query = client.from('panaderia_cuentas').select('*').eq('cliente_id', clienteId);
+  if (tiendaId === undefined) {
+    // sin filtrar
+  } else if (!tiendaId || tiendaId === 'tienda_principal') {
+    query = query.is('tienda_id', null);
+  } else {
+    query = query.eq('tienda_id', tiendaId);
+  }
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data || []).map(mapCuenta);
 }
@@ -265,7 +289,11 @@ export async function guardarCuentaMesa(
   mesaLocalId: string,
   items: ItemCuenta[],
   origen: 'electron' | 'pwa',
-  meseroNombre?: string
+  meseroNombre?: string,
+  // 🏪 Debe ser la MISMA sucursal de la mesa (mesa.tiendaId) -- la RLS de
+  // panaderia_cuentas (migración 0093) exige que coincida con la sucursal
+  // del empleado que escribe, o la escritura queda bloqueada.
+  tiendaId?: string | null
 ): Promise<void> {
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
@@ -287,6 +315,7 @@ export async function guardarCuentaMesa(
       mesero_nombre: meseroNombre || null,
       actualizado_en: origen,
       updated_at: new Date().toISOString(),
+      tienda_id: tiendaId || null,
     },
     { onConflict: 'cliente_id,mesa_local_id' }
   );

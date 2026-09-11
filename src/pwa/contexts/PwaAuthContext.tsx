@@ -84,7 +84,7 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
       }
       const { data: fila } = await client
         .from('empleados')
-        .select('id, cliente_id, nombre_completo, rol, activo, es_staff_codec, permisos, foto_url, fecha_nacimiento, telefono')
+        .select('id, cliente_id, nombre_completo, rol, activo, es_staff_codec, permisos, foto_url, fecha_nacimiento, telefono, tienda_id')
         .eq('id', uid)
         .maybeSingle();
       const empleadoCargado = (fila as EmpleadoSupabase) || null;

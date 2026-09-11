@@ -11,9 +11,11 @@ export interface EmpleadoSupabase {
   foto_url?: string | null;
   fecha_nacimiento?: string | null;
   telefono?: string | null;
+  /** Sucursal (multitiendaService.ts local_id) a la que este empleado está limitado — ver migración 0092. NULL = sin restricción explícita (equivale a tienda_principal para operativos; admins ven todas). */
+  tienda_id?: string | null;
 }
 
-const CAMPOS_EMPLEADO = 'id, cliente_id, nombre_completo, rol, activo, es_staff_codec, permisos, foto_url, fecha_nacimiento, telefono';
+const CAMPOS_EMPLEADO = 'id, cliente_id, nombre_completo, rol, activo, es_staff_codec, permisos, foto_url, fecha_nacimiento, telefono, tienda_id';
 
 /**
  * Verificación ONLINE contra Supabase Auth. Usada para:

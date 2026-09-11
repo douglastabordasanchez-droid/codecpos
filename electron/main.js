@@ -2394,10 +2394,33 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
               margins: { marginType: 'none' },
               pageSize: { width: anchoMicrones, height: altoMicrones },
             },
-            (success, failureReason) => {
+            async (success, failureReason) => {
               printWin.destroy();
               fsPromises.unlink(tmpPath).catch(() => {});
               refocusMainWindow();
+
+              // 🛡️ FIX: este canal (webContents.print sobre HTML — usado hoy por
+              // Cierre de Caja) nunca envía un comando de corte de papel, porque
+              // eso no existe en la API de impresión de Chromium: solo el canal
+              // RAW ESC/POS (printer:raw-escpos, usado por la factura de venta)
+              // puede hacerlo. En un rollo continuo sin corte automático del
+              // driver, el siguiente ticket que se imprima (de cualquier tipo)
+              // empieza a imprimirse justo donde terminó este, mezclando el pie
+              // de ESTE ticket con el encabezado del SIGUIENTE — exactamente el
+              // "texto residual de impresiones anteriores" reportado. Se envía
+              // un corte RAW explícito a la misma impresora resuelta justo
+              // después de que el trabajo HTML termina, para que cada ticket de
+              // este canal también quede físicamente cortado.
+              if (success && process.platform === 'win32' && resolvedDeviceName) {
+                try {
+                  const ESC = 0x1B, GS = 0x1D;
+                  const cutBytes = Buffer.from([ESC, 0x40, ESC, 0x64, 3, GS, 0x56, 0x41, 0x00]);
+                  await sendRawEscPosToWindowsSpool(resolvedDeviceName, cutBytes);
+                } catch (cutError) {
+                  console.warn('⚠️ No se pudo enviar el corte RAW tras la impresión HTML:', cutError.message);
+                }
+              }
+
               resolve({ ok: success, reason: failureReason || '' });
             }
           );

@@ -26,7 +26,8 @@ import {
   solicitarRecuperacionPassword as solicitarRecuperacionPasswordSupabase,
 } from '../lib/supabase/authService';
 import { getSupabaseClient } from '../lib/supabase/config';
-import { vincularNegocio, isLinked, getLinkedClienteId } from '../lib/supabase/tenantLink';
+import { isLinked, getLinkedClienteId } from '../lib/supabase/tenantLink';
+import { activarEmpresaLocal } from '../lib/tenantSwap';
 
 export type RolUsuario = 'super_usuario' | 'cajero' | 'tecnico';
 
@@ -636,6 +637,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('🔍 Resultado búsqueda en usuarios locales:', usuario ? '✅ ENCONTRADO' : '❌ NO ENCONTRADO');
 
     if (usuario) {
+      // 🏢 FIX aislamiento multiempresa: este usuario local puede pertenecer
+      // a una empresa DISTINTA a la que quedó activa la última vez que se
+      // usó este equipo (ej. Douglas probando la licencia de PAPOTASCO en un
+      // equipo ya vinculado a Codec Studio). Antes de leer NADA de
+      // localStorage/IndexedDB, se asegura que los datos activos sean los de
+      // la empresa de ESTE usuario — ver tenantSwap.ts. Para instalaciones
+      // de una sola empresa (el caso normal) esto no hace nada.
+      const clienteIdDeEsteUsuario =
+        usuario.clienteSupabaseId || (usuario.id.startsWith('lic_') ? usuario.id.slice(4) : undefined);
+      let cambioDeEmpresaActiva = false;
+      if (clienteIdDeEsteUsuario) {
+        cambioDeEmpresaActiva = await activarEmpresaLocal(clienteIdDeEsteUsuario).catch((e) => {
+          console.error('[Auth] No se pudo activar los datos locales de la empresa:', e);
+          return false;
+        });
+      }
+
       const permisosUsuario = obtenerPermisosUsuario(usuario.id);
       const usuarioConModulos = {
         ...usuario,
@@ -719,6 +737,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await guardarPermisosUsuarioPersistente({ userId: usuario.id, modulosHabilitados: modulosFrescos });
           } catch { /* offline o error de red — se sigue usando la caché local */ }
         })();
+      }
+
+      // 🏢 FIX: `activarEmpresaLocal` puede haber abierto una base IndexedDB
+      // distinta y archivado/restaurado claves de localStorage POR DEBAJO de
+      // pantallas que ya estaban montadas (POSContext, ProductosPage, etc. —
+      // cargan su estado en memoria al montar la app, no en cada login). Sin
+      // recargar, esas pantallas seguirían mostrando los datos de la empresa
+      // ANTERIOR hasta que el usuario las abriera de nuevo por su cuenta.
+      // Mismo patrón ya usado para restaurar un backup completo (ver
+      // backupService.restoreFromSafeBackup): persistir la sesión ya
+      // calculada y relanzar/recargar para que TODA la app arranque limpia
+      // leyendo la base recién activada.
+      if (cambioDeEmpresaActiva) {
+        try { localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(nuevaSesion)); } catch { /* ignorar */ }
+        console.log('[Auth] Cambio de empresa activa en este equipo — recargando para reflejar los datos locales correctos');
+        setTimeout(() => {
+          const el = (window as any).electron;
+          if (el?.relaunch) el.relaunch();
+          else window.location.reload();
+        }, 400);
       }
 
       return true;
@@ -846,11 +884,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (clienteRow && clienteRow.estado !== 'SUSPENDIDA') {
               console.log('🎉 Licencia válida en la nube — vinculando esta instalación automáticamente');
 
-              if (!isLinked()) {
-                await vincularNegocio(clienteId, usernameNormalizado, passwordNormalizado).catch((e) =>
-                  console.error('[Auth] No se pudo auto-vincular la instalación:', e)
-                );
-              }
+              // 🏢 FIX aislamiento multiempresa: antes esto solo vinculaba
+              // (una vez, para siempre) si el equipo NUNCA se había
+              // vinculado a NINGUNA empresa — si ya estaba vinculado a la
+              // empresa A y alguien iniciaba sesión con la licencia de la
+              // empresa B, no pasaba nada aquí, pero más abajo igual se
+              // creaba una sesión local para B mientras el catálogo,
+              // ventas y configuración seguían siendo los de A. Ahora
+              // activarEmpresaLocal archiva (sin borrar) lo que estaba
+              // activo y carga (o inicializa en blanco) los datos propios
+              // de esta empresa — ver tenantSwap.ts. Para el caso normal
+              // (siempre la misma empresa en este equipo) no cambia nada.
+              const cambioDeEmpresaActiva = await activarEmpresaLocal(clienteId, {
+                usuario: usernameNormalizado,
+                password: passwordNormalizado,
+              }).catch((e) => {
+                console.error('[Auth] No se pudo activar los datos locales de la empresa:', e);
+                return false;
+              });
 
               const modulosReales = (clienteRow.modulos_activos as ModuloPOS[] | null)?.length
                 ? (clienteRow.modulos_activos as ModuloPOS[])
@@ -883,19 +934,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 fechaCreacion: new Date().toISOString(),
                 creadoPor: 'LICENCIA_NUBE',
                 modulosActivos: modulosReales as ModuloPOS[],
+                clienteSupabaseId: clienteId,
               };
 
               setUsuarios((prev) => [...prev, usuarioDesdeLicencia]);
 
               const ahora = new Date().toISOString();
-              setSesionActiva({
+              const nuevaSesionLicencia: SesionActiva = {
                 usuarioId: usuarioDesdeLicencia.id,
                 nombreUsuario: usuarioDesdeLicencia.nombreCompleto,
                 rol: usuarioDesdeLicencia.rol,
                 horaInicio: ahora,
                 ultimaActividad: ahora,
                 usuario: usuarioDesdeLicencia,
-              });
+              };
+              setSesionActiva(nuevaSesionLicencia);
               setRegistrosSesiones((prev) => [
                 ...prev,
                 { id: 'sesion_' + Date.now(), usuarioId: usuarioDesdeLicencia.id, nombreUsuario: usuarioDesdeLicencia.nombreCompleto, cedula: '', horaInicio: ahora },
@@ -930,6 +983,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
               console.log('✅ AUTENTICACIÓN POR LICENCIA EN LA NUBE COMPLETADA');
               console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+              // 🏢 Ver comentario equivalente en Prioridad 1: sin recargar, las
+              // pantallas ya montadas (POSContext, etc.) seguirían mostrando
+              // los datos de la empresa anterior aunque la base activa ya
+              // haya cambiado por debajo.
+              if (cambioDeEmpresaActiva) {
+                try { localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(nuevaSesionLicencia)); } catch { /* ignorar */ }
+                console.log('[Auth] Cambio de empresa activa en este equipo — recargando para reflejar los datos locales correctos');
+                setTimeout(() => {
+                  const el = (window as any).electron;
+                  if (el?.relaunch) el.relaunch();
+                  else window.location.reload();
+                }, 400);
+              }
+
               return true;
             }
           }
@@ -986,9 +1054,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             fechaCreacion: new Date().toISOString(),
             creadoPor: 'SUPABASE_EMPLEADO',
             modulosActivos: modulosHabilitados,
+            clienteSupabaseId: empleadoRemoto.cliente_id,
           } as Usuario;
 
           setUsuarios((prev) => [...prev.filter((u) => u.id !== usuarioDesdeEmpleado.id), usuarioDesdeEmpleado]);
+
+          // 🛡️ FIX: "el permiso del empleado está bien pero el módulo no
+          // aparece". Causa raíz: la visibilidad en el sidebar exige DOS
+          // capas — el permiso del propio empleado (arriba) Y el interruptor
+          // "de instalación" `codec_pos_modulos_globales`, que solo se
+          // refrescaba cuando el DUEÑO iniciaba sesión (Prioridad 1/3). Un
+          // empleado que entra directo (sin que el dueño haya iniciado
+          // sesión antes en este equipo) podía heredar ese interruptor
+          // desactualizado — incluso con el módulo bien otorgado a su
+          // usuario, igual quedaba oculto. Ahora también se refresca aquí,
+          // en segundo plano, igual que ya pasaba para el dueño.
+          if (navigator.onLine) {
+            (async () => {
+              try {
+                const clientTienda = getSupabaseClient();
+                if (!clientTienda) return;
+                const { data: clienteRowTienda } = await clientTienda
+                  .from('clientes_pos')
+                  .select('modulos_activos, estado')
+                  .eq('id', empleadoRemoto.cliente_id)
+                  .maybeSingle();
+                if (!clienteRowTienda || clienteRowTienda.estado === 'SUSPENDIDA') return;
+                const modulosFrescos = (clienteRowTienda.modulos_activos as ModuloPOS[] | null) || [];
+                if (modulosFrescos.length === 0) return;
+                guardarModulosGlobales({
+                  modulosActivos: modulosFrescos,
+                  forceGlobalModules: obtenerModulosGlobales().forceGlobalModules,
+                  ultimaActualizacion: new Date().toISOString(),
+                });
+              } catch { /* offline o error de red — se sigue usando la caché local */ }
+            })();
+          }
 
           const ahoraEmp = new Date().toISOString();
           setSesionActiva({

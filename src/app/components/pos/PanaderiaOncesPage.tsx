@@ -11,6 +11,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useMultitienda } from '../../contexts/MultitiendaContext';
 import { electronStore, IngredienteInventarioItem, RecetaItem, RecetaIngredienteItem, ComboOncesItem, InventarioProductoItem } from '../../lib/electronStore';
 import type { Comanda, EstadoComanda } from '../../lib/supabase/panaderiaSyncService';
 import { Button } from '../ui/button';
@@ -240,7 +241,7 @@ type SectionId = 'dashboard' | 'pos_tactil' | 'mesas' | 'cocina' | 'ingredientes
 
 const DEFAULT_ORDER: SectionId[] = ['dashboard', 'pos_tactil', 'mesas', 'cocina', 'ingredientes', 'recetas', 'mermas', 'combos'];
 
-interface MesaConfig { id: string; nombre: string; activa: boolean; }
+interface MesaConfig { id: string; nombre: string; activa: boolean; tiendaId?: string | null; }
 interface ProductoMesa { id: string; codigo: string; nombre: string; precio: number; stock: number; categoria: string; costo: number; pesable?: boolean; aplicaIVA?: boolean; tipoInventario?: 'directo' | 'receta'; recipeId?: string; }
 interface ItemMesa { producto: ProductoMesa; cantidad: number; }
 interface RecetaLinea { ingredientId: string; cantidad: string; unidad: string; }
@@ -334,6 +335,12 @@ export default function PanaderiaOncesPage() {
   const navigate = useNavigate();
   const { darkMode } = usePOS();
   const { usuarioActual } = useAuth();
+  // 🏪 Sucursal activa (Multi-Tienda) — una mesa nueva se etiqueta con la
+  // sucursal activa al momento de crearla, y el salón operativo solo muestra
+  // las mesas de la sucursal en la que se está trabajando ahora mismo. Ver
+  // migración 0093 y EscanerTiendaQR.tsx (PWA) para la contraparte móvil.
+  const { tiendaActual } = useMultitienda();
+  const tiendaActivaId = tiendaActual && tiendaActual.id !== 'tienda_principal' ? tiendaActual.id : null;
   const STORAGE_MODULO_PANADERIA_ONCES = 'codecpos_panaderia_onces_activo';
   const MENSAJE_ACCESO_DENEGADO = 'Acceso Denegado: No tienes permisos de administrador para modificar o eliminar elementos del sistema.';
   const puedeAdministrarPanaderia =
@@ -617,8 +624,18 @@ export default function PanaderiaOncesPage() {
 
   // ── Handlers de mesas ────────────────────────────────────────────────────────
   const persistirMesas = (nuevas: MesaConfig[]) => { setMesas(nuevas); localStorage.setItem(STORAGE_MESAS, JSON.stringify(nuevas)); };
-  const agregarMesa = () => { const nueva: MesaConfig = { id: `mesa-${Date.now()}`, nombre: `Mesa ${mesas.length + 1}`, activa: true }; persistirMesas([...mesas, nueva]); toast.success('Mesa agregada'); };
+  // 🏪 La mesa nueva queda de la sucursal donde se está trabajando ahora
+  // (tiendaActivaId) — si el admin está en "Tienda 2" al crearla, esa mesa
+  // solo aparecerá en el salón cuando "Tienda 2" esté activa (aquí o en el
+  // celular de un mesero asignado a ella).
+  const agregarMesa = () => { const nueva: MesaConfig = { id: `mesa-${Date.now()}`, nombre: `Mesa ${mesas.length + 1}`, activa: true, tiendaId: tiendaActivaId }; persistirMesas([...mesas, nueva]); toast.success('Mesa agregada'); };
   const quitarMesa = (id: string) => { persistirMesas(mesas.filter(m => m.id !== id)); toast.success('Mesa eliminada'); };
+  // Solo las mesas de la sucursal activa — mismo criterio que la RLS del lado
+  // servidor (migración 0093): sin sucursal asignada = mesas de tienda_principal.
+  const mesasVisibles = useMemo(
+    () => mesas.filter((m) => (m.tiendaId || null) === tiendaActivaId),
+    [mesas, tiendaActivaId]
+  );
 
   const abrirMesaEnPOS = (mesa?: MesaConfig | null) => {
     try {
@@ -752,7 +769,9 @@ export default function PanaderiaOncesPage() {
                 },
                 cantidad: Number(it.cantidad) || 0,
               })),
-              'electron'
+              'electron',
+              undefined,
+              mesas.find((m) => m.id === mesaId)?.tiendaId ?? null
             ).catch(() => {})
           )
         );
@@ -1228,8 +1247,8 @@ export default function PanaderiaOncesPage() {
 
   // ── Métricas para Dashboard ───────────────────────────────────────────────────
   const ingredientesBajoStock = ingredientes.filter(i => Number(i.stockActual) <= Number(i.stockMinimo));
-  const mesasConCuenta = mesas.filter(m => totalMesa(m.id) > 0);
-  const totalVentasMesas = mesas.reduce((sum, m) => sum + totalMesa(m.id), 0);
+  const mesasConCuenta = mesasVisibles.filter(m => totalMesa(m.id) > 0);
+  const totalVentasMesas = mesasVisibles.reduce((sum, m) => sum + totalMesa(m.id), 0);
   const margenPromedioPos = productosPos.length > 0 ? productosPos.reduce((sum, p) => sum + (p.precio > 0 ? ((p.precio - (p.costo || 0)) / p.precio) * 100 : 0), 0) / productosPos.length : 0;
 
   // ── Configuración visual de secciones ────────────────────────────────────────
@@ -1590,7 +1609,7 @@ export default function PanaderiaOncesPage() {
                       <Button className="flex-1 h-11 bg-amber-600 hover:bg-amber-700 font-bold text-white shadow-lg" onClick={() => abrirMesaEnPOS(mesaSeleccionada)}>
                         Pagar en POS — ${totalCuentaActiva.toLocaleString('es-CO')}
                       </Button>
-                      {!mesaSeleccionada && mesas.length > 0 && (
+                      {!mesaSeleccionada && mesasVisibles.length > 0 && (
                         <div className="relative">
                           <Button
                             className={`h-11 px-4 font-bold text-white shadow-lg ${darkMode ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}
@@ -1600,7 +1619,7 @@ export default function PanaderiaOncesPage() {
                           </Button>
                           {showAgregarMesaDropdown && (
                             <div className={`absolute right-0 bottom-12 z-50 rounded-2xl border shadow-2xl py-2 min-w-[160px] ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                              {mesas.map((m) => (
+                              {mesasVisibles.map((m) => (
                                 <button
                                   key={m.id}
                                   type="button"
@@ -1629,7 +1648,12 @@ export default function PanaderiaOncesPage() {
         return (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Toca una mesa para gestionar su pedido</p>
+              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Toca una mesa para gestionar su pedido
+                {tiendaActual && (
+                  <span className={`ml-2 font-semibold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>· {tiendaActual.nombre}</span>
+                )}
+              </p>
               <div className="flex gap-2">
                 <Button onClick={descargarPlantillaIngredientesExcel} variant="outline" className="h-10 px-4 text-sm font-semibold"><Download className="w-4 h-4 mr-1.5" />Plantilla Excel</Button>
                 <label className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border cursor-pointer text-sm font-semibold hover:bg-slate-50 transition">
@@ -1641,7 +1665,7 @@ export default function PanaderiaOncesPage() {
 
             <div className="max-h-[280px] overflow-y-auto scrollbar-thin pr-1">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pb-2">
-                {mesas.map((m) => (
+                {mesasVisibles.map((m) => (
                   <button key={m.id} type="button" onClick={() => abrirModalMesa(m)}
                     className={`relative rounded-2xl border-2 p-3 flex flex-col items-center justify-center gap-1.5 text-center transition-all shadow-sm hover:-translate-y-0.5 ${m.activa ? (darkMode ? 'border-emerald-500/50 bg-emerald-900/20' : 'border-emerald-200 bg-emerald-50') : (darkMode ? 'border-slate-600 bg-slate-800/70' : 'border-slate-200 bg-slate-100')}`}
                   >
@@ -1658,10 +1682,10 @@ export default function PanaderiaOncesPage() {
               </div>
             </div>
 
-            {mesas.length > 0 && (
+            {mesasVisibles.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
                 <span className={`text-xs font-semibold self-center ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Eliminar:</span>
-                {mesas.map((m) => (
+                {mesasVisibles.map((m) => (
                   <Button key={`quitar-${m.id}`} variant="outline" className="h-8 text-xs px-3" onClick={() => quitarMesa(m.id)}>
                     {m.nombre} ×
                   </Button>

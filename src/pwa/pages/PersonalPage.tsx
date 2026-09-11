@@ -8,9 +8,10 @@
  * ve/edita a quien YA tiene cuenta en la nube. Solo admin/super_usuario.
  */
 import { useEffect, useState } from 'react';
-import { Users, Loader2, ShieldCheck } from 'lucide-react';
+import { Users, Loader2, ShieldCheck, QrCode, Store } from 'lucide-react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { EscanerTiendaQR, type QRPayloadTienda } from '../components/EscanerTiendaQR';
 import { toast } from 'sonner';
 
 interface EmpleadoFila {
@@ -18,6 +19,7 @@ interface EmpleadoFila {
   nombre_completo: string;
   rol: string;
   activo: boolean;
+  tienda_id: string | null;
 }
 
 const ROLES: { value: string; label: string }[] = [
@@ -33,6 +35,7 @@ const ROLES: { value: string; label: string }[] = [
 export default function PersonalPage() {
   const { empleado } = usePwaAuth();
   const [equipo, setEquipo] = useState<EmpleadoFila[]>([]);
+  const [nombresTiendas, setNombresTiendas] = useState<Record<string, string>>({});
   const [cargando, setCargando] = useState(true);
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
 
@@ -42,11 +45,17 @@ export default function PersonalPage() {
     const client = getSupabaseClient();
     const { data } = await client!
       .from('empleados')
-      .select('id, nombre_completo, rol, activo')
+      .select('id, nombre_completo, rol, activo, tienda_id')
       .eq('cliente_id', empleado.cliente_id)
       .order('nombre_completo');
     setEquipo((data as EmpleadoFila[]) || []);
     setCargando(false);
+
+    const { data: tiendas } = await client!
+      .from('tiendas')
+      .select('local_id, nombre')
+      .eq('cliente_id', empleado.cliente_id);
+    setNombresTiendas(Object.fromEntries((tiendas || []).map((t: any) => [t.local_id, t.nombre])));
   };
 
   useEffect(() => {
@@ -103,12 +112,48 @@ export default function PersonalPage() {
     }
   };
 
+  // ── Vinculación rápida por QR (requerimiento Multi-Tienda) ──────────────
+  // El admin escanea el QR de una sucursal (generado en Electron >
+  // Multi-Tienda) para fijar a qué tienda queda limitado un empleado
+  // operativo. Ver RPC `asignar_empleado_a_tienda` (migración 0092) — exige
+  // que quien llama sea admin del mismo cliente_id.
+  const [escaneandoPara, setEscaneandoPara] = useState<EmpleadoFila | null>(null);
+
+  const asignarTienda = async (payload: QRPayloadTienda) => {
+    if (!escaneandoPara) return;
+    const client = getSupabaseClient()!;
+    const { error } = await client.rpc('asignar_empleado_a_tienda', {
+      p_empleado_id: escaneandoPara.id,
+      p_tienda_id: payload.tienda_id,
+    });
+    if (error) {
+      toast.error('No se pudo vincular la sucursal', { description: error.message });
+      setEscaneandoPara(null);
+      return;
+    }
+    setEquipo((prev) => prev.map((e) => (e.id === escaneandoPara.id ? { ...e, tienda_id: payload.tienda_id } : e)));
+    toast.success(`${escaneandoPara.nombre_completo} vinculado a "${payload.tienda_nombre}"`);
+    setEscaneandoPara(null);
+  };
+
   if (!esAdmin) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6 text-center">
         <ShieldCheck className="w-8 h-8 text-slate-700 mb-2" />
         <p className="text-slate-400 text-sm">Solo administradores pueden ver esta sección.</p>
       </div>
+    );
+  }
+
+  if (escaneandoPara) {
+    return (
+      <EscanerTiendaQR
+        clienteIdEsperado={empleado?.cliente_id || ''}
+        titulo="Escanear QR de sucursal"
+        subtitulo={`Vinculando a ${escaneandoPara.nombre_completo}`}
+        onResultado={asignarTienda}
+        onCerrar={() => setEscaneandoPara(null)}
+      />
     );
   }
 
@@ -147,6 +192,21 @@ export default function PersonalPage() {
               >
                 {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
+
+              {!['super_usuario', 'admin'].includes(e.rol) && (
+                <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-slate-800">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
+                    <Store className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{e.tienda_id && e.tienda_id !== 'tienda_principal' ? (nombresTiendas[e.tienda_id] || 'Sucursal sin nombre') : 'Tienda Principal'}</span>
+                  </div>
+                  <button
+                    onClick={() => setEscaneandoPara(e)}
+                    className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-violet-400 text-[11px] font-bold"
+                  >
+                    <QrCode className="w-3.5 h-3.5" /> Vincular sucursal
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

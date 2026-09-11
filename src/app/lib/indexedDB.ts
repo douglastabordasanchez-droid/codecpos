@@ -226,14 +226,38 @@ export interface ConfigItem {
 class IndexedDBManager {
   private db: IDBDatabase | null = null;
   private initPromise: Promise<void> | null = null;
+  // 🏢 Aislamiento multiempresa: nombre de la base actualmente abierta. Por
+  // defecto la de siempre (DB_NAME) — así ninguna instalación existente (un
+  // solo negocio, para siempre) nota ningún cambio. Ver tenantSwap.ts:
+  // cuando el dueño inicia sesión con la licencia de OTRO negocio en el
+  // mismo equipo, se abre una base con nombre distinto (`DB_NAME__<clienteId>`),
+  // dejando la original intacta.
+  private currentDbName: string = DB_NAME;
 
   constructor() {
-    this.initPromise = this.init();
+    this.initPromise = this.init(DB_NAME);
   }
 
-  private async init(): Promise<void> {
+  /**
+   * Cierra la conexión actual (si hay una) y abre/crea la base indicada,
+   * aplicando el mismo esquema. Usado únicamente por tenantSwap.ts al
+   * cambiar de negocio activo en este equipo — el resto de la app sigue
+   * llamando a dbManager.getAllProductos() etc. sin enterarse del cambio.
+   */
+  async cambiarBaseDatos(nombreDb: string): Promise<void> {
+    if (this.db && this.currentDbName === nombreDb) return; // ya es la activa
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+    this.currentDbName = nombreDb;
+    this.initPromise = this.init(nombreDb);
+    await this.initPromise;
+  }
+
+  private async init(dbName: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(dbName, DB_VERSION);
 
       request.onerror = () => {
         console.error('❌ Error abriendo IndexedDB:', request.error);

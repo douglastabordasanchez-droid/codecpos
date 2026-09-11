@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Coffee, X, Loader2, Plus, Minus, Users, Search, Check,
-  Trash2, AlertCircle, ChefHat, BellRing, Settings2, Vibrate, Volume2, VolumeX,
+  Trash2, AlertCircle, ChefHat, BellRing, Settings2, Vibrate, Volume2, VolumeX, QrCode,
 } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
@@ -48,6 +48,7 @@ import {
   permisoAvisosPedidos,
 } from '../lib/pedidoAlerts';
 import { estaEnAppAndroid } from '../lib/androidBridge';
+import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
 const ESTADO_COMANDA_LABEL: Record<string, string> = {
   pendiente: '🕓 En cola',
@@ -69,6 +70,19 @@ export default function PanaderiaPage() {
   const [productos, setProductos] = useState<PanaderiaProducto[]>([]);
   const [mesas, setMesas] = useState<PanaderiaMesa[]>([]);
   const [cuentas, setCuentas] = useState<Record<string, CuentaMesa>>({});
+
+  // 🏪 Sucursal activa — UNA sola preferencia compartida por TODOS los
+  // módulos (Vender, Inventario, Alimentos y Bebidas), conectada desde el
+  // TopBar (SucursalSwitcher.tsx), no un interruptor propio de esta pantalla:
+  //   • Operativo (mesero/cajero/etc.) con sucursal fija asignada por un
+  //     admin (PersonalPage > Vincular sucursal): SIEMPRE `empleado.tienda_id`
+  //     — no elige, la RLS de todas formas solo le deja ver/operar esa.
+  //   • Admin/dueño: ve TODAS por defecto (undefined = sin filtrar), o solo
+  //     la conectada vía QR en el TopBar.
+  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const [sucursalActiva, setSucursalActivaLocal] = useState(getSucursalActiva());
+  useEffect(() => suscribirSucursalActiva(() => setSucursalActivaLocal(getSucursalActiva())), []);
+  const tiendaEfectiva: string | null | undefined = esAdmin ? (sucursalActiva?.id ?? undefined) : (empleado?.tienda_id ?? null);
 
   const [mesaAbierta, setMesaAbierta] = useState<PanaderiaMesa | null>(null);
   // 🍳 Comanda más reciente por mesa — para que el mesero vea sin preguntar
@@ -124,8 +138,8 @@ export default function PanaderiaPage() {
     setError(null);
     try {
       const [catalogo, listaCuentas] = await Promise.all([
-        obtenerCatalogoPanaderia(empleado.cliente_id),
-        obtenerCuentasMesa(empleado.cliente_id),
+        obtenerCatalogoPanaderia(empleado.cliente_id, tiendaEfectiva),
+        obtenerCuentasMesa(empleado.cliente_id, tiendaEfectiva),
       ]);
       setCategorias(catalogo.categorias);
       setProductos(catalogo.productos);
@@ -136,7 +150,7 @@ export default function PanaderiaPage() {
     } finally {
       setCargando(false);
     }
-  }, [empleado?.cliente_id]);
+  }, [empleado?.cliente_id, tiendaEfectiva]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -200,7 +214,7 @@ export default function PanaderiaPage() {
     }));
     try {
       await Promise.all([
-        guardarCuentaMesa(empleado.cliente_id, mesa.id, items, 'pwa', empleado.nombre_completo),
+        guardarCuentaMesa(empleado.cliente_id, mesa.id, items, 'pwa', empleado.nombre_completo, mesa.tiendaId),
         enviarComandaPromise,
       ]);
     } catch (e) {
@@ -267,6 +281,11 @@ export default function PanaderiaPage() {
             </button>
           </div>
         </div>
+        {esAdmin && sucursalActiva && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-violet-400">
+            <QrCode className="w-3.5 h-3.5" /> Viendo: {sucursalActiva.nombre} <span className="text-slate-500 font-normal">— cambia la sucursal desde el ícono arriba</span>
+          </p>
+        )}
         {!audioAvisosActivo && permisoAvisos !== 'granted' && (
           <button onClick={activarAvisos} className="mt-3 text-xs font-semibold text-amber-400 text-left">
             Activa los avisos para recibir vibración, voz y notificaciones de cocina.
