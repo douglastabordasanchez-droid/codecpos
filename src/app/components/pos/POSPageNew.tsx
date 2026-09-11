@@ -33,11 +33,14 @@ import {
   Ruler,
   Tag,
   Sparkles,
+  QrCode,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
 import { usePOS } from '../../contexts/POSContext';
+import { useMultitienda } from '../../contexts/MultitiendaContext';
+import { ModalQRTienda } from './ModalQRTienda';
 import { toast } from 'sonner';
 import { TicketReceipt } from './TicketReceipt';
 import { BoutiqueCatalog, type BoutiqueProduct, colorDePrenda } from './BoutiqueCatalog';
@@ -658,6 +661,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const impresora = useThermalPrinter();
   const displayCliente = useCustomerDisplay();
   const cajon = useCashDrawer(impresora);
+
+  // 🏪 QR de conexión de sucursal — acceso rápido desde Punto de Venta, para
+  // la sucursal ACTIVA en este equipo ahora mismo (la misma que se elige en
+  // Multi-Tienda), sin tener que ir a esa pantalla solo para esto.
+  const { tiendaActual } = useMultitienda();
+  const [showModalQRTienda, setShowModalQRTienda] = useState(false);
 
   // Scanner de códigos de barras REAL (USB HID)
   // Sin useCallback: el hook useBarcodeScanner usa un ref interno, por lo que
@@ -2662,6 +2671,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           <Button
             size="sm"
             variant="outline"
+            onClick={() => setShowModalQRTienda(true)}
+            className="rounded-lg text-[10px] h-7 px-2 border-violet-400 text-violet-600 hover:bg-violet-50 hover:border-violet-500 dark:border-violet-600 dark:text-violet-400 dark:hover:bg-violet-900/30"
+            title={`Generar QR de conexión de "${tiendaActual?.nombre || 'Tienda Principal'}"`}
+          >
+            <QrCode className="w-3 h-3 mr-1" />
+            QR
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setShowZoomPanel(true)}
             className={`rounded-lg text-[10px] h-7 px-2 transition-colors border-violet-400 text-violet-600 hover:bg-violet-50 hover:border-violet-500 ${darkMode ? 'border-violet-600 text-violet-400 hover:bg-violet-900/30' : ''}`}
             title="Ajustar escala de pantalla"
@@ -4287,6 +4307,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ModalQRTienda
+        isOpen={showModalQRTienda}
+        onClose={() => setShowModalQRTienda(false)}
+        tienda={tiendaActual}
+      />
     </div>
   );
 }

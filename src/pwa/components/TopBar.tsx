@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { Menu, Bell, ShieldCheck, ShieldOff, PanelBottomClose, PanelBottomOpen } from 'lucide-react';
 import { SideMenu } from './SideMenu';
 import { TiendaSwitcher } from './TiendaSwitcher';
-import { SucursalSwitcher } from './SucursalSwitcher';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { codecVerifyPwaActivo, alternarCodecVerifyPwa, suscribirNotificacionesPagoPwa } from '../lib/codecVerifyPwa';
 
@@ -59,7 +58,6 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
           <TiendaSwitcher />
 
           <div className="flex items-center gap-1">
-            <SucursalSwitcher />
             <button
               onClick={toggleVerify}
               className={`w-9 h-9 rounded-lg flex items-center justify-center active:bg-slate-900 ${verifyActivo ? 'text-emerald-400' : 'text-slate-500'}`}

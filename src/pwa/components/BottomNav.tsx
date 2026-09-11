@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Home, Receipt, DollarSign, Bell, Coffee, Wrench, Lock, Package, User, Wallet, RotateCcw, Menu as MenuIcon, LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper, PackagePlus, type LucideIcon } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { MENU_INFERIOR_CATALOGO, type MenuInferiorItemId } from '../../app/lib/menuInferiorCatalogo';
+import { SucursalSwitcher } from './SucursalSwitcher';
 import logo from '/logo.png';
 
 const ICONOS: Record<MenuInferiorItemId, LucideIcon> = {
@@ -42,12 +43,18 @@ const ICONOS: Record<MenuInferiorItemId, LucideIcon> = {
  * la config.
  */
 export function BottomNav() {
-  const { soloLectura, tiendaActiva } = usePwaAuth();
+  const { empleado, soloLectura, tiendaActiva } = usePwaAuth();
   // La barra operativa móvil es estable en cualquier navegador: Inicio |
   // Ventas | Vender | Caja | Producto. La configuración administrativa no
   // puede inyectar una sexta acción ni diferenciar iOS de Android.
+  //
+  // 🏪 Excepción deliberada: para un admin/dueño, "Caja" se reemplaza por el
+  // conector de sucursal (SucursalSwitcher) — la usa mucho más seguido que
+  // Caja (que igual le sigue quedando en el menú lateral). Un cajero/mesero
+  // sin ese rol sigue viendo Caja aquí tal cual, la necesita para su turno.
+  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
   const izquierda = [MENU_INFERIOR_CATALOGO.inicio, MENU_INFERIOR_CATALOGO.ventas];
-  const derecha = [MENU_INFERIOR_CATALOGO.caja, MENU_INFERIOR_CATALOGO.nuevo_producto];
+  const derecha = esAdmin ? [MENU_INFERIOR_CATALOGO.nuevo_producto] : [MENU_INFERIOR_CATALOGO.caja, MENU_INFERIOR_CATALOGO.nuevo_producto];
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `flex flex-col items-center gap-1 py-3 px-2 min-w-0 flex-1 ${isActive ? 'text-amber-400' : 'text-slate-500'}`;
@@ -99,6 +106,7 @@ export function BottomNav() {
           </NavLink>
         )}
 
+        {esAdmin && <SucursalSwitcher variant="bottomnav" />}
         {derecha.map(renderItem)}
       </nav>
     </>
