@@ -63,17 +63,32 @@ class CajaDiariaService {
     }
   }
 
-  getSesionActiva(usuarioId?: string, fecha: string = getHoy()): SesionCajaDiaria | null {
+  // 🛡️ FIX BUG CRÍTICO: "no me deja hacer el cierre" en turnos que cruzan
+  // medianoche (ej. abren a las 8pm y cierran a la 1am del día siguiente).
+  // Antes esto exigía que `s.fecha` (el día en que se ABRIÓ la sesión) fuera
+  // IGUAL al día calendario de HOY — así que pasada la medianoche, la sesión
+  // seguía "abierta" en los datos pero dejaba de encontrarse, y la pantalla
+  // de Cierre de Caja creía que no había turno activo (mostraba "Abrir caja"
+  // en vez de "Cerrar caja"). Una sesión solo puede estar abierta o cerrada;
+  // el día calendario en que se abrió es metadata para reportes, no parte de
+  // su identidad. El parámetro `fecha` se conserva por compatibilidad de
+  // firma con quienes ya lo pasan, pero ya no se usa para filtrar.
+  getSesionActiva(usuarioId?: string, _fecha?: string): SesionCajaDiaria | null {
     if (!usuarioId) return null;
     const sesiones = this.getAll();
-    return sesiones.find(s => s.usuarioId === usuarioId && s.fecha === fecha && s.estado === 'abierta') || null;
+    return sesiones.find(s => s.usuarioId === usuarioId && s.estado === 'abierta') || null;
   }
 
   abrirSesion(params: { usuarioId: string; usuarioNombre: string; baseInicial: number; fecha?: string }): SesionCajaDiaria {
     const fecha = params.fecha || getHoy();
     const sesiones = this.getAll();
 
-    const existenteAbierta = sesiones.find(s => s.usuarioId === params.usuarioId && s.fecha === fecha && s.estado === 'abierta');
+    // Mismo criterio que getSesionActiva: si el usuario YA tiene una sesión
+    // abierta (aunque sea de un día calendario anterior, por un turno que
+    // cruzó medianoche), se reutiliza esa en vez de crear una segunda sesión
+    // abierta en paralelo — eso partiría sus ventas/gastos entre dos cajas
+    // "activas" al mismo tiempo.
+    const existenteAbierta = sesiones.find(s => s.usuarioId === params.usuarioId && s.estado === 'abierta');
     if (existenteAbierta) return existenteAbierta;
 
     const sesion: SesionCajaDiaria = {
@@ -105,13 +120,14 @@ class CajaDiariaService {
     return sesiones[idx];
   }
 
-  // Cierra todas las sesiones abiertas del usuario en el día actual (net de seguridad)
+  // Cierra todas las sesiones abiertas del usuario (net de seguridad). No se
+  // limita al día calendario actual por la misma razón que getSesionActiva:
+  // un turno nocturno sigue "abierto" cruzando medianoche.
   cerrarSesionesDelUsuarioHoy(usuarioId: string): void {
-    const fecha = getHoy();
     const sesiones = this.getAll();
     let changed = false;
     for (const s of sesiones) {
-      if (s.usuarioId === usuarioId && s.fecha === fecha && s.estado === 'abierta') {
+      if (s.usuarioId === usuarioId && s.estado === 'abierta') {
         s.estado = 'cerrada';
         s.cierreISO = new Date().toISOString();
         changed = true;
@@ -120,6 +136,9 @@ class CajaDiariaService {
     if (changed) this.saveAll(sesiones);
   }
 
+  // Histórico por rango de fechas (reportes) — aquí sí importa el día
+  // calendario en que se abrió cada sesión, a diferencia de "¿hay una sesión
+  // abierta ahora?".
   getSesionesRango(fechaInicio: string, fechaFin: string, usuarioId?: string): SesionCajaDiaria[] {
     return this.getAll().filter(s => {
       const enRango = s.fecha >= fechaInicio && s.fecha <= fechaFin;
@@ -128,8 +147,10 @@ class CajaDiariaService {
     });
   }
 
-  getSesionesAbiertas(fecha: string = getHoy()): SesionCajaDiaria[] {
-    return this.getAll().filter(s => s.fecha === fecha && s.estado === 'abierta');
+  // Todas las sesiones actualmente abiertas, sin importar qué día calendario
+  // quedó registrado en `fecha` al abrirlas (turnos nocturnos incluidos).
+  getSesionesAbiertas(_fecha?: string): SesionCajaDiaria[] {
+    return this.getAll().filter(s => s.estado === 'abierta');
   }
 }
 

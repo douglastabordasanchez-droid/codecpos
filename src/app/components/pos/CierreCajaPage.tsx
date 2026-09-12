@@ -325,9 +325,16 @@ export default function CierreCajaPage() {
       const usuario = g?.registradoPorId || g?.usuarioId;
       const sesionGasto = String(g?.sesionCajaId || '');
       const coincideUsuario = esSuperUsuario ? true : usuarioActual?.id ? usuario === usuarioActual.id : true;
-      // Si el gasto no trae sesionCajaId (registros legacy), se permite por fecha+usuario.
-      const coincideSesion = sesionCajaId ? (sesionGasto ? sesionGasto === sesionCajaId : true) : true;
-      return fecha === hoy && coincideUsuario && coincideSesion;
+      // 🛡️ FIX: en un turno que cruza medianoche (abre 8pm, cierra 1am), un
+      // gasto registrado ANTES de medianoche pertenece igual a la sesión que
+      // se está cerrando — pero antes se exigía ADEMÁS `fecha === hoy`, así
+      // que ese gasto desaparecía del cierre pasada la medianoche aunque
+      // coincidiera exacto por sesionCajaId. Si el gasto trae sesionCajaId,
+      // esa coincidencia manda sola (es más precisa que el día calendario).
+      // Solo se usa fecha+usuario como respaldo para registros legacy sin
+      // sesionCajaId.
+      if (sesionCajaId && sesionGasto) return sesionGasto === sesionCajaId && coincideUsuario;
+      return fecha === hoy && coincideUsuario;
     });
 
     const gastosEfectivo = gastosDia
@@ -366,8 +373,12 @@ export default function CierreCajaPage() {
       const fechaRaw = a?.fecha ? new Date(a.fecha) : new Date();
       const fecha = getFechaLocalISO(fechaRaw);
       const sesionAbono = String(a?.sesionCajaId || '');
-      const coincideSesion = sesionCajaId ? (sesionAbono ? sesionAbono === sesionCajaId : true) : true;
-      return fecha === hoy && coincideSesion;
+      // 🛡️ FIX: mismo caso que los gastos — un turno que cruza medianoche no
+      // debe perder abonos registrados antes de las 12am solo por exigir
+      // además `fecha === hoy`. La coincidencia por sesionCajaId manda sola
+      // cuando existe; fecha+día calendario queda solo como respaldo legacy.
+      if (sesionCajaId && sesionAbono) return sesionAbono === sesionCajaId;
+      return fecha === hoy;
     });
 
     const abonosCarteraEfectivo = abonosDia
