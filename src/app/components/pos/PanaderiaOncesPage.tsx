@@ -399,7 +399,9 @@ export default function PanaderiaOncesPage() {
       const clienteId = getLinkedClienteId();
       if (!clienteId || !activo) return;
 
-      obtenerComandasActivas(clienteId).then((iniciales) => { if (activo) setComandas(iniciales); }).catch(() => {});
+      // 🏪 Filtrado por sucursal — sin esto, esta terminal sonaba una alerta
+      // de "comanda recibida" por pedidos de OTRA sucursal del mismo negocio.
+      obtenerComandasActivas(clienteId, tiendaActivaId).then((iniciales) => { if (activo) setComandas(iniciales); }).catch(() => {});
 
       unsubscribe = suscribirComandas(clienteId, (comanda) => {
         setComandas((prev) => {
@@ -409,11 +411,11 @@ export default function PanaderiaOncesPage() {
           const existe = prev.some((c) => c.id === comanda.id);
           return existe ? prev.map((c) => (c.id === comanda.id ? comanda : c)) : [...prev, comanda];
         });
-      });
+      }, tiendaActivaId);
     }).catch(() => {});
 
     return () => { activo = false; unsubscribe?.(); };
-  }, []);
+  }, [tiendaActivaId]);
 
   const STORAGE_MESAS = 'codecpos_mesas_config';
   const STORAGE_CUENTAS_MESAS = 'codecpos_mesas_cuentas';
@@ -694,7 +696,9 @@ export default function PanaderiaOncesPage() {
         mesa.id,
         mesa.nombre,
         items.map((it) => ({ nombre: it.producto.nombre, cantidad: Number(it.cantidad) || 0 })),
-        usuarioActual?.nombreCompleto || usuarioActual?.username
+        usuarioActual?.nombreCompleto || usuarioActual?.username,
+        undefined,
+        mesa.tiendaId
       );
       toast.success(`Pedido de ${mesa.nombre} enviado a Cocina/Bar`);
     } catch (error) {

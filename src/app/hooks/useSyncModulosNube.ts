@@ -18,6 +18,7 @@ import { tallerService } from '../services/tallerService';
 import { getLinkedClienteId } from '../lib/supabase/tenantLink';
 import { isSupabaseConfigured } from '../lib/supabase/config';
 import { useAuth } from '../contexts/AuthContext';
+import { useMultitienda } from '../contexts/MultitiendaContext';
 import { playTallerAlertSound } from '../lib/tallerAlertSound';
 import {
   pullOrdenesTallerDesdePwa,
@@ -36,6 +37,12 @@ const TALLER_PULL_INTERVAL_MS = 30000;
 
 export function useSyncModulosNube() {
   const { usuarioActual } = useAuth();
+  // 🏪 Sucursal en la que está "parada" ESTA terminal ahora mismo (Multi-Tienda).
+  // Sin filtrar por ella, esta caja recibía por Realtime -- y sonaba la
+  // alerta de "comanda recibida"-- las cuentas de mesa de OTRA sucursal del
+  // mismo negocio, aunque físicamente nunca la sirviera.
+  const { tiendaActual } = useMultitienda();
+  const tiendaActivaId = tiendaActual && tiendaActual.id !== 'tienda_principal' ? tiendaActual.id : null;
 
   useEffect(() => {
     const clienteId = getLinkedClienteId();
@@ -142,7 +149,7 @@ export function useSyncModulosNube() {
         } catch (e) {
           console.warn('[SyncNube] No se pudo aplicar la comanda recibida:', e);
         }
-      });
+      }, tiendaActivaId);
     }
 
     return () => {
@@ -151,5 +158,5 @@ export function useSyncModulosNube() {
       desuscribirTaller?.();
       desuscribirCuentas?.();
     };
-  }, [usuarioActual?.nombreCompleto]);
+  }, [usuarioActual?.nombreCompleto, tiendaActivaId]);
 }

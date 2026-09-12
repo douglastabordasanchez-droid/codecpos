@@ -39,6 +39,20 @@ export async function publicarTiendas(tiendas: Tienda[]): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Borra una tienda en la nube apenas se elimina en Electron — sin esto, una
+ *  tienda borrada localmente seguía apareciendo en el celular (publicarTiendas
+ *  solo hace upsert, nunca sabe que una tienda ausente significa "bórrala"). */
+export async function eliminarTiendaEnNube(localId: string): Promise<void> {
+  const client = getSupabaseClient();
+  const clienteId = getLinkedClienteId();
+  if (!client || !clienteId) return;
+  const { error } = await withTimeout(
+    client.from('tiendas').delete().eq('cliente_id', clienteId).eq('local_id', localId),
+    'El borrado de la tienda tardó demasiado'
+  );
+  if (error) throw new Error(error.message);
+}
+
 export async function descargarTiendas(): Promise<Tienda[] | null> {
   const client = getSupabaseClient();
   const clienteId = getLinkedClienteId();

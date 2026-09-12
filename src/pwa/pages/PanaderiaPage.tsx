@@ -57,6 +57,7 @@ import {
   suscribirComandasAutorizacion,
 } from '../lib/comandasAutorizadas';
 import { EscanerTiendaQR, type QRPayloadTienda } from '../components/EscanerTiendaQR';
+import { SucursalFiltro } from '../components/SucursalFiltro';
 
 const ESTADO_COMANDA_LABEL: Record<string, string> = {
   pendiente: '🕓 En cola',
@@ -185,19 +186,21 @@ export default function PanaderiaPage() {
   useEffect(() => { cargar(); }, [cargar]);
 
   // Realtime: si la caja cobra una mesa, el mesero la ve liberarse al momento.
+  // 🏪 Filtrado por sucursal — sin esto, el celular de una sucursal recibía
+  // (y sonaba) los avisos de cuentas/comandas de OTRA sucursal del mismo negocio.
   useEffect(() => {
     if (!empleado) return;
     return suscribirCuentasMesa(empleado.cliente_id, (cuenta) => {
       setCuentas((prev) => ({ ...prev, [cuenta.mesaLocalId]: cuenta }));
-    });
-  }, [empleado?.cliente_id]);
+    }, tiendaEfectiva);
+  }, [empleado?.cliente_id, tiendaEfectiva]);
 
   // 🍳 Estado de la comanda en vivo — avisa cuando cocina/bar la marca lista.
   useEffect(() => {
     if (!empleado) return;
     let cancelado = false;
 
-    obtenerComandasActivas(empleado.cliente_id).then((iniciales) => {
+    obtenerComandasActivas(empleado.cliente_id, tiendaEfectiva).then((iniciales) => {
       if (cancelado) return;
       setComandasPorMesa(Object.fromEntries(iniciales.map((c) => [c.mesaLocalId, c])));
     }).catch(() => {});
@@ -218,10 +221,10 @@ export default function PanaderiaPage() {
         }
         return { ...prev, [comanda.mesaLocalId]: comanda };
       });
-    });
+    }, tiendaEfectiva);
 
     return () => { cancelado = true; unsubscribe?.(); };
-  }, [empleado?.cliente_id, mostrarAlertaComanda]);
+  }, [empleado?.cliente_id, mostrarAlertaComanda, tiendaEfectiva]);
 
   const guardar = async (mesa: PanaderiaMesa, items: ItemCuenta[]) => {
     if (!empleado) return;
@@ -265,7 +268,7 @@ export default function PanaderiaPage() {
       return acc;
     }, []);
     if (delta.length === 0) return;
-    await enviarComanda(empleado.cliente_id, mesa.id, mesa.nombre, delta, empleado.nombre_completo).catch(() => {});
+    await enviarComanda(empleado.cliente_id, mesa.id, mesa.nombre, delta, empleado.nombre_completo, undefined, mesa.tiendaId).catch(() => {});
   };
 
   const mesasOcupadas = mesas.filter((m) => (cuentas[m.id]?.items?.length ?? 0) > 0).length;
@@ -393,6 +396,8 @@ export default function PanaderiaPage() {
           </div>
         )}
       </div>
+
+      <SucursalFiltro />
 
       {/* ── Resumen ── */}
       <div className="px-5 grid grid-cols-2 gap-3 mb-5">

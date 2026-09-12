@@ -6,6 +6,7 @@ import { Button } from '../../app/components/ui/button';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
+import { SucursalFiltro } from '../components/SucursalFiltro';
 
 interface ProductoFila {
   id: string;
@@ -84,6 +85,8 @@ export default function InventarioPage() {
           <Plus className="w-5 h-5" />
         </Button>
       </div>
+
+      <SucursalFiltro />
 
       <div className="px-5 mb-4 relative">
         <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />

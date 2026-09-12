@@ -13,6 +13,7 @@ import {
   actualizarTienda,
   eliminarTienda,
 } from '../lib/multitiendaService';
+import { publicarTiendas, eliminarTiendaEnNube } from '../lib/supabase/tiendasSyncService';
 
 interface MultitiendaContextType {
   tiendas: Tienda[];
@@ -55,20 +56,29 @@ export function MultitiendaProvider({ children }: { children: ReactNode }) {
     setTiendaActual(nueva);
   }, []);
 
+  // 📡 Cada alta/edición/baja de tienda se publica de inmediato en la nube —
+  // antes solo se subían al tocar "Publicar datos ahora" en Configuración,
+  // así que una tienda nueva no aparecía en el celular del admin hasta que
+  // alguien recordara ese botón. Best-effort: si falla (sin red, sin
+  // vincular), la tienda sigue funcionando local y se publica en el próximo
+  // intento manual.
   const crearNuevaTienda = useCallback((datos: Omit<Tienda, 'id' | 'esPrincipal' | 'fechaCreacion' | 'activo'>) => {
     const nueva = crearTienda(datos);
     recargarTiendas();
+    publicarTiendas(listarTiendas()).catch(() => {});
     return nueva;
   }, [recargarTiendas]);
 
   const editarTienda = useCallback((id: string, datos: Partial<Tienda>) => {
     const updated = actualizarTienda(id, datos);
     recargarTiendas();
+    publicarTiendas(listarTiendas()).catch(() => {});
     return updated;
   }, [recargarTiendas]);
 
   const borrarTienda = useCallback((id: string) => {
     eliminarTienda(id);
+    eliminarTiendaEnNube(id).catch(() => {});
     // Si borramos la activa, cambiar a la principal
     if (tiendaActual?.id === id) {
       cambiarTienda('tienda_principal');

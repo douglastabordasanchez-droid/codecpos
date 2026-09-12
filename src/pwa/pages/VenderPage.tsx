@@ -8,6 +8,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil } from '../lib/ventaMovilService';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
+import { SucursalFiltro } from '../components/SucursalFiltro';
 import { crearCuentaCarteraMovil } from '../lib/carteraMovilService';
 import { compartirRecibo, verFactura } from '../lib/compartirFactura';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
@@ -348,6 +349,8 @@ export default function VenderPage() {
         <h1 className="text-white text-xl font-black">Vender</h1>
         <p className="text-slate-400 text-sm">Busca productos y arma la venta</p>
       </div>
+
+      <SucursalFiltro />
 
       {/* Total prominente, al estilo de la pantalla de venta de Electron */}
       <div className="px-5 mb-5">

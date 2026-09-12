@@ -341,10 +341,29 @@ export async function guardarCuentaMesa(
   marcarMesaComoRecienGuardada(mesaLocalId);
 }
 
-/** Realtime de cuentas — la caja ve el pedido del mesero (o de otra caja) al instante. */
+// 🏪 Filtro de sucursal aplicado del lado del cliente a los eventos de
+// Realtime — Supabase solo nos deja filtrar el canal por `cliente_id` de
+// forma simple, así que sin esto CUALQUIER terminal (Electron o celular) de
+// un negocio con varias sucursales recibía —y sonaba la alerta de— comandas
+// y cuentas de TODAS las sucursales, no solo la suya. `undefined` = sin
+// filtrar (uso del admin viendo "todas"); null/'tienda_principal'/string =
+// solo esa sucursal.
+function coincideTienda(filaTienda: unknown, tiendaFiltro: string | null | undefined): boolean {
+  if (tiendaFiltro === undefined) return true;
+  const esperada = !tiendaFiltro || tiendaFiltro === 'tienda_principal' ? null : tiendaFiltro;
+  const real = (filaTienda as string | null) || null;
+  return real === esperada;
+}
+
+/**
+ * Realtime de cuentas — la caja ve el pedido del mesero (o de otra caja) al
+ * instante. @param tiendaId sucursal a la que limitar los avisos — ver
+ * `coincideTienda`.
+ */
 export function suscribirCuentasMesa(
   clienteId: string,
-  onCambio: (cuenta: CuentaMesa) => void
+  onCambio: (cuenta: CuentaMesa) => void,
+  tiendaId?: string | null
 ): () => void {
   const client = getSupabaseClient();
   if (!client) return () => {};
@@ -356,7 +375,7 @@ export function suscribirCuentasMesa(
       { event: '*', schema: 'public', table: 'panaderia_cuentas', filter: `cliente_id=eq.${clienteId}` },
       (payload) => {
         const fila = payload.new as Record<string, unknown> | null;
-        if (fila?.mesa_local_id) onCambio(mapCuenta(fila));
+        if (fila?.mesa_local_id && coincideTienda(fila.tienda_id, tiendaId)) onCambio(mapCuenta(fila));
       }
     )
     .subscribe();
@@ -390,6 +409,8 @@ export interface Comanda {
   nota?: string;
   createdAt: string;
   updatedAt: string;
+  /** Sucursal (tiendas.local_id) de la mesa que originó la comanda — undefined/null = Tienda Principal. */
+  tiendaId?: string | null;
 }
 
 function mapComanda(r: any): Comanda {
@@ -403,6 +424,7 @@ function mapComanda(r: any): Comanda {
     nota: r.nota || undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    tiendaId: r.tienda_id || null,
   };
 }
 
@@ -413,7 +435,8 @@ export async function enviarComanda(
   mesaNombre: string,
   items: ItemComanda[],
   meseroNombre?: string,
-  nota?: string
+  nota?: string,
+  tiendaId?: string | null
 ): Promise<void> {
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
@@ -427,6 +450,7 @@ export async function enviarComanda(
     estado: 'pendiente',
     mesero_nombre: meseroNombre || null,
     nota: nota || null,
+    tienda_id: tiendaId || null,
   });
   if (error) throw new Error(error.message);
 }
@@ -442,24 +466,34 @@ export async function actualizarEstadoComanda(comandaId: string, estado: EstadoC
   if (error) throw new Error(error.message);
 }
 
-/** Comandas activas (no entregadas ni canceladas) para poblar la pantalla al abrirla. */
-export async function obtenerComandasActivas(clienteId: string): Promise<Comanda[]> {
+/**
+ * Comandas activas (no entregadas ni canceladas) para poblar la pantalla al
+ * abrirla. @param tiendaId sucursal a la que limitar — ver `coincideTienda`.
+ */
+export async function obtenerComandasActivas(clienteId: string, tiendaId?: string | null): Promise<Comanda[]> {
   const client = getSupabaseClient();
   if (!client) return [];
-  const { data, error } = await client
+  let query = client
     .from('panaderia_comandas')
     .select('*')
     .eq('cliente_id', clienteId)
-    .in('estado', ['pendiente', 'preparando', 'listo'])
-    .order('created_at', { ascending: true });
+    .in('estado', ['pendiente', 'preparando', 'listo']);
+  if (tiendaId !== undefined) {
+    query = !tiendaId || tiendaId === 'tienda_principal' ? query.is('tienda_id', null) : query.eq('tienda_id', tiendaId);
+  }
+  const { data, error } = await query.order('created_at', { ascending: true });
   if (error) throw new Error(error.message);
   return (data || []).map(mapComanda);
 }
 
-/** Realtime de comandas — cocina/bar ve el pedido apenas el mesero lo envía. */
+/**
+ * Realtime de comandas — cocina/bar ve el pedido apenas el mesero lo envía.
+ * @param tiendaId sucursal a la que limitar los avisos — ver `coincideTienda`.
+ */
 export function suscribirComandas(
   clienteId: string,
-  onCambio: (comanda: Comanda) => void
+  onCambio: (comanda: Comanda) => void,
+  tiendaId?: string | null
 ): () => void {
   const client = getSupabaseClient();
   if (!client) return () => {};
@@ -471,7 +505,7 @@ export function suscribirComandas(
       { event: '*', schema: 'public', table: 'panaderia_comandas', filter: `cliente_id=eq.${clienteId}` },
       (payload) => {
         const fila = (payload.new || payload.old) as Record<string, unknown> | null;
-        if (fila?.id) onCambio(mapComanda(fila));
+        if (fila?.id && coincideTienda(fila.tienda_id, tiendaId)) onCambio(mapComanda(fila));
       }
     )
     .subscribe();

@@ -34,6 +34,7 @@ import {
   Tag,
   Sparkles,
   QrCode,
+  History,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -227,6 +228,56 @@ function calcularDescuentoItem(item: ItemCarrito): number {
   return Math.max(0, precioCatalogoConMods(item) - item.precioEditado) * cantidadVenta;
 }
 
+// 🛒 Carritos recientes — red de seguridad contra un carrito borrado sin
+// querer (vaciar por error, cerrar la pantalla, cambiar de mesa antes de
+// cobrar). No distingue POR QUÉ se vació: cada vez que el carrito pasa de
+// tener productos a estar vacío, se guarda una foto de lo que tenía, así el
+// cajero siempre puede recuperarla desde el ícono de historial del header.
+const STORAGE_CARRITOS_RECIENTES = 'codecpos_carritos_recientes';
+const MAX_CARRITOS_RECIENTES = 8;
+
+interface CarritoReciente {
+  id: string;
+  fecha: string;
+  total: number;
+  cantidadItems: number;
+  items: ItemCarrito[];
+}
+
+function totalDeCarrito(items: ItemCarrito[]): number {
+  return items.reduce((s, it) => {
+    const precioFinal = it.precioEditado ?? precioCatalogoConMods(it);
+    const cantidadVenta = it.producto.pesable ? (it.peso || 0) : it.cantidad;
+    return s + precioFinal * cantidadVenta;
+  }, 0);
+}
+
+function guardarCarritoReciente(items: ItemCarrito[]): void {
+  if (items.length === 0) return;
+  try {
+    const entrada: CarritoReciente = {
+      id: `cr-${Date.now()}`,
+      fecha: new Date().toISOString(),
+      total: totalDeCarrito(items),
+      cantidadItems: items.reduce((s, it) => s + (it.producto.pesable ? 1 : it.cantidad), 0),
+      items,
+    };
+    const raw = localStorage.getItem(STORAGE_CARRITOS_RECIENTES);
+    const lista: CarritoReciente[] = raw ? JSON.parse(raw) : [];
+    localStorage.setItem(STORAGE_CARRITOS_RECIENTES, JSON.stringify([entrada, ...lista].slice(0, MAX_CARRITOS_RECIENTES)));
+  } catch { /* storage lleno o bloqueado -- no crítico */ }
+}
+
+function listarCarritosRecientes(): CarritoReciente[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_CARRITOS_RECIENTES);
+    const lista = raw ? JSON.parse(raw) : [];
+    return Array.isArray(lista) ? lista : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: POSPageNewProps = {}) {
   const navigate = useNavigate();
   const { darkMode, triggerRefresh, uiScale, setUiScale } = usePOS();
@@ -235,6 +286,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [productos, setProductos] = useState<Producto[]>([]);
   const [combosOnces, setCombosOnces] = useState<Producto[]>([]);
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
+  const [showCarritosRecientes, setShowCarritosRecientes] = useState(false);
+  const [carritosRecientes, setCarritosRecientes] = useState<CarritoReciente[]>([]);
+  const carritoAnteriorRef = useRef<ItemCarrito[]>([]);
+  // 🛒 Apenas el carrito pasa de tener productos a quedar vacío (por la razón
+  // que sea), se guarda una foto en el historial de recuperación.
+  useEffect(() => {
+    if (carrito.length === 0 && carritoAnteriorRef.current.length > 0) {
+      guardarCarritoReciente(carritoAnteriorRef.current);
+    }
+    carritoAnteriorRef.current = carrito;
+  }, [carrito]);
   const [propinaManual, setPropinaManual] = useState<number | null>(null);
   const [transferLoaded, setTransferLoaded] = useState(false);
   const transferLoadedRef = useRef(false);
@@ -666,6 +728,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // la sucursal ACTIVA en este equipo ahora mismo (la misma que se elige en
   // Multi-Tienda), sin tener que ir a esa pantalla solo para esto.
   const { tiendaActual } = useMultitienda();
+  const tiendaActivaId = tiendaActual && tiendaActual.id !== 'tienda_principal' ? tiendaActual.id : null;
   const [showModalQRTienda, setShowModalQRTienda] = useState(false);
 
   // Scanner de códigos de barras REAL (USB HID)
@@ -816,12 +879,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           return { ...actuales, [comanda.mesaLocalId]: { estado: comanda.estado, updatedAt: comanda.updatedAt } };
         });
       };
-      obtenerComandasActivas(clienteId).then((comandas) => comandas.forEach(aplicar)).catch(() => {});
-      desuscribir = suscribirComandas(clienteId, aplicar);
+      obtenerComandasActivas(clienteId, tiendaActivaId).then((comandas) => comandas.forEach(aplicar)).catch(() => {});
+      desuscribir = suscribirComandas(clienteId, aplicar, tiendaActivaId);
     }).catch(() => {});
 
     return () => { activo = false; desuscribir?.(); };
-  }, []);
+  }, [tiendaActivaId]);
 
   const carritosMesas = useMemo(() => {
     if (!moduloPanaderiaOncesActivo) return [];
@@ -2682,6 +2745,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           <Button
             size="sm"
             variant="outline"
+            onClick={() => { setCarritosRecientes(listarCarritosRecientes()); setShowCarritosRecientes(true); }}
+            className="rounded-lg text-[10px] h-7 px-2"
+            title="Recuperar un carrito que se haya borrado sin querer"
+          >
+            <History className="w-3 h-3 mr-1" />
+            Carritos
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setShowZoomPanel(true)}
             className={`rounded-lg text-[10px] h-7 px-2 transition-colors border-violet-400 text-violet-600 hover:bg-violet-50 hover:border-violet-500 ${darkMode ? 'border-violet-600 text-violet-400 hover:bg-violet-900/30' : ''}`}
             title="Ajustar escala de pantalla"
@@ -4313,6 +4387,66 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         onClose={() => setShowModalQRTienda(false)}
         tienda={tiendaActual}
       />
+
+      {/* 🛒 Carritos recientes — recuperar uno borrado sin querer */}
+      <AnimatePresence>
+        {showCarritosRecientes && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowCarritosRecientes(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+              className={`w-full max-w-md max-h-[80vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden ${darkMode ? 'bg-slate-900 border border-slate-700' : 'bg-white border border-slate-200'}`}
+            >
+              <div className={`flex items-center justify-between p-5 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <div>
+                  <h2 className={`text-lg font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                    <History className="w-5 h-5" /> Carritos recientes
+                  </h2>
+                  <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Últimos carritos que se vaciaron — por si alguno se borró sin querer
+                  </p>
+                </div>
+                <button onClick={() => setShowCarritosRecientes(false)} className={darkMode ? 'text-slate-400' : 'text-slate-500'}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {carritosRecientes.length === 0 ? (
+                  <p className={`text-sm text-center py-10 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Todavía no hay carritos guardados
+                  </p>
+                ) : carritosRecientes.map((cr) => (
+                  <div key={cr.id} className={`rounded-xl border p-3 flex items-center justify-between gap-3 ${darkMode ? 'border-slate-700 bg-slate-800/60' : 'border-slate-200 bg-slate-50'}`}>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        {cr.cantidadItems} producto{cr.cantidadItems === 1 ? '' : 's'} · ${Math.round(cr.total).toLocaleString('es-CO')}
+                      </p>
+                      <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {new Date(cr.fecha).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setCarrito(cr.items);
+                        setShowCarritosRecientes(false);
+                        toast.success('Carrito restaurado');
+                      }}
+                      className="shrink-0"
+                    >
+                      Restaurar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
