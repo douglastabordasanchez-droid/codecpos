@@ -240,6 +240,9 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     doc.setFont('helvetica', 'normal');
     if (empresa.razonSocial && empresa.razonSocial !== empresa.nombreComercial) center(empresa.razonSocial, 8);
     if (empresa.nit) center(`NIT: ${empresa.nit}${empresa.digitoVerificacion ? `-${empresa.digitoVerificacion}` : ''}`, 8);
+    // 🧾 FIX: "Mensaje Superior de la Tirilla" nunca aparecía arriba pese a
+    // su nombre — solo se imprimía repetido en el pie (ver footer abajo).
+    if (empresa.mensajeTirillaArriba) { doc.setFont('helvetica', 'bold'); center(empresa.mensajeTirillaArriba, 7); doc.setFont('helvetica', 'normal'); }
     if (empresa.eslogan) { doc.setFont('helvetica', 'italic'); center(empresa.eslogan, 7); doc.setFont('helvetica', 'normal'); }
     if (empresa.direccion) center(empresa.direccion, 7);
     if (empresa.ciudad) center(empresa.ciudad, 7);
@@ -322,11 +325,8 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
 
     separator();
 
-    // Footer mensajes
-    doc.setFont('helvetica', 'bold');
-    if (empresa.mensajeTirillaArriba) center(empresa.mensajeTirillaArriba, 8);
-    doc.setFont('helvetica', 'italic');
-    if (empresa.mensajeTirilla) center(empresa.mensajeTirilla, 8);
+    // Footer mensajes — mensajeTirillaArriba y eslogan ya se imprimieron
+    // arriba, en el encabezado; repetirlos aquí duplicaba el texto en el pie.
     doc.setFont('helvetica', 'bold');
     if (empresa.mensajeTirillaBajo) center(empresa.mensajeTirillaBajo, 8);
     doc.setFont('helvetica', 'normal');
@@ -493,6 +493,13 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
           </div>
           {config.nit && (
             <div>NIT: {config.nit}{config.digitoVerificacion ? `-${config.digitoVerificacion}` : ''}</div>
+          )}
+          {/* 🧾 FIX: "Mensaje Superior de la Tirilla" nunca aparecía arriba
+              pese a su nombre — solo se imprimía repetido en el pie. */}
+          {config.mensajeTirillaArriba && (
+            <div className="bold" style={{ fontSize: '10px', marginTop: '4px' }}>
+              {config.mensajeTirillaArriba}
+            </div>
           )}
           {config.eslogan && (
             <div style={{ fontSize: '10px', marginTop: '4px' }}>
@@ -668,16 +675,9 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
 
         <div className="double-line"></div>
 
-        {/* Footer */}
+        {/* Footer — mensajeTirillaArriba y eslogan ya se muestran arriba, en
+            el encabezado; repetirlos aquí duplicaba el texto en el pie. */}
         <div className="center spacing" style={{ fontSize: '11px' }}>
-          {config.mensajeTirillaArriba && (
-            <div className="bold" style={{ marginBottom: '8px' }}>{config.mensajeTirillaArriba}</div>
-          )}
-          
-          {config.eslogan && (
-            <div style={{ fontStyle: 'italic', marginBottom: '8px' }}>{config.eslogan}</div>
-          )}
-          
           {config.mensajeTirillaBajo && (
             <div className="bold">{config.mensajeTirillaBajo}</div>
           )}

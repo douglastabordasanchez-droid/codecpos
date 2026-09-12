@@ -44,6 +44,8 @@ function resolveDefaultPrinterPort(): string {
 }
 
 export interface TicketData {
+  /** Logo del negocio (data URL o URL http) — se imprime como imagen ESC/POS antes del nombre comercial, igual que en la vista previa/PDF (TicketReceipt.tsx). */
+  logoUrl?: string;
   header?: string; // nombre comercial
   razonSocial?: string;
   nit?: string;
@@ -193,6 +195,32 @@ const CP850_MAP: Record<string, number> = {
   'Ç': 0x80, 'ç': 0x87,
 };
 
+// 🛡️ FIX COMPATIBILIDAD: algunos clones ESC/POS (comunes en impresoras chinas
+// genéricas) ignoran `ESC t 2` y se quedan en una tabla de caracteres propia
+// (con frecuencia una tabla china) donde los bytes altos de CP850_MAP no caen
+// en tildes/ñ sino en glifos CJK — la tirilla sale con símbolos como "郎"/"依"
+// en vez de "Ó"/"É". Como no hay forma confiable de detectar el firmware real
+// del clon desde software, se ofrece este mapa de reemplazo plano (sin
+// tildes) que activa el usuario en Configuración cuando ve el problema —
+// funciona en CUALQUIER impresora porque nunca emite un byte fuera de ASCII.
+const SIN_TILDES_MAP: Record<string, string> = {
+  'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+  'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+  'ñ': 'n', 'Ñ': 'N', 'ü': 'u', 'Ü': 'U',
+  '¿': '?', '¡': '!', 'ª': 'a', 'º': 'o', '°': ' ',
+  'Ç': 'C', 'ç': 'c',
+};
+
+function imprimirSinTildesActivo(): boolean {
+  try {
+    const raw = localStorage.getItem('codec_pos_config');
+    if (!raw) return false;
+    return JSON.parse(raw)?.imprimirSinTildes === true;
+  } catch {
+    return false;
+  }
+}
+
 export class ThermalPrinter {
   private puerto: string;
   private printerName: string | undefined;
@@ -266,7 +294,10 @@ export class ThermalPrinter {
   };
 
   private textToBytes(text: string): number[] {
-    const clean = String(text ?? '').replace(/ /g, ' ');
+    let clean = String(text ?? '').replace(/ /g, ' ');
+    if (imprimirSinTildesActivo()) {
+      clean = clean.replace(/[áéíóúÁÉÍÓÚñÑüÜ¿¡ªº°Çç]/g, (ch) => SIN_TILDES_MAP[ch] ?? ch);
+    }
     const bytes: number[] = [];
     // Recorre por punto de codigo (no por unidad UTF-16) para no partir un
     // caracter fuera del BMP en dos bytes basura.
@@ -277,6 +308,74 @@ export class ThermalPrinter {
       bytes.push(code <= 0xFF ? code : 0x3F);
     }
     return bytes;
+  }
+
+  /**
+   * 🖼️ Logo del negocio como imagen ESC/POS (comando GS v 0 — raster bit
+   * image). La tirilla física no tiene forma de mostrar un <img> como la
+   * vista previa/PDF (TicketReceipt.tsx): hay que convertir el logo a un
+   * mapa de bits blanco/negro y enviarlo como datos crudos. Se decodifica
+   * con <canvas> (disponible aquí porque este driver corre en el renderer de
+   * Electron, no en Node) y se reduce a 1 bit por píxel con un umbral simple
+   * de luminosidad — suficiente para un logo simple; no se usa dithering
+   * para no complicar un caso que ya funciona bien en la mayoría de logos.
+   * Nunca lanza: si el logo no carga o el navegador no puede decodificarlo,
+   * se omite en silencio y el resto del ticket se imprime igual.
+   */
+  private async logoToRasterBytes(logoUrl: string): Promise<number[]> {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.crossOrigin = 'anonymous';
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('No se pudo cargar el logo'));
+        image.src = logoUrl;
+      });
+
+      // Ancho del área imprimible en píxeles — convención estándar ESC/POS
+      // (203dpi ≈ 8 dots/mm): 58mm → 384px, 80mm → 576px.
+      const targetWidth = this.ancho === 80 ? 576 : 384;
+      const scale = targetWidth / img.width;
+      const targetHeight = Math.max(1, Math.round(img.height * scale));
+      // GS v 0 exige que el ancho en bytes sea entero — se redondea el ancho
+      // en píxeles al múltiplo de 8 más cercano por arriba (padding blanco).
+      const widthBytes = Math.ceil(targetWidth / 8);
+      const paddedWidth = widthBytes * 8;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = paddedWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return [];
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, paddedWidth, targetHeight);
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      const { data } = ctx.getImageData(0, 0, paddedWidth, targetHeight);
+      const raster: number[] = [];
+      for (let y = 0; y < targetHeight; y++) {
+        for (let byteX = 0; byteX < widthBytes; byteX++) {
+          let byte = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const x = byteX * 8 + bit;
+            const i = (y * paddedWidth + x) * 4;
+            const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+            // Luminosidad estándar; fondo transparente cuenta como blanco.
+            const luminosidad = a < 128 ? 255 : 0.299 * r + 0.587 * g + 0.114 * b;
+            const esNegro = luminosidad < 200;
+            if (esNegro) byte |= (0x80 >> bit);
+          }
+          raster.push(byte);
+        }
+      }
+
+      const bytes: number[] = [];
+      bytes.push(GS, 0x76, 0x30, 0x00, widthBytes & 0xFF, (widthBytes >> 8) & 0xFF, targetHeight & 0xFF, (targetHeight >> 8) & 0xFF);
+      bytes.push(...raster);
+      return bytes;
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -421,6 +520,17 @@ export class ThermalPrinter {
       // Inicializar (incluye selección de codepage — ver commands.init())
       bytes.push(...this.commands.init());
 
+      // 🖼️ Logo — igual que la vista previa/PDF, antes del nombre comercial.
+      if (data.logoUrl) {
+        const logoBytes = await this.logoToRasterBytes(data.logoUrl);
+        if (logoBytes.length > 0) {
+          bytes.push(...this.commands.alignCenter());
+          bytes.push(...logoBytes);
+          bytes.push(...this.commands.feed(1));
+          bytes.push(...this.commands.alignLeft());
+        }
+      }
+
       // ── Encabezado del negocio ──────────────────────────────────────
       if (data.header) {
         bytes.push(...this.commands.fontLarge());
@@ -434,6 +544,15 @@ export class ThermalPrinter {
       }
       if (data.nit) {
         bytes.push(...this.addLine(`NIT: ${data.nit}`, 'center'));
+      }
+      // 🧾 FIX: "Mensaje Superior de la Tirilla" (mensajeTirillaArriba) nunca
+      // se imprimía arriba pese a su nombre — solo aparecía en el pie, junto
+      // al eslogan repetido. Ahora va aquí, antes del eslogan, y ya no se
+      // repite en el pie (ver más abajo).
+      if (data.mensajeTirillaArriba) {
+        bytes.push(...this.commands.boldOn());
+        this.wrapText(data.mensajeTirillaArriba).forEach((line) => bytes.push(...this.addLine(line, 'center')));
+        bytes.push(...this.commands.boldOff());
       }
       if (data.eslogan) {
         bytes.push(...this.addLine(data.eslogan, 'center'));
@@ -559,14 +678,11 @@ export class ThermalPrinter {
       bytes.push(...this.addSeparator('='));
 
       // ── Pie de página: mensajes personalizados ──────────────────────────
-      if (data.mensajeTirillaArriba) {
-        bytes.push(...this.commands.boldOn());
-        this.wrapText(data.mensajeTirillaArriba).forEach((line) => bytes.push(...this.addLine(line, 'center')));
-        bytes.push(...this.commands.boldOff());
-      }
-      if (data.eslogan) {
-        this.wrapText(data.eslogan).forEach((line) => bytes.push(...this.addLine(line, 'center')));
-      }
+      // 🧾 FIX: mensajeTirillaArriba y eslogan ya se imprimieron en el
+      // encabezado (arriba) — repetirlos aquí duplicaba el texto en el pie
+      // ("Se me come todo!!! / Espera todo menos el hambre / Vuelva Pronto!"
+      // en vez de solo "Vuelva Pronto!"). El pie ahora muestra únicamente el
+      // mensaje inferior configurado.
       if (data.mensajeTirillaBajo) {
         bytes.push(...this.commands.boldOn());
         this.wrapText(data.mensajeTirillaBajo).forEach((line) => bytes.push(...this.addLine(line, 'center')));
@@ -1080,6 +1196,7 @@ export async function printSaleReceipt(
   const mensajeTirillaBajo = config.mensajeTirillaBajo || cfg.mensajeTirillaBajo;
   const mensajeTirillaArriba = config.mensajeTirillaArriba || cfg.mensajeTirillaArriba;
   const eslogan = config.eslogan || cfg.eslogan;
+  const logoUrl = cfg.logoUrl || undefined;
 
   const nitCompleto = nit
     ? `${nit}${digitoVerificacion ? `-${digitoVerificacion}` : ''}`
@@ -1099,6 +1216,7 @@ export async function printSaleReceipt(
     || (venta.mesa && venta.mesa !== 'General' && venta.mesa !== 'general' ? venta.mesa : undefined);
 
   return await printer.printTicket({
+    logoUrl,
     header: nombreComercial,
     razonSocial,
     nit: nitCompleto,

@@ -80,6 +80,7 @@ export async function crearVentaMovil(
       metodo_pago: metodoPago,
       metodos_multiples: metodoPago === 'mixto' ? (metodosMultiples || null) : null,
       estado: 'completada',
+      tienda_id: tiendaId && tiendaId !== 'tienda_principal' ? tiendaId : null,
     })
     .select('id')
     .single();

@@ -168,6 +168,24 @@ export async function pushCatalogoPanaderia(datos: {
   }
 }
 
+/**
+ * Borra una mesa en la nube apenas se elimina en Electron — sin esto, una
+ * mesa borrada localmente seguía apareciendo en el celular hasta el próximo
+ * "Publicar datos ahora" manual, porque pushCatalogoPanaderia solo hace
+ * upsert (nunca sabe que una mesa ausente del array significa "bórrala").
+ */
+export async function eliminarMesaEnNube(localId: string): Promise<void> {
+  const c = ctx();
+  if (!c) return;
+  const { client, clienteId } = c;
+  const { error } = await client
+    .from('panaderia_mesas')
+    .delete()
+    .eq('cliente_id', clienteId)
+    .eq('local_id', localId);
+  if (error) throw new Error(error.message);
+}
+
 /** Lee el catálogo desde localStorage de Electron y lo publica. */
 export async function sincronizarPanaderiaDesdeLocal(): Promise<{
   categorias: number; productos: number; mesas: number;

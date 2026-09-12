@@ -13,6 +13,8 @@ import { TrendingUp, Wallet, RotateCcw, DollarSign, Receipt } from 'lucide-react
 import { AreaChart, Area, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { SucursalFiltro } from '../components/SucursalFiltro';
+import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
 type RangoFiltro = 'hoy' | '7d' | '30d';
 
@@ -31,6 +33,14 @@ function inicioDeHoy(): Date {
 
 export default function DashboardPage() {
   const { empleado } = usePwaAuth();
+  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const [sucursalActiva, setSucursalActivaLocal] = useState(getSucursalActiva());
+  useEffect(() => suscribirSucursalActiva(() => setSucursalActivaLocal(getSucursalActiva())), []);
+  // 🏪 Solo cuenta ventas hechas desde el celular (módulo Vender) — las
+  // hechas en el mostrador de Electron todavía no se sincronizan a la nube
+  // (ver ventaMovilService.ts), así que este número no reemplaza el cierre
+  // de caja real.
+  const tiendaEfectiva = esAdmin ? (sucursalActiva?.id ?? undefined) : (empleado?.tienda_id ?? null);
   const [rango, setRango] = useState<RangoFiltro>('7d');
   const [cargando, setCargando] = useState(true);
   const [ventas, setVentas] = useState<{ id: string; total: number; created_at: string }[]>([]);
@@ -52,10 +62,17 @@ export default function DashboardPage() {
       const inicio = new Date(hoy.getTime() - (dias - 1) * 24 * 60 * 60 * 1000);
       const fin = new Date(hoy.getTime() + 24 * 60 * 60 * 1000);
 
+      let ventasQuery = client.from('ventas').select('id, total, created_at')
+        .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
+        .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString());
+      if (tiendaEfectiva !== undefined) {
+        ventasQuery = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal')
+          ? ventasQuery.is('tienda_id', null)
+          : ventasQuery.eq('tienda_id', tiendaEfectiva);
+      }
+
       const [{ data: ventasData }, { data: gastosData }, { data: devolucionesData }] = await Promise.all([
-        client.from('ventas').select('id, total, created_at')
-          .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString()),
+        ventasQuery,
         client.from('gastos').select('monto, fecha')
           .eq('cliente_id', empleado.cliente_id)
           .gte('fecha', inicio.toISOString()).lt('fecha', fin.toISOString()),
@@ -106,7 +123,7 @@ export default function DashboardPage() {
     cargar();
     const interval = window.setInterval(cargar, 60000);
     return () => { cancelado = true; window.clearInterval(interval); };
-  }, [empleado?.cliente_id, rango]);
+  }, [empleado?.cliente_id, rango, tiendaEfectiva]);
 
   const totalVentas = useMemo(() => ventas.reduce((a, v) => a + Number(v.total), 0), [ventas]);
   const ticketProm = ventas.length ? totalVentas / ventas.length : 0;
@@ -135,7 +152,12 @@ export default function DashboardPage() {
       <div className="px-5 pt-8 pb-4">
         <h1 className="text-white text-xl font-black">Dashboard</h1>
         <p className="text-slate-400 text-sm">Vista financiera del negocio</p>
+        <p className="text-slate-600 text-[11px] mt-1">
+          Solo cuenta ventas hechas desde el celular (Vender) — no incluye lo cobrado en el mostrador de Electron.
+        </p>
       </div>
+
+      <SucursalFiltro />
 
       <div className="px-5 flex items-center gap-1.5 mb-5 overflow-x-auto">
         {RANGO_OPCIONES.map((op) => (

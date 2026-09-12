@@ -628,8 +628,26 @@ export default function PanaderiaOncesPage() {
   // (tiendaActivaId) — si el admin está en "Tienda 2" al crearla, esa mesa
   // solo aparecerá en el salón cuando "Tienda 2" esté activa (aquí o en el
   // celular de un mesero asignado a ella).
-  const agregarMesa = () => { const nueva: MesaConfig = { id: `mesa-${Date.now()}`, nombre: `Mesa ${mesas.length + 1}`, activa: true, tiendaId: tiendaActivaId }; persistirMesas([...mesas, nueva]); toast.success('Mesa agregada'); };
-  const quitarMesa = (id: string) => { persistirMesas(mesas.filter(m => m.id !== id)); toast.success('Mesa eliminada'); };
+  // 📡 Cada alta/baja de mesa se publica de inmediato en la nube (además de
+  // guardarse en localStorage) — así el celular que escanee el QR de esta
+  // sucursal ve la mesa nueva o deja de ver la borrada sin depender de que
+  // alguien recuerde tocar "Publicar datos ahora" en Configuración.
+  const agregarMesa = () => {
+    const nueva: MesaConfig = { id: `mesa-${Date.now()}`, nombre: `Mesa ${mesas.length + 1}`, activa: true, tiendaId: tiendaActivaId };
+    persistirMesas([...mesas, nueva]);
+    toast.success('Mesa agregada');
+    import('../../lib/supabase/panaderiaSyncService')
+      .then(({ pushCatalogoPanaderia }) => pushCatalogoPanaderia({ categorias: [], productos: [], mesas: [nueva] }))
+      .catch(() => {});
+  };
+  const quitarMesa = (id: string) => {
+    if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
+    persistirMesas(mesas.filter(m => m.id !== id));
+    toast.success('Mesa eliminada');
+    import('../../lib/supabase/panaderiaSyncService')
+      .then(({ eliminarMesaEnNube }) => eliminarMesaEnNube(id))
+      .catch(() => {});
+  };
   // Solo las mesas de la sucursal activa — mismo criterio que la RLS del lado
   // servidor (migración 0093): sin sucursal asignada = mesas de tienda_principal.
   const mesasVisibles = useMemo(
@@ -1682,7 +1700,7 @@ export default function PanaderiaOncesPage() {
               </div>
             </div>
 
-            {mesasVisibles.length > 0 && (
+            {mesasVisibles.length > 0 && puedeAdministrarPanaderia && (
               <div className="flex flex-wrap gap-2 pt-1">
                 <span className={`text-xs font-semibold self-center ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Eliminar:</span>
                 {mesasVisibles.map((m) => (

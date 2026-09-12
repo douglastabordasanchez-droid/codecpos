@@ -60,7 +60,12 @@ interface ConfiguracionEmpresa {
   // Configuración de impresora
   nombreImpresora: string;
   tamañoPapel: string;
-  
+  // 🖨️ Algunas impresoras térmicas (clones económicos) ignoran el comando
+  // de codepage y no imprimen tildes/ñ correctamente — se ven símbolos raros
+  // en vez de letras acentuadas. Esta opción evita el problema imprimiendo
+  // sin tildes (á→a, ñ→n, etc.), legible en cualquier impresora.
+  imprimirSinTildes: boolean;
+
   // Mensajes personalizados
   mensajeTirillaArriba: string; // Mensaje superior
   mensajeTirilla: string;        // Mensaje central (mantener compatibilidad)
@@ -290,6 +295,7 @@ export default function ConfiguracionPage() {
       logoUrl: '', // URL o base64 del logo
       nombreImpresora: 'POS-58',
       tamañoPapel: '58mm',
+      imprimirSinTildes: false,
       mensajeTirillaArriba: '',
       mensajeTirilla: '¡Gracias por su compra!',
       mensajeTirillaBajo: '¡Vuelva Pronto!',
@@ -1196,6 +1202,26 @@ export default function ConfiguracionPage() {
               <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 Este mensaje aparecerá en la parte inferior de cada factura
               </p>
+            </div>
+
+            {/* Compatibilidad de impresora — tildes/ñ */}
+            <div className={`flex items-start gap-3 p-3 rounded-xl border ${darkMode ? 'border-slate-600 bg-slate-800/40' : 'border-gray-200 bg-gray-50'}`}>
+              <input
+                type="checkbox"
+                id="imprimirSinTildes"
+                checked={!!config.imprimirSinTildes}
+                onChange={(e) => handleChange('imprimirSinTildes', e.target.checked)}
+                className="mt-1"
+              />
+              <label htmlFor="imprimirSinTildes" className="cursor-pointer">
+                <p className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                  Mi impresora muestra símbolos raros en vez de tildes/ñ
+                </p>
+                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Actívalo si en la tirilla física ves caracteres extraños donde deberían ir letras como á, é, í, ó, ú o ñ.
+                  La factura se imprimirá sin tildes (por ejemplo "Regimen" en vez de "Régimen"), pero legible en cualquier impresora.
+                </p>
+              </label>
             </div>
 
             {/* Vista Previa */}

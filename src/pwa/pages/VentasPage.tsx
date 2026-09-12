@@ -5,6 +5,8 @@ import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { compartirRecibo, verFactura } from '../lib/compartirFactura';
+import { SucursalFiltro } from '../components/SucursalFiltro';
+import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
 interface VentaFila {
   id: string;
@@ -30,6 +32,10 @@ const fadeUp = {
 
 export default function VentasPage() {
   const { empleado } = usePwaAuth();
+  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const [sucursalActiva, setSucursalActivaLocal] = useState(getSucursalActiva());
+  useEffect(() => suscribirSucursalActiva(() => setSucursalActivaLocal(getSucursalActiva())), []);
+  const tiendaEfectiva = esAdmin ? (sucursalActiva?.id ?? undefined) : (empleado?.tienda_id ?? null);
   const [ventas, setVentas] = useState<VentaFila[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
@@ -41,18 +47,24 @@ export default function VentasPage() {
     const client = getSupabaseClient();
     if (!client) return;
     setCargando(true);
-    client
+    let query = client
       .from('ventas')
       .select('id, numero, total, metodo_pago, cajero_nombre, created_at')
       .eq('cliente_id', empleado.cliente_id)
-      .eq('estado', 'completada')
+      .eq('estado', 'completada');
+    if (tiendaEfectiva !== undefined) {
+      query = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal')
+        ? query.is('tienda_id', null)
+        : query.eq('tienda_id', tiendaEfectiva);
+    }
+    query
       .order('created_at', { ascending: false })
       .limit(100)
       .then(({ data }) => {
         setVentas((data as VentaFila[]) || []);
         setCargando(false);
       });
-  }, [empleado?.cliente_id]);
+  }, [empleado?.cliente_id, tiendaEfectiva]);
 
   const filtradas = ventas.filter((v) => {
     if (!busqueda.trim()) return true;
@@ -85,6 +97,8 @@ export default function VentasPage() {
         <h1 className="text-white text-xl font-black">Ventas</h1>
         <p className="text-slate-400 text-sm">{stats.cantidad} transacciones registradas</p>
       </div>
+
+      <SucursalFiltro />
 
       <div className="px-5 mb-4 grid grid-cols-3 gap-2">
         <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3">

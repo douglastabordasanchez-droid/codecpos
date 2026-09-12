@@ -49,6 +49,14 @@ import {
 } from '../lib/pedidoAlerts';
 import { estaEnAppAndroid } from '../lib/androidBridge';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
+import {
+  autorizarComandas,
+  comandasAutorizadasPara,
+  desconectarComandas,
+  getComandasAutorizacion,
+  suscribirComandasAutorizacion,
+} from '../lib/comandasAutorizadas';
+import { EscanerTiendaQR, type QRPayloadTienda } from '../components/EscanerTiendaQR';
 
 const ESTADO_COMANDA_LABEL: Record<string, string> = {
   pendiente: '🕓 En cola',
@@ -83,6 +91,28 @@ export default function PanaderiaPage() {
   const [sucursalActiva, setSucursalActivaLocal] = useState(getSucursalActiva());
   useEffect(() => suscribirSucursalActiva(() => setSucursalActivaLocal(getSucursalActiva())), []);
   const tiendaEfectiva: string | null | undefined = esAdmin ? (sucursalActiva?.id ?? undefined) : (empleado?.tienda_id ?? null);
+
+  // 🔒 Candado de comandas — un operativo (mesero/cajero/etc.) no puede tomar
+  // pedidos desde este celular hasta escanear el QR de SU sucursal fija. El
+  // admin/dueño nunca lo necesita: ya tiene acceso completo por diseño.
+  const [autorizacion, setAutorizacion] = useState(() => getComandasAutorizacion());
+  useEffect(() => suscribirComandasAutorizacion(() => setAutorizacion(getComandasAutorizacion())), []);
+  const puedeComandar = esAdmin || comandasAutorizadasPara(empleado?.tienda_id);
+  const [escaneandoComandas, setEscaneandoComandas] = useState(false);
+
+  const onEscaneoComandas = (payload: QRPayloadTienda) => {
+    const tiendaEsperada = empleado?.tienda_id || 'tienda_principal';
+    if (payload.tienda_id !== tiendaEsperada) {
+      toast.error('Ese QR no es de tu sucursal asignada', {
+        description: 'Pide a un administrador que revise a qué sucursal estás vinculado en Personal.',
+      });
+      setEscaneandoComandas(false);
+      return;
+    }
+    autorizarComandas(payload.tienda_id, payload.tienda_nombre);
+    setEscaneandoComandas(false);
+    toast.success('Comandas habilitadas', { description: `Ya puedes tomar pedidos para ${payload.tienda_nombre}.` });
+  };
 
   const [mesaAbierta, setMesaAbierta] = useState<PanaderiaMesa | null>(null);
   // 🍳 Comanda más reciente por mesa — para que el mesero vea sin preguntar
@@ -241,6 +271,39 @@ export default function PanaderiaPage() {
   const mesasOcupadas = mesas.filter((m) => (cuentas[m.id]?.items?.length ?? 0) > 0).length;
   const ventaEnSalon = Object.values(cuentas).reduce((s, c) => s + (c.items?.length ? c.total : 0), 0);
 
+  // 🔒 Sin escanear el QR de su sucursal, un operativo no ve el salón ni
+  // puede tomar comandas — ni siquiera las mesas, para que quede claro que
+  // hace falta el escaneo antes de intentar nada.
+  if (!puedeComandar) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center px-8 text-center">
+        {escaneandoComandas ? (
+          <EscanerTiendaQR
+            clienteIdEsperado={empleado?.cliente_id || ''}
+            titulo="Escanear QR de tu sucursal"
+            subtitulo="Necesario para poder tomar pedidos"
+            onResultado={onEscaneoComandas}
+            onCerrar={() => setEscaneandoComandas(false)}
+          />
+        ) : (
+          <>
+            <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-4">
+              <QrCode className="w-7 h-7 text-amber-500" />
+            </div>
+            <h1 className="text-white text-lg font-black mb-1.5">Escanea el QR de tu sucursal</h1>
+            <p className="text-slate-400 text-sm max-w-xs mb-6">
+              Antes de tomar pedidos, escanea el código QR de tu sucursal (lo genera un administrador en Electron &gt; Multi-Tienda).
+              Nadie puede enviar comandas desde este celular hasta hacerlo.
+            </p>
+            <Button onClick={() => setEscaneandoComandas(true)} className="h-12 px-6 bg-gradient-to-r from-amber-500 to-orange-600">
+              <QrCode className="w-4 h-4 mr-2" /> Escanear QR
+            </Button>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
       {/* ── Encabezado ── */}
@@ -284,6 +347,18 @@ export default function PanaderiaPage() {
         {esAdmin && sucursalActiva && (
           <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-violet-400">
             <QrCode className="w-3.5 h-3.5" /> Viendo: {sucursalActiva.nombre} <span className="text-slate-500 font-normal">— cambia la sucursal desde el ícono arriba</span>
+          </p>
+        )}
+        {!esAdmin && autorizacion && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+            <QrCode className="w-3.5 h-3.5" /> Comandas habilitadas para {autorizacion.tiendaNombre}
+            <button
+              type="button"
+              onClick={() => { desconectarComandas(); toast.info('Comandas desconectadas — escanea de nuevo para tomar pedidos.'); }}
+              className="text-slate-500 font-normal underline"
+            >
+              desconectar
+            </button>
           </p>
         )}
         {!audioAvisosActivo && permisoAvisos !== 'granted' && (
