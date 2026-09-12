@@ -2369,6 +2369,31 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
         webPreferences: { nodeIntegration: false, contextIsolation: true },
       });
 
+      // 🛡️ FIX BUG CRÍTICO (mismo patrón que 'print-label'): si `did-finish-load`
+      // nunca se dispara (archivo temporal bloqueado por el antivirus, disco
+      // lento, etc.) esta ventana oculta se quedaba viva para siempre — nunca
+      // se llamaba a `refocusMainWindow()` y ningún input de ninguna ventana
+      // volvía a recibir teclado hasta reiniciar Electron por completo. Ahora
+      // un guard de 20s y un handler de `did-fail-load` garantizan que SIEMPRE
+      // se limpie y se recupere el foco, pase lo que pase.
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(guard);
+        try { if (!printWin.isDestroyed()) printWin.destroy(); } catch { /* no-op */ }
+        fsPromises.unlink(tmpPath).catch(() => {});
+        refocusMainWindow();
+        resolve(result);
+      };
+      const guard = setTimeout(() => {
+        finish({ ok: false, reason: 'timeout' });
+      }, 20000);
+
+      printWin.webContents.once('did-fail-load', (_e, _code, desc) => {
+        finish({ ok: false, reason: desc || 'did-fail-load' });
+      });
+
       printWin.loadFile(tmpPath);
 
       printWin.webContents.once('did-finish-load', () => {
@@ -2395,10 +2420,6 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
               pageSize: { width: anchoMicrones, height: altoMicrones },
             },
             async (success, failureReason) => {
-              printWin.destroy();
-              fsPromises.unlink(tmpPath).catch(() => {});
-              refocusMainWindow();
-
               // 🛡️ FIX: este canal (webContents.print sobre HTML — usado hoy por
               // Cierre de Caja) nunca envía un comando de corte de papel, porque
               // eso no existe en la API de impresión de Chromium: solo el canal
@@ -2421,16 +2442,14 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
                 }
               }
 
-              resolve({ ok: success, reason: failureReason || '' });
+              finish({ ok: success, reason: failureReason || '' });
             }
           );
         }, 350);
       });
 
       printWin.on('closed', () => {
-        fsPromises.unlink(tmpPath).catch(() => {});
-        refocusMainWindow();
-        resolve({ ok: false, reason: 'window-closed' });
+        finish({ ok: false, reason: 'window-closed' });
       });
     });
   } catch (err) {
