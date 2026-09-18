@@ -418,13 +418,19 @@ export const enviarFacturaPorWhatsApp = async (
     URL.revokeObjectURL(url);
     
     // Preparar mensaje para WhatsApp
-    const mensaje = `Hola! 👋\n\n` +
+    // 🛡️ FIX: los emoji (👋🧾📅💰💳🙏) llegaban como "�" al abrirse desde
+    // Electron -- shell.openExternal() entrega el enlace wa.me a la app de
+    // WhatsApp Desktop de Windows, que no decodifica bien los caracteres
+    // fuera del plano básico (BMP) aunque las tildes sí llegan bien. Sin una
+    // forma confiable de garantizar el emoji en ese destino, se usa texto
+    // plano con el formato nativo de WhatsApp (*negrita*, _cursiva_).
+    const mensaje = `¡Hola!\n\n` +
       `Te envío la factura de tu compra:\n\n` +
-      `🧾 *Factura:* ${venta.numeroFactura}\n` +
-      `📅 *Fecha:* ${format(new Date(venta.fecha), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}\n` +
-      `💰 *Total:* $${venta.total.toLocaleString('es-CO')}\n` +
-      `💳 *Método de pago:* ${venta.metodoPago.toUpperCase()}\n\n` +
-      `Gracias por tu compra! 🙏\n\n` +
+      `*Factura:* ${venta.numeroFactura}\n` +
+      `*Fecha:* ${format(new Date(venta.fecha), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}\n` +
+      `*Total:* $${venta.total.toLocaleString('es-CO')}\n` +
+      `*Método de pago:* ${venta.metodoPago.toUpperCase()}\n\n` +
+      `¡Gracias por tu compra!\n\n` +
       `_${config.nombreComercial || 'CODEC POS'}_`;
     
     // Limpiar número de teléfono (solo dígitos)
