@@ -375,10 +375,28 @@ class ExportadorReportes {
       }
     }
 
+    // ── Propinas por cajero ──
+    const propinasPorCajero: any[] = resumen.propinasPorCajero || [];
+    if (propinasPorCajero.length > 0) {
+      y = this.seccion(doc, '2. Propinas por Cajero', y, W);
+      autoTable(doc, {
+        startY: y,
+        head: [['Cajero', 'Ventas con Propina', 'Total Propina', '% del Total']],
+        body: propinasPorCajero.map((p: any) => [
+          p.cajero,
+          String(p.cantidadVentasConPropina || 0),
+          fmtCOP(p.totalPropina),
+          (resumen.totalPropinas || 0) > 0 ? `${((p.totalPropina / resumen.totalPropinas) * 100).toFixed(1)}%` : '0%',
+        ]),
+        ...this.tablaOpts({ columnStyles: { 1: { cellWidth: 34 }, 2: { cellWidth: 30 }, 3: { cellWidth: 26 } } }),
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+    }
+
     // ── Ventas por categoría ──
     const categorias: any[] = resumen.ventasPorCategoria || [];
     if (categorias.length > 0) {
-      y = this.seccion(doc, '2. Ventas por Categoria', y, W);
+      y = this.seccion(doc, '3. Ventas por Categoria', y, W);
       autoTable(doc, {
         startY: y,
         head: [['Categoria', 'Total', '% Participacion']],
@@ -394,7 +412,7 @@ class ExportadorReportes {
 
     // ── Top 10 productos ──
     if (resumen.topProductos && resumen.topProductos.length > 0) {
-      y = this.seccion(doc, '3. Top 10 Productos Mas Vendidos', y, W);
+      y = this.seccion(doc, '4. Top 10 Productos Mas Vendidos', y, W);
       autoTable(doc, {
         startY: y,
         head: [['#', 'Producto', 'Cantidad', 'Total', '%']],
@@ -412,7 +430,7 @@ class ExportadorReportes {
 
     // ── Detalle transacciones ──
     if (Array.isArray(ventas) && ventas.length > 0) {
-      y = this.seccion(doc, `4. Detalle de Transacciones (${ventas.length})`, y, W);
+      y = this.seccion(doc, `5. Detalle de Transacciones (${ventas.length})`, y, W);
       const rows = ventas.slice(0, 200).map((v: any) => {
         const d = new Date(v.fecha);
         return [
@@ -442,7 +460,7 @@ class ExportadorReportes {
       }
     }
 
-    y = this.pdfEgresosDetalle(doc, y, W, egresosDetalle || [], '5. Egresos del Periodo');
+    y = this.pdfEgresosDetalle(doc, y, W, egresosDetalle || [], '6. Egresos del Periodo');
 
     return y;
   }
@@ -705,6 +723,7 @@ class ExportadorReportes {
       { label: 'Cierres con Faltante',   valor: String(resumen.cierresConFaltante || 0) },
       { label: 'Cierres con Sobrante',   valor: String(resumen.cierresConSobrante || 0) },
       { label: 'Diferencias Acumuladas', valor: fmtCOP(Math.abs(resumen.diferenciasAcumuladas || 0)) },
+      ...((resumen.totalPropinas || 0) > 0 ? [{ label: 'Total Propinas', valor: fmtCOP(resumen.totalPropinas) }] : []),
       { label: 'Total Gastos',           valor: fmtCOP(resumen.totalGastos || 0) },
       { label: 'Neto de Caja',           valor: fmtCOP(resumen.netoCaja ?? totalVentas), bold: true },
     ], y, W,
@@ -1063,13 +1082,21 @@ class ExportadorReportes {
     this.xlsxCols(wsRV, [30, 20]);
     XLSX.utils.book_append_sheet(wb, wsRV, 'Resumen Ventas');
 
+    if (resumen.propinasPorCajero?.length > 0) {
+      this.xlsxHoja(wb, 'Propinas por Cajero',
+        ['Cajero', 'Ventas con Propina', 'Total Propina'],
+        resumen.propinasPorCajero.map((p: any) => [p.cajero, p.cantidadVentasConPropina || 0, p.totalPropina || 0]),
+        [28, 20, 18]
+      );
+    }
+
     if (ventas?.length > 0) {
       this.xlsxHoja(wb, 'Ventas',
-        ['Fecha', 'Total', 'Metodo Pago', 'Cajero', 'Items'],
+        ['Fecha', 'Total', 'Propina', 'Metodo Pago', 'Cajero', 'Items'],
         ventas.map((v: any) => [
-          new Date(v.fecha).toLocaleString('es-CO'), v.total, v.metodoPago, v.cajero || 'N/A', (v.items || []).length
+          new Date(v.fecha).toLocaleString('es-CO'), v.total, Number(v.propina) || 0, v.metodoPago, v.cajero || 'N/A', (v.items || []).length
         ]),
-        [22, 16, 18, 20, 10]
+        [22, 16, 14, 18, 20, 10]
       );
     }
 
@@ -1180,6 +1207,7 @@ class ExportadorReportes {
       ['Cajero',                 cajero?.nombre || 'Todos'],
       ['ID',                     cajero?.id || ''],
       ['Total Ventas',           resumen.totalVentas || 0],
+      ['Total Propinas',         resumen.totalPropinas || 0],
       ['Transacciones',          resumen.cantidadTransacciones || 0],
       ['Ticket Promedio',        resumen.ticketPromedio || 0],
       ['Total Cierres',          resumen.totalCierres || 0],
@@ -1477,6 +1505,12 @@ ${typeof resumen.totalDevoluciones === 'number' ? `<div class="row"><span>Devolu
 ${typeof resumen.totalVentasNetas === 'number' ? `<div class="row b"><span>Ventas Netas:</span><span>${f(resumen.totalVentasNetas)}</span></div>` : ''}
 <div class="row"><span>Transacciones:</span><span>${resumen.cantidadTransacciones || 0}</span></div>
 <div class="row"><span>Ticket Promedio:</span><span>${f(Math.round(resumen.ticketPromedio || 0))}</span></div>
+${Array.isArray(resumen.propinasPorCajero) && resumen.propinasPorCajero.length > 0 ? `
+<div class="hr"></div>
+<div class="sec">PROPINAS POR CAJERO</div>
+${resumen.propinasPorCajero.map((p: any) =>
+  `<div class="row"><span>${String(p.cajero).substring(0, 20)}:</span><span>${f(p.totalPropina)} (${p.cantidadVentasConPropina})</span></div>`
+).join('')}` : ''}
 <div class="hr"></div>
 <div class="sec">METODOS DE PAGO</div>
 ${Object.entries(resumen.ventasPorMetodo || {}).map(([m, t]) =>
@@ -1522,6 +1556,7 @@ ${egresosDetalle.map((g: any) => {
 <div class="row"><span>Total Ventas:</span><span>${f(resumen.totalVentas)}</span></div>
 <div class="row"><span>Transacciones:</span><span>${resumen.cantidadTransacciones || 0}</span></div>
 <div class="row"><span>Ticket Promedio:</span><span>${f(Math.round(resumen.ticketPromedio || 0))}</span></div>
+${(resumen.totalPropinas || 0) > 0 ? `<div class="row"><span>Total Propinas:</span><span>${f(resumen.totalPropinas)}</span></div>` : ''}
 <div class="row"><span>Total Cierres:</span><span>${resumen.totalCierres || 0}</span></div>
 <div class="row"><span>Diferencias:</span><span>${f(resumen.diferenciasAcumuladas || 0)}</span></div>
 <div class="row b"><span>Total Gastos:</span><span>${f(resumen.totalGastos || 0)}</span></div>

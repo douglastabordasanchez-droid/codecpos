@@ -191,6 +191,7 @@ class ReportesService {
     const topProductos = this.calcularTopProductos(ventas);
     const topVentasHibrido = this.calcularTopVentasHibrido(ventas);
     const ventasPorCategoria = this.agruparVentasPorCategoria(ventas);
+    const propinasPorCajero = this.agruparPropinasPorCajero(ventas);
 
     const datos = {
       ventas,
@@ -198,6 +199,7 @@ class ReportesService {
       resumen: {
         totalVentas,
         totalPropinas,
+        propinasPorCajero,
         totalRecaudado,
         totalDevoluciones,
         totalVentasNetas,
@@ -386,6 +388,7 @@ class ReportesService {
     const egresosDetalle = todosGastos;
 
     const totalVentas = ventas.reduce((sum, v) => sum + v.total, 0);
+    const totalPropinas = ventas.reduce((sum, v) => sum + Math.max(0, Number(v.propina) || 0), 0);
     const ventasPorMetodo = this.agruparPorMetodoPago(ventas);
     const ventasPorDia = this.agruparPorDia(ventas);
 
@@ -408,6 +411,7 @@ class ReportesService {
       egresosDetalle,
       resumen: {
         totalVentas,
+        totalPropinas,
         cantidadTransacciones: ventas.length,
         ticketPromedio: ventas.length > 0 ? totalVentas / ventas.length : 0,
         ventasPorMetodo,
@@ -603,6 +607,22 @@ class ReportesService {
       agrupado[p.categoria] = (agrupado[p.categoria] || 0) + 1;
     });
     return agrupado;
+  }
+
+  // 💵 Agrupa las propinas recaudadas por cada cajero (para el reporte de ventas)
+  private agruparPropinasPorCajero(ventas: Venta[]): Array<{ cajero: string; totalPropina: number; cantidadVentasConPropina: number }> {
+    const mapa: Record<string, { totalPropina: number; cantidadVentasConPropina: number }> = {};
+    ventas.forEach(v => {
+      const propina = Math.max(0, Number(v.propina) || 0);
+      if (propina <= 0) return;
+      const nombreCajero = v.cajero || 'Sin asignar';
+      if (!mapa[nombreCajero]) mapa[nombreCajero] = { totalPropina: 0, cantidadVentasConPropina: 0 };
+      mapa[nombreCajero].totalPropina += propina;
+      mapa[nombreCajero].cantidadVentasConPropina += 1;
+    });
+    return Object.entries(mapa)
+      .map(([cajero, data]) => ({ cajero, ...data }))
+      .sort((a, b) => b.totalPropina - a.totalPropina);
   }
 
   private agruparVentasPorCategoria(ventas: Venta[]): Array<{ categoria: string; total: number; cantidad: number }> {

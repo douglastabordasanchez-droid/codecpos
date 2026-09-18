@@ -109,11 +109,18 @@ function PreviewVentas({ datos }: { datos: any }) {
   const metodos = Object.entries(resumen?.ventasPorMetodo || {}).filter(([, v]) => Number(v) > 0);
   const totalNeto = resumen?.totalVentasNetas ?? resumen?.totalVentas ?? 0;
   const categorias: any[] = resumen?.ventasPorCategoria || [];
+  const propinasPorCajero: any[] = resumen?.propinasPorCajero || [];
 
   return (
     <>
       <Seccion title="RESUMEN GENERAL" />
       <Fila label="Total Ventas Brutas:" valor={fmtCOP(resumen?.totalVentas || 0)} />
+      {(resumen?.totalPropinas || 0) > 0 && (
+        <>
+          <Fila label="Total Propinas:" valor={fmtCOP(resumen.totalPropinas)} />
+          <Fila label="Total Recaudado (con propinas):" valor={fmtCOP(resumen?.totalRecaudado || 0)} bold />
+        </>
+      )}
       {(resumen?.totalDevoluciones || 0) > 0 && (
         <Fila label="(-) Devoluciones:" valor={`-${fmtCOP(resumen.totalDevoluciones)}`} />
       )}
@@ -122,6 +129,25 @@ function PreviewVentas({ datos }: { datos: any }) {
       <Fila label="Ticket Promedio:" valor={fmtCOP(resumen?.ticketPromedio || 0)} />
       {(devoluciones?.length || 0) > 0 && (
         <Fila label="Devoluciones (cant.):" valor={String(devoluciones.length)} small />
+      )}
+
+      {propinasPorCajero.length > 0 && (
+        <>
+          <Sep />
+          <Seccion title="PROPINAS POR CAJERO" />
+          {propinasPorCajero.map((p: any) => (
+            <div key={p.cajero}>
+              <Fila
+                label={String(p.cajero).substring(0, 22)}
+                valor={`${fmtCOP(p.totalPropina)} (${p.cantidadVentasConPropina})`}
+              />
+              <MiniBar
+                pctNum={(resumen?.totalPropinas || 0) > 0 ? (p.totalPropina / resumen.totalPropinas) * 100 : 0}
+                color="#d97706"
+              />
+            </div>
+          ))}
+        </>
       )}
 
       {metodos.length > 0 && (
@@ -224,6 +250,9 @@ function PreviewCajero({ datos }: { datos: any }) {
       <Fila label="Total Ventas:" valor={fmtCOP(totalVentas)} bold />
       <Fila label="Transacciones:" valor={String(resumen?.cantidadTransacciones || 0)} />
       <Fila label="Ticket Promedio:" valor={fmtCOP(resumen?.ticketPromedio || 0)} />
+      {(resumen?.totalPropinas || 0) > 0 && (
+        <Fila label="Total Propinas:" valor={fmtCOP(resumen.totalPropinas)} />
+      )}
       <Fila label="Total Gastos:" valor={fmtCOP(resumen?.totalGastos || 0)} />
       <Fila label="Neto de Caja:" valor={fmtCOP(resumen?.netoCaja ?? totalVentas)} bold />
 
@@ -860,12 +889,27 @@ function RightPanelContent({ reporte, darkMode }: { reporte: ReporteGenerado; da
       const r = reporte.datos?.resumen || {};
       const totalNeto = r.totalVentasNetas ?? r.totalVentas ?? 0;
       const metodos = Object.entries(r.ventasPorMetodo || {}).filter(([, v]) => Number(v) > 0);
+      const propinasPorCajero: any[] = r.propinasPorCajero || [];
       return (
         <>
           <KpiCard label="VENTAS NETAS" value={fmtCOP(totalNeto)} sub={`${r.cantidadTransacciones || 0} transacciones`} color="emerald" darkMode={darkMode} />
           <KpiCard label="TICKET PROMEDIO" value={fmtCOP(r.ticketPromedio || 0)} color="blue" darkMode={darkMode} />
           {(r.totalDevoluciones || 0) > 0 && (
             <KpiCard label="DEVOLUCIONES" value={fmtCOP(r.totalDevoluciones)} sub={`Bruto: ${fmtCOP(r.totalVentas)}`} color="red" darkMode={darkMode} />
+          )}
+          {(r.totalPropinas || 0) > 0 && (
+            <KpiCard label="TOTAL PROPINAS" value={fmtCOP(r.totalPropinas)} sub="Recaudado en el período" color="amber" darkMode={darkMode} />
+          )}
+          {propinasPorCajero.length > 0 && (
+            <div className={`p-3 rounded-xl border ${darkMode ? 'border-slate-700' : 'border-gray-200'} ${card}`}>
+              <p className={`text-xs font-semibold mb-2 ${sub}`}>PROPINAS POR CAJERO</p>
+              {propinasPorCajero.map((p: any) => (
+                <div key={p.cajero} className="flex justify-between items-center mb-1">
+                  <span className={`text-xs truncate flex-1 ${sub}`}>{p.cajero}</span>
+                  <span className={`text-xs font-bold ml-2 ${txt}`}>{fmtCOP(p.totalPropina)}</span>
+                </div>
+              ))}
+            </div>
           )}
           {metodos.length > 0 && (
             <div className={`p-3 rounded-xl border ${darkMode ? 'border-slate-700' : 'border-gray-200'} ${card}`}>
@@ -910,6 +954,9 @@ function RightPanelContent({ reporte, darkMode }: { reporte: ReporteGenerado; da
           </div>
           <KpiCard label="TOTAL VENTAS" value={fmtCOP(r.totalVentas || 0)} sub={`${r.cantidadTransacciones || 0} transacciones`} color="cyan" darkMode={darkMode} />
           <KpiCard label="TICKET PROMEDIO" value={fmtCOP(r.ticketPromedio || 0)} color="blue" darkMode={darkMode} />
+          {(r.totalPropinas || 0) > 0 && (
+            <KpiCard label="TOTAL PROPINAS" value={fmtCOP(r.totalPropinas)} sub="Recaudado por este cajero" color="amber" darkMode={darkMode} />
+          )}
           <KpiCard label="CIERRES REALIZADOS" value={String(r.totalCierres || 0)} sub={`Faltantes: ${r.cierresConFaltante || 0}`} color="purple" darkMode={darkMode} />
           {confiabilidad !== null && (
             <div className={`p-3 rounded-xl border ${darkMode ? 'border-slate-700' : 'border-gray-200'} ${card}`}>
