@@ -45,6 +45,7 @@ const PanaderiaOncesPage = lazy(() => import('./components/pos/PanaderiaOncesPag
 const VeterinariaPage = lazy(() => import('./components/pos/VeterinariaPage'));
 const MonitoreoTerminalesPage = lazy(() => import('./components/monitoreo/MonitoreoTerminalesPage'));
 const FacturacionElectronicaPage = lazy(() => import('./pages/FacturacionElectronicaPage'));
+const PlanVencidoPage = lazy(() => import('./components/pos/PlanVencidoPage'));
 
 function LoadingFallback() {
   return (
@@ -138,13 +139,27 @@ export const router = createHashRouter([
           </Suspense>
         )
       },
-      { 
-        path: 'productos', 
+      {
+        // 🛡️ FIX: POSLayoutSidebar redirige aquí a la fuerza cuando la
+        // licencia está EXPIRADA/VENCIDA. Antes esta ruta no existía, así
+        // que el catch-all ('*' -> /pos) rebotaba de vuelta a /pos, cuyo
+        // useEffect volvía a redirigir a /planes -- un loop infinito de
+        // navegación que remontaba el layout una y otra vez (la causa real
+        // del "parpadeo" reportado por un cliente con la licencia vencida).
+        path: 'planes',
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <PlanVencidoPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'productos',
         element: (
           <Suspense fallback={<LoadingFallback />}>
             <ProductosPage />
           </Suspense>
-        ) 
+        )
       },
       { 
         path: 'ventas', 

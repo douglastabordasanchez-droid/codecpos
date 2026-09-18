@@ -7,6 +7,7 @@ import { AutoUpdateListener } from './AutoUpdateListener';
 import { useRegistrarInstalacion } from '../../hooks/useRegistrarInstalacion';
 import { useDeveloperShortcut } from '../../hooks/useDeveloperShortcut';
 import { useSyncModulosNube } from '../../hooks/useSyncModulosNube';
+import { useAvisoLicencia } from '../../hooks/useAvisoLicencia';
 import { LanProvider } from '../../contexts/LanContext';
 import { precargarModulosEnSegundoPlano } from '../../lib/prefetchModulos';
 
@@ -16,6 +17,19 @@ import { precargarModulosEnSegundoPlano } from '../../lib/prefetchModulos';
 export default function ProtectedLayout() {
   const navigate = useNavigate();
   const { estaAutenticado } = useAuth();
+
+  // 🔍 DIAGNÓSTICO TEMPORAL — flicker "Productos en Carrito" (reporte Papotas
+  // 2026-09-16): instrumentación para detectar qué provoca que el contenido
+  // principal desaparezca ~1s mientras el sidebar sigue visible. Quitar una
+  // vez identificada la causa real.
+  useEffect(() => {
+    console.log('[MOUNT] ProtectedLayout', performance.now());
+    return () => console.log('[UNMOUNT] ProtectedLayout', performance.now());
+  }, []);
+
+  useEffect(() => {
+    console.log('[AUTH CHANGE] ProtectedLayout estaAutenticado =', estaAutenticado, performance.now());
+  }, [estaAutenticado]);
 
   // ⚡ ATAJO DE TECLADO: Ctrl+Shift+D para Panel de Desarrollador
   useDeveloperShortcut();
@@ -28,6 +42,11 @@ export default function ProtectedLayout() {
   // 📡 Registra esta instalación (machine_id + versión) contra su propia
   // licencia -- Fase 5 ampliada, punto 34. No bloquea nada si falla.
   useRegistrarInstalacion();
+
+  // 💳 Avisa cuando la licencia (prueba o plan pagado) está por vencer, para
+  // que el dueño renueve antes de quedar bloqueado -- mismo aviso que ya
+  // recibe la PWA.
+  useAvisoLicencia();
 
   // Redirigir si no está autenticado
   useEffect(() => {

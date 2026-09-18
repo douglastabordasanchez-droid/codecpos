@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useEffect } from 'react';
-import { Outlet, Navigate } from 'react-router';
+import { Outlet, Navigate, useNavigate } from 'react-router';
 import { Loader2, CloudOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
@@ -22,6 +22,7 @@ export function PwaLayout() {
   const { appHabilitada } = useModulosActivos();
   const esEscritorio = useIsDesktop();
   const [navInferiorVisible, setNavInferiorVisible] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!empleado) return;
@@ -37,7 +38,11 @@ export function PwaLayout() {
         .limit(1);
       const aviso = data?.[0];
       if (!aviso) return;
-      toast.warning('Tu prueba vence pronto', { description: 'Faltan 2 días para renovar Codec POS.' });
+      toast.warning('Tu licencia está por vencer', {
+        description: 'Renueva tu plan de Codec POS pronto para no perder el acceso.',
+        duration: 20000,
+        action: { label: 'Pagar ahora', onClick: () => navigate('/planes') },
+      });
       await client.from('avisos_licencia').update({ enviado_en: new Date().toISOString() }).eq('id', aviso.id);
     };
     avisar();

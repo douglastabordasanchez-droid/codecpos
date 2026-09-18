@@ -11,6 +11,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { abrirEnlaceExterno } from './externalLink';
 
 interface ConfigEmpresa {
   nombreComercial: string;
@@ -375,27 +376,6 @@ export const descargarReporteVentasPDF = async (
   link.click();
   URL.revokeObjectURL(url);
 };
-
-/**
- * Abre una URL externa (wa.me, mailto:) de la forma correcta según el
- * contexto: en Electron, `window.open`/`location.href` no garantizan que el
- * navegador o el cliente de correo del sistema se abran (la ventana principal
- * intercepta navegaciones); `window.electron.openExternal` usa
- * `shell.openExternal` de Electron, que sí funciona siempre. Fuera de
- * Electron (navegador normal) se usa el mecanismo web estándar.
- */
-function abrirEnlaceExterno(url: string): void {
-  const electronBridge = (window as any).electron;
-  if (electronBridge?.openExternal) {
-    electronBridge.openExternal(url);
-    return;
-  }
-  if (url.startsWith('mailto:')) {
-    window.location.href = url;
-  } else {
-    window.open(url, '_blank');
-  }
-}
 
 /**
  * 📱 Enviar factura por WhatsApp
