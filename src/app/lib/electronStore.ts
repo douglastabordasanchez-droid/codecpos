@@ -584,7 +584,35 @@ class ElectronStoreService {
   }
 
   async obtenerVentas(): Promise<Venta[]> {
-    return (await dbManager.getAllVentas()) as unknown as Venta[];
+    // 🛡️ Antes de leer, intenta reparar cualquier venta varada en
+    // localStorage (ver flushVentasPendientes) -- así una venta que no pudo
+    // escribirse en IndexedDB en el momento del cobro no queda invisible
+    // para siempre en Ventas/Reportes/Cierres solo porque nadie volvió a
+    // vender después (el único disparador anterior era la SIGUIENTE venta).
+    await this.flushVentasPendientes().catch(() => {});
+    const ventas = (await dbManager.getAllVentas()) as unknown as Venta[];
+    return this.combinarConVentasVaradas(ventas);
+  }
+
+  /** Ventas que se cobraron pero IndexedDB rechazó guardar (ver catch de
+   *  registrarVenta) y que el intento de reparación más reciente tampoco
+   *  pudo escribir. Nunca deben faltar en una pantalla de ventas solo porque
+   *  el escritor todavía no las pudo persistir -- se marcan 'pending' para
+   *  que quede claro que siguen esperando a guardarse de forma definitiva. */
+  private leerVentasVaradas(): Venta[] {
+    try {
+      const raw = JSON.parse(localStorage.getItem('pos-ventas-pendientes') || '[]');
+      return Array.isArray(raw) ? raw.map((v: any) => ({ ...v, syncStatus: 'pending' as const })) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private combinarConVentasVaradas(ventas: Venta[]): Venta[] {
+    const varadas = this.leerVentasVaradas();
+    if (varadas.length === 0) return ventas;
+    const idsExistentes = new Set(ventas.map((v) => v.id));
+    return [...ventas, ...varadas.filter((v) => !idsExistentes.has(v.id))];
   }
 
   async getUltimoNumeroVenta(): Promise<number> {
@@ -1785,7 +1813,7 @@ class ElectronStoreService {
   }
 
   async obtenerTodasLasVentas(): Promise<Venta[]> {
-    return (await dbManager.getAllVentas()) as unknown as Venta[];
+    return this.obtenerVentas();
   }
 
   // 🚀 FIX rendimiento: antes traía TODA la tabla de ventas (getAllVentas,
@@ -1794,8 +1822,19 @@ class ElectronStoreService {
   // Dashboard y Reportes. Ya existía el índice 'fecha' en IndexedDB sin usar
   // (ver dbManager.getVentasByDateRange) — ahora se usa ese índice con
   // IDBKeyRange, que resuelve el mismo rango sin leer las ventas fuera de él.
+  //
+  // 🛡️ Mismo blindaje que obtenerVentas(): repara ventas varadas antes de
+  // leer y las incluye si siguen sin poder escribirse -- un reporte o un
+  // cierre de caja tampoco pueden "no ver" una venta que sí se cobró.
   async obtenerVentasPorRango(inicio: Date, fin: Date): Promise<Venta[]> {
-    return (await dbManager.getVentasByDateRange(inicio.toISOString(), fin.toISOString())) as unknown as Venta[];
+    await this.flushVentasPendientes().catch(() => {});
+    const ventas = (await dbManager.getVentasByDateRange(inicio.toISOString(), fin.toISOString())) as unknown as Venta[];
+    const inicioTs = inicio.getTime();
+    const finTs = fin.getTime();
+    return this.combinarConVentasVaradas(ventas).filter((v) => {
+      const ts = new Date(v.fecha).getTime();
+      return ts >= inicioTs && ts <= finTs;
+    });
   }
 
   async guardarArqueoCaja(arqueo: any): Promise<void> {

@@ -68,7 +68,14 @@ export default function VentasPage() {
   const [paginaActual, setPaginaActual] = useState(1);
 
   // 🔄 Cargar ventas desde ElectronStore
-  const cargarVentas = async () => {
+  // 🛡️ FIX: un solo intento fallido (p. ej. IndexedDB todavía inicializando
+  // en frío) dejaba la pantalla en "0 ventas" con un toast que desaparece
+  // solo -- el cajero se quedaba viendo el historial vacío sin ningún
+  // indicio de que podía reintentar. Ahora reintenta un par de veces con una
+  // pausa corta antes de rendirse (electronStore.obtenerVentas() ya se
+  // autorepara del lado de IndexedDB; esto cubre el margen de una carrera de
+  // arranque) y deja un botón real para reintentar a mano.
+  const cargarVentas = async (intento = 0) => {
     try {
       setLoading(true);
       const ventasData = await electronStore.obtenerVentas();
@@ -91,7 +98,14 @@ export default function VentasPage() {
       setVentas(ventasNormalizadas);
     } catch (error) {
       console.error('❌ Error cargando ventas:', error);
-      toast.error('Error al cargar las ventas');
+      if (intento < 2) {
+        setTimeout(() => cargarVentas(intento + 1), 1000);
+        return;
+      }
+      toast.error('Error al cargar las ventas', {
+        description: 'Tus ventas no se perdieron -- reintenta o cierra y abre la app de nuevo.',
+        action: { label: 'Reintentar', onClick: () => cargarVentas(0) },
+      });
     } finally {
       setLoading(false);
     }
@@ -459,7 +473,7 @@ export default function VentasPage() {
           </p>
         </div>
         <Button
-          onClick={cargarVentas}
+          onClick={() => cargarVentas()}
           className={`${
             darkMode
               ? 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700'

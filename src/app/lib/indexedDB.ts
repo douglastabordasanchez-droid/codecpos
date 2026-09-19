@@ -569,7 +569,20 @@ class IndexedDBManager {
 
   async ensureDB(): Promise<IDBDatabase> {
     if (this.initPromise) {
-      await this.initPromise;
+      try {
+        await this.initPromise;
+      } catch (error) {
+        // 🛡️ FIX: si abrir la base falló una vez (p. ej. un error transitorio
+        // de IndexedDB al iniciar Electron), `initPromise` quedaba rechazada
+        // PARA SIEMPRE -- toda pantalla que dependiera de ventas/productos
+        // (Ventas, Cierre de Caja, Reportes) repetía el mismo error sin
+        // parar hasta que alguien reiniciara la app entera a mano. Un solo
+        // intento fallido no puede dejar el sistema muerto: se reintenta
+        // abrir la base una vez más antes de darse por vencido.
+        console.error('❌ Error abriendo IndexedDB, reintentando una vez:', error);
+        this.initPromise = this.init(this.currentDbName);
+        await this.initPromise;
+      }
     }
     if (!this.db) {
       throw new Error('Database not initialized');
