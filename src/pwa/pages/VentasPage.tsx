@@ -39,6 +39,7 @@ export default function VentasPage() {
   const [ventas, setVentas] = useState<VentaFila[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [compartiendoId, setCompartiendoId] = useState<string | null>(null);
   const [viendoId, setViendoId] = useState<string | null>(null);
 
@@ -47,6 +48,7 @@ export default function VentasPage() {
     const client = getSupabaseClient();
     if (!client) return;
     setCargando(true);
+    setErrorCarga(null);
     let query = client
       .from('ventas')
       .select('id, numero, total, metodo_pago, cajero_nombre, created_at')
@@ -60,7 +62,14 @@ export default function VentasPage() {
     query
       .order('created_at', { ascending: false })
       .limit(100)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[ventas] Error cargando ventas:', error);
+          setVentas([]);
+          setErrorCarga('No se pudieron cargar las ventas. Cierra sesión y vuelve a entrar.');
+          setCargando(false);
+          return;
+        }
         setVentas((data as VentaFila[]) || []);
         setCargando(false);
       });
@@ -127,7 +136,8 @@ export default function VentasPage() {
 
       <div className="px-5 space-y-2">
         {cargando && <p className="text-slate-500 text-sm text-center py-8">Cargando...</p>}
-        {!cargando && filtradas.length === 0 && (
+        {!cargando && errorCarga && <p className="text-red-400 text-sm text-center py-8">{errorCarga}</p>}
+        {!cargando && !errorCarga && filtradas.length === 0 && (
           <p className="text-slate-500 text-sm text-center py-8">Sin ventas registradas</p>
         )}
         {filtradas.map((v, i) => (

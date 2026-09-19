@@ -35,6 +35,7 @@ export interface Venta {
   cliente?: string;
   sincronizado: boolean;
   puntoVentaId: string;
+  tiendaId?: string | null;
   createdAt: number;
   syncStatus: 'pending' | 'synced';
   costoTotal?: number; // Costo total de la venta (para calcular utilidad)
