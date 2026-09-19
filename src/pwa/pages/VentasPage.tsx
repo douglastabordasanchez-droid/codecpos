@@ -57,7 +57,7 @@ export default function VentasPage() {
     if (tiendaEfectiva !== undefined) {
       query = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal')
         ? query.is('tienda_id', null)
-        : query.eq('tienda_id', tiendaEfectiva);
+        : query.or(`tienda_id.eq.${tiendaEfectiva},tienda_id.is.null`);
     }
     query
       .order('created_at', { ascending: false })

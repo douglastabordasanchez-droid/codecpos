@@ -1146,7 +1146,7 @@ class SyncService {
             metodo_pago: v.metodoPago,
             metodos_multiples: v.metodosMultiples || null,
             estado: 'completada',
-            tienda_id: v.tiendaId || null,
+            tienda_id: v.tiendaId || (localStorage.getItem('multitienda_activa_id') || null),
             created_at: new Date(v.createdAt).toISOString(),
           },
           { onConflict: 'cliente_id,local_id' }
