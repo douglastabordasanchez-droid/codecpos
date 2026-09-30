@@ -289,6 +289,19 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [showCarritosRecientes, setShowCarritosRecientes] = useState(false);
   const [carritosRecientes, setCarritosRecientes] = useState<CarritoReciente[]>([]);
   const carritoAnteriorRef = useRef<ItemCarrito[]>([]);
+
+  // 🔍 DIAGNÓSTICO TEMPORAL — flicker "Productos en Carrito" (reporte Papotas
+  // 2026-09-16): esta pantalla es justo la reportada como la que desaparece.
+  // Instrumentación para ver si el componente se desmonta de verdad o solo
+  // queda vacío por un cambio de estado. Quitar una vez identificada la causa.
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  console.log('[RENDER] POSPageNew #' + renderCountRef.current, performance.now());
+  useEffect(() => {
+    console.log('[MOUNT] POSPageNew', performance.now());
+    return () => console.log('[UNMOUNT] POSPageNew', performance.now());
+  }, []);
+
   // 🛒 Apenas el carrito pasa de tener productos a quedar vacío (por la razón
   // que sea), se guarda una foto en el historial de recuperación.
   useEffect(() => {
@@ -940,6 +953,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   }, [showProductoManualModal]);
 
   const loadProductos = async () => {
+    console.log('[LOADING] loadProductos START', performance.now());
     try {
       setLoading(true);
 
@@ -1044,6 +1058,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       toast.error('Error al cargar productos.');
     } finally {
       setLoading(false);
+      console.log('[LOADING] loadProductos END', performance.now());
     }
   };
 

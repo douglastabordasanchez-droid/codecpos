@@ -21,6 +21,7 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { promises as fsPromises } from 'fs';
 import { deviceManager } from './hardware/deviceManager.js';
+import { SerialPort } from 'serialport';
 import { lanServer } from './lan/lanServer.js';
 import { lanClient } from './lan/lanClient.js';
 import * as backupManager from './backupManager.js';
@@ -767,6 +768,141 @@ async function sendRawEscPosToWindowsSpool(printerName, rawBuffer) {
   }
 }
 
+// ── Impresoras por puerto COM (Bluetooth / USB-serial) ────────────────────────
+// 🖨️ Las impresoras pequeñas Bluetooth y las USB con chip serial (CH340,
+// PL2303…) no aparecen como impresora de Windows sino como un puerto COM.
+// Antes se podían elegir en Dispositivos pero al imprimir el nombre no
+// coincidía con ninguna impresora del sistema y el ticket se iba a la
+// predeterminada (o a ninguna). Ahora, si la impresora configurada es un
+// puerto COM, los bytes ESC/POS se escriben directo en ese puerto.
+function esPuertoSerialImpresora(nombre) {
+  return /^COM\d+$/i.test(String(nombre || '').trim());
+}
+
+async function sendRawToSerialPort(portPath, rawBuffer, baudRate = 9600) {
+  const port = new SerialPort({ path: String(portPath).trim().toUpperCase(), baudRate, autoOpen: false });
+  await new Promise((resolve, reject) => port.open((err) => (err ? reject(err) : resolve())));
+  try {
+    await new Promise((resolve, reject) => port.write(rawBuffer, (err) => (err ? reject(err) : resolve())));
+    await new Promise((resolve, reject) => port.drain((err) => (err ? reject(err) : resolve())));
+  } finally {
+    await new Promise((resolve) => port.close(() => resolve()));
+  }
+}
+
+/**
+ * Envía bytes ESC/POS a la impresora elegida, sea impresora de Windows
+ * (spool RAW) o puerto COM. Lanza un error con code PRINTER_NOT_AVAILABLE si
+ * no hay a dónde imprimir.
+ */
+async function enviarRawAImpresora(printerName, rawBuffer) {
+  if (esPuertoSerialImpresora(printerName)) {
+    await sendRawToSerialPort(printerName, rawBuffer);
+    return { printer: String(printerName).toUpperCase(), reason: 'serial-port' };
+  }
+  const resolved = await resolvePrinterTargetByPreference(printerName || undefined);
+  if (!resolved?.found || !resolved.deviceName) {
+    const error = new Error('La impresora predeterminada no está conectada. Por favor, verifícala en el área de Dispositivos');
+    error.code = 'PRINTER_NOT_AVAILABLE';
+    throw error;
+  }
+  await sendRawEscPosToWindowsSpool(resolved.deviceName, rawBuffer);
+  return { printer: resolved.deviceName, reason: resolved.reason };
+}
+
+// ── Impresoras USB conectadas que Windows no instaló ─────────────────────────
+// 🖨️ Muchas térmicas pequeñas (58mm) se venden sin CD de driver: al
+// conectarlas Windows carga "USB Printing Support" y crea un puerto USB00x,
+// pero NO crea la impresora, así que no aparece en la lista de impresoras
+// del sistema ni en Dispositivos. Se detectan leyendo las interfaces de
+// impresora USB activas (GUID_DEVINTERFACE_USBPRINT) y se pueden instalar con
+// el driver "Generic / Text Only" que trae Windows: como el sistema imprime en
+// RAW (ESC/POS o imagen), ese driver basta para cualquier térmica.
+const PS_USB_PRINTERS_SIN_INSTALAR = String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+$usados = @(Get-Printer | ForEach-Object { $_.PortName })
+$base = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceClasses\{28d78fad-5a12-11d1-ae5b-0000f803a8c2}'
+$out = @()
+foreach ($k in (Get-ChildItem -LiteralPath $base)) {
+  $inst = Join-Path $k.PSPath '#'
+  $linked = (Get-ItemProperty -LiteralPath (Join-Path $inst 'Control')).Linked
+  $pp = Get-ItemProperty -LiteralPath (Join-Path $inst 'Device Parameters')
+  if ($null -eq $pp.'Port Number') { continue }
+  $port = 'USB{0:D3}' -f [int]$pp.'Port Number'
+  $vidpid = ''
+  if ($k.PSChildName -match 'VID_([0-9A-Fa-f]{4})&PID_([0-9A-Fa-f]{4})') { $vidpid = ($Matches[1] + ':' + $Matches[2]).ToLower() }
+  $out += [pscustomobject]@{
+    puerto = $port
+    presente = ($linked -eq 1)
+    enUso = ($usados -contains $port)
+    descripcion = [string]$pp.'Port Description'
+    vidpid = $vidpid
+  }
+}
+ConvertTo-Json -Compress -InputObject @($out)
+`;
+
+function runPowerShellScript(script, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const encoded = Buffer.from(script, 'utf16le').toString('base64');
+    exec(
+      `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encoded}`,
+      { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) { error.stderr = stderr; reject(error); return; }
+        resolve(String(stdout || '').trim());
+      }
+    );
+  });
+}
+
+async function listarImpresorasUsbSinInstalar() {
+  if (process.platform !== 'win32') return [];
+  const raw = await runPowerShellScript(PS_USB_PRINTERS_SIN_INSTALAR);
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  const lista = Array.isArray(parsed) ? parsed : [parsed];
+  // Solo las conectadas ahora y sin impresora de Windows asociada.
+  return lista.filter((p) => p && p.presente && !p.enUso);
+}
+
+async function instalarImpresoraUsbGenerica(puerto, nombreSugerido) {
+  if (process.platform !== 'win32') throw new Error('Solo disponible en Windows');
+  const port = String(puerto || '').trim().toUpperCase();
+  if (!/^USB\d{3}$/.test(port)) throw new Error('Puerto USB inválido');
+  const base = String(nombreSugerido || '').replace(/[\\,!"'`$]/g, ' ').replace(/\s+/g, ' ').trim() || 'Impresora POS';
+  const nombre = `${base} (${port})`;
+  const nombrePs = nombre.replace(/'/g, "''");
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$drv = 'Generic / Text Only'",
+    'if (-not (Get-PrinterDriver -Name $drv -ErrorAction SilentlyContinue)) { Add-PrinterDriver -Name $drv }',
+    `if (-not (Get-Printer -Name '${nombrePs}' -ErrorAction SilentlyContinue)) { Add-Printer -Name '${nombrePs}' -DriverName $drv -PortName '${port}' }`,
+  ].join('\r\n');
+
+  try {
+    await runPowerShellScript(script, 60000);
+  } catch {
+    // Agregar impresoras suele requerir permisos de administrador: se repite
+    // el mismo script elevado (Windows muestra el aviso de UAC una vez).
+    const tmp = path.join(app.getPath('temp'), `codecpos-instalar-impresora-${Date.now()}.ps1`);
+    await fsPromises.writeFile(tmp, '﻿' + script, 'utf8');
+    try {
+      const tmpPs = tmp.replace(/'/g, "''");
+      await runPowerShellScript(
+        `Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','"${tmpPs}"'`,
+        120000
+      );
+    } finally {
+      fsPromises.unlink(tmp).catch(() => {});
+    }
+  }
+
+  const verificado = await runPowerShellScript(`if (Get-Printer -Name '${nombrePs}' -ErrorAction SilentlyContinue) { 'OK' }`);
+  if (verificado !== 'OK') throw new Error('Windows no permitió instalar la impresora (¿se canceló el permiso de administrador?)');
+  return nombre;
+}
+
 // ── Splash Screen Premium ─────────────────────────────────────────────────────
 function createSplash() {
   splashWindow = new BrowserWindow({
@@ -1063,6 +1199,22 @@ function createWindow() {
     });
     mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
       if (level >= 2) console.log(`🖥️ [renderer:${level}] ${message} (${sourceId}:${line})`);
+
+      // 🔍 DIAGNÓSTICO TEMPORAL — flicker "Productos en Carrito" (reporte
+      // Papotas 2026-09-16): la app empaquetada no tiene DevTools accesible
+      // (Menu.setApplicationMenu(null) quita el atajo por defecto), así que
+      // un console.log común del renderer nunca lo ve nadie. Estos tags
+      // puntuales SÍ se vuelcan al log físico en disco (fileLogger, el mismo
+      // que ya usa el resto del sistema) sin importar el nivel, para poder
+      // pedirle el archivo al cliente y ver la secuencia real de eventos.
+      // [RENDER] queda fuera a propósito: se dispara en cada render (cada
+      // tecla escrita) y volcar eso a disco de forma síncrona sería el mismo
+      // tipo de costo que se está investigando. Sigue visible por DevTools
+      // si algún día se abren. Quitar junto con la instrumentación del
+      // renderer una vez resuelto.
+      if (/^\[(MOUNT|UNMOUNT|ROUTE CHANGE|AUTH CHANGE|CLIENT CHANGE|STORE CHANGE|SYNC|SYNC START|SYNC END|INDEXEDDB|SUPABASE|LOADING)\]/.test(message)) {
+        fileLogger.writeLog('INFO', `[diag-renderer] ${message}`, { line, sourceId });
+      }
     });
     // Si la app cargó y se mantuvo estable, el modo seguro de GPU (si estaba
     // activo por un crash previo) ya cumplió su propósito — se retira para
@@ -1595,19 +1747,6 @@ ipcMain.handle('printer:raw-escpos', async (_, payload) => {
       return { success: false, error: 'Raw ESC/POS spool solo está soportado en Windows' };
     }
 
-    const preferredPrinterName = payload?.printerName;
-    const resolved = await resolvePrinterTargetByPreference(preferredPrinterName);
-    const targetName = resolved.deviceName || PRINTER_TARGET_NAME;
-
-    if (!resolved.found) {
-      return {
-        success: false,
-        error: 'La impresora predeterminada no está conectada. Por favor, verifícala en el área de Dispositivos',
-        code: 'PRINTER_NOT_AVAILABLE',
-        printer: targetName,
-      };
-    }
-
     const rawBuffer = payload?.base64
       ? Buffer.from(payload.base64, 'base64')
       : Buffer.from(payload?.text || '', 'binary');
@@ -1616,19 +1755,19 @@ ipcMain.handle('printer:raw-escpos', async (_, payload) => {
       return { success: false, error: 'No se recibieron datos ESC/POS para imprimir' };
     }
 
-    await sendRawEscPosToWindowsSpool(targetName, rawBuffer);
+    const enviado = await enviarRawAImpresora(payload?.printerName, rawBuffer);
 
     return {
       success: true,
-      printer: targetName,
+      printer: enviado.printer,
       targetName: PRINTER_TARGET_NAME,
       fallbackPort: PRINTER_FALLBACK_PORT,
       bytes: rawBuffer.length,
-      resolution: resolved.reason,
+      resolution: enviado.reason,
     };
   } catch (error) {
-    console.error('❌ Error enviando ESC/POS RAW a Windows spool:', error);
-    return { success: false, error: error.message };
+    console.error('❌ Error enviando ESC/POS RAW a la impresora:', error);
+    return { success: false, error: error.message, code: error.code };
   }
 });
 
@@ -1639,35 +1778,43 @@ ipcMain.handle('printer:test', async (_, printerName) => {
       return { success: false, error: 'Prueba RAW ESC/POS solo soportada en Windows' };
     }
 
-    const escposTest = Buffer.from([
-      0x1B, 0x40,
-      0x1B, 0x61, 0x01,
-      0x50, 0x52, 0x55, 0x45, 0x42, 0x41, 0x20, 0x50, 0x4F, 0x53, 0x2D, 0x38, 0x30, 0x0A,
-      0x1B, 0x61, 0x00,
-      0x55, 0x53, 0x42, 0x30, 0x30, 0x38, 0x0A,
-      0x0A, 0x0A,
-      0x1D, 0x56, 0x41, 0x00,
+    const etiqueta = String(printerName || 'Impresora predeterminada').replace(/[^\x20-\x7E]/g, '?').slice(0, 40);
+    const escposTest = Buffer.concat([
+      Buffer.from([0x1B, 0x40, 0x1C, 0x2E, 0x1B, 0x61, 0x01]),
+      Buffer.from('PRUEBA DE IMPRESION\nCODEC POS\n', 'ascii'),
+      Buffer.from([0x1B, 0x61, 0x00]),
+      Buffer.from(`${etiqueta}\n\n\n`, 'ascii'),
+      Buffer.from([0x1D, 0x56, 0x41, 0x00]),
     ]);
 
-    const resolved = await resolvePrinterTargetByPreference(printerName);
-    const targetName = resolved.deviceName || PRINTER_TARGET_NAME;
-    if (!resolved.found) {
-      return {
-        success: false,
-        error: 'La impresora predeterminada no está conectada. Por favor, verifícala en el área de Dispositivos',
-        code: 'PRINTER_NOT_AVAILABLE',
-      };
-    }
-    await sendRawEscPosToWindowsSpool(targetName, escposTest);
+    const enviado = await enviarRawAImpresora(printerName, escposTest);
 
     return {
       success: true,
-      printer: targetName,
+      printer: enviado.printer,
       targetName: PRINTER_TARGET_NAME,
       fallbackPort: PRINTER_FALLBACK_PORT,
       bytes: escposTest.length,
-      resolution: resolved.reason,
+      resolution: enviado.reason,
     };
+  } catch (error) {
+    return { success: false, error: error.message, code: error.code };
+  }
+});
+
+ipcMain.handle('printer:usb-sin-instalar', async () => {
+  try {
+    return { success: true, impresoras: await listarImpresorasUsbSinInstalar() };
+  } catch (error) {
+    console.warn('⚠️ No se pudieron listar impresoras USB sin instalar:', error.message);
+    return { success: false, impresoras: [], error: error.message };
+  }
+});
+
+ipcMain.handle('printer:instalar-usb', async (_, { puerto, nombre } = {}) => {
+  try {
+    const nombreInstalado = await instalarImpresoraUsbGenerica(puerto, nombre);
+    return { success: true, printerName: nombreInstalado };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -2345,10 +2492,166 @@ ipcMain.handle('lan:get-tech-status', async (_, userId) => {
 // (document.documentElement.scrollHeight) y se arma un pageSize dinámico en
 // micrones, exactamente como ya se hacía en 'print-label' — el corte queda
 // justo donde termina el texto, sin importar el driver.
-ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, widthMm = 80 }) => {
+// ── Impresión de tirillas como imagen (raster ESC/POS) ───────────────────────
+// 🖨️ FIX TILDES/Ñ Y "NO SE VE IGUAL A LA VISTA PREVIA": imprimir el HTML con
+// webContents.print() deja que el driver de Windows decida cómo pintarlo. Los
+// drivers de las térmicas genéricas (POS-80, Xprinter y clones) reemplazan la
+// fuente por la fuente interna de la impresora y mandan el texto como bytes
+// Windows-1252; como esas impresoras arrancan en modo de caracteres chino
+// (GB18030), cada tilde/ñ se "come" la letra siguiente y sale un ideograma
+// ("INFORMACI靓 DEL TURNO", "Gonz醠ez"), además de cortar líneas largas.
+// Aquí se renderiza el MISMO HTML de la vista previa en una ventana oculta,
+// se captura como imagen, se pasa a blanco/negro y se envía como bitmap
+// (GS v 0) por el spool RAW: la impresora solo recibe puntos, así que el
+// ticket sale idéntico a la pantalla sin importar codepage, driver ni fuente.
+const RASTER_BAND_ROWS = 128; // filas por bloque GS v 0 (seguro para el buffer de clones baratos)
+const RASTER_UMBRAL_LUMINANCIA = 170; // < umbral = punto negro (conserva textos grises como #555/#888)
+
+function nativeImageToEscPosRaster(image, anchoDots) {
+  const size = image.getSize();
+  const img = size.width === anchoDots ? image : image.resize({ width: anchoDots, quality: 'best' });
+  const { width, height } = img.getSize();
+  const bgra = img.toBitmap();
+  const bytesPorFila = Math.ceil(width / 8);
+  const chunks = [];
+  let puntosNegros = 0;
+
+  for (let y0 = 0; y0 < height; y0 += RASTER_BAND_ROWS) {
+    const filas = Math.min(RASTER_BAND_ROWS, height - y0);
+    const band = Buffer.alloc(8 + bytesPorFila * filas);
+    band.set([0x1D, 0x76, 0x30, 0x00, bytesPorFila & 0xFF, (bytesPorFila >> 8) & 0xFF, filas & 0xFF, (filas >> 8) & 0xFF], 0);
+    for (let fy = 0; fy < filas; fy++) {
+      const y = y0 + fy;
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const alpha = bgra[i + 3] / 255;
+        // Transparente = papel blanco.
+        const lum = (0.114 * bgra[i] + 0.587 * bgra[i + 1] + 0.299 * bgra[i + 2]) * alpha + 255 * (1 - alpha);
+        if (lum < RASTER_UMBRAL_LUMINANCIA) {
+          band[8 + fy * bytesPorFila + (x >> 3)] |= 0x80 >> (x & 7);
+          puntosNegros++;
+        }
+      }
+    }
+    chunks.push(band);
+  }
+  return { buffer: Buffer.concat(chunks), puntosNegros };
+}
+
+async function renderHtmlToEscPosRaster(htmlPath, widthMm) {
+  const esAngosto = Number(widthMm) <= 58;
+  const anchoDots = esAngosto ? 384 : 576; // área imprimible a 203 dpi (48mm / 72mm)
+  const anchoLayoutCss = esAngosto ? 240 : 320; // ancho en que se diseña la tirilla (max-width 320px)
+  const zoom = anchoDots / anchoLayoutCss;
+  const altoVentana = 1000;
+
+  const win = new BrowserWindow({
+    show: false,
+    width: anchoDots,
+    height: altoVentana,
+    useContentSize: true,
+    paintWhenInitiallyHidden: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, backgroundThrottling: false },
+  });
+
+  try {
+    await new Promise((resolve, reject) => {
+      const guard = setTimeout(() => reject(new Error('timeout cargando tirilla')), 15000);
+      win.webContents.once('did-finish-load', () => { clearTimeout(guard); resolve(); });
+      win.webContents.once('did-fail-load', (_e, _code, desc) => { clearTimeout(guard); reject(new Error(desc || 'did-fail-load')); });
+      win.loadFile(htmlPath);
+    });
+
+    win.webContents.setZoomFactor(zoom);
+    // Sin barra de scroll (le robaría ancho al layout) y fondo blanco = papel.
+    await win.webContents.insertCSS(
+      'html,body{background:#fff !important;overflow-x:hidden !important;}' +
+      '::-webkit-scrollbar{width:0 !important;height:0 !important;display:none !important;}'
+    );
+    // Esperar imágenes (logo) y fuentes antes de medir/capturar.
+    await win.webContents.executeJavaScript(`
+      (async () => {
+        await Promise.all(Array.from(document.images).map((img) => img.complete ? null : new Promise((r) => { img.onload = img.onerror = r; })));
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
+        return true;
+      })()
+    `);
+    await new Promise((r) => setTimeout(r, 150));
+
+    const altoCss = await win.webContents.executeJavaScript(
+      'Math.ceil(Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))'
+    );
+    const altoTotalDip = Math.max(1, Math.ceil(Number(altoCss || 0) * zoom));
+    const [, altoViewportDip] = win.getContentSize();
+
+    // Se captura por tramos (scroll + capturePage): una ventana no puede ser
+    // más alta que la pantalla en Windows, y un ticket largo sí lo es.
+    const partes = [];
+    for (let yDip = 0; yDip < altoTotalDip; yDip += altoViewportDip) {
+      const scrollYCss = await win.webContents.executeJavaScript(
+        `window.scrollTo(0, ${yDip / zoom}); new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(window.scrollY))))`
+      );
+      const offsetReal = Math.round(Number(scrollYCss || 0) * zoom);
+      const recorteY = Math.max(0, yDip - offsetReal);
+      const alto = Math.min(altoViewportDip - recorteY, altoTotalDip - yDip);
+      if (alto <= 0) break;
+      const captura = await win.webContents.capturePage({ x: 0, y: recorteY, width: anchoDots, height: alto });
+      if (captura.isEmpty()) throw new Error('captura vacía');
+      partes.push(nativeImageToEscPosRaster(captura, anchoDots));
+    }
+
+    // Si la captura salió en blanco (GPU/ventana oculta sin pintar), no se
+    // imprime un rollo vacío: el llamador cae a la impresión HTML.
+    if (!partes.some((p) => p.puntosNegros > 0)) throw new Error('captura sin contenido');
+
+    return Buffer.concat(partes.map((p) => p.buffer));
+  } finally {
+    try { if (!win.isDestroyed()) win.destroy(); } catch { /* no-op */ }
+  }
+}
+
+async function printHtmlAsRaster(htmlPath, printerName, widthMm) {
+  const esSerial = esPuertoSerialImpresora(printerName);
+  if (process.platform !== 'win32' && !esSerial) return { ok: false, reason: 'raster-solo-windows' };
+  if (!esSerial) {
+    const resolved = await resolvePrinterTargetByPreference(printerName || undefined);
+    if (!resolved?.found || !resolved.deviceName) return { ok: false, reason: 'printer-not-found' };
+  }
+
+  const raster = await renderHtmlToEscPosRaster(htmlPath, widthMm);
+  if (!raster.length) return { ok: false, reason: 'raster-vacio' };
+
+  const ESC = 0x1B, GS = 0x1D;
+  const payload = Buffer.concat([
+    Buffer.from([ESC, 0x40, ESC, 0x61, 0x00]), // init + alinear a la izquierda (la imagen ya trae el ancho completo)
+    raster,
+    Buffer.from([ESC, 0x64, 4, GS, 0x56, 0x41, 0x00]), // avanzar + corte
+  ]);
+  const enviado = await enviarRawAImpresora(printerName, payload);
+  return { ok: true, reason: '', printer: enviado.printer, mode: 'raster' };
+}
+
+ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, widthMm = 80, raster = false }) => {
   const tmpPath = path.join(app.getPath('temp'), `codecpos_print_${Date.now()}.html`);
   try {
     await fsPromises.writeFile(tmpPath, html, 'utf8');
+
+    // Tirillas térmicas: imprimir la vista previa como imagen (ver arriba).
+    // Si algo falla (impresora no encontrada, no es Windows, error de captura)
+    // se continúa con la impresión HTML clásica para no dejar al cajero sin ticket.
+    if (raster && Number(widthMm || 80) <= 80) {
+      try {
+        const res = await printHtmlAsRaster(tmpPath, printerName, widthMm);
+        if (res.ok) {
+          fsPromises.unlink(tmpPath).catch(() => {});
+          refocusMainWindow();
+          return res;
+        }
+        console.warn('⚠️ Impresión raster no disponible, usando impresión HTML:', res.reason);
+      } catch (rasterError) {
+        console.warn('⚠️ Falló la impresión raster, usando impresión HTML:', rasterError.message);
+      }
+    }
 
     // 🖨️ FIX: antes se pasaba `printerName` (leído de localStorage, posiblemente
     // desactualizado) directo como `deviceName` a webContents.print() sin

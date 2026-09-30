@@ -9,6 +9,23 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import { enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
 import { getCached } from '../../lib/cachedLocalStorage';
+import { getConfiguredTicketWidthMm, getDefaultPrinterNameOrUndefined, getFacturasPrinterNameOrUndefined } from '../../lib/printerConfig';
+import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
+import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
+
+// Mismas reglas que el <style> del recibo en pantalla (abajo), para que la
+// copia que se imprime se vea idéntica a la vista previa.
+const TICKET_CSS = `
+  .ticket, .ticket * { color: #000 !important; }
+  .ticket .center { text-align: center; }
+  .ticket .right { text-align: right; }
+  .ticket .bold { font-weight: 700; }
+  .ticket .spacing { margin: 8px 0; }
+  .ticket .line { border-top: 1px dashed #333; margin: 8px 0; height: 0; }
+  .ticket .double-line { border-top: 2px solid #000; margin: 10px 0; height: 0; }
+  .ticket .item-table { width: 100%; border-collapse: collapse; }
+  .ticket .item-table td { padding: 3px 0; vertical-align: top; }
+`;
 
 // bre_b no debe imprimirse como "BRE_B" (guion bajo feo en la tirilla) —
 // el resto de métodos sí se ven bien con un simple toUpperCase().
@@ -139,12 +156,51 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
   const mesaDisplay = venta.referencia_mesa
     || (venta.mesa && venta.mesa.toLowerCase() !== 'general' ? venta.mesa : null);
 
-  const handlePrint = () => {
+  // 🖨️ FIX tildes/ñ + "no sale igual a la vista previa": se imprime el MISMO
+  // recibo que se ve en pantalla, convertido a imagen en Electron (ver
+  // 'print:html' con raster en electron/main.js). Antes se armaba aparte un
+  // ticket de texto ESC/POS que dependía de la tabla de caracteres de la
+  // impresora — en las térmicas que arrancan en modo chino cada tilde salía
+  // como un ideograma. El ticket de texto queda solo como respaldo.
+  const imprimirVistaPrevia = async (): Promise<boolean> => {
+    const el = (window as any).electron;
+    const ticket = ticketRef.current;
+    if (!el?.print?.printHtml || !ticket) return false;
+
+    const widthMm = getConfiguredTicketWidthMm();
+    const printerName = getPrinterForSectionOrUndefined('pos_tickets')
+      || getFacturasPrinterNameOrUndefined()
+      || getDefaultPrinterNameOrUndefined()
+      || '';
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+      <title>Factura ${venta.numeroFactura}</title>
+      <style>
+        @page{size:${widthMm}mm auto;margin:0;}
+        *{box-sizing:border-box;}
+        body{margin:0;padding:8px 6px;background:#fff;}
+        ${TICKET_CSS}
+      </style>
+    </head><body><div class="ticket" style="font-family:'Courier New',monospace;font-size:14px;line-height:20px;">${innerHtmlParaImpresion(ticket)}</div></body></html>`;
+
+    const res = await el.print.printHtml({ html, silent: true, printerName, widthMm, raster: true });
+    return !!res?.ok;
+  };
+
+  const handlePrint = async () => {
     // 🚀 Evita que un doble toque (muy común en pantallas táctiles de POS,
     // más aún si el usuario cree que no pasó nada mientras el spooler
     // trabaja) mande el mismo ticket dos veces a la impresora.
     if (imprimiendo) return;
     setImprimiendo(true);
+    try {
+      if (await imprimirVistaPrevia()) {
+        toast.success('Factura enviada a impresora predeterminada');
+        setImprimiendo(false);
+        return;
+      }
+    } catch (error) {
+      console.warn('Impresión de la vista previa falló, usando ticket de texto:', error);
+    }
     printSaleReceipt({
       numeroFactura: venta.numeroFactura,
       items: venta.items.map((item) => ({
@@ -445,17 +501,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
           que un simple ".ticket td" — sin esto el texto de las columnas
           quedaba gris clarísimo, casi invisible, sobre el fondo blanco del
           recibo (un recibo impreso no debe seguir el tema oscuro de la app). */}
-      <style>{`
-        .ticket, .ticket * { color: #000 !important; }
-        .ticket .center { text-align: center; }
-        .ticket .right { text-align: right; }
-        .ticket .bold { font-weight: 700; }
-        .ticket .spacing { margin: 8px 0; }
-        .ticket .line { border-top: 1px dashed #333; margin: 8px 0; height: 0; }
-        .ticket .double-line { border-top: 2px solid #000; margin: 10px 0; height: 0; }
-        .ticket .item-table { width: 100%; border-collapse: collapse; }
-        .ticket .item-table td { padding: 3px 0; vertical-align: top; }
-      `}</style>
+      <style>{TICKET_CSS}</style>
       {/* Ticket Content */}
       <div
         ref={ticketRef}

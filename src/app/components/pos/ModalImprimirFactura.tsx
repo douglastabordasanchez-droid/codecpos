@@ -9,6 +9,7 @@ import { type Venta } from '../../lib/electronStore';
 import { descargarFacturaPDF, enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
 import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
+import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
 import { getCached } from '../../lib/cachedLocalStorage';
 
 // ── Config empresa ────────────────────────────────────────────────────────────
@@ -226,7 +227,7 @@ function imprimirDesdeElemento(elemento: HTMLElement, nFactura: string) {
   body { margin: 0; padding: 4mm; background: #fff; }
 </style>
 </head>
-<body>${elemento.innerHTML}</body></html>`;
+<body>${innerHtmlParaImpresion(elemento)}</body></html>`;
 
   const printerName = getPrinterForSectionOrUndefined('pos_tickets');
   // silent=true cuando hay impresora POS configurada; false abre el diálogo nativo
@@ -237,7 +238,8 @@ function imprimirDesdeElemento(elemento: HTMLElement, nFactura: string) {
 
   // 1ª opción: API nativa Electron (print.printHtml) — con pageSize dinámico
   if (el?.print?.printHtml) {
-    el.print.printHtml({ html, silent: silentMode, printerName, widthMm }).catch(() => {
+    // raster: se imprime la vista previa como imagen (tildes/ñ y diseño idénticos) — ver 'print:html' en electron/main.js
+    el.print.printHtml({ html, silent: silentMode, printerName, widthMm, raster: silentMode }).catch(() => {
       toast.error('Error al imprimir. Verifica la impresora configurada.');
     });
     toast.success(silentMode ? 'Imprimiendo factura…' : 'Abriendo diálogo de impresión…');

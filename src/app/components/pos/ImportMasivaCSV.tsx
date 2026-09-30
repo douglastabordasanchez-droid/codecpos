@@ -177,7 +177,12 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
         // última columna que hace match gana, y ambas vienen DESPUÉS de
         // Nombre/Precio en esa plantilla), rompiendo el import completo.
         if ((normalized.includes('nombre') || normalized.includes('name') || normalized.includes('producto')) && !normalized.includes('tipo')) headerMap.nombre = index;
-        if (normalized.includes('stock') || normalized.includes('cantidad') || normalized.includes('inventario')) headerMap.stock = index;
+        // 🛡️ FIX: "MinStock" también contiene la subcadena "stock" -- sin el
+        // `&& !normalized.includes('min')` el header MinStock (que viene
+        // DESPUÉS de Stock en todas las plantillas) pisaba headerMap.stock,
+        // haciendo que el importador leyera el mínimo como si fuera el stock
+        // real. Mismo patrón que el fix de nombre/tipoProducto arriba.
+        if ((normalized.includes('stock') || normalized.includes('cantidad') || normalized.includes('inventario')) && !normalized.includes('min')) headerMap.stock = index;
         if (normalized.includes('costo') || normalized.includes('cost')) headerMap.costo = index;
         if ((normalized.includes('precio') || normalized.includes('price') || normalized.includes('valor')) && !normalized.includes('porkilo') && !normalized.includes('porgramo')) headerMap.precio = index;
         if (normalized.includes('categoriaid') || normalized.includes('categoryid')) headerMap.categoriaId = index;
@@ -470,6 +475,42 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
         toast.loading(`Importando... ${importados}/${productosFiltrados.length} productos`, {
           id: 'import-progress',
         });
+      }
+
+      // 🏷️ Sincroniza categorías nuevas con el catálogo global
+      // (codecpos_categorias_global) -- el cliente puede escribir CUALQUIER
+      // categoría en su Excel/CSV (ej. "Camisetas"); si todavía no existe en
+      // el catálogo se crea aquí mismo, para que aparezca de inmediato como
+      // pestaña de filtro rápido en Inventario (ProductosPage) y en el resto
+      // del sistema, sin que el cliente tenga que crearla a mano primero.
+      try {
+        const COLORES_CATEGORIA = [
+          '#3B82F6', '#8B5CF6', '#EC4899', '#EF4444',
+          '#F97316', '#EAB308', '#22C55E', '#14B8A6',
+          '#06B6D4', '#6366F1', '#84CC16', '#F43F5E',
+        ];
+        const categoriasGlobal: { id: string; nombre: string; color: string }[] =
+          JSON.parse(localStorage.getItem('codecpos_categorias_global') || '[]');
+        const nombresExistentes = new Set(categoriasGlobal.map(c => c.nombre.trim().toLowerCase()));
+        const nombresNuevos = Array.from(new Set(
+          productosFiltrados.map(p => String(p.categoria || '').trim()).filter(Boolean)
+        )).filter(nombre => !nombresExistentes.has(nombre.toLowerCase()));
+
+        if (nombresNuevos.length > 0) {
+          const categoriasActualizadas = [...categoriasGlobal];
+          nombresNuevos.forEach((nombre, idx) => {
+            categoriasActualizadas.push({
+              id: `cat-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+              nombre,
+              color: COLORES_CATEGORIA[(categoriasGlobal.length + idx) % COLORES_CATEGORIA.length],
+            });
+          });
+          localStorage.setItem('codecpos_categorias_global', JSON.stringify(categoriasActualizadas));
+          window.dispatchEvent(new StorageEvent('storage', { key: 'codecpos_categorias_global' }));
+          console.log(`🏷️ ${nombresNuevos.length} categoría(s) nueva(s) creada(s) desde el import:`, nombresNuevos);
+        }
+      } catch (e) {
+        console.error('No se pudieron sincronizar las categorías nuevas del import:', e);
       }
 
       toast.success(`✅ ${importados} productos importados exitosamente`, {

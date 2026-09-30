@@ -49,16 +49,23 @@ export function WidgetTurnosActivos() {
     try {
       // Obtener todos los turnos activos del día
       const turnos = await electronStore.obtenerTurnosActivos();
-      
+
+      // 🚀 FIX rendimiento: obtenerVentasDelDia() escanea TODO el historial de
+      // ventas en IndexedDB (sin límite de fecha) -- antes se llamaba DENTRO
+      // del .map() de turnos, o sea una vez POR CADA cajero activo, y este
+      // widget se refresca cada 60s Y en cada venta nueva del sistema
+      // (storeEvents 'venta:nueva'). Con varios cajeros activos, cada venta
+      // disparaba N escaneos completos del historial. Se saca del loop: se
+      // pide una sola vez y se reutiliza para todos los turnos.
+      const ventasDelDia = await electronStore.obtenerVentasDelDia();
+
       // Enriquecer con estadísticas
       const turnosConStats: TurnoConEstadisticas[] = await Promise.all(
         turnos.map(async (turno) => {
           const minutosEnLinea = calcularMinutosTranscurridos(turno.horaInicio);
           const horasTrabajadasHoy = Math.floor(minutosEnLinea / 60);
-          
-          // Obtener ventas del turno
-          const ventas = await electronStore.obtenerVentasDelDia();
-          const ventasDelCajero = ventas.filter(v => v.cajeroId === turno.cajeroId);
+
+          const ventasDelCajero = ventasDelDia.filter(v => v.cajeroId === turno.cajeroId);
           
           return {
             ...turno,

@@ -28,7 +28,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
-import TirillaCierreCaja, { type ProductoTop, type CierreDataModal } from './TirillaCierreCaja';
+import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
+import TirillaCierreCaja, { obtenerPropinasCierre, type ProductoTop, type CierreDataModal } from './TirillaCierreCaja';
 
 export interface CierreDetalle {
   id: string;
@@ -38,6 +39,8 @@ export interface CierreDetalle {
   fechaApertura?: string;
   baseInicial: number;
   totalSistema: number;
+  totalPropinas?: number;
+  propinas?: Record<string, number>;
   totalFisico: number;
   totalFinal?: number;
   diferencia: number;
@@ -153,6 +156,9 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
 
   const efectivoEsperado = cierre.totalFinal ?? (cierre.baseInicial + cierre.desglose.efectivo - (cierre.gastosEfectivo || 0) - (cierre.devoluciones || 0) + (cierre.abonosCarteraEfectivo || 0));
   const totalElectronico = cierre.desglose.tarjeta + cierre.desglose.nequi + cierre.desglose.daviplata + cierre.desglose.transferencia + (cierre.desglose.bancolombia || 0) + (cierre.desglose.rappi || 0);
+  // La propina es de los empleados: se descuenta para mostrar lo que realmente ganó el negocio.
+  const { total: totalPropinas, porMetodo: propinasPorMetodo } = obtenerPropinasCierre(cierre);
+  const ingresoNegocio = Math.max(0, cierre.totalSistema - totalPropinas);
 
   const estadoInfo = {
     cuadrado: { color: 'emerald', text: 'CAJA CUADRADA',   icon: <CheckCircle className="w-5 h-5 text-emerald-500" />,   textClass: 'text-emerald-600', bgClass: darkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200' },
@@ -175,6 +181,8 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
     baseInicial: cierre.baseInicial,
     desglose: { ...cierre.desglose, bancolombia: cierre.desglose.bancolombia || 0, rappi: cierre.desglose.rappi || 0 },
     totalSistema: cierre.totalSistema,
+    totalPropinas,
+    propinas: propinasPorMetodo,
     gastosEfectivo: cierre.gastosEfectivo || 0,
     gastosDetalle: cierre.gastosDetalle || [],
     gastosTransferencia: cierre.gastosTransferencia,
@@ -314,7 +322,11 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
       ].filter(([, v]) => (v as number) > 0) as [string, number][];
 
       const metodoBody = metodos.map(([label, val]) => [label, fmt(val)]);
-      metodoBody.push([{ content: 'TOTAL INGRESOS DEL DÍA', styles: { fontStyle: 'bold' } } as any, { content: fmt(cierre.totalSistema), styles: { fontStyle: 'bold', textColor: C.emerald } } as any]);
+      metodoBody.push([{ content: 'TOTAL INGRESOS DEL DÍA', styles: { fontStyle: 'bold' } } as any, { content: fmt(cierre.totalSistema), styles: { fontStyle: 'bold', textColor: totalPropinas > 0 ? C.dark : C.emerald } } as any]);
+      if (totalPropinas > 0) {
+        metodoBody.push([{ content: '(-) Propinas (pertenecen a los empleados)', styles: { textColor: C.amber } } as any, { content: `-${fmt(totalPropinas)}`, styles: { fontStyle: 'bold', textColor: C.amber } } as any]);
+        metodoBody.push([{ content: 'INGRESO REAL DEL NEGOCIO', styles: { fontStyle: 'bold' } } as any, { content: fmt(ingresoNegocio), styles: { fontStyle: 'bold', textColor: C.emerald } } as any]);
+      }
 
       autoTable(doc, {
         startY: y,
@@ -376,6 +388,9 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
           ['(+) Ventas en efectivo', fmt(cierre.desglose.efectivo)],
           ['(-) Egresos en efectivo', fmt(-(totalEgresos))],
           [{ content: 'EFECTIVO ESPERADO EN CAJA', styles: { fontStyle: 'bold' } }, { content: fmt(efectivoEsperado), styles: { fontStyle: 'bold' } }],
+          ...((propinasPorMetodo.efectivo || 0) > 0
+            ? [[{ content: '   Incluye propinas en efectivo (a entregar a empleados)', styles: { textColor: C.amber } }, { content: fmt(Math.round(propinasPorMetodo.efectivo)), styles: { textColor: C.amber } }]]
+            : []),
           [{ content: 'EFECTIVO REAL CONTADO POR CAJERO', styles: { fontStyle: 'bold' } }, { content: fmt(cierre.totalFisico), styles: { fontStyle: 'bold' } }],
           [
             { content: `${estadoInfo.text} — DIFERENCIA`, styles: { fontStyle: 'bold', textColor: diferenciaColor, fillColor: arqueoBg } },
@@ -492,14 +507,15 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
         body{margin:0;padding:4mm;font-family:'Courier New',monospace;font-size:12px;color:#000;background:#fff;}
         .receipt{max-width:320px;margin:0 auto;}
       </style>
-    </head><body><div class="receipt">${el.innerHTML}</div></body></html>`;
+    </head><body><div class="receipt">${innerHtmlParaImpresion(el)}</div></body></html>`;
 
     const printerName = getPrinterName();
     const silentMode = !!printerName;
     const electron = (window as any).electron;
 
     if (electron?.print?.printHtml) {
-      electron.print.printHtml({ html, silent: silentMode, printerName, widthMm }).catch(() => {
+      // raster: se imprime la vista previa como imagen (tildes/ñ y diseño idénticos) — ver 'print:html' en electron/main.js
+      electron.print.printHtml({ html, silent: silentMode, printerName, widthMm, raster: silentMode }).catch(() => {
         toast.error('Error al imprimir. Verifica la impresora configurada.');
       });
       toast.success(silentMode ? 'Imprimiendo cierre…' : 'Abriendo diálogo de impresión…');
@@ -643,6 +659,12 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
                   <p className={`text-2xl font-black ${txt}`}>{fmt(cierre.totalSistema)}</p>
                   {(cierre.cantidadTransacciones || 0) > 0 && (
                     <p className={`text-xs mt-1 ${sub}`}>{cierre.cantidadTransacciones} transacciones</p>
+                  )}
+                  {totalPropinas > 0 && (
+                    <div className={`mt-3 pt-3 border-t text-xs space-y-1 ${darkMode ? 'border-blue-400/20 text-blue-100' : 'border-blue-500/20 text-blue-700'}`}>
+                      <div className="flex justify-between"><span>Propinas (empleados)</span><span className="font-bold text-amber-500">-{fmt(totalPropinas)}</span></div>
+                      <div className="flex justify-between font-bold"><span>Ingreso del negocio</span><span>{fmt(ingresoNegocio)}</span></div>
+                    </div>
                   )}
                 </div>
 

@@ -18,6 +18,8 @@ export interface DispositivoDetectado {
   productId?: string;
   serialNumber?: string;
   estado: 'conectado' | 'desconectado' | 'error';
+  /** Impresora USB conectada a la que Windows no le creó impresora (falta driver). */
+  requiereInstalacion?: boolean;
   configuracion?: {
     baudRate?: number;
     dataBits?: number;
@@ -49,6 +51,20 @@ const USB_SERIAL_CHIPS = {
   // Cypress/Silabs
   '10c4:ea60': { nombre: 'Silicon Labs CP210x', fabricante: 'Silicon Labs' },
 };
+
+/** Impresoras Bluetooth y USB-serial se usan por su puerto COM (ver 'printer:raw-escpos'). */
+export function esPuertoSerialImpresora(puerto?: string): boolean {
+  return /^COM\d+$/i.test(String(puerto || '').trim());
+}
+
+/**
+ * Valor con el que se guarda una impresora elegida en Dispositivos: el nombre
+ * de la impresora de Windows, o el puerto COM si es Bluetooth/serial (su
+ * nombre descriptivo no existe para Windows y no se podría imprimir).
+ */
+export function nombreImpresoraParaGuardar(device: Pick<DispositivoDetectado, 'nombre' | 'puerto'>): string {
+  return esPuertoSerialImpresora(device.puerto) ? String(device.puerto).trim().toUpperCase() : device.nombre;
+}
 
 // ========== PUERTOS VIRTUALES USB ==========
 // Rango de puertos USB que el sistema debe escanear
@@ -220,6 +236,22 @@ class DeviceManager {
         const productId = port.productId?.toLowerCase();
         const chipKey = vendorId && productId ? `${vendorId}:${productId}` : null;
 
+        // Impresoras Bluetooth emparejadas: Windows las expone como puerto COM
+        // ("Standard Serial over Bluetooth link"), sin VID/PID.
+        if (String(port.pnpId || '').toUpperCase().includes('BTHENUM')) {
+          devices.push({
+            id: `serial-${port.path}`,
+            tipo: 'impresora',
+            nombre: `Impresora Bluetooth (${port.path})`,
+            fabricante: port.manufacturer || 'Bluetooth',
+            modelo: 'Puerto serie Bluetooth',
+            puerto: port.path,
+            estado: 'conectado',
+            configuracion: { baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none' },
+          });
+          continue;
+        }
+
         // ✅ PASO 1: Intentar identificación optimizada (base de datos conocidos)
         let deviceInfo = this.identifyDevice(vendorId, productId);
 
@@ -228,7 +260,7 @@ class DeviceManager {
           devices.push({
             id: `serial-${port.path}`,
             tipo: deviceInfo.tipo,
-            nombre: deviceInfo.nombre,
+            nombre: `${deviceInfo.nombre} (${port.path})`,
             fabricante: deviceInfo.fabricante,
             modelo: deviceInfo.modelo || 'Detectado automáticamente',
             puerto: port.path,
@@ -254,7 +286,7 @@ class DeviceManager {
           devices.push({
             id: `serial-${port.path}`,
             tipo: 'impresora', // Asumir impresora térmica por defecto para chips seriales
-            nombre: `Impresora Térmica (${chipInfo.nombre})`,
+            nombre: `Impresora Térmica ${port.path} (${chipInfo.nombre})`,
             fabricante: chipInfo.fabricante,
             modelo: port.manufacturer || 'Dispositivo Serial USB',
             puerto: port.path,
@@ -297,7 +329,7 @@ class DeviceManager {
           devices.push({
             id: `serial-${port.path}`,
             tipo: tipoDetectado,
-            nombre: `${nombreGenerico} [${vendorId}:${productId}]`,
+            nombre: `${nombreGenerico} ${port.path} [${vendorId}:${productId}]`,
             fabricante: port.manufacturer || 'Genérico',
             modelo: 'Plug-and-Play Universal',
             puerto: port.path,
@@ -389,23 +421,24 @@ class DeviceManager {
           continue;
         }
 
-        // Inventario universal USB (desconocidos también se listan)
+        // 🛡️ FIX: antes TODO dispositivo USB desconocido (mouse, teclado,
+        // hub, cámara, bluetooth…) se listaba como "impresora" y llenaba los
+        // selectores de impresora con opciones que no pueden imprimir, lo que
+        // ocultaba la impresora real. Las impresoras se detectan por Windows
+        // (instaladas o "sin instalar") y los seriales por su puerto COM; aquí
+        // solo quedan los HID (lectores de código de barras).
         const deviceClass = device.deviceClass;
-        const tipoDetectado: DispositivoDetectado['tipo'] =
-          deviceClass === USB_DEVICE_CLASSES.HID ? 'escaner' :
-          deviceClass === USB_DEVICE_CLASSES.PRINTER ? 'impresora' :
-          deviceClass === USB_DEVICE_CLASSES.CDC ? 'bascula' :
-          'impresora';
+        if (deviceClass !== USB_DEVICE_CLASSES.HID) continue;
+        const tipoDetectado: DispositivoDetectado['tipo'] = 'escaner';
 
-        const nombreGenerico = device.product
-          ? `USB ${device.product}`
-          : `Dispositivo USB ${vendorId || '????'}:${productId || '????'}`;
+        // iProduct/iManufacturer son índices de texto USB, no nombres.
+        const nombreGenerico = `Dispositivo USB ${vendorId || '????'}:${productId || '????'}`;
 
         devices.push({
           id: `usb-${vendorId || 'na'}-${productId || 'na'}-${deviceClass || 'unk'}`,
           tipo: tipoDetectado,
           nombre: nombreGenerico,
-          fabricante: device.manufacturer || 'USB Genérico',
+          fabricante: 'USB Genérico',
           modelo: `Clase USB ${deviceClass ?? 'N/A'}`,
           puerto: 'USB',
           vendorId,
@@ -443,6 +476,27 @@ class DeviceManager {
             puerto: printer.name,
             estado: 'conectado'
           });
+        }
+
+        // Impresoras USB conectadas que Windows no instaló (sin driver):
+        // se muestran para que el usuario las instale con un clic.
+        if ((window as any).electron.printer.usbSinInstalar) {
+          const res = await (window as any).electron.printer.usbSinInstalar();
+          for (const p of (res?.impresoras || [])) {
+            const [vendorId, productId] = String(p.vidpid || '').split(':');
+            devices.push({
+              id: `usb-sin-instalar-${p.puerto}`,
+              tipo: 'impresora',
+              nombre: `${p.descripcion || 'Impresora USB'} (${p.puerto})`,
+              fabricante: 'USB',
+              modelo: 'Conectada, falta instalarla en Windows',
+              puerto: p.puerto,
+              vendorId: vendorId || undefined,
+              productId: productId || undefined,
+              estado: 'desconectado',
+              requiereInstalacion: true,
+            });
+          }
         }
       }
     } catch (error) {
@@ -502,6 +556,21 @@ class DeviceManager {
     }
 
     return result;
+  }
+
+  /**
+   * Instala en Windows una impresora USB detectada sin driver (usa el driver
+   * "Generic / Text Only", suficiente porque el sistema imprime en RAW) y
+   * vuelve a escanear. Devuelve el nombre de la impresora creada.
+   */
+  async instalarImpresoraUsb(device: DispositivoDetectado): Promise<string> {
+    const api = (window as any).electron?.printer;
+    if (!api?.instalarUsb) throw new Error('Disponible solo en la app de escritorio');
+    const descripcion = device.nombre.replace(/\s*\(USB\d{3}\)\s*$/, '');
+    const res = await api.instalarUsb({ puerto: device.puerto, nombre: descripcion });
+    if (!res?.success) throw new Error(res?.error || 'No se pudo instalar la impresora');
+    await this.scanDevices(true);
+    return res.printerName;
   }
 
   /**

@@ -23,6 +23,10 @@ export interface CierreDataModal {
     rappi: number;
   };
   totalSistema: number;
+  /** Propinas del turno (incluidas en totalSistema). Son de los empleados, no del negocio. */
+  totalPropinas?: number;
+  /** Propinas por método de pago (misma forma que `detalle.propinas` del cierre en la PWA). */
+  propinas?: Record<string, number>;
   gastosEfectivo: number;
   gastosDetalle?: Array<{
     descripcion: string;
@@ -72,6 +76,28 @@ interface Props {
   data: CierreDataModal;
 }
 
+/**
+ * Lee las propinas de un cierre guardado, sea de Electron (`totalPropinas` +
+ * `propinas` por método) o de la PWA (solo `propinas` por método). Los cierres
+ * anteriores a esta funcionalidad devuelven 0.
+ */
+export function obtenerPropinasCierre(c: { totalPropinas?: number; propinas?: unknown } | null | undefined): {
+  total: number;
+  porMetodo: Record<string, number>;
+} {
+  const porMetodo: Record<string, number> = {};
+  const raw = c?.propinas;
+  if (raw && typeof raw === 'object') {
+    for (const [metodo, valor] of Object.entries(raw as Record<string, unknown>)) {
+      const n = Number(valor) || 0;
+      if (n > 0) porMetodo[metodo] = n;
+    }
+  }
+  const sumaMetodos = Object.values(porMetodo).reduce((s, v) => s + v, 0);
+  const total = Math.max(0, Number(c?.totalPropinas) || (typeof raw === 'number' ? raw : 0) || sumaMetodos);
+  return { total, porMetodo };
+}
+
 const fmt = (v: number) =>
   `$${Number(v || 0).toLocaleString('es-CO', { minimumFractionDigits: 0 })}`;
 
@@ -111,6 +137,9 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
     data.desglose.transferencia +
     data.desglose.bancolombia +
     data.desglose.rappi;
+
+  const totalPropinas = Math.max(0, Number(data.totalPropinas) || 0);
+  const propinasEfectivo = Math.max(0, Number(data.propinas?.efectivo) || 0);
 
   const horaApertura = (() => {
     try { return format(new Date(data.fechaApertura), 'HH:mm', { locale: es }); }
@@ -225,6 +254,38 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
         <div>{LINE}</div>
       </div>
 
+      {/* Propinas: se cobran junto a la venta pero son de los empleados,
+          por eso se descuentan para mostrar el ingreso real del negocio. */}
+      {totalPropinas > 0 && (
+        <div className="px-6 pb-3" style={{ fontSize: 12 }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 4 }}>PROPINAS (EMPLEADOS)</div>
+          <div>{LINE}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {Object.entries(data.propinas || {})
+                .filter(([, v]) => Number(v) > 0)
+                .map(([metodo, v]) => (
+                  <tr key={metodo} style={{ fontSize: 11 }}>
+                    <td>  {metodo.charAt(0).toUpperCase() + metodo.slice(1)}:</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(Math.round(Number(v)))}</td>
+                  </tr>
+                ))}
+              <tr><td>Total ventas:</td><td style={{ textAlign: 'right' }}>{fmt(data.totalSistema)}</td></tr>
+              <tr><td>- Propinas:</td><td style={{ textAlign: 'right' }}>-{fmt(totalPropinas)}</td></tr>
+              <tr><td colSpan={2}><div style={{ borderTop: '1px solid #000', marginTop: 2, marginBottom: 2 }} /></td></tr>
+              <tr style={{ fontWeight: 'bold', fontSize: 13 }}>
+                <td>INGRESO NEGOCIO:</td>
+                <td style={{ textAlign: 'right' }}>{fmt(Math.max(0, data.totalSistema - totalPropinas))}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>
+            Las propinas pertenecen a los empleados y no son ingreso del negocio.
+          </div>
+          <div>{LINE}</div>
+        </div>
+      )}
+
       {/* Análisis de efectivo */}
       <div className="px-6 pb-3" style={{ fontSize: 12 }}>
         <div style={{ fontWeight: 'bold', marginBottom: 4 }}>ANÁLISIS DE EFECTIVO</div>
@@ -251,6 +312,12 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
               <td>Total contado:</td>
               <td style={{ textAlign: 'right' }}>{fmt(data.totalFisicoContado)}</td>
             </tr>
+            {propinasEfectivo > 0 && (
+              <tr style={{ fontSize: 11, color: '#555' }}>
+                <td>  (Propinas a entregar):</td>
+                <td style={{ textAlign: 'right' }}>{fmt(Math.round(propinasEfectivo))}</td>
+              </tr>
+            )}
           </tbody>
         </table>
         <div>{LINE}</div>

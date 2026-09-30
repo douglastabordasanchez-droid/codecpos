@@ -856,7 +856,7 @@ export default function ContabilidadPage() {
 
       const el = (window as any).electron;
       if (el?.print?.printHtml) {
-        await el.print.printHtml({ html, silent: silentMode, printerName, widthMm });
+        await el.print.printHtml({ html, silent: silentMode, printerName, widthMm, raster: silentMode });
         toast.success(silentMode ? 'Comprobante enviado a impresora' : 'Abriendo diálogo de impresión...');
         return;
       }

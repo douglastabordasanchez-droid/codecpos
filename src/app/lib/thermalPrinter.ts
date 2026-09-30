@@ -243,7 +243,11 @@ export class ThermalPrinter {
     // Inicialización + selección de codepage PC850 (multilingüe, incluye
     // tildes/ñ) — sin esto la impresora se queda en su tabla por defecto
     // (típicamente PC437, sin caracteres del español).
-    init: () => [ESC, 0x40, ESC, 0x74, 0x02],
+    // `FS .` (0x1C 0x2E) apaga el modo de caracteres chino con el que arrancan
+    // muchas térmicas genéricas (Xprinter/POS-80): en ese modo ignoran `ESC t`
+    // y cada tilde/ñ se une al byte siguiente formando un ideograma
+    // ("INFORMACI靓", "Gonz醠ez"). Las impresoras sin ese modo lo ignoran.
+    init: () => [ESC, 0x40, 0x1C, 0x2E, ESC, 0x74, 0x02],
     
     // Alineación
     alignLeft: () => [ESC, 0x61, 0x00],

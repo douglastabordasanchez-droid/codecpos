@@ -464,6 +464,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const estaAutenticado = sesionActiva !== null;
 
+  // 🔍 DIAGNÓSTICO TEMPORAL — flicker "Productos en Carrito" (reporte Papotas
+  // 2026-09-16). Quitar una vez identificada la causa real.
+  useEffect(() => {
+    console.log('[AUTH CHANGE] AuthContext sesionActiva =', sesionActiva ? sesionActiva.usuarioId : null, performance.now());
+  }, [sesionActiva]);
+
   // ✅ SUPER USUARIO: cualquier cuenta legítima con rol super_usuario debe tener acceso administrativo completo
   // ✅ DESARROLLADOR: solo cuentas de staff Codec Studio verificadas vía Supabase (ver iniciarSesionStaff)
   const esSuperUsuario = !!usuarioActual && usuarioActual.rol === 'super_usuario' && usuarioActual.activo;
@@ -702,8 +708,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // internet, deja lista una sesión en la nube para que el motor de
       // sincronización (Fase 2) la reutilice. Si falla (sin red, cuenta aún
       // no migrada a Supabase, etc.) se ignora en silencio.
+      //
+      // 🛡️ FIX: para el dueño (usuario 'lic_{clienteId}'), este priming
+      // fallaba EN SILENCIO PARA SIEMPRE si su cuenta sintética de Supabase
+      // Auth (owner+<clienteId>@codecpos.internal) nunca se había
+      // provisionado -- instalaciones vinculadas antes de que este mecanismo
+      // existiera, o que desde entonces siempre entran por esta rama
+      // (Prioridad 1, logins repetidos) y nunca por la Prioridad 3 (solo el
+      // primer login). Sin sesión real de Supabase, auth.uid() queda null en
+      // cada RPC posterior -- invitar_empleado ("Crear Administrador") y
+      // actualizar_empleado_admin fallaban con "No tienes permiso para
+      // agregar usuarios" para el dueño legítimo, sin ningún camino de
+      // recuperación salvo reinstalar. Se repara aquí con el mismo mecanismo
+      // que ya usa la Prioridad 3: si falla, aprovisiona la cuenta sintética
+      // con la contraseña actual y reintenta una vez.
       if (usuario.email) {
-        signInSupabase(usuario.email, passwordNormalizado).catch(() => {});
+        (async () => {
+          const resultado = await signInSupabase(usuario.email!, passwordNormalizado).catch(() => ({ ok: false as const }));
+          if (!resultado.ok && usuario.id.startsWith('lic_') && navigator.onLine) {
+            try {
+              const client = getSupabaseClient();
+              await client?.rpc('provisionar_dueno_pwa', {
+                p_cliente_id: usuario.id.slice(4),
+                p_usuario_licencia: usuario.username,
+                p_password_licencia: passwordNormalizado,
+                p_nombre_negocio: usuario.nombreCompleto,
+              });
+              await signInSupabase(usuario.email!, passwordNormalizado);
+            } catch { /* offline o error de red -- se reintenta en el próximo login */ }
+          }
+        })();
       }
 
       // 🛡️ FIX: una cuenta de dueño creada en el primer login por licencia

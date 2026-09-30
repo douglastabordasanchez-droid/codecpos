@@ -1367,7 +1367,7 @@ class ExportadorReportes {
     const el = (window as any).electron;
 
     if (el?.print?.printHtml) {
-      el.print.printHtml({ html, silent: silentMode, printerName, widthMm }).catch(() => {
+      el.print.printHtml({ html, silent: silentMode, printerName, widthMm, raster: silentMode }).catch(() => {
         console.error('Error al imprimir tirilla con printHtml. Verifica la impresora configurada.');
       });
       return true;

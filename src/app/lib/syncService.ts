@@ -21,6 +21,92 @@ import { listarClientes, guardarClienteRaw, Cliente } from './fidelizacionServic
 const SYNC_INTERVAL = 30000; // 30 segundos
 const STEP_TIMEOUT_MS = 20_000;
 
+/**
+ * 🛡️ Lápidas de productos eliminados — cierra una condición de carrera que el
+ * check `remote.activo === false` (más abajo, en `aplicarCambioRemotoProducto`)
+ * no alcanzaba a cubrir: `desactivarProductoEnNube`/`desactivarTodosLosProductosEnNube`
+ * borran localmente y marcan `activo:false` en Supabase SIN esperar (fire and
+ * forget, para no congelar el botón "Eliminar"). Si un pull o un evento de
+ * Realtime llega ANTES de que ese UPDATE remoto termine de aplicarse, la fila
+ * todavía viaja con `activo:true` -- el check anterior no la detiene y el
+ * producto "recién eliminado" reaparece apenas se navega a otra pantalla y se
+ * vuelve (exactamente lo reportado: "elimino todo, cambio de módulo, vuelvo y
+ * sigue saliendo"). Estas lápidas se guardan ANTES de borrar y se consultan
+ * sin importar lo que diga `remote.activo`, así que ninguna carrera de red
+ * puede ganarle al borrado. TTL generoso (24h) solo para no crecer para
+ * siempre; nunca afecta a un producto nuevo (id distinto) aunque reutilice el
+ * mismo código de barras.
+ */
+const LS_TOMBSTONES_PRODUCTOS = 'codecpos_productos_eliminados_ts';
+const TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function leerTombstonesProductos(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(LS_TOMBSTONES_PRODUCTOS);
+    const mapa: Record<string, number> = raw ? JSON.parse(raw) : {};
+    const ahora = Date.now();
+    let cambiado = false;
+    for (const id of Object.keys(mapa)) {
+      if (ahora - mapa[id] > TOMBSTONE_TTL_MS) { delete mapa[id]; cambiado = true; }
+    }
+    if (cambiado) localStorage.setItem(LS_TOMBSTONES_PRODUCTOS, JSON.stringify(mapa));
+    return mapa;
+  } catch { return {}; }
+}
+
+function marcarProductoComoEliminado(localId: string): void {
+  try {
+    const mapa = leerTombstonesProductos();
+    mapa[localId] = Date.now();
+    localStorage.setItem(LS_TOMBSTONES_PRODUCTOS, JSON.stringify(mapa));
+  } catch { /* no crítico */ }
+}
+
+function productoFueEliminadoRecientemente(localId: string | undefined | null): boolean {
+  if (!localId) return false;
+  return localId in leerTombstonesProductos();
+}
+
+/**
+ * 🛡️ Hallazgo (verificado en vivo con stack trace): el módulo "Alimentos y
+ * Bebidas" guarda su PROPIO catálogo aparte en `codecpos_panaderia_prods` —
+ * a propósito, para que "Vaciar Inventario" no le borre iconos/colores/
+ * categorías a un producto que luego se quiera recrear (ver comentario en
+ * `reflejarInventarioEnAlimentos`, PanaderiaOncesPage.tsx). El problema es
+ * `sincronizarConInventario` (misma página, corre CADA VEZ que se abre el
+ * módulo): por cada producto que tiene ahí y NO encuentra en `pos-productos`,
+ * lo vuelve a crear en el inventario general -- pensado para reparar un
+ * hueco, pero sin forma de distinguir "nunca se sincronizó" de "lo acabo de
+ * borrar a propósito". Resultado: "Eliminar Todo"/eliminar un producto se
+ * sentía como que no hacía nada -- bastaba con abrir Alimentos y Bebidas una
+ * vez para que reapareciera todo. Fix: al eliminar, se quita también de este
+ * catálogo aparte -- no queda nada que "reparar".
+ */
+const LS_PANADERIA_PRODS = 'codecpos_panaderia_prods';
+
+function quitarDeAlimentosBebidas(localId: string): void {
+  try {
+    const raw = localStorage.getItem(LS_PANADERIA_PRODS);
+    if (!raw) return;
+    const lista = JSON.parse(raw);
+    if (!Array.isArray(lista)) return;
+    const filtrada = lista.filter((p: any) => p?.id !== localId);
+    if (filtrada.length !== lista.length) {
+      localStorage.setItem(LS_PANADERIA_PRODS, JSON.stringify(filtrada));
+    }
+  } catch { /* no crítico */ }
+}
+
+function vaciarCatalogoAlimentosBebidas(): void {
+  // 🛡️ Si esta clave nunca se había guardado (null), NO alcanza con "no
+  // hacer nada" -- el estado inicial de PanaderiaOncesPage.tsx cae a un
+  // catálogo de 7 productos de ejemplo escrito en el código fuente cuando la
+  // clave no existe (`localStorage.getItem(...) || '[{...7 demo...}]'`).
+  // Sin escribir explícitamente '[]' aquí, ese catálogo de ejemplo es
+  // exactamente lo que reaparecía. Se escribe SIEMPRE, exista o no antes.
+  try { localStorage.setItem(LS_PANADERIA_PRODS, '[]'); } catch { /* no crítico */ }
+}
+
 function withStepTimeout<T>(promise: Promise<T>, name: string): Promise<T> {
   let timer: number | undefined;
   return Promise.race([
@@ -215,6 +301,9 @@ class SyncService {
     }
 
     this.isSyncing = true;
+    // 🔍 DIAGNÓSTICO TEMPORAL — flicker "Productos en Carrito" (reporte
+    // Papotas 2026-09-16). Quitar una vez identificada la causa real.
+    console.log('[SYNC START]', performance.now());
     this.notifyListeners({ status: 'syncing', message: 'Sincronizando datos...', lastSync: null });
 
     // 🛡️ Antes un solo paso que fallaba (p. ej. IndexedDB rechazando un
@@ -230,6 +319,7 @@ class SyncService {
         const tiendas = await descargarTiendas();
         if (tiendas?.length) {
           reemplazarTiendasDesdeNube(tiendas);
+          console.log('[SYNC] tiendas-sincronizadas dispatch', performance.now());
           window.dispatchEvent(new CustomEvent('codecpos:tiendas-sincronizadas'));
         }
       }],
@@ -278,6 +368,7 @@ class SyncService {
     }
 
     this.isSyncing = false;
+    console.log('[SYNC END]', performance.now());
   }
 
   // ==================== PULL ====================
@@ -301,6 +392,7 @@ class SyncService {
     }
     if (actualizados.length > 0) {
       sincronizarProductosEnLocalStorageBatch(actualizados);
+      console.log('[SYNC] productos-sincronizados dispatch (pull batch)', actualizados.length, performance.now());
       window.dispatchEvent(new CustomEvent('codecpos:productos-sincronizados'));
     }
 
@@ -365,6 +457,18 @@ class SyncService {
       resultado = actualizado;
     } else {
       const nuevoId: string = remote.local_id || `remote-${remote.id}`;
+
+      // 🛡️ FIX: "Eliminar Todo" / eliminar un producto borra el registro
+      // local (IndexedDB + pos-productos) y solo marca `activo:false` en
+      // Supabase (no lo borra allá). Sin el primer check, el próximo pull
+      // traía esa fila (su updated_at acababa de cambiar) y, como ya no
+      // existía localmente, este bloque la RECREABA igual -- resucitando
+      // productos que el usuario acababa de eliminar apenas se navegaba a
+      // otra pantalla y se volvía. El segundo check (lápida) cubre además la
+      // carrera donde el pull/Realtime llega ANTES de que el UPDATE remoto
+      // termine de aplicarse -- en ese instante `remote.activo` todavía es
+      // `true`, así que solo el check de `remote.activo` no bastaba.
+      if (remote.activo === false || productoFueEliminadoRecientemente(nuevoId)) return null;
       const producto: Producto = {
         id: nuevoId,
         codigo: remote.codigo_barras || '',
@@ -608,6 +712,8 @@ class SyncService {
           cajero: (r.detalle as any)?.cajero_nombre || 'App móvil',
           baseInicial: Number(r.monto_apertura) || 0,
           totalSistema: Number(r.ventas_total) || 0,
+          // Propinas por método que guarda la PWA — el historial las descuenta del ingreso del negocio.
+          propinas: (r.detalle as any)?.propinas || undefined,
           totalFinal: Number(r.monto_cierre) || 0,
           diferencia: Number(r.diferencia) || 0,
           origen: 'pwa',
@@ -1567,6 +1673,9 @@ class SyncService {
  * la integridad de ventas históricas que referencian ese producto.
  */
 export async function desactivarProductoEnNube(localId: string): Promise<void> {
+  marcarProductoComoEliminado(localId);
+  quitarDeAlimentosBebidas(localId);
+
   try {
     await dbManager.deleteProducto(localId);
   } catch { /* IndexedDB puede no tener el registro — no es un error real */ }
@@ -1585,8 +1694,11 @@ export async function desactivarProductoEnNube(localId: string): Promise<void> {
 
 /** "Vaciar inventario" — desactiva TODO lo del negocio en Supabase de una vez. */
 export async function desactivarTodosLosProductosEnNube(): Promise<void> {
+  vaciarCatalogoAlimentosBebidas();
+
   try {
     const locales = await dbManager.getAllProductos();
+    locales.forEach((p) => marcarProductoComoEliminado(p.id));
     await Promise.all(locales.map((p) => dbManager.deleteProducto(p.id).catch(() => {})));
   } catch { /* no crítico */ }
 

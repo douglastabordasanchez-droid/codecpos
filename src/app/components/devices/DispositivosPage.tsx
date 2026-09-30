@@ -40,7 +40,7 @@ import { usePOS } from '../../contexts/POSContext';
 import { toast } from 'sonner';
 import { DeviceCard } from './DeviceCard';
 import { DeviceConfigModal } from './DeviceConfigModal';
-import { deviceManager, type DispositivoDetectado } from '../../lib/deviceManager';
+import { deviceManager, nombreImpresoraParaGuardar, type DispositivoDetectado } from '../../lib/deviceManager';
 import { useDevices } from '../../contexts/DeviceContext';
 import { type TipoDispositivo } from '../../lib/deviceRoles';
 import { multiDisplayService, obtenerConfigMultiDisplay, guardarConfigMultiDisplay } from '../../lib/multiDisplayService';
@@ -148,6 +148,7 @@ export default function DispositivosPage() {
   const [showConfirmGlobalPrinter, setShowConfirmGlobalPrinter] = useState(false);
   const [sectionPrintersOpen, setSectionPrintersOpen] = useState(false);
   const [drawerCfg, setDrawerCfgState] = useState<DrawerConfig>(() => getDrawerConfig());
+  const [instalandoId, setInstalandoId] = useState<string | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 🖥️ Estados para Multi-Pantalla
@@ -181,7 +182,8 @@ export default function DispositivosPage() {
   };
 
   const getPrinterOptions = () => {
-    const printerOptions = [...dispositivosDetectados.filter(d => d.tipo === 'impresora')];
+    // Las impresoras USB "sin instalar" no se pueden elegir hasta instalarlas.
+    const printerOptions = [...dispositivosDetectados.filter(d => d.tipo === 'impresora' && !d.requiereInstalacion)];
     const namesInDetected = new Set(printerOptions.map(d => d.nombre));
     dispositivos
       .filter(d => d.tipo === 'impresora' && !namesInDetected.has(d.nombre))
@@ -314,7 +316,7 @@ export default function DispositivosPage() {
       saveDispositivos(nuevosDispositivos);
 
       if (device.tipo === 'impresora') {
-        setDefaultPrinter(device.nombre);
+        setDefaultPrinter(nombreImpresoraParaGuardar(device));
         if (scanIntervalRef.current) {
           clearInterval(scanIntervalRef.current);
           scanIntervalRef.current = null;
@@ -330,6 +332,22 @@ export default function DispositivosPage() {
       console.log(`✅ Dispositivo agregado automáticamente: ${device.nombre}`);
     } catch (error) {
       console.error('Error agregando dispositivo:', error);
+    }
+  };
+
+  const instalarImpresoraUsb = async (device: DispositivoDetectado) => {
+    setInstalandoId(device.id);
+    toast.info('Instalando impresora en Windows…', {
+      description: 'Si Windows pide permiso de administrador, acéptalo.',
+    });
+    try {
+      const printerName = await deviceManager.instalarImpresoraUsb(device);
+      if (!getDefaultPrinterName()) setDefaultPrinter(printerName);
+      toast.success('Impresora instalada', { description: `${printerName} ya aparece en la lista. Haz una prueba de impresión.` });
+    } catch (error: any) {
+      toast.error('No se pudo instalar la impresora', { description: error?.message || String(error) });
+    } finally {
+      setInstalandoId(null);
     }
   };
 
@@ -675,7 +693,7 @@ export default function DispositivosPage() {
                     >
                       <option value="">— Predeterminada ({defaultPrinterName || 'ninguna'}) —</option>
                       {getPrinterOptions().map(d => (
-                        <option key={d.id} value={d.nombre}>{d.nombre}</option>
+                        <option key={d.id} value={nombreImpresoraParaGuardar(d)}>{d.nombre}</option>
                       ))}
                     </select>
                   </div>
@@ -744,7 +762,7 @@ export default function DispositivosPage() {
                       >
                         <option value="">— Predeterminada ({defaultPrinterName || 'ninguna'}) —</option>
                         {getPrinterOptions().map(d => (
-                          <option key={d.id} value={d.nombre}>{d.nombre}</option>
+                          <option key={d.id} value={nombreImpresoraParaGuardar(d)}>{d.nombre}</option>
                         ))}
                       </select>
                       <p className={`mt-2 text-[11px] font-semibold ${
@@ -804,7 +822,7 @@ export default function DispositivosPage() {
                               >
                                 <option value="">— Predeterminada ({defaultPrinterName || 'ninguna'}) —</option>
                                 {getPrinterOptions().map(d => (
-                                  <option key={d.id} value={d.nombre}>{d.nombre}</option>
+                                  <option key={d.id} value={nombreImpresoraParaGuardar(d)}>{d.nombre}</option>
                                 ))}
                               </select>
                               <p className={`mt-1.5 text-[11px] ${hasSpecific ? (darkMode ? 'text-blue-400 font-semibold' : 'text-blue-700 font-semibold') : darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
@@ -916,7 +934,7 @@ export default function DispositivosPage() {
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${
                                 device.estado === 'conectado' ? 'bg-green-500/20 text-green-400' : device.estado === 'error' ? 'bg-red-500/20 text-red-400' : darkMode ? 'bg-slate-700 text-slate-400' : 'bg-gray-200 text-gray-500'
                               }`}>
-                                {device.estado === 'conectado' ? '● Conectado' : device.estado === 'error' ? '● Error' : '○ Inactivo'}
+                                {device.requiereInstalacion ? '● Sin instalar' : device.estado === 'conectado' ? '● Conectado' : device.estado === 'error' ? '● Error' : '○ Inactivo'}
                               </span>
                             </div>
                             {(device.fabricante || device.modelo) && (
@@ -960,13 +978,25 @@ export default function DispositivosPage() {
                             >
                               <Star className={`w-4 h-4 ${esPredeterminado ? 'fill-current' : ''}`} />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => agregarDispositivoDetectado(device, { manual: true })}
-                              className={`text-xs px-3 h-8 rounded-xl font-semibold transition-colors whitespace-nowrap ${darkMode ? 'bg-purple-700 hover:bg-purple-600 text-white' : 'bg-purple-500 hover:bg-purple-600 text-white'}`}
-                            >
-                              + Agregar
-                            </button>
+                            {device.requiereInstalacion ? (
+                              <button
+                                type="button"
+                                disabled={instalandoId !== null}
+                                onClick={() => instalarImpresoraUsb(device)}
+                                title="La impresora está conectada pero Windows no la instaló. El sistema la instala con el driver genérico de Windows."
+                                className="text-xs px-3 h-8 rounded-xl font-semibold transition-colors whitespace-nowrap bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60"
+                              >
+                                {instalandoId === device.id ? 'Instalando…' : 'Instalar'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => agregarDispositivoDetectado(device, { manual: true })}
+                                className={`text-xs px-3 h-8 rounded-xl font-semibold transition-colors whitespace-nowrap ${darkMode ? 'bg-purple-700 hover:bg-purple-600 text-white' : 'bg-purple-500 hover:bg-purple-600 text-white'}`}
+                              >
+                                + Agregar
+                              </button>
+                            )}
                           </div>
                         </motion.div>
                       );

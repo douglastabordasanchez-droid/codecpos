@@ -114,6 +114,8 @@ contextBridge.exposeInMainWorld('electron', {
     resolveTarget: () => ipcRenderer.invoke('printer:resolve-target'),
     checkAvailability: (printerName) => ipcRenderer.invoke('printer:check-availability', printerName),
     rawEscPos: (payload) => ipcRenderer.invoke('printer:raw-escpos', payload),
+    usbSinInstalar: () => ipcRenderer.invoke('printer:usb-sin-instalar'),
+    instalarUsb: (data) => ipcRenderer.invoke('printer:instalar-usb', data),
     // Compatibilidad con renderer existente
     list: () => ipcRenderer.invoke('printer:list'),
     test: (target) => ipcRenderer.invoke('printer:test', target),

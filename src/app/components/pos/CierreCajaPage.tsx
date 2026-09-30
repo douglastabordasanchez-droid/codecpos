@@ -90,6 +90,10 @@ interface CierreCaja {
   fechaApertura: string;
   baseInicial: number;
   totalSistema: number;
+  // Propinas del turno (incluidas en totalSistema) — son de los empleados.
+  // `propinas` usa la misma forma por método que el cierre de la PWA.
+  totalPropinas: number;
+  propinas: Record<string, number>;
   totalFisico: number;
   totalFinal: number;
   diferencia: number;
@@ -587,6 +591,11 @@ export default function CierreCajaPage() {
         rappi: Number(stats.ventasPorMetodo?.rappi) || 0,
       };
       const totalSistemaActual = Number(stats.totalIngresos) || 0;
+      const totalPropinasActual = Math.max(0, Number(stats.totalPropinas) || 0);
+      const propinasActual: Record<string, number> = {};
+      for (const [metodo, valor] of Object.entries(stats.propinasPorMetodo || {})) {
+        if (Number(valor) > 0) propinasActual[metodo] = Math.round(Number(valor));
+      }
 
       // 🆕 Recalcular gastos y devoluciones frescos justo antes de cerrar —
       // ya no se reutiliza el estado cargado al abrir la página, que podía
@@ -635,6 +644,8 @@ export default function CierreCajaPage() {
         fechaApertura: aperturaActual.fecha,
         baseInicial: aperturaActual.baseInicial,
         totalSistema: totalSistemaActual,
+        totalPropinas: totalPropinasActual,
+        propinas: propinasActual,
         totalFisico: totalContado,
         totalFinal: totalEsperadoEfectivo,
         diferencia: diferenciaActual,
@@ -670,6 +681,8 @@ export default function CierreCajaPage() {
         baseInicial: cierre.baseInicial,
         desglose: cierre.desglose,
         totalSistema: totalSistemaActual,
+        totalPropinas: totalPropinasActual,
+        propinas: propinasActual,
         gastosEfectivo: gastosEfectivoActual,
         gastosDetalle: gastosDetalleActual,
         gastosTransferencia: gastosTransferenciaActual,
@@ -821,8 +834,9 @@ export default function CierreCajaPage() {
         wt(historicoService.guardarContabilidadDiaria({
           id: `CONT-${fechaDia}-${Date.now()}`, fecha: fechaDia,
           cajero: cierre.cajero, cajeroId: usuarioId,
-          saldoInicialCaja: cierre.baseInicial, ventasDelDia: cierre.totalSistema,
-          saldoFinalCaja: cierre.baseInicial + cierre.totalSistema,
+          // Contabilidad del negocio: la propina es de los empleados, no se registra como venta.
+          saldoInicialCaja: cierre.baseInicial, ventasDelDia: Math.max(0, cierre.totalSistema - cierre.totalPropinas),
+          saldoFinalCaja: cierre.baseInicial + Math.max(0, cierre.totalSistema - cierre.totalPropinas),
           totalTransacciones: stats.totalTransacciones || 0,
         })),
       ]);

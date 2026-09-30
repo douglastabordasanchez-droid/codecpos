@@ -85,6 +85,19 @@ export default function POSLayoutSidebar() {
   const [draggedPath, setDraggedPath] = useState<string | null>(null);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
 
+  // 🔍 DIAGNÓSTICO TEMPORAL — flicker "Productos en Carrito" (reporte Papotas
+  // 2026-09-16). Quitar una vez identificada la causa real.
+  useEffect(() => {
+    console.log('[MOUNT] POSLayoutSidebar', performance.now());
+    return () => console.log('[UNMOUNT] POSLayoutSidebar', performance.now());
+  }, []);
+  useEffect(() => {
+    console.log('[ROUTE CHANGE] pathname =', location.pathname, performance.now());
+  }, [location.pathname]);
+  useEffect(() => {
+    console.log('[STORE CHANGE] tiendaActual =', tiendaActual?.id, tiendaActual?.nombre, performance.now());
+  }, [tiendaActual]);
+
   // Nombres personalizados de módulos: path → label editado por el usuario
   const CUSTOM_MODULES_NAMES_KEY = 'codecpos_custom_modules';
   const [sidebarModules, setSidebarModules] = useState<Record<string, string>>(() => {

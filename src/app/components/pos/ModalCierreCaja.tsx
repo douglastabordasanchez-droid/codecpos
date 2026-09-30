@@ -25,6 +25,7 @@ export type { ProductoTop, CierreDataModal } from './TirillaCierreCaja';
 import type { CierreDataModal } from './TirillaCierreCaja';
 import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
+import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
 
 interface Props {
   open: boolean;
@@ -89,14 +90,15 @@ export default function ModalCierreCaja({ open, onClose, onConfirmar, data, dark
         body{margin:0;padding:4mm;font-family:'Courier New',monospace;font-size:12px;color:#000;background:#fff;}
         .print-receipt{max-width:320px;margin:0 auto;}
       </style>
-    </head><body><div class="print-receipt">${el.innerHTML}</div></body></html>`;
+    </head><body><div class="print-receipt">${innerHtmlParaImpresion(el)}</div></body></html>`;
 
     const printerName = getPrinterForSectionOrUndefined('cierre_caja');
     const silentMode = !!printerName;
     const electron = (window as any).electron;
 
     if (electron?.print?.printHtml) {
-      electron.print.printHtml({ html, silent: silentMode, printerName, widthMm }).catch(() => {
+      // raster: se imprime la vista previa como imagen (tildes/ñ y diseño idénticos) — ver 'print:html' en electron/main.js
+      electron.print.printHtml({ html, silent: silentMode, printerName, widthMm, raster: silentMode }).catch(() => {
         toast.error('Error al imprimir. Verifica la impresora configurada.');
       });
       return;
@@ -223,6 +225,12 @@ export default function ModalCierreCaja({ open, onClose, onConfirmar, data, dark
                   </div>
                   <p className={`text-3xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{fmt(data.totalSistema)}</p>
                   <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-gray-400'}`}>{data.cantidadTransacciones} transacciones</p>
+                  {(data.totalPropinas || 0) > 0 && (
+                    <div className={`mt-3 pt-3 border-t text-xs space-y-1 ${darkMode ? 'border-blue-400/20 text-blue-100' : 'border-blue-500/20 text-blue-700'}`}>
+                      <div className="flex justify-between"><span>Propinas (empleados)</span><span className="font-bold text-amber-500">-{fmt(data.totalPropinas || 0)}</span></div>
+                      <div className="flex justify-between font-bold"><span>Ingreso del negocio</span><span>{fmt(Math.max(0, data.totalSistema - (data.totalPropinas || 0)))}</span></div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Desglose pago */}

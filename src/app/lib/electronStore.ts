@@ -147,6 +147,8 @@ export interface EstadisticasDia {
   totalVentasProductos?: number;
   /** Propinas recibidas, separadas de la venta de productos. */
   totalPropinas?: number;
+  /** Propinas repartidas por método de pago (en mixtos, proporcional al monto de cada método). */
+  propinasPorMetodo?: Partial<Record<MetodoPago, number>>;
   totalCostos: number;
   utilidadProductos?: number;
   utilidadVentasDevueltas?: number;
@@ -731,6 +733,10 @@ class ElectronStoreService {
       cartera: 0,
     };
     const ventasPorCajero: Record<string, number> = {};
+    // 💵 La propina es de los empleados: se discrimina por método para que el
+    // cierre de caja muestre cuánto de cada canal (sobre todo efectivo) no es
+    // ingreso del negocio.
+    const propinasPorMetodo: Partial<Record<MetodoPago, number>> = {};
 
     const ventasInvalidasPorEstado = ventas.filter(v => this.esVentaDevueltaOAnulada(v));
     const ventasNeteables = ventas.filter(v => !this.esVentaDevueltaOAnulada(v));
@@ -742,6 +748,23 @@ class ElectronStoreService {
       totalIngresos += total;
       totalIngresosBrutos += total;
       totalPropinas += propina;
+
+      if (propina > 0) {
+        const pagoMixto = venta.metodoPago === 'mixto' ? venta.pagoMixto : undefined;
+        const partesMixto = pagoMixto
+          ? (Object.entries(pagoMixto) as Array<[MetodoPago, number]>)
+              .filter(([metodo, monto]) => ventasPorMetodo[metodo] !== undefined && Number(monto) > 0)
+          : [];
+        const sumaMixto = partesMixto.reduce((s, [, monto]) => s + Number(monto), 0);
+        if (sumaMixto > 0) {
+          for (const [metodo, monto] of partesMixto) {
+            propinasPorMetodo[metodo] = (propinasPorMetodo[metodo] || 0) + propina * (Number(monto) / sumaMixto);
+          }
+        } else if (venta.metodoPago) {
+          const metodo = venta.metodoPago as MetodoPago;
+          propinasPorMetodo[metodo] = (propinasPorMetodo[metodo] || 0) + propina;
+        }
+      }
 
       // Calcular costos
       for (const item of venta.items) {
@@ -913,6 +936,7 @@ class ElectronStoreService {
       totalIngresos,
       totalVentasProductos: Math.max(0, totalIngresos - totalPropinas),
       totalPropinas,
+      propinasPorMetodo,
       totalCostos,
       utilidadProductos,
       utilidadVentasDevueltas,

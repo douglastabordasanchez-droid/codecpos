@@ -24,6 +24,7 @@ import { Badge } from '../ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ModalDetalleCierre from './ModalDetalleCierre';
+import { obtenerPropinasCierre } from './TirillaCierreCaja';
 
 interface CierreRaw {
   id: string;
@@ -33,6 +34,8 @@ interface CierreRaw {
   fechaApertura?: string;
   baseInicial: number;
   totalSistema: number;
+  totalPropinas?: number;
+  propinas?: Record<string, number>;
   totalFisico: number;
   totalFinal?: number;
   diferencia: number;
@@ -160,6 +163,8 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
         c.cajero || '',
         c.baseInicial,
         c.totalSistema,
+        obtenerPropinasCierre(c).total,
+        Math.max(0, c.totalSistema - obtenerPropinasCierre(c).total),
         c.totalFisico,
         c.diferencia,
         c.estado,
@@ -173,7 +178,7 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
         c.observaciones || '',
       ].join(';');
     });
-    const header = 'Fecha;Hora;Cajero;Base Inicial;Total Sistema;Total Físico;Diferencia;Estado;Efectivo;Tarjeta;Nequi;Daviplata;Transferencia;Bancolombia;Rappi;Observaciones';
+    const header = 'Fecha;Hora;Cajero;Base Inicial;Total Sistema;Propinas (empleados);Ingreso Negocio;Total Físico;Diferencia;Estado;Efectivo;Tarjeta;Nequi;Daviplata;Transferencia;Bancolombia;Rappi;Observaciones';
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -193,6 +198,10 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
       return true;
     });
   }, [cierres, filtrosActivos]);
+
+  // La propina es de los empleados: se descuenta para mostrar lo que realmente ganó el negocio.
+  const totalPropinasFiltradas = cierresFiltrados.reduce((s, c) => s + obtenerPropinasCierre(c).total, 0);
+  const totalRecaudadoFiltrado = cierresFiltrados.reduce((s, c) => s + c.totalSistema, 0);
 
   const totalPaginas = Math.max(1, Math.ceil(cierresFiltrados.length / ROWS_PER_PAGE));
   const paginaSegura = Math.min(paginaActual, totalPaginas);
@@ -354,10 +363,12 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
 
               {/* Resumen de cierres filtrados */}
               {cierresFiltrados.length > 0 && (
-                <div className={`mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2`}>
+                <div className={`mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2`}>
                   {[
                     { label: 'Cierres', valor: cierresFiltrados.length, color: 'text-purple-500' },
-                    { label: 'Total recaudado', valor: `$${cierresFiltrados.reduce((s, c) => s + c.totalSistema, 0).toLocaleString('es-CO')}`, color: 'text-emerald-500' },
+                    { label: 'Total recaudado', valor: fmt(totalRecaudadoFiltrado), color: 'text-blue-500' },
+                    { label: 'Propinas (empleados)', valor: `-${fmt(totalPropinasFiltradas)}`, color: 'text-amber-500' },
+                    { label: 'Ingreso negocio', valor: fmt(Math.max(0, totalRecaudadoFiltrado - totalPropinasFiltradas)), color: 'text-emerald-500' },
                     { label: 'Cuadrados', valor: cierresFiltrados.filter(c => c.estado === 'cuadrado').length, color: 'text-emerald-500' },
                     { label: 'Con diferencia', valor: cierresFiltrados.filter(c => c.estado !== 'cuadrado').length, color: 'text-red-500' },
                   ].map(({ label, valor, color }) => (
@@ -385,7 +396,7 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
                   <p className={`text-sm ${sub}`}>Ajusta los filtros o realiza el primer cierre de caja</p>
                 </div>
               ) : (
-                <table className="w-full min-w-[700px]">
+                <table className="w-full min-w-[900px]">
                   <thead>
                     <tr className={`border-b ${border} ${bgCard}`}>
                       <th className={`px-4 py-3 text-left text-xs font-bold uppercase tracking-wider ${sub}`}>
@@ -399,6 +410,8 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
                       <th className={`px-4 py-3 text-right text-xs font-bold uppercase tracking-wider ${sub}`}>
                         <TrendingUp className="inline w-3.5 h-3.5 mr-1" />Total Ingresos
                       </th>
+                      <th className={`px-4 py-3 text-right text-xs font-bold uppercase tracking-wider ${sub}`}>Propinas</th>
+                      <th className={`px-4 py-3 text-right text-xs font-bold uppercase tracking-wider ${sub}`}>Ingreso Negocio</th>
                       <th className={`px-4 py-3 text-center text-xs font-bold uppercase tracking-wider ${sub}`}>Estado</th>
                       <th className={`px-4 py-3 text-center text-xs font-bold uppercase tracking-wider ${sub}`}>Acciones</th>
                     </tr>
@@ -415,6 +428,7 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
                         turnoLabel = format(d, "EEEE", { locale: es });
                         turnoLabel = turnoLabel.charAt(0).toUpperCase() + turnoLabel.slice(1);
                       } catch { /* ignore */ }
+                      const propinasCierre = obtenerPropinasCierre(cierre).total;
 
                       return (
                         <tr
@@ -433,6 +447,8 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
                           </td>
                           <td className={`px-4 py-3.5 text-sm ${sub} capitalize`}>{turnoLabel}</td>
                           <td className={`px-4 py-3.5 text-sm font-bold text-right ${txt}`}>{fmt(cierre.totalSistema)}</td>
+                          <td className="px-4 py-3.5 text-sm font-semibold text-right text-amber-500">{propinasCierre > 0 ? `-${fmt(propinasCierre)}` : '—'}</td>
+                          <td className="px-4 py-3.5 text-sm font-bold text-right text-emerald-500">{fmt(Math.max(0, cierre.totalSistema - propinasCierre))}</td>
                           <td className="px-4 py-3.5 text-center">{estadoBadge(cierre.estado)}</td>
                           <td className="px-4 py-3.5 text-center">
                             <Button
