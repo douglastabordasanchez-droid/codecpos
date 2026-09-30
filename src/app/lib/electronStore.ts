@@ -621,9 +621,43 @@ class ElectronStoreService {
     return dbManager.getUltimoNumeroVenta();
   }
 
+  /**
+   * 🚀 FIX rendimiento: ventas con fecha >= `desdeTs`, usando el índice
+   * 'fecha' de IndexedDB en vez de deserializar TODO el historial. Mismo
+   * blindaje de ventas varadas que obtenerVentas().
+   */
+  private async obtenerVentasDesde(desdeTs: number): Promise<Venta[]> {
+    await this.flushVentasPendientes().catch(() => {});
+    const ventas = (await dbManager.getVentasByDateRange(new Date(desdeTs).toISOString(), '￿')) as unknown as Venta[];
+    return this.combinarConVentasVaradas(ventas);
+  }
+
   async obtenerVentasDelDia(filtro?: FiltroDashboard): Promise<Venta[]> {
-    const ventas = await this.obtenerVentas();
     const sesionCajaId = normalizarTexto(filtro?.sesionCajaId);
+
+    // 🚀 FIX rendimiento (causa principal de lentitud en negocios con meses
+    // de historial): antes se leía TODO el historial de ventas en cada
+    // llamada — y esto corre en cada venta, en el Dashboard cada 30s, en el
+    // cierre de caja, widgets de turnos, etc. Ahora solo se leen las ventas
+    // desde el inicio del día operativo (o desde la apertura de la sesión de
+    // caja, que viene en su id `CAJA-<usuario>-<fecha>-<timestamp>`), con 36h
+    // de margen por fechas guardadas con otra zona horaria. Los filtros de
+    // abajo son exactamente los mismos, así que el resultado no cambia. Si la
+    // apertura no se puede deducir, se lee todo como antes.
+    const MARGEN_MS = 36 * 60 * 60 * 1000;
+    let desdeTs: number | null = null;
+    if (sesionCajaId) {
+      const match = String(filtro?.sesionCajaId || '').match(/-(\d{13})$/);
+      const aperturaTs = match ? Number(match[1]) : NaN;
+      if (Number.isFinite(aperturaTs) && aperturaTs > Date.UTC(2020, 0, 1)) desdeTs = aperturaTs - MARGEN_MS;
+    } else {
+      const hoyISO = this.getFechaLocalISO();
+      const ultimoCierre = Number(localStorage.getItem('pos_ultimo_cierre_ts') || 0);
+      desdeTs = Math.max(new Date(`${hoyISO}T00:00:00`).getTime(), ultimoCierre) - MARGEN_MS;
+    }
+    const ventas = desdeTs !== null && Number.isFinite(desdeTs)
+      ? await this.obtenerVentasDesde(desdeTs)
+      : await this.obtenerVentas();
 
     if (sesionCajaId) {
       let ventasSesion = ventas.filter(v => normalizarTexto((v as any)?.sesionCajaId) === sesionCajaId);

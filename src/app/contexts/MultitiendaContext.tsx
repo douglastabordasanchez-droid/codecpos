@@ -31,11 +31,15 @@ export function MultitiendaProvider({ children }: { children: ReactNode }) {
   const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [tiendaActual, setTiendaActual] = useState<Tienda | null>(null);
 
+  // 🚀 FIX rendimiento: listarTiendas() siempre devuelve objetos nuevos
+  // (parseados de localStorage). Si el contenido no cambió se conserva la
+  // referencia anterior, así los consumidores (pantalla de venta, sidebar,
+  // inventario) no se re-renderizan por nada.
   const recargarTiendas = useCallback(() => {
     const lista = listarTiendas();
-    setTiendas(lista);
-    const activa = getTiendaActiva();
-    setTiendaActual(activa || lista[0] || null);
+    setTiendas((prev) => (JSON.stringify(prev) === JSON.stringify(lista) ? prev : lista));
+    const activa = getTiendaActiva() || lista[0] || null;
+    setTiendaActual((prev) => (JSON.stringify(prev) === JSON.stringify(activa) ? prev : activa));
   }, []);
 
   // ✅ FIX: Solo cargar UNA VEZ al montar

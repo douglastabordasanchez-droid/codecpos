@@ -114,7 +114,12 @@ export function PortalEmpleados() {
   const cargarEstadisticas = async () => {
     try {
       // Obtener ventas del día
-      const ventas = await electronStore.obtenerVentas();
+      const ventas = await electronStore.obtenerVentasPorRango(
+        // 🚀 Solo las ventas cercanas a hoy (antes se leía TODO el historial
+        // cada 10s); el filtro de abajo sigue siendo el mismo.
+        new Date(new Date().setHours(0, 0, 0, 0) - 36 * 3600 * 1000),
+        new Date(Date.now() + 36 * 3600 * 1000),
+      );
       
       // Filtrar solo las ventas del cajero actual
       const ventasCajero = ventas.filter((v: any) => 

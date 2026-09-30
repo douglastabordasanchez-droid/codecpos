@@ -199,25 +199,12 @@ class Logger {
    */
   private async cleanOldLogs() {
     try {
-      const logs = await dbManager.getAllLogs();
-      
-      if (logs.length > this.MAX_LOGS) {
-        // Ordenar por timestamp (más antiguos primero)
-        const sortedLogs = logs.sort((a, b) => {
-          const timeA = new Date(a.timestamp).getTime();
-          const timeB = new Date(b.timestamp).getTime();
-          return timeA - timeB;
-        });
-
-        // Eliminar los más antiguos
-        const logsToDelete = sortedLogs.slice(0, logs.length - this.MAX_LOGS);
-        
-        for (const log of logsToDelete) {
-          await dbManager.deleteLog(log.id);
-        }
-
-        console.log(`🧹 ${logsToDelete.length} logs antiguos eliminados`);
-      }
+      // 🚀 FIX rendimiento: antes cargaba TODOS los logs, los ordenaba y los
+      // borraba uno por uno (una transacción por log) en cada arranque — con
+      // el log de sync cada 30s eso eran miles de transacciones al abrir la
+      // app. Ahora se recortan los más viejos en una sola transacción.
+      const borrados = await dbManager.recortarLogs(this.MAX_LOGS);
+      if (borrados > 0) console.log(`🧹 ${borrados} logs antiguos eliminados`);
     } catch (error) {
       console.error('Error limpiando logs antiguos:', error);
     }

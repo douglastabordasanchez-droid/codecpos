@@ -217,6 +217,10 @@ class SyncService {
   private isSyncing = false;
   private started = false;
   private syncInterval: number | null = null;
+  /** Última foto de stock por tienda subida con éxito (ver pushTiendasStock). */
+  private ultimaFirmaTiendasStock: string | null = null;
+  /** Texto de 'pos-productos' del último ciclo sin nada pendiente de subir (ver pushProductosLocalStorage). */
+  private ultimoRawProductosSinPendientes: string | null = null;
   private realtimeChannel: ReturnType<NonNullable<ReturnType<typeof getSupabaseClient>>['channel']> | null = null;
   private listeners: Set<(status: SyncStatus) => void> = new Set();
 
@@ -318,9 +322,17 @@ class SyncService {
       ['pull_tiendas', async () => {
         const tiendas = await descargarTiendas();
         if (tiendas?.length) {
+          // 🚀 FIX rendimiento: antes se avisaba "tiendas sincronizadas" en
+          // CADA ciclo (cada 30s) aunque nada hubiera cambiado, y eso hacía
+          // re-renderizar toda la pantalla de venta (usa useMultitienda).
+          // Ahora solo se avisa si las tiendas o la activa cambiaron de verdad.
+          const antes = JSON.stringify([listarTiendas(), localStorage.getItem('multitienda_activa_id')]);
           reemplazarTiendasDesdeNube(tiendas);
-          console.log('[SYNC] tiendas-sincronizadas dispatch', performance.now());
-          window.dispatchEvent(new CustomEvent('codecpos:tiendas-sincronizadas'));
+          const despues = JSON.stringify([listarTiendas(), localStorage.getItem('multitienda_activa_id')]);
+          if (antes !== despues) {
+            console.log('[SYNC] tiendas-sincronizadas dispatch', performance.now());
+            window.dispatchEvent(new CustomEvent('codecpos:tiendas-sincronizadas'));
+          }
         }
       }],
       ['pull_productos', () => this.pullProductosRemotos(client, clienteId)],
@@ -386,8 +398,12 @@ class SyncService {
     // bloquea), pero el espejo en localStorage['pos-productos'] se hace UNA
     // sola vez al final del lote (ver sincronizarProductosEnLocalStorageBatch).
     const actualizados: Producto[] = [];
+    // 🚀 FIX rendimiento: el inventario local se carga UNA vez por lote (antes
+    // se recargaba completo por CADA producto remoto: 500 cambios = 500
+    // lecturas del inventario entero).
+    const productosLocales = (data || []).length > 0 ? await dbManager.getAllProductos() : [];
     for (const remote of data || []) {
-      const actualizado = await this.aplicarCambioRemotoProducto(remote, { skipLocalStorageSync: true });
+      const actualizado = await this.aplicarCambioRemotoProducto(remote, { skipLocalStorageSync: true, productosLocales });
       if (actualizado) actualizados.push(actualizado);
     }
     if (actualizados.length > 0) {
@@ -399,10 +415,13 @@ class SyncService {
     await dbManager.setConfig('lastPullProductos', new Date().toISOString());
   }
 
-  private async aplicarCambioRemotoProducto(remote: any, opts?: { skipLocalStorageSync?: boolean }): Promise<Producto | null> {
+  private async aplicarCambioRemotoProducto(
+    remote: any,
+    opts?: { skipLocalStorageSync?: boolean; productosLocales?: Producto[] }
+  ): Promise<Producto | null> {
     if (!remote) return null;
 
-    const productos = await dbManager.getAllProductos();
+    const productos = opts?.productosLocales ?? await dbManager.getAllProductos();
     const local = productos.find((p) => p.supabaseId === remote.id || (remote.local_id && p.id === remote.local_id));
     const remoteUpdatedAt = new Date(remote.updated_at).getTime();
     let resultado: Producto;
@@ -454,6 +473,7 @@ class SyncService {
       };
       await dbManager.putProductoRaw(actualizado);
       if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(actualizado);
+      if (opts?.productosLocales) opts.productosLocales[opts.productosLocales.indexOf(local)] = actualizado;
       resultado = actualizado;
     } else {
       const nuevoId: string = remote.local_id || `remote-${remote.id}`;
@@ -511,6 +531,7 @@ class SyncService {
       };
       await dbManager.putProductoRaw(producto);
       if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(producto);
+      opts?.productosLocales?.push(producto);
       resultado = producto;
     }
 
@@ -1019,9 +1040,16 @@ class SyncService {
    * sin depender de que alguien recuerde marcar una bandera.
    */
   private async pushProductosLocalStorage(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    // 🚀 FIX rendimiento: si el inventario es exactamente el mismo texto que
+    // en el último ciclo que terminó sin pendientes, no hay nada que subir —
+    // se evita parsear el catálogo completo y calcular una firma por producto
+    // cada 30s. Cualquier cambio (venta, edición, importación) cambia el texto.
+    const rawProductos = localStorage.getItem('pos-productos') || '[]';
+    if (rawProductos === this.ultimoRawProductosSinPendientes) return;
+
     let productos: any[];
     try {
-      productos = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+      productos = JSON.parse(rawProductos);
     } catch {
       return;
     }
@@ -1039,7 +1067,10 @@ class SyncService {
 
     const hashesPrevios: Record<string, string> = (await dbManager.getConfig('productosPushHash')) || {};
     const pendientes = productos.filter((p) => p?.id && firma(p) !== hashesPrevios[p.id]);
-    if (pendientes.length === 0) return;
+    if (pendientes.length === 0) {
+      this.ultimoRawProductosSinPendientes = rawProductos;
+      return;
+    }
 
     const hashesNuevos: Record<string, string> = { ...hashesPrevios };
 
@@ -1400,16 +1431,25 @@ class SyncService {
     }
     if (filas.length === 0) return;
 
+    // 🚀 FIX rendimiento: antes se re-subían TODAS las filas de stock cada 30s
+    // aunque nada hubiera cambiado. Se compara con lo último subido con éxito
+    // (sin la marca de tiempo) y solo se sube si hubo algún cambio.
+    const firmaStock = JSON.stringify(filas.map((f) => [f.tienda_id, f.tienda_nombre, f.producto_id, f.cantidad]));
+    if (firmaStock === this.ultimaFirmaTiendasStock) return;
+
     // Se trocea por si el catálogo es grande (payload por llamada limitado).
     const LOTE = 500;
+    let huboError = false;
     for (let i = 0; i < filas.length; i += LOTE) {
       const lote = filas.slice(i, i + LOTE);
       const { error } = await client.from('tiendas_stock').upsert(lote, { onConflict: 'cliente_id,tienda_id,producto_id' });
       if (error) {
         console.error('[sync] Error subiendo stock por tienda:', error.message);
+        huboError = true;
         break;
       }
     }
+    if (!huboError) this.ultimaFirmaTiendasStock = firmaStock;
   }
 
   /**
@@ -1645,14 +1685,22 @@ class SyncService {
   }
 
   async getSyncStats(): Promise<SyncStats> {
-    const productos = await dbManager.getAllProductos();
-    const ventas = await dbManager.getAllVentas();
+    // 🚀 FIX rendimiento: la pantalla de venta (SyncStatusIndicator) pide esto
+    // en cada cambio de estado del ciclo de sync (~2 veces cada 30s). Antes
+    // cargaba TODO el inventario y TODO el historial de ventas solo para
+    // contarlos; ahora IndexedDB los cuenta sin deserializarlos.
+    const [totalProductos, productosPendientes, totalVentas, ventasPendientes] = await Promise.all([
+      dbManager.contar('productos'),
+      dbManager.contar('productos', true),
+      dbManager.contar('ventas'),
+      dbManager.contar('ventas', true),
+    ]);
 
     return {
-      totalProductos: productos.length,
-      productosPendientes: productos.filter((p) => p.syncStatus === 'pending').length,
-      totalVentas: ventas.length,
-      ventasPendientes: ventas.filter((v) => v.syncStatus === 'pending').length,
+      totalProductos,
+      productosPendientes,
+      totalVentas,
+      ventasPendientes,
       colaLength: 0,
       isOnline: navigator.onLine,
     };

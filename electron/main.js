@@ -70,7 +70,10 @@ if (gpuSafeModeActivo) {
   app.commandLine.appendSwitch('enable-gpu-rasterization');
   app.commandLine.appendSwitch('enable-zero-copy');
   app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
-  app.commandLine.appendSwitch('disable-gpu-vsync'); // Menos lag al abrir modales
+  // 🚀 FIX CPU/GPU: se quitó 'disable-gpu-vsync'. Sin vsync Chromium dibuja
+  // cuadros sin límite (cientos por segundo) durante cualquier animación,
+  // modal o scroll, saturando CPU/GPU en equipos modestos sin que se vea más
+  // fluido: la pantalla solo muestra 60 cuadros por segundo de todas formas.
   // 🛡️ 'ignore-gpu-blocklist' SÍ fuerza compositing por hardware en GPUs que
   // Chromium marca como problemáticas (lo que el comentario de arriba decía
   // evitar) — pero a diferencia de cuando se escribió ese comentario, ahora
@@ -1093,6 +1096,11 @@ function createWindow() {
       
       // ✅ Limitar cache para reducir memoria
       partition: 'persist:codecpos',
+
+      // 🚀 Sin corrector ortográfico: viene activo por defecto en Electron,
+      // carga diccionarios en memoria y revisa cada tecla en cada campo de
+      // texto (búsqueda de productos, cantidades, clientes). Un POS no lo usa.
+      spellcheck: false,
     },
     backgroundColor: '#0f172a',
     title:           'CODEC POS v2.0 — Sistema Punto de Venta',

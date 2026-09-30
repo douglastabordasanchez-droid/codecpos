@@ -760,6 +760,23 @@ class IndexedDBManager {
     });
   }
 
+  /**
+   * 🚀 Cuenta registros sin deserializarlos (IDBObjectStore.count). Para
+   * estadísticas de sincronización que antes cargaban TODO el inventario y
+   * TODO el historial de ventas solo para leer `.length`.
+   */
+  async contar(store: 'productos' | 'ventas', soloPendientes = false): Promise<number> {
+    const db = await this.ensureDB();
+    const nombre = store === 'productos' ? STORES.PRODUCTOS : STORES.VENTAS;
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([nombre], 'readonly');
+      const objectStore = transaction.objectStore(nombre);
+      const request = soloPendientes ? objectStore.index('syncStatus').count('pending') : objectStore.count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   // ⚡ Mismo caso que getProductosPendientes: pushVentasPendientes llamaba
   // getAllVentas() (escaneo completo) para filtrar 'pending' en JS. El
   // índice 'syncStatus' ya existe en este store también.
@@ -974,6 +991,35 @@ class IndexedDBManager {
 
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * 🚀 Deja solo los `max` logs más recientes, borrando los más viejos en UNA
+   * sola transacción con cursor sobre el índice 'timestamp' (sin cargarlos
+   * todos en memoria). Devuelve cuántos borró.
+   */
+  async recortarLogs(max: number): Promise<number> {
+    const db = await this.ensureDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.LOGS], 'readwrite');
+      const store = transaction.objectStore(STORES.LOGS);
+      let borrados = 0;
+      const countReq = store.count();
+      countReq.onsuccess = () => {
+        const sobrantes = countReq.result - max;
+        if (sobrantes <= 0) return;
+        const cursorReq = store.index('timestamp').openCursor();
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (!cursor || borrados >= sobrantes) return;
+          cursor.delete();
+          borrados++;
+          cursor.continue();
+        };
+      };
+      transaction.oncomplete = () => resolve(borrados);
+      transaction.onerror = () => reject(transaction.error);
     });
   }
 
