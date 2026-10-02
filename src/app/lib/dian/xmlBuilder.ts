@@ -1,156 +1,97 @@
 /**
- * Generador de XML UBL 2.1 para la factura electrónica de venta / documento
- * equivalente POS (mismo root `Invoice`, ver decidirTipoDocumentoDian en
- * types.ts).
+ * Generador de XML UBL 2.1 para la Factura Electrónica de Venta y para el
+ * Documento Equivalente Electrónico POS (ambos con raíz `Invoice`; cuál se
+ * emite lo decide decidirTipoDocumentoDian() en types.ts).
  *
- * La estructura base (Invoice, AccountingSupplierParty, AccountingCustomerParty,
- * InvoiceLine, TaxTotal, LegalMonetaryTotal) sigue el estándar OASIS UBL 2.1
- * público. El bloque `ext:UBLExtensions/sts:DianExtensions` (InvoiceControl,
- * InvoiceSource, SoftwareProvider, SoftwareSecurityCode, AuthorizationProvider,
- * QRCode) está confirmado campo a campo contra un documento real, firmado y
- * aceptado, descargado de una fuente pública verificable — no es una
- * reconstrucción a partir solo de la tabla de datos del anexo (ver
- * docs/electronic-invoicing/dian-sources/).
+ * Estructura revisada contra TODAS las reglas de rechazo del Anexo Técnico
+ * de Factura Electrónica v1.9 y del Anexo de Documento Equivalente v1.0
+ * (vendorizados en docs/electronic-invoicing/dian-sources/). Los bloques
+ * viven en ublComun.ts con el código de la regla que los exige.
  *
- * ⚠️ PENDIENTE: el elemento `ds:Signature` (XAdES) todavía no se inserta
- * aquí — lo aplica electron/dianSigner.js sobre el XML ya construido, antes
- * de transmitirlo (ver signatureProvider.ts). Códigos exactos de
- * municipio/departamento (DIVIPOLA) y de unidad de medida se usan tal cual
- * vengan del snapshot del emisor, no se validan aquí.
+ * Qué corrige frente a la versión anterior, que la DIAN habría rechazado:
+ *   · Impuestos del encabezado sin desglose por tributo/tarifa (FAS01/FAS04).
+ *   · Sin cac:PaymentMeans (FAN01).
+ *   · Emisor sin tipo de persona, dirección, responsabilidades ni prefijo
+ *     (FAJ02, FAJ28, FAJ26, FAJ49); adquirente sin identificación (FAK).
+ *   · ProfileID/CustomizationID/ProfileExecutionID equivocados o ausentes
+ *     (FAD02, FAD03, FAD04) y UUID sin ambiente (FAD07).
+ *   · Hora en UTC rotulada como -05:00, distinta de la usada en el CUFE (FAD06).
+ *   · Líneas sin unidad de medida (FAV05) y totales que no salían de las
+ *     líneas (FAU02..FAU14).
+ *   · Documento POS emitido con el encabezado de una factura, sin el bloque
+ *     FabricanteSoftware que su anexo exige.
  *
- * Determinístico: mismo input → mismo XML. Sin dependencias de UI ni de red
- * — se puede testear con datos fijos.
+ * Determinístico: mismo input → mismo XML. La firma XAdES se agrega después,
+ * sobre este XML ya construido (electron/dianXadesSigner.js o la Edge
+ * Function dian-emision).
  *
- * Recibe SOLO la factura (no el perfil fiscal en vivo): el emisor viene del
- * snapshot `factura.emisor`, congelado al momento de emitir — así el XML
- * regenerado de una factura vieja nunca cambia aunque el perfil fiscal se
- * haya editado o reemplazado después (ver types.ts, EmisorSnapshot).
- *
- * El segundo parámetro `extension` trae los datos que solo existen en el
- * momento de la emisión (número de resolución vigente en ese instante,
- * SoftwareSecurityCode ya calculado, URL de QR) — se pasan explícitos en
- * vez de recalcularse aquí para no mezclar cómputo de hashes con
- * construcción de XML (mismo principio que ya seguía el CUFE).
+ * El emisor viene del snapshot `factura.emisor`, congelado al emitir: el XML
+ * de una factura vieja nunca cambia aunque el perfil fiscal se edite después.
  */
-
 import type { FacturaElectronicaDian } from './types';
 import { construirBloqueDianExtensions, NAMESPACES_DIAN, type DianExtensionData } from './dianExtensionsBlock';
+import { calcularDocumentoFiscal, fechaColombia, horaColombia } from './documentoFiscal';
+import {
+  bloqueAdquirente, bloqueEmisor, bloqueLineas, bloquePago, bloqueTotales, bloqueTributosDocumento,
+  escapeXml, MONEDA, DatosFiscalesIncompletos,
+} from './ublComun';
+
 export type { DianExtensionData };
 
-function escapeXml(valor: string | number | undefined | null): string {
-  if (valor === undefined || valor === null) return '';
-  return String(valor)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-function money(n: number): string {
-  return (Number.isFinite(n) ? n : 0).toFixed(2);
-}
+/** Quién fabrica el software — bloque obligatorio del Documento Equivalente POS. */
+const FABRICANTE_SOFTWARE = `    <ext:UBLExtension>
+      <ext:ExtensionContent>
+        <FabricanteSoftware>
+          <InformacionDelFabricanteDelSoftware>
+            <Name>NombreApellido</Name>
+            <Value>Codec Studio</Value>
+            <Name>RazonSocial</Name>
+            <Value>Codec Studio</Value>
+            <Name>NombreSoftware</Name>
+            <Value>CODEC POS</Value>
+          </InformacionDelFabricanteDelSoftware>
+        </FabricanteSoftware>
+      </ext:ExtensionContent>
+    </ext:UBLExtension>`;
 
 export function construirXmlFactura(factura: FacturaElectronicaDian, extension: DianExtensionData): string {
   const emisor = factura.emisor;
-  const fecha = new Date(factura.fechaEmision);
-  const fechaISO = fecha.toISOString().slice(0, 10);
-  const horaISO = fecha.toISOString().slice(11, 19);
+  const esPos = factura.tipoDocumento === 'documento_equivalente';
+  const ambiente = emisor.ambiente === 'produccion' ? '1' : '2';
 
-  const lineas = factura.items
-    .map((item, i) => {
-      const impuestosLinea = (item.impuestos || [])
-        .map(
-          (imp) => `
-      <cac:TaxTotal>
-        <cbc:TaxAmount currencyID="COP">${money(imp.valor)}</cbc:TaxAmount>
-        <cac:TaxSubtotal>
-          <cbc:TaxableAmount currencyID="COP">${money(item.subtotal)}</cbc:TaxableAmount>
-          <cbc:TaxAmount currencyID="COP">${money(imp.valor)}</cbc:TaxAmount>
-          <cbc:Percent>${imp.porcentaje ?? 0}</cbc:Percent>
-          <cac:TaxCategory>
-            <cac:TaxScheme>
-              <cbc:ID>${escapeXml(imp.codigo)}</cbc:ID>
-            </cac:TaxScheme>
-          </cac:TaxCategory>
-        </cac:TaxSubtotal>
-      </cac:TaxTotal>`
-        )
-        .join('');
+  // FAD05a: el número solo admite letras y números.
+  if (!/^[A-Za-z0-9]+$/.test(factura.numeroFactura)) {
+    throw new DatosFiscalesIncompletos(`El número "${factura.numeroFactura}" tiene caracteres que la DIAN no admite (solo letras y números, sin espacios ni guiones). Revisa el prefijo de la numeración.`);
+  }
+  if (factura.items.length === 0) throw new DatosFiscalesIncompletos('El documento no tiene ítems.');
 
-      return `
-    <cac:InvoiceLine>
-      <cbc:ID>${i + 1}</cbc:ID>
-      <cbc:InvoicedQuantity>${item.cantidad}</cbc:InvoicedQuantity>
-      <cbc:LineExtensionAmount currencyID="COP">${money(item.subtotal)}</cbc:LineExtensionAmount>${impuestosLinea}
-      <cac:Item>
-        <cbc:Description>${escapeXml(item.descripcion)}</cbc:Description>
-        ${item.codigo ? `<cac:SellersItemIdentification><cbc:ID>${escapeXml(item.codigo)}</cbc:ID></cac:SellersItemIdentification>` : ''}
-      </cac:Item>
-      <cac:Price>
-        <cbc:PriceAmount currencyID="COP">${money(item.precioUnitario)}</cbc:PriceAmount>
-      </cac:Price>
-    </cac:InvoiceLine>`;
-    })
-    .join('');
+  const doc = calcularDocumentoFiscal(factura.items);
+  const fecha = fechaColombia(factura.fechaEmision);
+  const cobraIva = doc.tributos.some((t) => t.codigo === '01');
 
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const extensiones = construirBloqueDianExtensions(emisor, extension, esPos ? FABRICANTE_SOFTWARE : '');
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
          xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
          xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
          xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
          ${NAMESPACES_DIAN}>
-${construirBloqueDianExtensions(emisor, extension)}
+${extensiones}
   <cbc:UBLVersionID>UBL 2.1</cbc:UBLVersionID>
-  <cbc:CustomizationID>${emisor.ambiente === 'produccion' ? '1' : '2'}</cbc:CustomizationID>
-  <cbc:ProfileID>DIAN 2.1</cbc:ProfileID>
+  <cbc:CustomizationID>10</cbc:CustomizationID>
+  <cbc:ProfileID>${esPos ? 'DIAN 2.1: Documento Equivalente POS' : 'DIAN 2.1: Factura Electrónica de Venta'}</cbc:ProfileID>
+  <cbc:ProfileExecutionID>${ambiente}</cbc:ProfileExecutionID>
   <cbc:ID>${escapeXml(factura.numeroFactura)}</cbc:ID>
-  <cbc:UUID schemeName="${factura.tipoDocumento === 'documento_equivalente' ? 'CUDE-SHA384' : 'CUFE-SHA384'}">${escapeXml(factura.cufe || '')}</cbc:UUID>
-  <cbc:IssueDate>${fechaISO}</cbc:IssueDate>
-  <cbc:IssueTime>${horaISO}-05:00</cbc:IssueTime>
-  <cbc:InvoiceTypeCode>01</cbc:InvoiceTypeCode>
-  <cbc:DocumentCurrencyCode>COP</cbc:DocumentCurrencyCode>
-  <cbc:LineCountNumeric>${factura.items.length}</cbc:LineCountNumeric>
-
-  <cac:AccountingSupplierParty>
-    <cac:Party>
-      <cac:PartyName><cbc:Name>${escapeXml(emisor.nombreComercial || emisor.nombreORazonSocial)}</cbc:Name></cac:PartyName>
-      <cac:PartyTaxScheme>
-        <cbc:RegistrationName>${escapeXml(emisor.nombreORazonSocial)}</cbc:RegistrationName>
-        <cbc:CompanyID schemeID="${escapeXml(emisor.digitoVerificacion)}">${escapeXml(emisor.nit)}</cbc:CompanyID>
-      </cac:PartyTaxScheme>
-      <cac:PartyLegalEntity>
-        <cbc:RegistrationName>${escapeXml(emisor.nombreORazonSocial)}</cbc:RegistrationName>
-        <cbc:CompanyID>${escapeXml(emisor.nit)}</cbc:CompanyID>
-      </cac:PartyLegalEntity>
-    </cac:Party>
-  </cac:AccountingSupplierParty>
-
-  <cac:AccountingCustomerParty>
-    <cac:Party>
-      <cac:PartyName><cbc:Name>${escapeXml(factura.adquirente.nombreORazonSocial)}</cbc:Name></cac:PartyName>
-      <cac:PartyTaxScheme>
-        <cbc:RegistrationName>${escapeXml(factura.adquirente.nombreORazonSocial)}</cbc:RegistrationName>
-        <cbc:CompanyID schemeID="${escapeXml(factura.adquirente.digitoVerificacion)}">${escapeXml(factura.adquirente.numeroDocumento)}</cbc:CompanyID>
-      </cac:PartyTaxScheme>
-      <cac:PartyLegalEntity>
-        <cbc:RegistrationName>${escapeXml(factura.adquirente.nombreORazonSocial)}</cbc:RegistrationName>
-        <cbc:CompanyID>${escapeXml(factura.adquirente.numeroDocumento)}</cbc:CompanyID>
-      </cac:PartyLegalEntity>
-      ${factura.adquirente.email ? `<cac:Contact><cbc:ElectronicMail>${escapeXml(factura.adquirente.email)}</cbc:ElectronicMail></cac:Contact>` : ''}
-    </cac:Party>
-  </cac:AccountingCustomerParty>
-
-  <cac:TaxTotal>
-    <cbc:TaxAmount currencyID="COP">${money(factura.totalImpuestos)}</cbc:TaxAmount>
-  </cac:TaxTotal>
-
-  <cac:LegalMonetaryTotal>
-    <cbc:LineExtensionAmount currencyID="COP">${money(factura.subtotal)}</cbc:LineExtensionAmount>
-    <cbc:TaxExclusiveAmount currencyID="COP">${money(factura.subtotal)}</cbc:TaxExclusiveAmount>
-    <cbc:TaxInclusiveAmount currencyID="COP">${money(factura.total)}</cbc:TaxInclusiveAmount>
-    <cbc:PayableAmount currencyID="COP">${money(factura.total)}</cbc:PayableAmount>
-  </cac:LegalMonetaryTotal>
-${lineas}
+  <cbc:UUID schemeID="${ambiente}" schemeName="${esPos ? 'CUDE-SHA384' : 'CUFE-SHA384'}">${escapeXml(factura.cufe || '')}</cbc:UUID>
+  <cbc:IssueDate>${fecha}</cbc:IssueDate>
+  <cbc:IssueTime>${horaColombia(factura.fechaEmision)}</cbc:IssueTime>
+  <cbc:InvoiceTypeCode>${esPos ? '20' : '01'}</cbc:InvoiceTypeCode>
+  ${MONEDA}
+  <cbc:LineCountNumeric>${doc.lineas.length}</cbc:LineCountNumeric>
+${bloqueEmisor(emisor, extension.prefix, cobraIva)}
+${bloqueAdquirente(factura.adquirente)}
+${bloquePago(factura.pago, fecha)}
+${[bloqueTributosDocumento(doc), bloqueTotales(doc), bloqueLineas(doc.lineas, 'InvoiceLine', 'InvoicedQuantity')].filter(Boolean).join('\n')}
 </Invoice>`;
 }

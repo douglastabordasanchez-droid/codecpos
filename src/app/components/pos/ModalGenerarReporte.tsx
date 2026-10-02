@@ -27,6 +27,11 @@ interface Props {
   darkMode: boolean;
   usuarioActual: any;
   generarFn: (tipo: string, inicio: string, fin: string, cajero: string, categoria: string) => Promise<ReporteGenerado>;
+  /** La web no tiene los usuarios ni las categorías en localStorage: los
+   * trae de Supabase y los pasa aquí. Electron no pasa nada y se leen de su
+   * almacenamiento local, como siempre. */
+  cajeros?: Array<{ id: string; nombre: string }>;
+  categorias?: Array<{ id: string; nombre: string; color: string }>;
 }
 
 const PERIODOS = [
@@ -39,7 +44,7 @@ const PERIODOS = [
 
 function toDate(d: Date) { return d.toISOString().split('T')[0]; }
 
-export default function ModalGenerarReporte({ open, tipo, onClose, onGenerado, darkMode, usuarioActual, generarFn }: Props) {
+export default function ModalGenerarReporte({ open, tipo, onClose, onGenerado, darkMode, usuarioActual, generarFn, cajeros: cajerosExternos, categorias: categoriasExternas }: Props) {
   const [loading, setLoading] = useState(false);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
@@ -53,7 +58,17 @@ export default function ModalGenerarReporte({ open, tipo, onClose, onGenerado, d
   useEffect(() => {
     if (!open) return;
     aplicarPeriodo('7dias');
-    cargarCajeros();
+    if (cajerosExternos) {
+      setCajeros(cajerosExternos);
+      const propio = cajerosExternos.some((c) => c.id === usuarioActual?.id);
+      setCajeroSeleccionado(propio ? usuarioActual.id : cajerosExternos[0]?.id || '');
+    } else {
+      cargarCajeros();
+    }
+    if (categoriasExternas) {
+      setCategorias(categoriasExternas);
+      return;
+    }
     try {
       const raw = localStorage.getItem('codecpos_categorias_global');
       if (raw) setCategorias(JSON.parse(raw));

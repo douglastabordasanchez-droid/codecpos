@@ -237,7 +237,12 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
     setGuardando(true);
     try {
       await actualizarEstadoPerfilFiscal(perfil.id, 'TESTING');
-      setPerfil({ ...perfil, estado: 'TESTING' });
+      // 🛡️ FIX: el perfil solo quedaba activo al pasar a producción, pero el
+      // emisor exige un perfil activo — así que era imposible emitir los
+      // documentos del set de pruebas que la DIAN pide ANTES de producción.
+      // En pruebas queda activo, en ambiente de habilitación.
+      await activarPerfilFiscal(perfil.id);
+      setPerfil({ ...perfil, estado: 'TESTING', activo: true });
       toast.success('Perfil marcado en pruebas (ambiente de habilitación)');
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo actualizar el estado');

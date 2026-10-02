@@ -50,7 +50,10 @@ function extraerCredencialesP12(p12Buffer, pin) {
   if (!keyBag) {
     keyBag = p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag]?.[0];
   }
-  const certBag = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag]?.[0];
+  // Un .p12 trae la cadena completa (CA incluida): el certificado del
+  // firmante es el que corresponde a la llave privada, no el primero.
+  const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] || [];
+  const certBag = certBags.find((b) => keyBag?.key && b.cert?.publicKey?.n?.equals(keyBag.key.n)) || certBags[0];
 
   if (!keyBag?.key || !certBag?.cert) {
     throw new Error('El certificado .p12 no contiene una llave privada y un certificado válidos (o el PIN es incorrecto).');
@@ -98,8 +101,35 @@ function horaColombiaISO() {
   );
 }
 
+/**
+ * Namespaces que un nodo hereda de sus ancestros (el más cercano gana).
+ *
+ * 🛡️ La forma canónica (C14N inclusivo) de un fragmento del documento —
+ * KeyInfo, SignedProperties, SignedInfo — incluye TODOS los namespaces en
+ * alcance, también los declarados en la raíz, y así los recalcula cualquier
+ * validador (la DIAN incluida). Antes se canonizaban sin ellos: el firmador
+ * se «autoverificaba» con el mismo error y una verificación independiente
+ * rechazaba la firma.
+ */
+function nsHeredados(nodo) {
+  const declaracion = (nombre) => nombre.match(/^xmlns(?::(.+))?$/);
+  const propios = new Set();
+  for (let i = 0; i < (nodo.attributes?.length ?? 0); i++) {
+    const m = declaracion(nodo.attributes[i].nodeName);
+    if (m) propios.add(m[1] || '');
+  }
+  const heredados = new Map();
+  for (let p = nodo.parentNode; p && p.nodeType === 1; p = p.parentNode) {
+    for (let i = 0; i < p.attributes.length; i++) {
+      const m = declaracion(p.attributes[i].nodeName);
+      if (m && !heredados.has(m[1] || '')) heredados.set(m[1] || '', p.attributes[i].nodeValue || '');
+    }
+  }
+  return [...heredados].filter(([prefijo]) => !propios.has(prefijo)).map(([prefix, namespaceURI]) => ({ prefix, namespaceURI }));
+}
+
 function canonicalizar(node) {
-  return new C14nCanonicalization().process(node, {});
+  return new C14nCanonicalization().process(node, { ancestorNamespaces: nsHeredados(node) });
 }
 
 /**

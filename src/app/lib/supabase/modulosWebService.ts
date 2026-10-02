@@ -53,6 +53,7 @@ export const MODULOS_DISPONIBLES_EN_WEB: ModuloPOS[] = [
   ModuloPOS.MULTITIENDA,
   ModuloPOS.ARTES_GRAFICAS,
   ModuloPOS.PAPELERIA_PINATERIA,
+  ModuloPOS.FACTURACION_DIAN,
 ];
 
 export function estaDisponibleEnWeb(modulo: ModuloPOS): boolean {

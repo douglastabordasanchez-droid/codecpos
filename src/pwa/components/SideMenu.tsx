@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   X, User, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
   Settings, LogOut, Sun, Moon, Crown, Zap, ShieldAlert, Wrench, Coffee,
-  LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper, PawPrint,
+  LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper, PawPrint, ReceiptText,
 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -24,6 +24,7 @@ interface ItemMenu {
   subtitulo?: string;
   path: string;
   modulo?: ModuloPOS;
+  dePago?: boolean;
   soloAdmin?: boolean;
   soloStaff?: boolean;
 }
@@ -31,7 +32,7 @@ interface ItemMenu {
 export function SideMenu({ open, onClose }: Props) {
   const navigate = useNavigate();
   const { empleado, cerrarSesion } = usePwaAuth();
-  const { tieneModulo } = useModulosActivos();
+  const { tieneModulo, tieneModuloDePago } = useModulosActivos();
   const { tema, alternarTema } = useTheme();
   const [plan, setPlan] = useState<string | null>(null);
 
@@ -75,7 +76,8 @@ export function SideMenu({ open, onClose }: Props) {
 
   const analisis: ItemMenu[] = [
     { icon: LayoutDashboard, label: 'Dashboard', subtitulo: 'Ventas, utilidad y tendencia', path: '/dashboard', modulo: ModuloPOS.DASHBOARD },
-    { icon: FileBarChart, label: 'Reportes', subtitulo: 'Exportar ventas y gastos a PDF/Excel', path: '/reportes', modulo: ModuloPOS.REPORTES },
+    { icon: FileBarChart, label: 'Reportes', subtitulo: 'Ventas, cajeros, inventario, gastos y financiero', path: '/reportes', modulo: ModuloPOS.REPORTES },
+    { icon: ReceiptText, label: 'Facturación', subtitulo: 'Facturas electrónicas y causación de XML', path: '/facturacion', modulo: ModuloPOS.FACTURACION_DIAN, dePago: true, soloAdmin: true },
     { icon: Calculator, label: 'Contabilidad', subtitulo: 'Ingresos extra y gastos del periodo', path: '/contabilidad', modulo: ModuloPOS.CONTABILIDAD },
   ];
 
@@ -98,7 +100,8 @@ export function SideMenu({ open, onClose }: Props) {
   ];
 
   const visible = (it: ItemMenu) =>
-    (!it.modulo || tieneModulo(it.modulo)) && (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec);
+    (!it.modulo || (it.dePago ? tieneModuloDePago(it.modulo) : tieneModulo(it.modulo))) &&
+    (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec);
 
   return (
     <AnimatePresence>

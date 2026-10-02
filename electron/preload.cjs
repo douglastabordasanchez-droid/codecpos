@@ -277,6 +277,8 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('dian:enviar-factura-sync', perfilFiscalId, fileName, xmlFirmado, ambiente),
     enviarSetPruebas: (perfilFiscalId, fileName, xmlFirmado, testSetId) =>
       ipcRenderer.invoke('dian:enviar-set-pruebas', perfilFiscalId, fileName, xmlFirmado, testSetId),
+    consultarEstadoZip: (perfilFiscalId, trackId, ambiente) =>
+      ipcRenderer.invoke('dian:consultar-estado-zip', perfilFiscalId, trackId, ambiente),
     consultarEstado: (perfilFiscalId, trackId, ambiente) =>
       ipcRenderer.invoke('dian:consultar-estado', perfilFiscalId, trackId, ambiente),
     consultarRangoNumeracion: (perfilFiscalId, ambiente, accountCode, accountCodeT, softwareCode) =>

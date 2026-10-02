@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "node-forge": "npm:node-forge@1.3.1",
+    "@xmldom/xmldom": "npm:@xmldom/xmldom@0.9.10",
+    "xml-crypto": "npm:xml-crypto@6.1.2",
+    "fflate": "npm:fflate@0.8.2"
+  }
+}

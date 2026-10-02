@@ -77,6 +77,18 @@ function ModuleProtectedRoute({ modulo, children }: { modulo: ModuloPOS; childre
   return <>{children}</>;
 }
 
+/**
+ * Módulos que se venden aparte (Facturación electrónica). A diferencia de
+ * ModuleProtectedRoute, aquí ni el dueño (super_usuario) pasa sin licencia:
+ * solo cuenta que el módulo esté en la configuración global, que se
+ * sincroniza con la licencia de la nube al iniciar sesión.
+ */
+function PaidModuleRoute({ modulo, children }: { modulo: ModuloPOS; children: ReactNode }) {
+  const { esDesarrollador } = useAuth();
+  if (esDesarrollador || esModuloActivoGlobal(modulo)) return <>{children}</>;
+  return <Navigate to="/pos" replace />;
+}
+
 // ✅ LOGIN WRAPPER: usa logoutKey para forzar re-mount limpio en cada logout
 function LoginWrapper() {
   const { logoutKey } = useAuth();
@@ -382,7 +394,9 @@ export const router = createHashRouter([
         path: 'facturacion-electronica',
         element: (
           <Suspense fallback={<LoadingFallback />}>
-            <FacturacionElectronicaPage />
+            <PaidModuleRoute modulo={ModuloPOS.FACTURACION_DIAN}>
+              <FacturacionElectronicaPage />
+            </PaidModuleRoute>
           </Suspense>
         )
       },

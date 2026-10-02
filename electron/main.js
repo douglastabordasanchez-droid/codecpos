@@ -1513,6 +1513,17 @@ ipcMain.handle('dian:consultar-estado', async (_, perfilFiscalId, trackId, ambie
   }
 });
 
+ipcMain.handle('dian:consultar-estado-zip', async (_, perfilFiscalId, trackId, ambiente) => {
+  try {
+    const p12Buffer = dianSecrets.leerCertificadoParaFirma(perfilFiscalId);
+    const pin = dianSecrets.leerPinParaFirma(perfilFiscalId);
+    const respuesta = await dianSoapClient.consultarEstadoZip({ p12Buffer, pin, ambiente, trackId });
+    return { success: true, respuesta };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('dian:consultar-rango-numeracion', async (_, perfilFiscalId, ambiente, accountCode, accountCodeT, softwareCode) => {
   try {
     const p12Buffer = dianSecrets.leerCertificadoParaFirma(perfilFiscalId);

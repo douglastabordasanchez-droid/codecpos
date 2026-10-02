@@ -116,7 +116,7 @@ export const router = createBrowserRouter([
       { path: 'papeleria-pinateria', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PAPELERIA_PINATERIA}><PapeleriaPinateriaPage /></ModuloGate></ConSuspense> },
       { path: 'configuracion', element: <ConSuspense><ConfiguracionPage /></ConSuspense> },
       { path: 'planes', element: <ConSuspense><PlanesPage /></ConSuspense> },
-      { path: 'facturacion', element: <ConSuspense><FacturacionPage /></ConSuspense> },
+      { path: 'facturacion', element: <ConSuspense><ModuloGate modulo={ModuloPOS.FACTURACION_DIAN} dePago><FacturacionPage /></ModuloGate></ConSuspense> },
       { path: 'perfil', element: <ConSuspense><PerfilPage /></ConSuspense> },
       { path: 'desarrollador', element: <ConSuspense><PanelDesarrolladorPage /></ConSuspense> },
     ],

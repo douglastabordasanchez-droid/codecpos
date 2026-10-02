@@ -1,5 +1,37 @@
 # Estado de la integración real con la DIAN
 
+> ## Revisión del 2026-10-02 — léase antes que el resto
+>
+> Una revisión contra las reglas de rechazo del Anexo Técnico v1.9 y una
+> verificación **independiente** de la firma encontraron defectos que este
+> documento daba por resueltos. Lo que sigue más abajo describe el diseño,
+> pero donde diga «verificado» o «pendiente real: ninguno», prevalece esto:
+>
+> | Defecto que la DIAN habría rechazado | Regla | Corrección |
+> |---|---|---|
+> | Fragmentos de la firma (KeyInfo, SignedProperties, SignedInfo) canonizados sin los namespaces heredados de la raíz. El firmador se «autoverificaba» con el mismo error; xml-crypto rechazaba la firma. | ZE02 | `nsHeredados()` en `electron/dianXadesSigner.js` y `supabase/functions/dian-emision/xades.ts`; ambos tienen ahora una prueba con verificador independiente. |
+> | El XML se enviaba sin comprimir; la DIAN recibe un ZIP. | §7.8 | `empaquetarZip()` en los dos clientes SOAP. |
+> | Sobre SOAP sin WS-Addressing (`wsa:Action`, `wsa:To`). | WSDL (wsHttpBinding) | Cliente SOAP reescrito; firma `wsa:To`. La librería `soap` ya no se usa. |
+> | Fecha del CUFE: se usaba el instante ISO completo como `FecFac`, y la hora local del equipo, mientras el XML llevaba la hora UTC rotulada `-05:00`. | FAD06 | `fechaColombia()`/`horaColombia()` únicos para XML y CUFE. |
+> | Impuestos del encabezado sin desglose; sin `PaymentMeans`; emisor sin tipo de persona, dirección, responsabilidades ni prefijo; adquirente sin identificación; perfil/operación/ambiente ausentes; líneas sin unidad. | FAS, FAN, FAJ, FAK, FAD, FAV | `xmlBuilder.ts`, `notaAjusteXmlBuilder.ts`, `ublComun.ts`. |
+> | Totales tomados del carrito (con propina) en vez de las líneas. | FAU | `documentoFiscal.ts`: todo se deriva de las líneas. |
+> | Documento Equivalente POS emitido con encabezado de factura y sin `FabricanteSoftware`. | Anexo DE v1.0 | `xmlBuilder.ts`. |
+> | Notas: `cbc:DiscrepancyResponse` (debe ser `cac:`), sin líneas (la factura leída de la base no trae ítems), con `InvoiceControl`. | — | `notaAjusteXmlBuilder.ts`, `itemsDeFactura()`. |
+> | Certificado: se tomaba el primero del .p12, que puede ser la CA. | — | Se elige el que casa con la llave privada. |
+> | Un perfil solo quedaba activo al pasar a producción, así que no se podían emitir los documentos del set de pruebas. | — | Queda activo al marcarlo «en pruebas». |
+>
+> **Sigue sin probarse contra la DIAN real.** Todo lo anterior se verificó
+> contra el anexo y con pruebas automáticas; la aceptación solo la da la DIAN.
+> Para comprobarla existe ahora **Facturación → Prueba de habilitación con la
+> DIAN** (envía por `SendTestSetAsync` y muestra el veredicto regla por regla).
+> Hasta que esa prueba pase con el certificado de un negocio real, no se debe
+> afirmar que la DIAN acepta estos documentos.
+>
+> **Firma desde la web:** el certificado puede custodiarse cifrado en el
+> servidor (tabla `dian_certificados_nube`, Edge Function `dian-emision`,
+> secreto `DIAN_CERT_KEY`). Si ese secreto se pierde o se rota, los
+> certificados guardados dejan de poder descifrarse y hay que volver a subirlos.
+
 **Los cuatro bloqueos originales (firma XAdES, transmisión SOAP, CUDE de notas, CUDE +
 XML del Documento Equivalente POS) están implementados con lógica real, contra fuentes
 oficiales descargadas y verificadas de dian.gov.co** (vendorizadas en

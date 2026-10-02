@@ -44,6 +44,9 @@ interface FacturaRow {
   total: number;
   fecha_emision: string;
   fecha_validacion: string | null;
+  correo_enviado_at?: string | null;
+  correo_destino?: string | null;
+  updated_at?: string;
 }
 
 function filaAFactura(fila: FacturaRow): FacturaElectronicaDian {
@@ -90,6 +93,9 @@ function filaAFactura(fila: FacturaRow): FacturaElectronicaDian {
     total: fila.total,
     fechaEmision: fila.fecha_emision,
     fechaValidacion: fila.fecha_validacion ?? undefined,
+    correoEnviadoAt: fila.correo_enviado_at ?? undefined,
+    correoDestino: fila.correo_destino ?? undefined,
+    actualizadaEn: fila.updated_at,
   };
 }
 
@@ -167,6 +173,60 @@ export async function incrementarIntentosTransmision(id: string, intentosActuale
   const client = getSupabaseClient();
   if (!client) return;
   await client.from('facturas_electronicas').update({ intentos_transmision: intentosActuales + 1 }).eq('id', id);
+}
+
+/** Deja constancia de que la factura se le envió por correo al cliente. */
+export async function marcarCorreoEnviado(id: string, destino: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { error } = await client
+    .from('facturas_electronicas')
+    .update({ correo_enviado_at: new Date().toISOString(), correo_destino: destino })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** Minutos tras los cuales una factura que sigue en 'signing' o 'sent' se
+ * considera abandonada (la app se cerró o se cayó a mitad del envío). */
+const MINUTOS_ENVIO_ABANDONADO = 10;
+
+/**
+ * Facturas que quedaron sin transmitir y que la cola de envíos debe
+ * reintentar (ver ../dian/colaDian.ts): las que están en contingencia, y las
+ * que se quedaron a medio camino hace rato. Lanza si la consulta falla, para
+ * que la cola distinga «no hay pendientes» de «no pude preguntar».
+ */
+export async function listarFacturasPendientesDeTransmision(clienteId: string): Promise<FacturaElectronicaDian[]> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const limiteAbandono = new Date(Date.now() - MINUTOS_ENVIO_ABANDONADO * 60_000).toISOString();
+  const { data, error } = await client
+    .from('facturas_electronicas')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .or(`estado.eq.contingency,and(estado.in.(signing,sent),updated_at.lt.${limiteAbandono})`)
+    .order('fecha_emision', { ascending: true })
+    .limit(50);
+  if (error) throw new Error(error.message);
+  return ((data as FacturaRow[]) || []).map(filaAFactura);
+}
+
+/**
+ * Candado optimista: toma la factura para reintentarla solo si nadie la tocó
+ * desde que se leyó. Con varias cajas abiertas, todas corren la misma cola;
+ * sin esto dos terminales transmitirían el mismo documento a la vez.
+ * Devuelve false si otra terminal se adelantó.
+ */
+export async function reclamarFacturaParaTransmision(id: string, actualizadaEn: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  const { data, error } = await client
+    .from('facturas_electronicas')
+    .update({ estado: 'signing', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('updated_at', actualizadaEn)
+    .select('id');
+  return !error && (data?.length ?? 0) > 0;
 }
 
 export interface FiltrosHistorialFacturas {

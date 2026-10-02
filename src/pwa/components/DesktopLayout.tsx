@@ -10,13 +10,13 @@ import { useModulosActivos } from '../hooks/useModulosActivos';
 import { useTheme } from '../contexts/ThemeContext';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { codecVerifyPwaActivo, alternarCodecVerifyPwa, suscribirNotificacionesPagoPwa } from '../lib/codecVerifyPwa';
-import { NAV_PRINCIPAL as PRINCIPAL, NAV_HERRAMIENTAS as HERRAMIENTAS, NAV_ADMINISTRACION as ADMINISTRACION, NAV_PLATAFORMA as PLATAFORMA, ItemNavSidebar as ItemNav } from '../lib/sidebarNav';
+import { NAV_PRINCIPAL as PRINCIPAL, NAV_HERRAMIENTAS as HERRAMIENTAS, NAV_GESTION as GESTION, NAV_ADMINISTRACION as ADMINISTRACION, NAV_PLATAFORMA as PLATAFORMA, ItemNavSidebar as ItemNav } from '../lib/sidebarNav';
 import { esRutaOculta, EVENTO_SIDEBAR_OCULTOS_CAMBIADO } from '../lib/sidebarPrefs';
 import logo from '/logo.png';
 
 export function DesktopLayout() {
   const { empleado, cargando, cerrarSesion } = usePwaAuth();
-  const { tieneModulo } = useModulosActivos();
+  const { tieneModulo, tieneModuloDePago } = useModulosActivos();
   const { tema, alternarTema } = useTheme();
   const navigate = useNavigate();
   const [plan, setPlan] = useState<string | null>(null);
@@ -70,7 +70,8 @@ export function DesktopLayout() {
   }, [verifyActivo, empleado?.cliente_id]);
 
   const visible = (it: ItemNav) =>
-    (!it.modulo || tieneModulo(it.modulo)) && (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec) &&
+    (!it.modulo || (it.dePago ? tieneModuloDePago(it.modulo) : tieneModulo(it.modulo))) &&
+    (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec) &&
     (it.fijo || !esRutaOculta(it.path));
 
   const toggleVerify = () => {
@@ -111,6 +112,7 @@ export function DesktopLayout() {
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-5">
           <NavGroup label={null} items={PRINCIPAL.filter(visible)} colapsado={colapsado} />
           {HERRAMIENTAS.some(visible) && <NavGroup label="Herramientas" items={HERRAMIENTAS.filter(visible)} colapsado={colapsado} />}
+          {GESTION.some(visible) && <NavGroup label="Gestión" items={GESTION.filter(visible)} colapsado={colapsado} />}
           {ADMINISTRACION.some(visible) && <NavGroup label="Administración" items={ADMINISTRACION.filter(visible)} destacado colapsado={colapsado} />}
           {PLATAFORMA.some(visible) && <NavGroup label="Plataforma" items={PLATAFORMA.filter(visible)} destacado colapsado={colapsado} />}
         </nav>

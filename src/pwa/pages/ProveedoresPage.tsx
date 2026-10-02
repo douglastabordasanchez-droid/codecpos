@@ -43,11 +43,17 @@ export default function ProveedoresPage() {
     const cargar = () => {
       client
         .from('proveedores')
-        .select('id, nombre, nit, contacto_principal, telefono, email, categoria, saldo_pendiente, total_comprado, calificacion, activo, bloqueado')
+        .select('id, nombre, nit, contacto_principal, telefono, email, categoria, saldo_pendiente, total_comprado, saldo_pendiente_web, total_comprado_web, calificacion, activo, bloqueado')
         .eq('cliente_id', empleado.cliente_id)
         .order('nombre')
         .then(({ data }) => {
-          setProveedores((data as ProveedorFila[]) || []);
+          // Lo que publica Electron + lo causado desde Facturación (columnas
+          // *_web, migración 0100): el saldo real es la suma de los dos.
+          setProveedores(((data as any[]) || []).map((p) => ({
+            ...p,
+            saldo_pendiente: Number(p.saldo_pendiente || 0) + Number(p.saldo_pendiente_web || 0),
+            total_comprado: Number(p.total_comprado || 0) + Number(p.total_comprado_web || 0),
+          })) as ProveedorFila[]);
           setCargando(false);
         });
     };

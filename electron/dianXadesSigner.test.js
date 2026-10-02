@@ -119,3 +119,20 @@ describe('firmarXadesXml', () => {
     expect(() => verificarFirmaPropia(firmaAlterada, { certForge })).toThrow(/SignatureValue/);
   });
 });
+
+describe('verificación independiente de la firma', () => {
+  // La autoverificación usa la misma canonización del firmador, así que no
+  // detecta un error de canonización: durante un tiempo los fragmentos se
+  // canonizaban sin los namespaces heredados de la raíz y la DIAN habría
+  // rechazado la firma. Esta prueba valida con OTRA implementación (xml-crypto).
+  it('xml-crypto valida la firma y sus tres referencias', async () => {
+    const { SignedXml } = await import('xml-crypto');
+    const { DOMParser } = await import('@xmldom/xmldom');
+    const firmado = firmarXadesXml(Buffer.from(xmlDePrueba(), 'utf8'), p12Buffer, PIN).toString('utf8');
+    const doc = new DOMParser().parseFromString(firmado, 'text/xml');
+    const verificador = new SignedXml({ publicCert: forge.pki.certificateToPem(certForge), idAttributes: ['Id'] });
+    verificador.loadSignature(doc.getElementsByTagName('ds:Signature')[0]);
+    expect(verificador.checkSignature(firmado)).toBe(true);
+    expect(verificador.getSignedReferences()).toHaveLength(3);
+  });
+});

@@ -84,6 +84,8 @@ interface Window {
         Promise<{ success: boolean; respuesta?: Record<string, any>; error?: string }>;
       enviarSetPruebas: (perfilFiscalId: string, fileName: string, xmlFirmado: string, testSetId: string) =>
         Promise<{ success: boolean; respuesta?: Record<string, any>; error?: string }>;
+      consultarEstadoZip: (perfilFiscalId: string, trackId: string, ambiente: 'habilitacion' | 'produccion') =>
+        Promise<{ success: boolean; respuesta?: any; error?: string }>;
       consultarEstado: (perfilFiscalId: string, trackId: string, ambiente: 'habilitacion' | 'produccion') =>
         Promise<{ success: boolean; respuesta?: Record<string, any>; error?: string }>;
       consultarRangoNumeracion: (perfilFiscalId: string, ambiente: 'habilitacion' | 'produccion', accountCode: string, accountCodeT: string, softwareCode: string) =>

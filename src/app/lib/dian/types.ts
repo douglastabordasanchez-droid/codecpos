@@ -171,6 +171,10 @@ export interface EmisorSnapshot {
   departamentoCodigo?: string;
   responsabilidadesFiscales?: string[];
   ambiente?: AmbienteDian;
+  /** Solo se usan al construir el XML en el momento de emitir (no se
+   * guardan en columnas issuer_*; quedan dentro del XML firmado). */
+  tipoPersona?: TipoPersona;
+  email?: string;
 }
 
 export type TipoDocumentoFactura = 'factura' | 'documento_equivalente';
@@ -205,6 +209,13 @@ export interface FacturaElectronicaDian {
   total: number;
   fechaEmision: string;
   fechaValidacion?: string;
+  /** Cómo se pagó la venta — va en cac:PaymentMeans, que la DIAN exige (FAN01). */
+  pago?: { metodo?: string; aCredito?: boolean; fechaVencimiento?: string };
+  /** Cuándo y a qué correo se le envió al cliente (migración 0099). Sin valor = pendiente. */
+  correoEnviadoAt?: string;
+  correoDestino?: string;
+  /** `updated_at` de la fila: la cola de envíos lo usa como candado optimista. */
+  actualizadaEn?: string;
 }
 
 export type TipoNotaAjuste = 'credito' | 'debito';

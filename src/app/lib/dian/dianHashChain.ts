@@ -13,33 +13,46 @@
  * docs/electronic-invoicing/dian-sources/.
  */
 
+import { fechaColombia, horaColombia } from './documentoFiscal';
+
 export interface ImpuestoDian {
   /** '01' IVA, '04' INC (Impuesto Nacional al Consumo), '03' ICA/otros. */
   codigo: '01' | '04' | '03';
   valor: number;
 }
 
+/**
+ * Fecha de emisión tal como va en cbc:IssueDate. Debe ser EXACTAMENTE el
+ * mismo texto del XML o la DIAN rechaza por CUFE mal calculado (FAD06).
+ *
+ * 🛡️ FIX: antes, si llegaba un texto, se devolvía tal cual — y los
+ * emisores pasan la fecha de la venta como instante ISO completo
+ * ("2026-10-02T15:04:05.000Z"), así que al CUFE entraba ese texto entero
+ * en vez de "2026-10-02". Ahora solo se respeta un texto que ya sea una
+ * fecha sola; cualquier instante se convierte a la fecha de Colombia.
+ */
 export function formatoFechaDian(fecha: Date | string): string {
-  if (typeof fecha === 'string') return fecha;
-  const y = fecha.getFullYear();
-  const m = String(fecha.getMonth() + 1).padStart(2, '0');
-  const d = String(fecha.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) return fecha;
+  return fechaColombia(fecha);
 }
 
+/**
+ * Hora de emisión tal como va en cbc:IssueTime (HH:MM:SS-05:00).
+ *
+ * 🛡️ FIX: antes se leía el reloj local del equipo (getHours) mientras el
+ * XML escribía la hora UTC con el sufijo -05:00 — dos horas distintas para
+ * el mismo documento, CUFE rechazado. Ahora las dos salen de horaColombia().
+ */
 export function formatoHoraDian(fecha: Date | string): string {
-  const d = typeof fecha === 'string' ? new Date(fecha) : fecha;
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  // Colombia es UTC-05:00 todo el año (sin horario de verano).
-  return `${hh}:${mm}:${ss}-05:00`;
+  return horaColombia(fecha);
 }
 
 /** Con punto decimal, 2 dígitos, TRUNCADOS (no redondeados) y sin separador de miles — así lo exige el anexo. */
 export function formatoValorDian(n: number): string {
   const num = Number.isFinite(n) ? n : 0;
-  const truncado = Math.trunc(num * 100) / 100;
+  // Se limpia primero el error binario: 19.99 * 100 da 1998.9999999999998 y
+  // truncar eso a secas convertía $19,99 en $19,98.
+  const truncado = Math.trunc(Math.round(num * 10000) / 100) / 100;
   return truncado.toFixed(2);
 }
 

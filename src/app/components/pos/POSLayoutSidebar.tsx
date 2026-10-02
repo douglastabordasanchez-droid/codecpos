@@ -6,11 +6,12 @@ import {
   ShoppingCart, Package, Receipt, RotateCcw, BarChart3, Calculator,
   FileText, Wallet, Settings, Monitor, Users, User, Bell, Gift,
   TrendingUp, Tag, Building2, Barcode, Zap, Shield, ChevronLeft, ChevronRight,
-  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff, Palette, PartyPopper, PawPrint,
+  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff, Palette, PartyPopper, PawPrint, ReceiptText,
 } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlanRestrictions } from '../../hooks/usePlanRestrictions';
+import { useColaDian } from '../../hooks/useColaDian';
 
 
 
@@ -36,6 +37,9 @@ type MenuItemType = {
   label: string;
   color: string;
   moduloId?: ModuloPOS;
+  // Módulo que se vende aparte: exige estar en la licencia del negocio incluso
+  // con «Forzar visibilidad automática» encendido (ver canAccessItem).
+  dePago?: boolean;
   // CAPA 1: Permisos de ROL (qué puede VER según su rol de usuario)
   requiredPermission?: 'ventas' | 'productos' | 'dashboard' | 'alertas' | 'configuracion' | 'usuarios' | 'cierreCaja' | 'reportes' | 'contabilidad' | 'gastos' | 'codecVerify' | 'devoluciones' | 'monitoreo' | 'empleados' | 'panaderiaOnces';
   adminOnly?: boolean; // Solo para super_usuario
@@ -59,6 +63,8 @@ export default function POSLayoutSidebar() {
   const { darkMode, toggleDarkMode, uiScale } = usePOS();
   const { usuarioActual, esSuperUsuario, esDesarrollador, cerrarSesion, estaAutenticado, modoAdminTemporalActivo, activarModoAdminTemporal, desactivarModoAdminTemporal } = useAuth();
   const { planInfo, hasFeature } = usePlanRestrictions();
+  // Cola de envíos DIAN en segundo plano (null si este negocio no la usa).
+  const colaDian = useColaDian();
   // ── MULTI-TIENDA ──
   const { tiendas, tiendaActual, cambiarTienda } = useMultitienda();
   const [collapsed, setCollapsed] = useState(false);
@@ -304,6 +310,14 @@ export default function POSLayoutSidebar() {
       featureDescription: 'Reportes avanzados con exportación y análisis predictivo',
     },
     {
+      path: '/facturacion-electronica',
+      icon: ReceiptText,
+      label: 'Facturación',
+      color: 'orange',
+      moduloId: ModuloPOS.FACTURACION_DIAN,
+      dePago: true,
+    },
+    {
       path: '/gastos',
       icon: Wallet,
       label: 'Gastos',
@@ -466,6 +480,13 @@ export default function POSLayoutSidebar() {
     // configura el toggle). Ahora se respeta para todos, admin incluido —
     // el escape hatch sigue siendo "Forzar visibilidad automática" más abajo.
     if (item.moduloId && !modulosGlobalConfig.forceGlobalModules && !modulosGlobalConfig.modulosActivos.includes(item.moduloId)) {
+      return { allowed: false, reason: 'disabled_globally' };
+    }
+
+    // Módulo de pago: `modulosActivos` se sincroniza con la licencia real de
+    // la nube al iniciar sesión (AuthContext). «Forzar visibilidad» es una
+    // preferencia del dueño y no puede concederle algo que no compró.
+    if (item.dePago && item.moduloId && !hasDeveloperPanelAccess && !modulosGlobalConfig.modulosActivos.includes(item.moduloId)) {
       return { allowed: false, reason: 'disabled_globally' };
     }
 
@@ -1045,6 +1066,30 @@ export default function POSLayoutSidebar() {
             </button>
           </div>
         )}
+
+        {colaDian && (() => {
+          const alDia = colaDian.enLinea && colaDian.pendientes === 0;
+          const texto = !colaDian.enLinea
+            ? `Sin conexión · ${colaDian.pendientes} por enviar a la DIAN`
+            : alDia
+              ? 'DIAN conectada · 0 pendientes'
+              : `Transmitiendo · ${colaDian.pendientes} ${colaDian.pendientes === 1 ? 'factura pendiente' : 'facturas pendientes'}`;
+          return (
+            <div className="flex-shrink-0 px-3 pb-1 pt-2">
+              <div
+                title={colaDian.ultimoError ? `${texto} — Último intento: ${colaDian.ultimoError}` : texto}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border ${collapsed ? 'justify-center' : ''} ${
+                  alDia
+                    ? darkMode ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800/60' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : darkMode ? 'bg-amber-950/50 text-amber-300 border-amber-800/60' : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${alDia ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                {!collapsed && <span className="truncate">{texto}</span>}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Botón para toggle del footer */}
         <div className={`flex-shrink-0 px-4 py-2 border-t ${darkMode ? 'border-slate-700' : 'border-gray-200'}`}>

@@ -1,6 +1,7 @@
 import {
   Home, ShoppingCart, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
   DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee, Palette, PartyPopper, CreditCard,
+  FileBarChart, ReceiptText,
 } from 'lucide-react';
 import { ModuloPOS } from '../../app/lib/permissions';
 
@@ -9,6 +10,8 @@ export interface ItemNavSidebar {
   label: string;
   path: string;
   modulo?: ModuloPOS;
+  /** El módulo se vende aparte: no aparece hasta confirmar la licencia (ver tieneModuloDePago). */
+  dePago?: boolean;
   soloAdmin?: boolean;
   soloStaff?: boolean;
   end?: boolean;
@@ -45,6 +48,15 @@ export const NAV_HERRAMIENTAS: ItemNavSidebar[] = [
   { icon: Bell, label: 'Alertas', path: '/alertas' },
 ];
 
+/**
+ * Gestión del negocio: lo que mira el dueño, no el cajero. Facturación es un
+ * módulo de pago aparte (facturación electrónica DIAN).
+ */
+export const NAV_GESTION: ItemNavSidebar[] = [
+  { icon: FileBarChart, label: 'Reportes', path: '/reportes', modulo: ModuloPOS.REPORTES },
+  { icon: ReceiptText, label: 'Facturación', path: '/facturacion', modulo: ModuloPOS.FACTURACION_DIAN, dePago: true, soloAdmin: true },
+];
+
 export const NAV_ADMINISTRACION: ItemNavSidebar[] = [
   { icon: Settings, label: 'Configuración', path: '/configuracion', soloAdmin: true, fijo: true },
 ];
@@ -57,6 +69,7 @@ export const NAV_TODOS: ItemNavSidebar[] = [
   ...NAV_PRINCIPAL,
   ...NAV_MODULOS,
   ...NAV_HERRAMIENTAS,
+  ...NAV_GESTION,
   ...NAV_ADMINISTRACION,
   ...NAV_PLATAFORMA,
 ];

@@ -30,23 +30,45 @@ function escapeXml(valor: string | number | undefined | null): string {
     .replace(/'/g, '&apos;');
 }
 
-export function construirBloqueDianExtensions(emisor: EmisorSnapshot, extension: DianExtensionData): string {
-  return `  <ext:UBLExtensions>
-    <ext:UBLExtension>
-      <ext:ExtensionContent>
-        <sts:DianExtensions>
+/** Solo la parte de fecha: la resolución puede venir guardada como instante completo. */
+const soloFecha = (v: string | undefined) => (v || '').slice(0, 10);
+
+/**
+ * @param extensionesAdicionales  ext:UBLExtension extra que van ANTES de la
+ *   firma (el Documento Equivalente POS exige FabricanteSoftware).
+ * @param conControlDeNumeracion  false en notas crédito/débito: su anexo no
+ *   lleva sts:InvoiceControl (la numeración de notas no tiene resolución).
+ */
+export function construirBloqueDianExtensions(
+  emisor: EmisorSnapshot,
+  extension: DianExtensionData,
+  extensionesAdicionales = '',
+  conControlDeNumeracion = true,
+): string {
+  if (conControlDeNumeracion && (!extension.authorizationStartDate || !extension.authorizationEndDate)) {
+    // FAB07/FAB08: sin vigencia de la resolución la DIAN rechaza.
+    throw new Error(
+      `La numeración ${extension.prefix} (resolución ${extension.invoiceAuthorization}) no tiene fecha de resolución o de vigencia. ` +
+      'Complétalas en Configuración → Facturación electrónica → Numeración.',
+    );
+  }
+  const control = conControlDeNumeracion ? `
           <sts:InvoiceControl>
             <sts:InvoiceAuthorization>${escapeXml(extension.invoiceAuthorization)}</sts:InvoiceAuthorization>
             <sts:AuthorizationPeriod>
-              <cbc:StartDate>${escapeXml(extension.authorizationStartDate || '')}</cbc:StartDate>
-              <cbc:EndDate>${escapeXml(extension.authorizationEndDate || '')}</cbc:EndDate>
+              <cbc:StartDate>${escapeXml(soloFecha(extension.authorizationStartDate))}</cbc:StartDate>
+              <cbc:EndDate>${escapeXml(soloFecha(extension.authorizationEndDate))}</cbc:EndDate>
             </sts:AuthorizationPeriod>
             <sts:AuthorizedInvoices>
               <sts:Prefix>${escapeXml(extension.prefix)}</sts:Prefix>
               <sts:From>${extension.rangoDesde}</sts:From>
               <sts:To>${extension.rangoHasta}</sts:To>
             </sts:AuthorizedInvoices>
-          </sts:InvoiceControl>
+          </sts:InvoiceControl>` : '';
+  return `  <ext:UBLExtensions>
+    <ext:UBLExtension>
+      <ext:ExtensionContent>
+        <sts:DianExtensions>${control}
           <sts:InvoiceSource>
             <cbc:IdentificationCode listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listSchemeURI="urn:oasis:names:specification:ubl:codelist:gc:CountryIdentificationCode-2.1">CO</cbc:IdentificationCode>
           </sts:InvoiceSource>
@@ -61,10 +83,8 @@ export function construirBloqueDianExtensions(emisor: EmisorSnapshot, extension:
           <sts:QRCode>${escapeXml(extension.qrUrl)}</sts:QRCode>
         </sts:DianExtensions>
       </ext:ExtensionContent>
-    </ext:UBLExtension>
-    <!-- La firma XAdES (ds:Signature) se agrega como un ext:UBLExtension
-         adicional aquí, sobre este XML ya construido — ver
-         electron/dianSigner.js / signatureProvider.ts. -->
+    </ext:UBLExtension>${extensionesAdicionales ? `
+${extensionesAdicionales}` : ''}
   </ext:UBLExtensions>`;
 }
 

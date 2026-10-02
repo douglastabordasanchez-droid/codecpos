@@ -266,6 +266,7 @@ export default function VenderPage() {
         subtotal: totalCarrito,
         totalImpuestos: 0,
         total: totalAPagar,
+        pago: { metodo: metodoPago },
       }).catch(() => {});
       setDocClienteFactura('');
       setNombreClienteFactura('');

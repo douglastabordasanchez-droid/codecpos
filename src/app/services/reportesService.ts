@@ -91,10 +91,39 @@ export interface ReporteGenerado {
   };
 }
 
+/**
+ * De dónde salen los datos de un reporte. Electron no define ninguna: lee su
+ * almacenamiento local (IndexedDB + localStorage), como siempre. La web no
+ * tiene nada de eso, así que inyecta una fuente que lee Supabase y entrega
+ * las filas con ESTA MISMA forma (ver src/pwa/lib/reportesFuenteSupabase.ts)
+ * — así los cálculos y los exportadores PDF/Excel son un solo código para
+ * las dos plataformas.
+ *
+ * Solo `ventas` es asíncrona, igual que en Electron; el resto son lecturas
+ * síncronas, por lo que la fuente debe tenerlas ya cargadas en memoria antes
+ * de pedir el reporte.
+ */
+export interface FuenteDatosReportes {
+  ventas(fechaInicio: string, fechaFin: string): Promise<any[]>;
+  productos(): any[];
+  ingredientes(): any[];
+  mermas(): any[];
+  gastos(fechaInicio: string, fechaFin: string): any[];
+  cierres(fechaInicio: string, fechaFin: string): any[];
+  devoluciones(fechaInicio: string, fechaFin: string): any[];
+}
+
 const STORAGE_KEY = 'pos-reportes-generados';
 const DIAS_EXPIRACION = 180; // 6 meses
 
 class ReportesService {
+  private fuente: FuenteDatosReportes | null = null;
+
+  /** La web llama esto una vez para leer de Supabase; Electron nunca lo llama. */
+  usarFuente(fuente: FuenteDatosReportes | null): void {
+    this.fuente = fuente;
+  }
+
   // 🗑️ Limpiar reportes expirados automáticamente
   limpiarReportesExpirados(): number {
     const reportes = this.obtenerReportes();
@@ -474,6 +503,7 @@ class ReportesService {
   }
 
   private async obtenerVentas(fechaInicio: string, fechaFin: string): Promise<Venta[]> {
+    if (this.fuente) return (await this.fuente.ventas(fechaInicio, fechaFin)) as Venta[];
     try {
       const inicio = new Date(`${fechaInicio}T00:00:00`);
       const fin = new Date(`${fechaFin}T23:59:59`);
@@ -496,6 +526,7 @@ class ReportesService {
   }
 
   private obtenerProductos(): Producto[] {
+    if (this.fuente) return this.fuente.productos() as Producto[];
     try {
       const data = localStorage.getItem('pos-productos') || localStorage.getItem('codecpos_productos');
       return data ? JSON.parse(data) : [];
@@ -506,6 +537,7 @@ class ReportesService {
   }
 
   private obtenerIngredientes(): IngredienteInventario[] {
+    if (this.fuente) return this.fuente.ingredientes() as IngredienteInventario[];
     try {
       const data = localStorage.getItem('pos-ingredientes-inventario') || localStorage.getItem('codecpos_ingredientes_inventario');
       return data ? JSON.parse(data) : [];
@@ -516,6 +548,7 @@ class ReportesService {
   }
 
   private obtenerMermas(): any[] {
+    if (this.fuente) return this.fuente.mermas();
     try {
       const data = localStorage.getItem('codecpos_mermas');
       return data ? JSON.parse(data) : [];
@@ -527,14 +560,20 @@ class ReportesService {
 
   private obtenerGastos(fechaInicio: string, fechaFin: string): Gasto[] {
     try {
-      const data = localStorage.getItem('pos-gastos') || localStorage.getItem('codecpos_gastos');
-      if (!data) return [];
-      
-      const gastos = JSON.parse(data);
-      return gastos.filter((g: Gasto) => {
-        const fecha = g.fecha.split('T')[0];
-        return fecha >= fechaInicio && fecha <= fechaFin;
-      }).map((g: any) => ({
+      let enRango: Gasto[];
+      if (this.fuente) {
+        enRango = this.fuente.gastos(fechaInicio, fechaFin) as Gasto[];
+      } else {
+        const data = localStorage.getItem('pos-gastos') || localStorage.getItem('codecpos_gastos');
+        if (!data) return [];
+
+        const gastos = JSON.parse(data);
+        enRango = gastos.filter((g: Gasto) => {
+          const fecha = g.fecha.split('T')[0];
+          return fecha >= fechaInicio && fecha <= fechaFin;
+        });
+      }
+      return enRango.map((g: any) => ({
         ...g,
         categoriaConcepto: g.categoriaConcepto || g.categoria || g.concepto || 'Sin concepto',
         metodoPago: this.normalizarMetodoPagoEgreso(String(g.medioPagoEgreso || g.metodoPago || 'efectivo')),
@@ -553,6 +592,7 @@ class ReportesService {
   }
 
   private obtenerCierres(fechaInicio: string, fechaFin: string): CierreCaja[] {
+    if (this.fuente) return this.fuente.cierres(fechaInicio, fechaFin) as CierreCaja[];
     try {
       const data = localStorage.getItem('pos-cierres-caja') || localStorage.getItem('codecpos_cierres_caja');
       if (!data) return [];
@@ -569,6 +609,7 @@ class ReportesService {
   }
 
   private obtenerDevoluciones(fechaInicio: string, fechaFin: string): Devolucion[] {
+    if (this.fuente) return this.fuente.devoluciones(fechaInicio, fechaFin) as Devolucion[];
     try {
       const data = localStorage.getItem('codecpos_devoluciones');
       if (!data) return [];

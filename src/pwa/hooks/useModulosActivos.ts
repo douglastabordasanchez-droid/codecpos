@@ -82,7 +82,11 @@ export function useModulosActivos() {
       // licenciado, igual que antes de existir esta columna.
       if (row?.modulos_web) {
         const permitidosEnWeb = new Set(row.modulos_web as ModuloPOS[]);
-        modulosNegocio = modulosNegocio.filter((m) => permitidosEnWeb.has(m));
+        // Facturación electrónica se contrata aparte: si está en la licencia
+        // se ve, aunque el dueño haya guardado su selección de módulos web
+        // antes de que este existiera (no estaría en su lista y quedaría
+        // oculto justo después de pagarlo).
+        modulosNegocio = modulosNegocio.filter((m) => permitidosEnWeb.has(m) || m === ModuloPOS.FACTURACION_DIAN);
       }
 
       const modulosEmpleado = empleado.permisos?.modulosHabilitados;
@@ -105,5 +109,14 @@ export function useModulosActivos() {
 
   const tieneModulo = (modulo: ModuloPOS): boolean => (modulos === null ? true : modulos.has(modulo));
 
-  return { tieneModulo, cargando, appHabilitada, menuInferior };
+  /**
+   * Para módulos que se venden aparte (Facturación electrónica): mientras
+   * carga, o si Supabase no responde, la respuesta es NO. `tieneModulo` es
+   * permisivo a propósito para no dejar al empleado frente a una pantalla
+   * vacía; aquí es al revés, porque mostrar aunque sea un instante un módulo
+   * que el negocio no pagó es peor que tardar un segundo en mostrarlo.
+   */
+  const tieneModuloDePago = (modulo: ModuloPOS): boolean => modulos !== null && modulos.has(modulo);
+
+  return { tieneModulo, tieneModuloDePago, cargando, appHabilitada, menuInferior };
 }

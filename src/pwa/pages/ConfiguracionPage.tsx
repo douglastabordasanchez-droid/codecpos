@@ -6,7 +6,7 @@ import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { getSupabaseClient, getSupabasePublicConfig } from '../../app/lib/supabase/config';
-import { MODULOS_CATALOGO } from '../../app/lib/permissions';
+import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { NAV_TODOS } from '../lib/sidebarNav';
@@ -25,7 +25,7 @@ interface NegocioForm {
 
 export default function ConfiguracionPage() {
   const { empleado } = usePwaAuth();
-  const { tieneModulo, cargando: cargandoModulos } = useModulosActivos();
+  const { tieneModulo, tieneModuloDePago, cargando: cargandoModulos } = useModulosActivos();
   const [form, setForm] = useState<NegocioForm | null>(null);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -157,7 +157,7 @@ export default function ConfiguracionPage() {
   const esAdmin = ['admin', 'super_usuario'].includes(empleado.rol);
   const itemsPersonalizables = NAV_TODOS.filter((it) =>
     !it.fijo &&
-    (!it.modulo || tieneModulo(it.modulo)) &&
+    (!it.modulo || (it.dePago ? tieneModuloDePago(it.modulo) : tieneModulo(it.modulo))) &&
     (!it.soloAdmin || esAdmin) &&
     (!it.soloStaff || empleado.es_staff_codec)
   );
@@ -298,6 +298,7 @@ export default function ConfiguracionPage() {
               </div>
             )}
 
+            {tieneModuloDePago(ModuloPOS.FACTURACION_DIAN) && (
             <Link
               to="/facturacion"
               className="flex items-center justify-between gap-3 bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5"
@@ -308,11 +309,12 @@ export default function ConfiguracionPage() {
                 </div>
                 <div>
                   <p className="text-white text-sm font-semibold">Facturación Electrónica DIAN</p>
-                  <p className="text-slate-500 text-xs">Perfil fiscal e historial de facturas</p>
+                  <p className="text-slate-500 text-xs">Facturas emitidas, recepción y causación de XML</p>
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
             </Link>
+            )}
 
             <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-1">

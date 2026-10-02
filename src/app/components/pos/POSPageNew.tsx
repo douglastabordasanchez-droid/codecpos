@@ -2009,11 +2009,18 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   cantidad: it.cantidad,
                   precioUnitario: it.precioVenta,
                   subtotal: it.subtotal,
-                  impuestos: configIVA.ivaHabilitado ? [{ codigo: '01' as const, porcentaje: configIVA.porcentajeIVA, valor: Number((it.subtotal * (configIVA.porcentajeIVA / 100)).toFixed(2)) }] : undefined,
+                  // Solo los productos marcados «aplica IVA» llevan el impuesto —
+                  // el mismo criterio con el que el POS calculó el total
+                  // cobrado. Antes se le cargaba IVA a todos los ítems en el
+                  // documento electrónico, aunque no se hubiera cobrado.
+                  impuestos: configIVA.ivaHabilitado && carrito.some((c) => c.producto.codigo === it.codigo && c.producto.aplicaIVA)
+                    ? [{ codigo: '01' as const, porcentaje: configIVA.porcentajeIVA, valor: Number((it.subtotal * (configIVA.porcentajeIVA / 100)).toFixed(2)) }]
+                    : undefined,
                 })),
                 subtotal: configIVA.ivaHabilitado ? subtotal : total,
                 totalImpuestos: configIVA.ivaHabilitado ? iva : 0,
                 total,
+                pago: { metodo: metodoPago },
               }).catch(() => {});
             } else {
               console.warn('[DIAN] Negocio no vinculado a la nube — no se puede emitir factura DIAN directa (necesita cliente_id de nuestra base de datos).');
