@@ -7,7 +7,6 @@ import { Label } from '../../app/components/ui/label';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { TIPOS_NEGOCIO } from '../../data/tipos-negocio';
-import { BotonWhatsApp } from '../components/BotonWhatsApp';
 
 const OPCIONES_TIPO_NEGOCIO = Object.values(TIPOS_NEGOCIO).map((t) => t.nombre);
 const URL_DESCARGA_WINDOWS = 'https://github.com/douglastabordasanchez-droid/codecpos/releases/latest';
@@ -199,7 +198,6 @@ export default function PruebaGratisPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6">
-      <BotonWhatsApp />
       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-4 shadow-xl shadow-orange-500/30">
         <Sparkles className="w-8 h-8 text-white" />
       </div>

@@ -19,6 +19,7 @@ import {
   huellaDisponibleEnDispositivo, huellaHabilitada, habilitarHuella, deshabilitarHuella,
 } from '../lib/huellaLock';
 import logo from '/logo.png';
+import { TarjetaSoporte } from '../components/TarjetaSoporte';
 
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -267,6 +268,10 @@ export default function PerfilPage() {
           </div>
         </div>
       )}
+
+      <div className="mb-6">
+        <TarjetaSoporte />
+      </div>
 
       {esAdmin && (
         <button

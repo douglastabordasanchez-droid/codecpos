@@ -12,6 +12,7 @@ import { useModulosActivos } from '../hooks/useModulosActivos';
 import { NAV_TODOS } from '../lib/sidebarNav';
 import { obtenerPreferenciasMenu, alternarOculto } from '../lib/preferenciasMenu';
 import { estaEnAppAndroid, abrirAjustesNotificacionesAndroid } from '../lib/androidBridge';
+import { TarjetaSoporte } from '../components/TarjetaSoporte';
 
 interface NegocioForm {
   nombre_negocio: string;
@@ -180,6 +181,8 @@ export default function ConfiguracionPage() {
         <>
           <div className="px-5 space-y-4">
             <SeccionDescargarApp />
+
+            <TarjetaSoporte />
 
             <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
               <div className="flex items-center gap-2">
