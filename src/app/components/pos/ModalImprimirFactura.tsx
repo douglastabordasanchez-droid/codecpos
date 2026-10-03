@@ -306,6 +306,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
         fechaVencimiento: (venta! as any).carteraFechaVencimiento || undefined,
         cufe: (venta! as any).cufe || null,
         qrUrl: (venta! as any).qrUrl || null,
+        numeroElectronico: (venta! as any).folioElectronico || null,
         cliente: (venta as any).cliente || 'Consumidor Final',
       },
       config: {
@@ -391,6 +392,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
           fechaVencimiento: (venta as any).carteraFechaVencimiento || undefined,
           cufe: (venta as any).cufe || null,
           qrUrl: (venta as any).qrUrl || null,
+          numeroElectronico: (venta as any).folioElectronico || null,
           cliente: (venta as any).cliente || 'Consumidor Final',
           mesa: venta.mesa,
           referencia_mesa: (venta as any).referencia_mesa || undefined,

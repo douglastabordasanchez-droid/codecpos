@@ -397,6 +397,7 @@ export default function VentasPage() {
         fechaVencimiento: (venta as any).carteraFechaVencimiento || undefined,
         cufe: (venta as any).cufe || null,
         qrUrl: (venta as any).qrUrl || null,
+        numeroElectronico: (venta as any).folioElectronico || null,
         mesa: venta.mesa,
         referencia_mesa: venta.referencia_mesa,
       };

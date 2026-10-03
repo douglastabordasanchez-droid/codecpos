@@ -447,6 +447,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
         fechaVencimiento: (venta! as any).carteraFechaVencimiento || undefined,
         cufe: (venta! as any).cufe || null,
         qrUrl: (venta! as any).qrUrl || null,
+        numeroElectronico: (venta! as any).folioElectronico || null,
         cliente: (venta as any)?.cliente || undefined,
         mesa: venta!.mesa,
         referencia_mesa: mesaDisplay ?? undefined,

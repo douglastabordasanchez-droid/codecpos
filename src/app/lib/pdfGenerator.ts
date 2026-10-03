@@ -75,6 +75,8 @@ export interface Venta {
   /** Si la venta tiene factura electrónica, se muestra su CUFE y su QR oficial. */
   cufe?: string | null;
   qrUrl?: string | null;
+  /** Número oficial de la factura electrónica (prefijo y consecutivo DIAN). */
+  numeroElectronico?: string | null;
 }
 
 // ── Utilidades ─────────────────────────────────────────────────────────────
@@ -212,7 +214,15 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
   doc.text(electronica ? 'Factura electrónica de venta' : 'Factura de venta', (cajaX + DER) / 2, y + 11, { align: 'center' });
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text(`No. ${venta.numeroFactura}`, (cajaX + DER) / 2, y + 17, { align: 'center' });
+  const numeroVisible = electronica && venta.numeroElectronico ? venta.numeroElectronico : venta.numeroFactura;
+  doc.text(`No. ${numeroVisible}`, (cajaX + DER) / 2, y + (numeroVisible !== venta.numeroFactura ? 15.5 : 17), { align: 'center' });
+  if (numeroVisible !== venta.numeroFactura) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...GRIS_TEXTO);
+    doc.text(`Venta ${venta.numeroFactura}`, (cajaX + DER) / 2, y + 20, { align: 'center' });
+    doc.setTextColor(...OSCURO);
+  }
 
   y = Math.max(y + 34, yEmisor + 2);
 

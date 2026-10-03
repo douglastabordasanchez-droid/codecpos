@@ -8,6 +8,7 @@
  * exista, este mismo Blob es lo que se subiría en vez de descargarlo.
  */
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { construirUrlQR } from '../../app/lib/dian/softwareSecurityCode';
 import { generarFacturaPDF, nombreArchivoFactura, type ConfigEmpresa, type Venta as VentaFactura } from '../../app/lib/pdfGenerator';
 
 interface VentaParaCompartir {
@@ -91,6 +92,30 @@ async function construirDatosFactura(clienteId: string, venta: VentaParaComparti
     pagoMixto,
     cajero: venta.cajero_nombre || '',
   };
+
+  // ¿La venta tiene factura electrónica? Se enlaza por el número de la venta
+  // (venta_referencia = FE003998, el mismo que imprime Electron).
+  const referencias = [facturaVenta.numeroFactura, venta.id].filter(Boolean);
+  const { data: fe } = await client
+    .from('facturas_electronicas')
+    .select('prefijo, numero_factura, cufe, estado, issuer_ambiente, cliente_nit, cliente_nombre, cliente_email, cliente_telefono')
+    .eq('cliente_id', clienteId)
+    .in('venta_referencia', referencias)
+    .not('cufe', 'is', null)
+    .neq('estado', 'rejected')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (fe) {
+    const f = fe as Record<string, any>;
+    facturaVenta.cufe = f.cufe;
+    facturaVenta.qrUrl = construirUrlQR(f.cufe, f.issuer_ambiente === 'produccion' ? 'produccion' : 'habilitacion');
+    facturaVenta.numeroElectronico = `${f.prefijo || ''}${f.numero_factura ?? ''}` || null;
+    if (f.cliente_nombre) facturaVenta.cliente = f.cliente_nombre;
+    if (f.cliente_nit) facturaVenta.clienteDocumento = f.cliente_nit;
+    if (f.cliente_telefono) facturaVenta.clienteTelefono = f.cliente_telefono;
+    if (f.cliente_email) facturaVenta.clienteEmail = f.cliente_email;
+  }
 
   return { config, facturaVenta };
 }
