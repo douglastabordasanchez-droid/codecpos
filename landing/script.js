@@ -212,14 +212,14 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
   setInterval(() => { current = (current + 1) % 3; setStep(current); }, 3200);
 })();
 
-/* ── Precios: toggle mensual / trimestral / anual ──
-   Los valores ya vienen calculados por el motor comercial (Fase 3) y solo
-   se leen de data-attributes -- este script no recalcula ningún precio. */
+/* ── Precios: toggle mensual / anual ──
+   Los valores vienen escritos en data-attributes (anual = 11 meses: el mes
+   12 es de regalo) -- este script no recalcula ningún precio. */
 (function togglePrecios() {
   const toggle = document.getElementById('pricingToggle');
   if (!toggle) return;
   const buttons = toggle.querySelectorAll('button');
-  const periodLabel = { mensual: '/mes', trimestral: '/trimestre', anual: '/año' };
+  const periodLabel = { mensual: '/mes', anual: '/año' };
 
   buttons.forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -228,7 +228,7 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 
       document.querySelectorAll('[data-price-basico]').forEach((el) => { el.textContent = '$' + el.dataset[mode]; });
       document.querySelectorAll('[data-price-premium]').forEach((el) => { el.textContent = '$' + el.dataset[mode]; });
-      document.querySelectorAll('[data-price-old]').forEach((el) => { el.textContent = el.dataset[mode]; });
+      document.querySelectorAll('[data-annual-note]').forEach((el) => { el.textContent = el.dataset[mode]; });
       document.querySelectorAll('[data-period]').forEach((el) => { el.textContent = periodLabel[mode]; });
     });
   });

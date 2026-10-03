@@ -44,7 +44,7 @@
   "description": "Sistema de punto de venta con inventario, contabilidad, facturación electrónica DIAN, confirmación automática de pagos (Codec Verify) y funcionamiento online/offline.",
   "areaServed": { "@type": "City", "name": "Palmira", "containedInPlace": { "@type": "Country", "name": "Colombia" } },
   "offers": [
-    { "@type": "Offer", "name": "Básico", "price": "29990", "priceCurrency": "COP", "priceValidUntil": "2027-12-31" },
+    { "@type": "Offer", "name": "Básico", "price": "49990", "priceCurrency": "COP", "priceValidUntil": "2027-12-31" },
     { "@type": "Offer", "name": "Premium", "price": "79990", "priceCurrency": "COP", "priceValidUntil": "2027-12-31" }
   ],
   "publisher": { "@type": "Organization", "name": "Codec Studio" }
@@ -495,7 +495,7 @@
             <li><span class="tick">✓</span>Básico: 1 sucursal — Premium: hasta 3</li>
             <li><span class="tick">✓</span>Sucursal adicional: $12.990 COP/mes</li>
           </div>
-          <p style="font-size:12px;color:var(--muted)">¿Muchas sedes? Negociamos un plan Enterprise a la medida.</p>
+          <p style="font-size:12px;color:var(--muted)">¿Muchas sedes? <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20plan%20personalizado%20de%20Codec%20POS" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">Contáctanos</a> y armamos un plan personalizado.</p>
         </div>
 
         <div class="multistore-drawer">
@@ -554,19 +554,19 @@
 
       <div class="pricing-toggle reveal" id="pricingToggle">
         <button class="is-active" data-mode="mensual">Mensual</button>
-        <button data-mode="trimestral">Trimestral <span class="save-tag">−10%</span></button>
-        <button data-mode="anual">Anual <span class="save-tag">−20%</span></button>
+        <button data-mode="anual">Anual <span class="save-tag">1 mes gratis</span></button>
       </div>
 
+      <!-- Anual = 12 meses pagando 11 (el mes 12 es de regalo). -->
       <div class="pricing-grid reveal">
         <div class="price-card">
           <div class="price-name">Básico</div>
           <p class="price-desc">Todo lo esencial para operar tu negocio del día a día.</p>
           <div class="price-tag-wrap">
-            <span class="price-tag" data-price-basico data-mensual="29.990" data-trimestral="80.973" data-anual="287.904">$29.990</span>
+            <span class="price-tag" data-price-basico data-mensual="49.990" data-anual="549.890">$49.990</span>
             <span class="price-period" data-period>/mes</span>
           </div>
-          <div style="height:20px"></div>
+          <p class="price-promo-note" data-annual-note data-mensual="Paga anual y te regalamos 1 mes" data-anual="12 meses por el precio de 11 · ahorras $49.990">Paga anual y te regalamos 1 mes</p>
           <a href="#trial" class="btn btn-outline btn-block" data-event="click_precios" data-event-loc="basico">Empezar prueba gratis</a>
           <ul class="price-features">
             <li><span class="tick">✓</span>Administrador + hasta 5 usuarios</li>
@@ -582,11 +582,10 @@
           <div class="price-name">Premium</div>
           <p class="price-desc">Para negocios que necesitan todo el poder de Codec POS.</p>
           <div class="price-tag-wrap">
-            <span class="price-old" data-price-old data-mensual="$79.990" data-trimestral="$215.973" data-anual="$767.904">$79.990</span>
-            <span class="price-tag" data-price-premium data-mensual="49.990" data-trimestral="134.973" data-anual="479.904">$49.990</span>
+            <span class="price-tag" data-price-premium data-mensual="79.990" data-anual="879.890">$79.990</span>
             <span class="price-period" data-period>/mes</span>
           </div>
-          <p class="price-promo-note">Precio de lanzamiento durante los primeros 6 meses · después $79.990/mes</p>
+          <p class="price-promo-note" data-annual-note data-mensual="Paga anual y te regalamos 1 mes" data-anual="12 meses por el precio de 11 · ahorras $79.990">Paga anual y te regalamos 1 mes</p>
           <a href="#trial" class="btn btn-brand btn-block" data-event="click_precios" data-event-loc="premium">Empezar prueba gratis</a>
           <ul class="price-features">
             <li><span class="tick">✓</span>Usuarios ilimitados</li>
@@ -601,13 +600,20 @@
 
       <div class="lifetime-card reveal">
         <div>
-          <h4>Vitalicio — pago único</h4>
-          <p>Una sola vez, sin mensualidad. El precio exacto está en configuración final del sistema de planes.</p>
+          <h4>Instalación y soporte técnico — $50.000</h4>
+          <p>Si prefieres que te instalemos y configuremos Codec POS, o necesitas soporte técnico, tiene un valor de $50.000 COP por servicio. Es opcional: puedes instalarlo tú mismo sin costo.</p>
         </div>
-        <a href="#trial" class="btn btn-light" data-event="click_precios" data-event-loc="vitalicio">Consultar disponibilidad</a>
       </div>
 
-      <p class="price-footnote">Precios de referencia — calculados por el mismo motor comercial que usan la app y el panel de administración.</p>
+      <div class="lifetime-card reveal" style="margin-top:16px">
+        <div>
+          <h4>¿Necesitas un plan personalizado?</h4>
+          <p>Más sucursales, módulos a la medida o condiciones especiales para tu negocio: escríbenos y lo armamos contigo.</p>
+        </div>
+        <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20plan%20personalizado%20de%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-light" data-event="click_precios" data-event-loc="personalizado">Escríbenos por WhatsApp</a>
+      </div>
+
+      <p class="price-footnote">Precios en pesos colombianos (COP). Prueba gratis de 14 días en cualquiera de los dos planes.</p>
     </div>
   </section>
 
@@ -640,6 +646,7 @@
         <div class="faq-item"><button class="faq-q">¿Qué diferencia hay entre Básico y Premium?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Básico cubre la operación esencial de un solo negocio con un módulo especializado. Premium suma usuarios ilimitados, varias sucursales, app móvil completa, Codec Verify, facturación electrónica DIAN y más de un módulo especializado.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Puedo cancelar?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, sin permanencia forzada.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Qué ocurre después de los 14 días?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Eliges el plan que mejor se ajuste a tu negocio para seguir usando Codec POS sin interrupciones.</p></div></div>
+        <div class="faq-item"><button class="faq-q">¿Cuánto cuestan los planes?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Básico $49.990 al mes y Premium $79.990 al mes. Si pagas el año completo te regalamos un mes: pagas 11 y usas 12. La instalación o el soporte técnico, si lo necesitas, tiene un valor de $50.000 por servicio. Para un plan personalizado, escríbenos por WhatsApp al +57 323 864 6844.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Puedo pasar de Básico a Premium?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, en cualquier momento que tu negocio lo necesite.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Codec POS funciona con la DIAN?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, la facturación electrónica está preparada para trabajar con la DIAN — activarla solo requiere configurar la firma digital de tu negocio.</p></div></div>
       </div>
