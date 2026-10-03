@@ -8,6 +8,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { BottomNav } from './BottomNav';
 import { TopBar } from './TopBar';
 import { DesktopLayout } from './DesktopLayout';
+import { BotonWhatsApp } from './BotonWhatsApp';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 
@@ -81,7 +82,12 @@ export function PwaLayout() {
   }
 
   if (esEscritorio) {
-    return <DesktopLayout />;
+    return (
+      <>
+        <DesktopLayout />
+        <BotonWhatsApp escritorio nombre={empleado.nombre_completo} />
+      </>
+    );
   }
 
   return (
@@ -95,6 +101,7 @@ export function PwaLayout() {
         <Outlet />
       </main>
       {navInferiorVisible && <BottomNav />}
+      <BotonWhatsApp sobreNavInferior={navInferiorVisible} nombre={empleado.nombre_completo} />
     </>
   );
 }

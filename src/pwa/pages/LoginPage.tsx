@@ -8,6 +8,7 @@ import { Label } from '../../app/components/ui/label';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { RecuperarPasswordModal } from '../components/RecuperarPasswordModal';
 import logo from '/logo.png';
+import { BotonWhatsApp } from '../components/BotonWhatsApp';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -34,6 +35,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6">
+      <BotonWhatsApp />
       <motion.div
         initial={{ opacity: 0, y: -12, scale: 0.9 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
