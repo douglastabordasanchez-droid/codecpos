@@ -17,11 +17,10 @@ interface PlanCatalogo {
   precio_promocional_mensual: number | null;
 }
 
+// Igual que la página: mensual o anual (12 meses por el precio de 11).
 const MODALIDADES: { valor: Modalidad; etiqueta: string }[] = [
   { valor: 'MENSUAL', etiqueta: 'Mensual' },
-  { valor: 'TRIMESTRAL', etiqueta: 'Trimestral' },
-  { valor: 'ANUAL', etiqueta: 'Anual' },
-  { valor: 'VITALICIA', etiqueta: 'Vitalicio' },
+  { valor: 'ANUAL', etiqueta: 'Anual · 1 mes gratis' },
 ];
 
 const formatoMoneda = (valor: number) =>
@@ -159,11 +158,11 @@ export default function PlanesPage() {
                   <span className="font-bold">{p.plan_nombre}</span>
                 </div>
                 <p className="text-2xl font-black">
-                  {precioPorModalidad(p, 'MENSUAL') != null ? formatoMoneda(precioPorModalidad(p, 'MENSUAL')!) : '—'}
+                  {precioPorModalidad(p, 'MENSUAL') != null ? formatoMoneda(precioPorModalidad(p, 'MENSUAL')!) : 'Consultar'}
                   <span className="text-sm font-normal text-slate-400"> /mes</span>
                 </p>
-                {p.promocion_activa && p.plan_codigo === 'PREMIUM' && (
-                  <p className="text-xs text-emerald-400 mt-1">Precio de lanzamiento activo</p>
+                {p.precio_anual != null && (
+                  <p className="text-xs text-emerald-400 mt-1">Anual {formatoMoneda(p.precio_anual)}: te regalamos 1 mes</p>
                 )}
               </button>
             ))}
