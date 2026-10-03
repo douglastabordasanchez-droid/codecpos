@@ -10,7 +10,7 @@ import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { NAV_TODOS } from '../lib/sidebarNav';
-import { esRutaOculta, alternarRutaOculta } from '../lib/sidebarPrefs';
+import { obtenerPreferenciasMenu, alternarOculto } from '../lib/preferenciasMenu';
 import { estaEnAppAndroid, abrirAjustesNotificacionesAndroid } from '../lib/androidBridge';
 
 interface NegocioForm {
@@ -163,7 +163,7 @@ export default function ConfiguracionPage() {
   );
 
   const handleToggleSidebar = (path: string) => {
-    alternarRutaOculta(path);
+    alternarOculto(path);
     forceUpdateSidebar((n) => n + 1);
   };
 
@@ -323,10 +323,11 @@ export default function ConfiguracionPage() {
               </div>
               <p className="text-slate-500 text-xs mb-4">
                 Elige qué módulos aparecen en tu menú lateral. Los que ocultes siguen activos, solo dejan de mostrarse en la navegación.
+                También puedes mantener presionado cualquier módulo del menú para renombrarlo o moverlo. Se guarda en tu cuenta: se ve igual en el computador y en el celular.
               </p>
               <div className="space-y-1.5">
                 {itemsPersonalizables.map((it) => {
-                  const oculto = esRutaOculta(it.path);
+                  const oculto = obtenerPreferenciasMenu().ocultos.includes(it.path);
                   return (
                     <button
                       key={it.path}

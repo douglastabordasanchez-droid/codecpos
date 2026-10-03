@@ -9,38 +9,10 @@
  */
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import type { FuenteDatosReportes } from '../../app/services/reportesService';
+import { traerTodo, aFechaLocal, inicioDelDia, finDelDia } from './nubeConsultas';
 
 type Cliente = NonNullable<ReturnType<typeof getSupabaseClient>>;
 
-const PAGINA = 1000;
-
-/** PostgREST corta en 1000 filas por petición: se pagina hasta agotar, o un
- * mes de ventas de un negocio movido saldría truncado sin ningún aviso. */
-async function traerTodo<T>(armar: (desde: number, hasta: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
-  const filas: T[] = [];
-  for (let desde = 0; ; desde += PAGINA) {
-    const { data, error } = await armar(desde, desde + PAGINA - 1);
-    if (error) throw new Error(error.message);
-    const lote = (data as T[]) || [];
-    filas.push(...lote);
-    if (lote.length < PAGINA) return filas;
-  }
-}
-
-/**
- * Instante → 'YYYY-MM-DDTHH:mm:ss' en hora LOCAL, sin zona. El servicio de
- * reportes agrupa por día con `fecha.split('T')[0]`; con la fecha UTC que
- * devuelve Supabase, toda venta hecha después de las 7 p.m. en Colombia
- * caería en el día siguiente.
- */
-function aFechaLocal(iso: string | null | undefined): string {
-  const d = iso ? new Date(iso) : new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
-const inicioDelDia = (fecha: string) => new Date(`${fecha}T00:00:00`).toISOString();
-const finDelDia = (fecha: string) => new Date(`${fecha}T23:59:59.999`).toISOString();
 const enRango = (fechaLocal: string, inicio: string, fin: string) => {
   const dia = fechaLocal.split('T')[0];
   return dia >= inicio && dia <= fin;

@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  X, User, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
-  Settings, LogOut, Sun, Moon, Crown, Zap, ShieldAlert, Wrench, Coffee,
-  LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper, PawPrint, ReceiptText,
-} from 'lucide-react';
+import { X, LogOut, Sun, Moon, Crown, Zap } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { useModulosActivos } from '../hooks/useModulosActivos';
+import { useMenuPersonalizado, type ItemMenu } from '../hooks/useMenuPersonalizado';
+import { HojaAccionesModulo, ModulosOcultos, usePresionLarga } from './EdicionMenu';
 import { useTheme } from '../contexts/ThemeContext';
-import { ModuloPOS } from '../../app/lib/permissions';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import logo from '/logo.png';
 
@@ -18,25 +14,13 @@ interface Props {
   onClose: () => void;
 }
 
-interface ItemMenu {
-  icon: any;
-  label: string;
-  subtitulo?: string;
-  path: string;
-  modulo?: ModuloPOS;
-  dePago?: boolean;
-  soloAdmin?: boolean;
-  soloStaff?: boolean;
-}
-
 export function SideMenu({ open, onClose }: Props) {
   const navigate = useNavigate();
   const { empleado, cerrarSesion } = usePwaAuth();
-  const { tieneModulo, tieneModuloDePago } = useModulosActivos();
+  const { grupos, ocultos } = useMenuPersonalizado({ movil: true });
+  const [editando, setEditando] = useState<{ item: ItemMenu; hermanos: string[] } | null>(null);
   const { tema, alternarTema } = useTheme();
   const [plan, setPlan] = useState<string | null>(null);
-
-  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
 
   useEffect(() => {
     if (!open || !empleado) return;
@@ -53,55 +37,6 @@ export function SideMenu({ open, onClose }: Props) {
     onClose();
     navigate(path);
   };
-
-  const principal: ItemMenu[] = [
-    { icon: User, label: 'Mi perfil', path: '/perfil' },
-    { icon: Receipt, label: 'Ventas', subtitulo: 'Historial y estadísticas del día', path: '/ventas' },
-    { icon: Package, label: 'Inventario', subtitulo: 'Productos, stock y fotos', path: '/inventario', modulo: ModuloPOS.PRODUCTOS },
-  ];
-
-  // Módulos completos del negocio, activados desde Electron (Configuración →
-  // Módulos en la App Web). Van antes de "Herramientas" porque para un mesero
-  // o un técnico esta es su pantalla de trabajo, no un accesorio.
-  const modulos: ItemMenu[] = [
-    { icon: Coffee, label: 'Alimentos y Bebidas', subtitulo: 'Mesas, comandas y pedidos del salón', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
-    { icon: PawPrint, label: 'Veterinaria y Mascotas', subtitulo: 'Granel con báscula, estética y farmacia', path: '/veterinaria', modulo: ModuloPOS.VETERINARIA },
-    { icon: Wrench, label: 'Taller', subtitulo: 'Órdenes de reparación y estados', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
-    { icon: Palette, label: 'Artes Gráficas', subtitulo: 'Catálogo por escalas y facturas dinámicas', path: '/artes-graficas', modulo: ModuloPOS.ARTES_GRAFICAS },
-    { icon: PartyPopper, label: 'Papelería y Piñatería', subtitulo: 'Globos, dulcería, juguetería y fiestas', path: '/papeleria-pinateria', modulo: ModuloPOS.PAPELERIA_PINATERIA },
-    { icon: Tag, label: 'Promociones', subtitulo: 'Descuentos y combos vigentes', path: '/promociones', modulo: ModuloPOS.PROMOCIONES },
-    { icon: Truck, label: 'Proveedores', subtitulo: 'Contacto y saldo pendiente', path: '/proveedores', modulo: ModuloPOS.PROVEEDORES },
-    { icon: Store, label: 'Multi-Tienda', subtitulo: 'Directorio de sucursales', path: '/multitienda', modulo: ModuloPOS.MULTITIENDA },
-  ];
-
-  const analisis: ItemMenu[] = [
-    { icon: LayoutDashboard, label: 'Dashboard', subtitulo: 'Ventas, utilidad y tendencia', path: '/dashboard', modulo: ModuloPOS.DASHBOARD },
-    { icon: FileBarChart, label: 'Reportes', subtitulo: 'Ventas, cajeros, inventario, gastos y financiero', path: '/reportes', modulo: ModuloPOS.REPORTES },
-    { icon: ReceiptText, label: 'Facturación', subtitulo: 'Facturas electrónicas y causación de XML', path: '/facturacion', modulo: ModuloPOS.FACTURACION_DIAN, dePago: true, soloAdmin: true },
-    { icon: Calculator, label: 'Contabilidad', subtitulo: 'Ingresos extra y gastos del periodo', path: '/contabilidad', modulo: ModuloPOS.CONTABILIDAD },
-  ];
-
-  const herramientas: ItemMenu[] = [
-    { icon: Lock, label: 'Caja', subtitulo: 'Apertura, cierre y turno activo', path: '/caja', modulo: ModuloPOS.CIERRE_CAJA },
-    { icon: Wallet, label: 'Gastos', subtitulo: 'Gastos operativos registrados', path: '/gastos', modulo: ModuloPOS.GASTOS },
-    { icon: RotateCcw, label: 'Devoluciones', subtitulo: 'Procesar devolución de una venta', path: '/devoluciones', modulo: ModuloPOS.DEVOLUCIONES },
-    { icon: ScanLine, label: 'Escáner', subtitulo: 'Buscar producto por código de barras', path: '/escaner', modulo: ModuloPOS.PRODUCTOS },
-    { icon: Barcode, label: 'Códigos de Barras', subtitulo: 'Generar y asignar códigos a productos', path: '/codigos-barras', modulo: ModuloPOS.CODIGOS_BARRAS },
-    { icon: Award, label: 'Fidelización', subtitulo: 'Consultar puntos de un cliente', path: '/fidelizacion', modulo: ModuloPOS.FIDELIZACION },
-  ];
-
-  const administracion: ItemMenu[] = [
-    { icon: Users, label: 'Personal', subtitulo: 'Equipo con acceso a la app', path: '/personal', soloAdmin: true, modulo: ModuloPOS.USUARIOS },
-    { icon: Settings, label: 'Configuración', subtitulo: 'Datos del negocio y módulos', path: '/configuracion', soloAdmin: true },
-  ];
-
-  const plataforma: ItemMenu[] = [
-    { icon: ShieldAlert, label: 'Panel Desarrollador', subtitulo: 'Administra todos los negocios', path: '/desarrollador', soloStaff: true },
-  ];
-
-  const visible = (it: ItemMenu) =>
-    (!it.modulo || (it.dePago ? tieneModuloDePago(it.modulo) : tieneModulo(it.modulo))) &&
-    (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec);
 
   return (
     <AnimatePresence>
@@ -142,43 +77,21 @@ export function SideMenu({ open, onClose }: Props) {
             </div>
 
             <div className="px-3 py-4">
-              <p className="px-2 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Principal</p>
-              {principal.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} />)}
-
-              {modulos.some(visible) && (
-                <>
-                  <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Módulos</p>
-                  {modulos.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} />)}
-                </>
-              )}
-
-              {analisis.some(visible) && (
-                <>
-                  <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Análisis</p>
-                  {analisis.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} />)}
-                </>
-              )}
-
-              {herramientas.some(visible) && (
-                <>
-                  <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Herramientas</p>
-                  {herramientas.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} />)}
-                </>
-              )}
-
-              {administracion.some(visible) && (
-                <>
-                  <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Administración</p>
-                  {administracion.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} destacado />)}
-                </>
-              )}
-
-              {plataforma.some(visible) && (
-                <>
-                  <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Plataforma</p>
-                  {plataforma.filter(visible).map((it) => <MenuItem key={it.path} item={it} onClick={() => ir(it.path)} destacado />)}
-                </>
-              )}
+              {grupos.map((g) => {
+                const visibles = g.items.filter((it) => !it.oculto);
+                if (visibles.length === 0) return null;
+                const hermanos = visibles.map((it) => it.path);
+                return (
+                  <div key={g.id}>
+                    {g.titulo && <p className="px-2 mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">{g.titulo}</p>}
+                    {visibles.map((it) => (
+                      <MenuItem key={it.path} item={it} destacado={g.destacado} onClick={() => ir(it.path)} onEditar={() => setEditando({ item: it, hermanos })} />
+                    ))}
+                  </div>
+                );
+              })}
+              <div className="mt-4"><ModulosOcultos ocultos={ocultos} /></div>
+              <p className="px-2 mt-3 text-[11px] text-slate-600">Mantén presionado un módulo para renombrarlo, moverlo u ocultarlo.</p>
             </div>
 
             <div className="mt-auto px-3 pb-6 pt-2 border-t border-slate-800 space-y-1">
@@ -203,17 +116,20 @@ export function SideMenu({ open, onClose }: Props) {
               </button>
             </div>
           </motion.div>
+          {editando && <HojaAccionesModulo item={editando.item} hermanos={editando.hermanos} onCerrar={() => setEditando(null)} />}
         </>
       )}
     </AnimatePresence>
   );
 }
 
-function MenuItem({ item, onClick, destacado }: { item: ItemMenu; onClick: () => void; destacado?: boolean }) {
+function MenuItem({ item, onClick, onEditar, destacado }: { item: ItemMenu; onClick: () => void; onEditar: () => void; destacado?: boolean }) {
+  const presion = usePresionLarga(onEditar);
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-2 py-3 rounded-xl text-left transition-colors active:scale-[0.99] ${
+      {...presion}
+      className={`w-full flex items-center gap-3 px-2 py-3 rounded-xl text-left transition-colors active:scale-[0.99] select-none [-webkit-touch-callout:none] ${
         destacado ? 'bg-gradient-to-r from-purple-500/15 to-fuchsia-500/10 border border-purple-500/20' : 'active:bg-slate-900'
       }`}
     >
@@ -221,7 +137,7 @@ function MenuItem({ item, onClick, destacado }: { item: ItemMenu; onClick: () =>
         <item.icon className={`w-4.5 h-4.5 ${destacado ? 'text-purple-400' : 'text-slate-300'}`} />
       </div>
       <div className="min-w-0">
-        <p className={`text-sm font-semibold truncate ${destacado ? 'text-purple-200' : 'text-white'}`}>{item.label}</p>
+        <p className={`text-sm font-semibold truncate ${destacado ? 'text-purple-200' : 'text-white'}`}>{item.nombre}</p>
         {item.subtitulo && <p className="text-slate-500 text-xs truncate">{item.subtitulo}</p>}
       </div>
     </button>

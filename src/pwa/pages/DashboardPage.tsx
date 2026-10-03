@@ -15,6 +15,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
+import { traerTodo, aFechaLocal, fechaLocal } from '../lib/nubeConsultas';
 
 type RangoFiltro = 'hoy' | '7d' | '30d';
 
@@ -36,10 +37,7 @@ export default function DashboardPage() {
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
   const [sucursalActiva, setSucursalActivaLocal] = useState(getSucursalActiva());
   useEffect(() => suscribirSucursalActiva(() => setSucursalActivaLocal(getSucursalActiva())), []);
-  // 🏪 Solo cuenta ventas hechas desde el celular (módulo Vender) — las
-  // hechas en el mostrador de Electron todavía no se sincronizan a la nube
-  // (ver ventaMovilService.ts), así que este número no reemplaza el cierre
-  // de caja real.
+  // Cuenta TODAS las ventas del negocio (Electron y celular): es un solo sistema.
   const tiendaEfectiva = esAdmin ? (sucursalActiva?.id ?? undefined) : (empleado?.tienda_id ?? null);
   const [rango, setRango] = useState<RangoFiltro>('7d');
   const [cargando, setCargando] = useState(true);
@@ -62,59 +60,54 @@ export default function DashboardPage() {
       const inicio = new Date(hoy.getTime() - (dias - 1) * 24 * 60 * 60 * 1000);
       const fin = new Date(hoy.getTime() + 24 * 60 * 60 * 1000);
 
-      let ventasQuery = client.from('ventas').select('id, total, created_at')
-        .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-        .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString());
-      if (tiendaEfectiva !== undefined) {
-        ventasQuery = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal')
-          ? ventasQuery.is('tienda_id', null)
-          : ventasQuery.eq('tienda_id', tiendaEfectiva);
-      }
+      const desde = inicio.toISOString();
+      const hasta = fin.toISOString();
+      try {
+        // Paginado: PostgREST corta en 1000 filas y un mes movido las supera.
+        const [ventasLista, gastosData, devolucionesData] = await Promise.all([
+          traerTodo<{ id: string; total: number; created_at: string }>((i, j) => {
+            let q = client.from('ventas').select('id, total, created_at')
+              .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
+              .gte('created_at', desde).lt('created_at', hasta);
+            if (tiendaEfectiva !== undefined) {
+              q = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal') ? q.is('tienda_id', null) : q.eq('tienda_id', tiendaEfectiva);
+            }
+            return q.order('created_at').range(i, j);
+          }),
+          traerTodo<{ monto: number }>((i, j) => client.from('gastos').select('monto')
+            .eq('cliente_id', empleado.cliente_id).gte('fecha', desde).lt('fecha', hasta).order('fecha').range(i, j)),
+          traerTodo<{ total_devolucion: number }>((i, j) => client.from('devoluciones').select('total_devolucion')
+            .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
+            .gte('created_at', desde).lt('created_at', hasta).order('created_at').range(i, j)),
+        ]);
+        if (cancelado) return;
+        setVentas(ventasLista);
+        const gastosTotalCalc = gastosData.reduce((a, g) => a + Number(g.monto), 0);
+        const devolucionesTotalCalc = devolucionesData.reduce((a, d) => a + Number(d.total_devolucion), 0);
+        setGastosTotal(gastosTotalCalc);
+        setDevolucionesTotal(devolucionesTotalCalc);
 
-      const [{ data: ventasData }, { data: gastosData }, { data: devolucionesData }] = await Promise.all([
-        ventasQuery,
-        client.from('gastos').select('monto, fecha')
-          .eq('cliente_id', empleado.cliente_id)
-          .gte('fecha', inicio.toISOString()).lt('fecha', fin.toISOString()),
-        client.from('devoluciones').select('total_devolucion, created_at')
-          .eq('cliente_id', empleado.cliente_id)
-          .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString()),
-      ]);
-
-      if (cancelado) return;
-      const ventasLista = (ventasData as { id: string; total: number; created_at: string }[]) || [];
-      setVentas(ventasLista);
-      const gastosTotalCalc = ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0);
-      const devolucionesTotalCalc = ((devolucionesData as { total_devolucion: number }[]) || []).reduce((a, d) => a + Number(d.total_devolucion), 0);
-      setGastosTotal(gastosTotalCalc);
-      setDevolucionesTotal(devolucionesTotalCalc);
-
-      // 🐛 FIX: coincidir con Electron/InicioPage.tsx — la utilidad neta
-      // debe restar TAMBIÉN gastos y devoluciones del período, no solo el
-      // costo de lo vendido. Antes esta pantalla ya traía gastosTotal y
-      // devolucionesTotal (se mostraban en sus propias tarjetas) pero nunca
-      // se restaban de la utilidad, así que el número no cuadraba ni con
-      // Electron ni con InicioPage.tsx aunque fuera el mismo negocio y
-      // período.
-      // Utilidad real: ventas - devoluciones - costo de lo vendido - gastos
-      if (ventasLista.length > 0) {
-        const ventaIds = ventasLista.map((v) => v.id);
-        const { data: itemsData } = await client
-          .from('venta_items')
-          .select('venta_id, producto_id, cantidad, precio_unitario')
-          .in('venta_id', ventaIds);
-        const items = (itemsData as { producto_id: string | null; cantidad: number; precio_unitario: number }[]) || [];
+        // Utilidad real (igual que Electron/InicioPage): ventas − devoluciones − costo de lo vendido − gastos.
+        // Los ítems se piden por lotes: miles de ids en una sola URL hacen fallar la consulta
+        // en silencio y la utilidad quedaba sin restar el costo.
+        const ids = ventasLista.map((v) => v.id);
+        const items: { producto_id: string | null; cantidad: number }[] = [];
+        for (let k = 0; k < ids.length; k += 150) {
+          const lote = ids.slice(k, k + 150);
+          items.push(...await traerTodo<{ producto_id: string | null; cantidad: number }>((i, j) => client.from('venta_items')
+            .select('producto_id, cantidad').in('venta_id', lote).order('venta_id').range(i, j)));
+        }
         const productoIds = Array.from(new Set(items.map((i) => i.producto_id).filter(Boolean))) as string[];
         const costosPorProducto = new Map<string, number>();
-        if (productoIds.length > 0) {
-          const { data: prodsData } = await client.from('productos').select('id, costo').in('id', productoIds);
+        for (let k = 0; k < productoIds.length; k += 150) {
+          const { data: prodsData } = await client.from('productos').select('id, costo').in('id', productoIds.slice(k, k + 150));
           for (const p of (prodsData as { id: string; costo: number }[]) || []) costosPorProducto.set(p.id, Number(p.costo) || 0);
         }
         const costoTotal = items.reduce((a, i) => a + (costosPorProducto.get(i.producto_id || '') || 0) * Number(i.cantidad), 0);
         const totalVentas = ventasLista.reduce((a, v) => a + Number(v.total), 0);
         if (!cancelado) setUtilidad(totalVentas - devolucionesTotalCalc - costoTotal - gastosTotalCalc);
-      } else {
-        if (!cancelado) setUtilidad(-devolucionesTotalCalc - gastosTotalCalc);
+      } catch (e) {
+        console.warn('[dashboard] No se pudieron cargar los datos:', e);
       }
 
       setCargando(false);
@@ -135,10 +128,11 @@ export default function DashboardPage() {
     const porDia = new Map<string, number>();
     for (let i = dias - 1; i >= 0; i--) {
       const d = new Date(hoy.getTime() - i * 24 * 60 * 60 * 1000);
-      porDia.set(d.toISOString().slice(0, 10), 0);
+      porDia.set(fechaLocal(d), 0);
     }
     for (const v of ventas) {
-      const clave = v.created_at.slice(0, 10);
+      // Día LOCAL: con la fecha UTC, lo vendido después de las 7 p.m. caía en el día siguiente.
+      const clave = aFechaLocal(v.created_at).slice(0, 10);
       if (porDia.has(clave)) porDia.set(clave, (porDia.get(clave) || 0) + Number(v.total));
     }
     return Array.from(porDia.entries()).map(([fecha, total]) => ({
@@ -152,9 +146,6 @@ export default function DashboardPage() {
       <div className="px-5 pt-8 pb-4">
         <h1 className="text-white text-xl font-black">Dashboard</h1>
         <p className="text-slate-400 text-sm">Vista financiera del negocio</p>
-        <p className="text-slate-600 text-[11px] mt-1">
-          Solo cuenta ventas hechas desde el celular (Vender) — no incluye lo cobrado en el mostrador de Electron.
-        </p>
       </div>
 
       <SucursalFiltro />

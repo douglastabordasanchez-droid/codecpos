@@ -6,17 +6,17 @@ import {
   ShieldCheck, ShieldOff, Crown, Zap, PanelLeftClose, PanelLeftOpen, Bell,
 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { useModulosActivos } from '../hooks/useModulosActivos';
 import { useTheme } from '../contexts/ThemeContext';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { codecVerifyPwaActivo, alternarCodecVerifyPwa, suscribirNotificacionesPagoPwa } from '../lib/codecVerifyPwa';
-import { NAV_PRINCIPAL as PRINCIPAL, NAV_HERRAMIENTAS as HERRAMIENTAS, NAV_GESTION as GESTION, NAV_ADMINISTRACION as ADMINISTRACION, NAV_PLATAFORMA as PLATAFORMA, ItemNavSidebar as ItemNav } from '../lib/sidebarNav';
-import { esRutaOculta, EVENTO_SIDEBAR_OCULTOS_CAMBIADO } from '../lib/sidebarPrefs';
+import { useMenuPersonalizado, type GrupoMenu, type ItemMenu } from '../hooks/useMenuPersonalizado';
+import { HojaAccionesModulo, ModulosOcultos, usePresionLarga } from './EdicionMenu';
 import logo from '/logo.png';
 
 export function DesktopLayout() {
   const { empleado, cargando, cerrarSesion } = usePwaAuth();
-  const { tieneModulo, tieneModuloDePago } = useModulosActivos();
+  const { grupos, ocultos } = useMenuPersonalizado({ movil: false });
+  const [editando, setEditando] = useState<{ item: ItemMenu; hermanos: string[] } | null>(null);
   const { tema, alternarTema } = useTheme();
   const navigate = useNavigate();
   const [plan, setPlan] = useState<string | null>(null);
@@ -30,15 +30,6 @@ export function DesktopLayout() {
       return nuevo;
     });
   };
-
-  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
-  const [, forceUpdate] = useState(0);
-
-  useEffect(() => {
-    const actualizar = () => forceUpdate((n) => n + 1);
-    window.addEventListener(EVENTO_SIDEBAR_OCULTOS_CAMBIADO, actualizar);
-    return () => window.removeEventListener(EVENTO_SIDEBAR_OCULTOS_CAMBIADO, actualizar);
-  }, []);
 
   useEffect(() => {
     if (!empleado) return;
@@ -68,11 +59,6 @@ export function DesktopLayout() {
     });
     return () => unsubscribe?.();
   }, [verifyActivo, empleado?.cliente_id]);
-
-  const visible = (it: ItemNav) =>
-    (!it.modulo || (it.dePago ? tieneModuloDePago(it.modulo) : tieneModulo(it.modulo))) &&
-    (!it.soloAdmin || esAdmin) && (!it.soloStaff || empleado?.es_staff_codec) &&
-    (it.fijo || !esRutaOculta(it.path));
 
   const toggleVerify = () => {
     const nuevo = alternarCodecVerifyPwa(empleado?.id);
@@ -110,12 +96,13 @@ export function DesktopLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-5">
-          <NavGroup label={null} items={PRINCIPAL.filter(visible)} colapsado={colapsado} />
-          {HERRAMIENTAS.some(visible) && <NavGroup label="Herramientas" items={HERRAMIENTAS.filter(visible)} colapsado={colapsado} />}
-          {GESTION.some(visible) && <NavGroup label="Gestión" items={GESTION.filter(visible)} colapsado={colapsado} />}
-          {ADMINISTRACION.some(visible) && <NavGroup label="Administración" items={ADMINISTRACION.filter(visible)} destacado colapsado={colapsado} />}
-          {PLATAFORMA.some(visible) && <NavGroup label="Plataforma" items={PLATAFORMA.filter(visible)} destacado colapsado={colapsado} />}
+          {grupos.map((g) => (
+            <NavGroup key={g.id} grupo={g} colapsado={colapsado} onEditar={(item, hermanos) => setEditando({ item, hermanos })} />
+          ))}
+          <ModulosOcultos ocultos={ocultos} colapsado={colapsado} />
+          {!colapsado && <p className="px-3 text-[10px] text-slate-600">Mantén presionado o clic derecho en un módulo para editarlo.</p>}
         </nav>
+        {editando && <HojaAccionesModulo item={editando.item} hermanos={editando.hermanos} onCerrar={() => setEditando(null)} />}
 
         <div className="px-3 py-3 border-t border-slate-800/80 space-y-1 shrink-0">
           <button
@@ -188,35 +175,44 @@ export function DesktopLayout() {
   );
 }
 
-function NavGroup({ label, items, destacado, colapsado }: { label: string | null; items: ItemNav[]; destacado?: boolean; colapsado?: boolean }) {
-  if (items.length === 0) return null;
+function NavGroup({ grupo, colapsado, onEditar }: { grupo: GrupoMenu; colapsado?: boolean; onEditar: (item: ItemMenu, hermanos: string[]) => void }) {
+  const visibles = grupo.items.filter((it) => !it.oculto);
+  if (visibles.length === 0) return null;
+  const hermanos = visibles.map((it) => it.path);
   return (
     <div>
-      {label && !colapsado && <p className="px-3 mb-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-wider">{label}</p>}
+      {grupo.titulo && !colapsado && <p className="px-3 mb-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-wider">{grupo.titulo}</p>}
       <div className="space-y-0.5">
-        {items.map((it) => (
-          <NavLink
-            key={it.path}
-            to={it.path}
-            end={it.end}
-            title={colapsado ? it.label : undefined}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${colapsado ? 'justify-center' : ''} ${
-                isActive
-                  ? destacado
-                    ? 'bg-gradient-to-r from-purple-500/20 to-fuchsia-500/10 text-purple-200 border border-purple-500/20'
-                    : 'bg-slate-800/80 text-white'
-                  : destacado
-                    ? 'text-purple-300/80 hover:bg-slate-900'
-                    : 'text-slate-300 hover:bg-slate-900'
-              }`
-            }
-          >
-            <it.icon className="w-4 h-4 shrink-0" />
-            {!colapsado && <span className="truncate">{it.label}</span>}
-          </NavLink>
+        {visibles.map((it) => (
+          <EnlaceMenu key={it.path} item={it} destacado={grupo.destacado} colapsado={colapsado} onEditar={() => onEditar(it, hermanos)} />
         ))}
       </div>
     </div>
+  );
+}
+
+function EnlaceMenu({ item, destacado, colapsado, onEditar }: { item: ItemMenu; destacado?: boolean; colapsado?: boolean; onEditar: () => void }) {
+  const presion = usePresionLarga(onEditar);
+  return (
+    <NavLink
+      to={item.path}
+      end={item.end}
+      title={colapsado ? item.nombre : undefined}
+      {...presion}
+      className={({ isActive }) =>
+        `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors select-none [-webkit-touch-callout:none] ${colapsado ? 'justify-center' : ''} ${
+          isActive
+            ? destacado
+              ? 'bg-gradient-to-r from-purple-500/20 to-fuchsia-500/10 text-purple-200 border border-purple-500/20'
+              : 'bg-slate-800/80 text-white'
+            : destacado
+              ? 'text-purple-300/80 hover:bg-slate-900'
+              : 'text-slate-300 hover:bg-slate-900'
+        }`
+      }
+    >
+      <item.icon className="w-4 h-4 shrink-0" />
+      {!colapsado && <span className="truncate">{item.nombre}</span>}
+    </NavLink>
   );
 }

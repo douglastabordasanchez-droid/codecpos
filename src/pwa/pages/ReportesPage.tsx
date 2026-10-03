@@ -31,6 +31,9 @@ import { exportadorReportes } from '../../app/services/exportarReportes';
 import ModalGenerarReporte from '../../app/components/pos/ModalGenerarReporte';
 import ModalExportarReporte from '../../app/components/pos/ModalExportarReporte';
 import { FuenteReportesSupabase, type MetricasReportes } from '../lib/reportesFuenteSupabase';
+import { ResponsiveContainer, BarChart, Bar, XAxis, Tooltip, Cell } from 'recharts';
+import { cargarMovimientos, calcularTotales, flujoPorDia, variacion } from '../lib/contabilidadNube';
+import { fechaLocal } from '../lib/nubeConsultas';
 
 const TIPOS_REPORTES = [
   { id: 'ventas', nombre: 'Ventas', descripcion: 'Análisis de ventas, métodos de pago y top productos', icono: TrendingUp, color: 'from-emerald-500 to-emerald-600', requierePeriodo: true },
@@ -75,6 +78,7 @@ export default function ReportesPage() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [actualizando, setActualizando] = useState(false);
+  const [tendencia, setTendencia] = useState<{ dias: Array<{ dia: string; ventas: number }>; total: number; cambio: number | null } | null>(null);
 
   const cargarReportesGuardados = () => setReportesGuardados(reportesService.obtenerReportes());
 
@@ -82,13 +86,14 @@ export default function ReportesPage() {
     if (!fuente) return;
     setActualizando(true);
     try {
+      if (clienteId) cargarTendencia(clienteId).then(setTendencia).catch(() => setTendencia(null));
       setMetricas(await fuente.metricas());
     } catch (e: any) {
       toast.error('No se pudieron cargar los indicadores', { description: e?.message });
     } finally {
       setActualizando(false);
     }
-  }, [fuente]);
+  }, [fuente, clienteId]);
 
   useEffect(() => {
     if (!fuente || !clienteId) return;
@@ -201,12 +206,12 @@ export default function ReportesPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-5 pt-8 pb-24 space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
             <FileText className="w-6 h-6" style={{ color: '#ffffff' }} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-white text-2xl font-black">Reportes del Negocio</h1>
-            <p className="text-slate-400 text-sm">Selecciona un tipo para generar y exportar al instante</p>
+            <h1 className="text-white text-xl sm:text-2xl font-black truncate">Reportes del Negocio</h1>
+            <p className="text-slate-400 text-xs sm:text-sm">Genera y exporta en PDF, Excel o tirilla</p>
           </div>
         </div>
         <button
@@ -224,19 +229,47 @@ export default function ReportesPage() {
           <button
             key={etiqueta}
             onClick={() => navigate(ir)}
-            className="text-left bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4 hover:border-slate-700 transition-colors"
+            className="text-left bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-3 sm:p-4 hover:border-slate-700 transition-colors active:scale-[0.98] min-w-0"
           >
             <div className="flex items-center gap-2 mb-1">
-              <Icon className={`w-4 h-4 ${color}`} />
-              <p className={`text-xs font-bold uppercase tracking-wide ${color}`}>{etiqueta}</p>
+              <Icon className={`w-4 h-4 shrink-0 ${color}`} />
+              <p className={`text-[11px] sm:text-xs font-bold uppercase tracking-wide truncate ${color}`}>{etiqueta}</p>
             </div>
-            <p className="text-white text-xl font-black">
+            <p className="text-white text-lg sm:text-xl font-black truncate">
               {metricas ? valor : <Loader2 className="w-5 h-5 animate-spin text-slate-500" />}
             </p>
-            <p className="text-slate-500 text-xs">{detalle}</p>
+            <p className="text-slate-500 text-xs truncate">{detalle}</p>
           </button>
         ))}
       </div>
+
+      {/* Tendencia de la semana */}
+      {tendencia && (
+        <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div>
+              <p className="text-slate-400 text-xs font-bold uppercase tracking-wide">Ventas últimos 7 días</p>
+              <p className="text-white text-xl font-black">{money(tendencia.total)}</p>
+            </div>
+            {tendencia.cambio !== null && (
+              <span className={`text-xs font-bold px-2 py-1 rounded-full shrink-0 ${tendencia.cambio >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+                {tendencia.cambio >= 0 ? '▲' : '▼'} {Math.abs(tendencia.cambio).toFixed(0)} % vs. semana anterior
+              </span>
+            )}
+          </div>
+          <div className="h-28">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={tendencia.dias}>
+                <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v: number) => money(v)} cursor={{ fill: '#33415533' }} contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, fontSize: 12 }} />
+                <Bar dataKey="ventas" name="Ventas" radius={[6, 6, 0, 0]}>
+                  {tendencia.dias.map((d, i) => <Cell key={d.dia + i} fill={i === tendencia.dias.length - 1 ? '#f59e0b' : '#10b981'} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl bg-amber-500/15 px-4 py-3 flex items-start gap-3">
         <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
@@ -246,22 +279,23 @@ export default function ReportesPage() {
       </div>
 
       {/* Selector de tipo */}
-      <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
+      <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4 sm:p-5">
         <h2 className="text-white text-base font-bold">¿Qué reporte necesitas?</h2>
-        <p className="text-slate-400 text-xs mb-4">Haz clic en cualquier tarjeta para configurarlo y generarlo</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <p className="text-slate-400 text-xs mb-4">Toca una tarjeta para elegir el período y generarlo</p>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
           {TIPOS_REPORTES.map((tipo) => (
             <button
               key={tipo.id}
               onClick={() => setTipoAGenerar(tipo)}
-              className="group text-left bg-slate-950/50 border border-slate-800 rounded-2xl p-4 hover:border-slate-700 transition-colors"
+              className="group text-left bg-slate-950/50 border border-slate-800 rounded-2xl p-3 sm:p-4 hover:border-slate-700 transition-colors active:scale-[0.98] min-w-0"
             >
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tipo.color} flex items-center justify-center mb-3`}>
+              <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br ${tipo.color} flex items-center justify-center mb-2 sm:mb-3`}>
                 <tipo.icono className="w-5 h-5" style={{ color: '#ffffff' }} />
               </div>
               <h3 className="text-white font-bold text-sm mb-1">{tipo.nombre}</h3>
-              <p className="text-slate-400 text-xs leading-relaxed">{tipo.descripcion}</p>
-              <p className="mt-3 flex items-center gap-1 text-xs font-semibold text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity">
+              <p className="text-slate-400 text-[11px] sm:text-xs leading-snug line-clamp-3">{tipo.descripcion}</p>
+              {/* En el celular no existe "pasar el mouse": el aviso se ve siempre; en computador aparece al pasar. */}
+              <p className="mt-2 sm:mt-3 flex items-center gap-1 text-xs font-semibold text-amber-400 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                 <FilePlus className="w-3 h-3" /> Generar reporte
               </p>
             </button>
@@ -270,21 +304,21 @@ export default function ReportesPage() {
       </div>
 
       {/* Mis reportes */}
-      <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
+      <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4 sm:p-5">
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <div>
             <h2 className="text-white text-base font-bold">Mis Reportes Guardados</h2>
             <p className="text-slate-400 text-xs">{reportesGuardados.length} {reportesGuardados.length === 1 ? 'reporte almacenado' : 'reportes almacenados'}</p>
           </div>
           {reportesGuardados.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="relative block">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <span className="relative block flex-1 sm:flex-none">
                 <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
                 <input
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
                   placeholder="Buscar..."
-                  className="h-9 w-36 pl-8 pr-3 rounded-lg bg-slate-900 border border-slate-800 text-white text-sm"
+                  className="h-9 w-full sm:w-36 pl-8 pr-3 rounded-lg bg-slate-900 border border-slate-800 text-white text-sm"
                 />
               </span>
               <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} className="h-9 px-3 rounded-lg bg-slate-900 border border-slate-800 text-white text-sm">
@@ -318,7 +352,7 @@ export default function ReportesPage() {
               const dias = reportesService.diasRestantesExpiracion(reporte);
               return (
                 <div key={reporte.id} className="bg-slate-950/50 border border-slate-800 rounded-2xl p-4">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div className="flex items-start gap-3 min-w-0">
                       <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tipo?.color || 'from-slate-500 to-slate-600'} flex items-center justify-center shrink-0`}>
                         <Icono className="w-5 h-5" style={{ color: '#ffffff' }} />
@@ -341,7 +375,7 @@ export default function ReportesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => setReporteParaExportar(reporte)} className="h-9 px-3 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold flex items-center gap-1.5">
+                      <button onClick={() => setReporteParaExportar(reporte)} className="h-9 px-3 flex-1 sm:flex-none justify-center rounded-lg bg-amber-500 text-slate-950 text-xs font-bold flex items-center gap-1.5">
                         <FileText className="w-3.5 h-3.5" /> Exportar
                       </button>
                       <button onClick={() => eliminarReporte(reporte.id)} title="Eliminar" className="h-9 w-9 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center">
@@ -386,4 +420,22 @@ export default function ReportesPage() {
       />
     </div>
   );
+}
+
+/** Ventas de los últimos 7 días (hoy incluido) y su cambio frente a los 7 anteriores. */
+async function cargarTendencia(clienteId: string) {
+  const hoy = new Date();
+  const hace = (n: number) => fechaLocal(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - n));
+  const [actual, anterior] = await Promise.all([
+    cargarMovimientos(clienteId, hace(6), hace(0)),
+    cargarMovimientos(clienteId, hace(13), hace(7)),
+  ]);
+  const porDia = new Map(flujoPorDia({ ...actual, gastos: [], devoluciones: [], ingresosExtra: [] }).map((d) => [d.dia, d.entradas]));
+  const dias = Array.from({ length: 7 }, (_, i) => {
+    const fecha = hace(6 - i);
+    const etiqueta = new Date(`${fecha}T12:00:00`).toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '');
+    return { dia: etiqueta, ventas: porDia.get(fecha) || 0 };
+  });
+  const total = calcularTotales(actual).ventas;
+  return { dias, total, cambio: variacion(total, calcularTotales(anterior).ventas) };
 }
