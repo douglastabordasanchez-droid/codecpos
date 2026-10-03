@@ -301,6 +301,11 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
         subtotal, iva, total: venta!.total,
         metodoPago: venta!.metodoPago,
         cajero: venta!.cajero,
+        descuento: venta!.descuento || 0,
+        pagoMixto: (venta! as any).pagoMixto || null,
+        fechaVencimiento: (venta! as any).carteraFechaVencimiento || undefined,
+        cufe: (venta! as any).cufe || null,
+        qrUrl: (venta! as any).qrUrl || null,
         cliente: (venta as any).cliente || 'Consumidor Final',
       },
       config: {
@@ -321,7 +326,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
     try {
       const { venta: v, config } = datosParaCompartir();
       await enviarFacturaPorWhatsApp(v, config, telefono.trim());
-      toast.success('PDF descargado — WhatsApp se abrió con el mensaje listo, solo adjunta el archivo');
+      toast.success('Factura lista: WhatsApp se abrió con el mensaje. Adjunta el PDF que se descargó.');
       setPanelCompartir(null);
     } catch {
       toast.error('No se pudo preparar el envío por WhatsApp');
@@ -336,7 +341,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
     try {
       const { venta: v, config } = datosParaCompartir();
       await enviarFacturaPorEmail(v, config, emailDestino.trim());
-      toast.success('PDF descargado — tu cliente de correo se abrió con el mensaje listo, solo adjunta el archivo');
+      toast.success('Factura lista: tu correo se abrió con el mensaje. Adjunta el PDF que se descargó.');
       setPanelCompartir(null);
     } catch {
       toast.error('No se pudo preparar el envío por correo');
@@ -381,6 +386,11 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
           total: venta.total,
           metodoPago: venta.metodoPago,
           cajero: venta.cajero,
+          descuento: venta.descuento || 0,
+          pagoMixto: (venta as any).pagoMixto || null,
+          fechaVencimiento: (venta as any).carteraFechaVencimiento || undefined,
+          cufe: (venta as any).cufe || null,
+          qrUrl: (venta as any).qrUrl || null,
           cliente: (venta as any).cliente || 'Consumidor Final',
           mesa: venta.mesa,
           referencia_mesa: (venta as any).referencia_mesa || undefined,

@@ -391,7 +391,14 @@ export default function VentasPage() {
         total: venta.total,
         metodoPago: venta.metodoPago,
         cajero: venta.cajero,
-        cliente: 'Consumidor Final',
+        cliente: venta.cliente || 'Consumidor final',
+        descuento: venta.descuento || 0,
+        pagoMixto: (venta as any).pagoMixto || null,
+        fechaVencimiento: (venta as any).carteraFechaVencimiento || undefined,
+        cufe: (venta as any).cufe || null,
+        qrUrl: (venta as any).qrUrl || null,
+        mesa: venta.mesa,
+        referencia_mesa: venta.referencia_mesa,
       };
 
       await descargarFacturaPDF(ventaPDF, empresa);

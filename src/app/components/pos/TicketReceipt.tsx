@@ -442,6 +442,12 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
         total: venta!.total,
         metodoPago: venta!.metodoPago,
         cajero: cajeroDisplay,
+        descuento: venta!.descuento || 0,
+        pagoMixto: (venta! as any).pagoMixto || null,
+        fechaVencimiento: (venta! as any).carteraFechaVencimiento || undefined,
+        cufe: (venta! as any).cufe || null,
+        qrUrl: (venta! as any).qrUrl || null,
+        cliente: (venta as any)?.cliente || undefined,
         mesa: venta!.mesa,
         referencia_mesa: mesaDisplay ?? undefined,
       },
@@ -463,7 +469,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     try {
       const { venta: v, config: c } = datosParaCompartir();
       await enviarFacturaPorWhatsApp(v, c, telefono.trim());
-      toast.success('PDF descargado — WhatsApp se abrió con el mensaje listo, solo adjunta el archivo');
+      toast.success('Factura lista: WhatsApp se abrió con el mensaje. Adjunta el PDF que se descargó.');
       setPanelCompartir(null);
     } catch {
       toast.error('No se pudo preparar el envío por WhatsApp');
@@ -478,7 +484,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     try {
       const { venta: v, config: c } = datosParaCompartir();
       await enviarFacturaPorEmail(v, c, emailDestino.trim());
-      toast.success('PDF descargado — tu cliente de correo se abrió con el mensaje listo, solo adjunta el archivo');
+      toast.success('Factura lista: tu correo se abrió con el mensaje. Adjunta el PDF que se descargó.');
       setPanelCompartir(null);
     } catch {
       toast.error('No se pudo preparar el envío por correo');
