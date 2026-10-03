@@ -109,7 +109,7 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
   if (!items.length) return;
 
   const states = {
-    waiting:   { activeStep: 0, caption: 'El cliente paga por Nequi, Daviplata o Bancolombia — Codec Verify detecta la transferencia por notificación push del celular del negocio.' },
+    waiting:   { activeStep: 0, caption: 'El cliente paga por Nequi, Daviplata o Bancolombia y Codec Verify detecta la transferencia por notificación push del celular del negocio.' },
     verifying: { activeStep: 1, caption: 'Sin cuenta de comercio, sin comisión por transacción. El sistema confirma el pago solo, dentro de Codec POS.' },
     confirmed: { activeStep: 2, caption: 'La confirmación aparece en pantalla en la caja al instante -- y, si lo activas, Codec Verify también la anuncia en voz.' },
   };
