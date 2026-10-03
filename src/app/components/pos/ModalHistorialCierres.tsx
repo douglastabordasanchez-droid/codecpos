@@ -47,6 +47,7 @@ interface CierreRaw {
     transferencia: number;
     bancolombia?: number;
     rappi?: number;
+    bre_b?: number;
   };
   billetes?: Record<string, number>;
   observaciones?: string;
@@ -60,6 +61,7 @@ interface CierreRaw {
   abonosCarteraTransferencia?: number;
   abonosCarteraTarjetaBanco?: number;
   abonosCarteraDetalle?: Array<{ descripcion: string; concepto?: string; monto: number; medioPago?: string }>;
+  cierreUniversal?: boolean;
   cantidadTransacciones?: number;
   ticketPromedio?: number;
   productosTop?: Array<{ nombre: string; cantidad: number; total: number }>;
@@ -175,10 +177,12 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
         c.desglose?.transferencia || 0,
         c.desglose?.bancolombia || 0,
         c.desglose?.rappi || 0,
+        c.desglose?.bre_b || 0,
+        c.cierreUniversal ? 'Universal' : 'Solo efectivo',
         c.observaciones || '',
       ].join(';');
     });
-    const header = 'Fecha;Hora;Cajero;Base Inicial;Total Sistema;Propinas (empleados);Ingreso Negocio;Total Físico;Diferencia;Estado;Efectivo;Tarjeta;Nequi;Daviplata;Transferencia;Bancolombia;Rappi;Observaciones';
+    const header = 'Fecha;Hora;Cajero;Base Inicial;Total Sistema;Propinas (empleados);Ingreso Negocio;Total Físico;Diferencia;Estado;Efectivo;Tarjeta;Nequi;Daviplata;Transferencia;Bancolombia;Rappi;Bre-B;Tipo de cierre;Observaciones';
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

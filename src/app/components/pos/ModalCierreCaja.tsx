@@ -274,10 +274,12 @@ export default function ModalCierreCaja({ open, onClose, onConfirmar, data, dark
                       <p className={`font-bold text-sm ${estadoColor.text}`}>{estadoColor.label}</p>
                       {data.estado !== 'cuadrado' ? (
                         <p className={`text-xs ${estadoColor.text}`}>
-                          Diferencia: {data.diferencia >= 0 ? '+' : ''}{fmt(data.diferencia)}
+                          Diferencia{data.cierreUniversal ? ' (todos los medios)' : ''}: {data.diferencia >= 0 ? '+' : ''}{fmt(data.diferencia)}
                         </p>
                       ) : (
-                        <p className={`text-xs ${estadoColor.text}`}>El conteo cuadra con el sistema</p>
+                        <p className={`text-xs ${estadoColor.text}`}>
+                          {data.cierreUniversal ? 'Todos los medios de pago cuadran con el sistema' : 'El conteo cuadra con el sistema'}
+                        </p>
                       )}
                     </div>
                   </div>

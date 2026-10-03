@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import type { MedioCuadrado } from '../../lib/cierreUniversal';
 
 export interface ProductoTop {
   nombre: string;
@@ -21,6 +22,7 @@ export interface CierreDataModal {
     transferencia: number;
     bancolombia: number;
     rappi: number;
+    bre_b?: number;
   };
   totalSistema: number;
   /** Propinas del turno (incluidas en totalSistema). Son de los empleados, no del negocio. */
@@ -57,6 +59,10 @@ export interface CierreDataModal {
   cantidadTransacciones: number;
   ticketPromedio: number;
   productosTop: ProductoTop[];
+  /** Cierre universal: cuadre de cada medio no efectivo; `diferencia` es la de todos los medios. */
+  cierreUniversal?: boolean;
+  mediosUniversal?: MedioCuadrado[];
+  diferenciaEfectivo?: number;
   billetes: {
     b100000: number;
     b50000: number;
@@ -136,7 +142,8 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
     data.desglose.daviplata +
     data.desglose.transferencia +
     data.desglose.bancolombia +
-    data.desglose.rappi;
+    data.desglose.rappi +
+    (data.desglose.bre_b || 0);
 
   const totalPropinas = Math.max(0, Number(data.totalPropinas) || 0);
   const propinasEfectivo = Math.max(0, Number(data.propinas?.efectivo) || 0);
@@ -237,6 +244,9 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
             )}
             {data.desglose.rappi > 0 && (
               <tr><td>Rappi:</td><td style={{ textAlign: 'right' }}>{fmt(data.desglose.rappi)}</td></tr>
+            )}
+            {(data.desglose.bre_b || 0) > 0 && (
+              <tr><td>Bre-B:</td><td style={{ textAlign: 'right' }}>{fmt(data.desglose.bre_b || 0)}</td></tr>
             )}
             <tr><td colSpan={2}><div style={{ borderTop: '1px solid #000', marginTop: 2, marginBottom: 2 }} /></td></tr>
             <tr style={{ fontWeight: 'bold', fontSize: 13 }}>
@@ -415,6 +425,63 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
             <div>{LINE}</div>
           </>
         )}
+
+        {/* Cierre universal: todos los medios de pago */}
+        {data.cierreUniversal && (data.mediosUniversal || []).length > 0 && (() => {
+          const medios = data.mediosUniversal || [];
+          const esperadoOtros = medios.reduce((s, m) => s + m.esperado, 0);
+          const declaradoOtros = medios.reduce((s, m) => s + m.declarado, 0);
+          return (
+            <>
+              <div style={{ fontWeight: 'bold', marginTop: 8, marginBottom: 4 }}>CIERRE UNIVERSAL (TODOS LOS MEDIOS)</div>
+              <div>{LINE}</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ fontWeight: 'bold' }}>
+                    <td>Medio</td>
+                    <td style={{ textAlign: 'right' }}>Esperado</td>
+                    <td style={{ textAlign: 'right' }}>Recibido</td>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Efectivo</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(data.efectivoEsperado)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(data.totalFisicoContado)}</td>
+                  </tr>
+                  {medios.filter((m) => m.esperado > 0 || m.declarado > 0).map((m) => (
+                    <tr key={m.medio}>
+                      <td>{m.label}</td>
+                      <td style={{ textAlign: 'right' }}>{fmt(m.esperado)}</td>
+                      <td style={{ textAlign: 'right' }}>{fmt(m.declarado)}</td>
+                    </tr>
+                  ))}
+                  <tr><td colSpan={3}><div style={{ borderTop: '1px solid #000', marginTop: 2, marginBottom: 2 }} /></td></tr>
+                  <tr style={{ fontWeight: 'bold', fontSize: 12 }}>
+                    <td>TOTAL</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(data.efectivoEsperado + esperadoOtros)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(data.totalFisicoContado + declaradoOtros)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              {typeof data.diferenciaEfectivo === 'number' && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginTop: 4 }}>
+                  <tbody>
+                    <tr>
+                      <td>Dif. efectivo:</td>
+                      <td style={{ textAlign: 'right' }}>{data.diferenciaEfectivo >= 0 ? '+' : '-'}{fmt(Math.abs(data.diferenciaEfectivo))}</td>
+                    </tr>
+                    <tr>
+                      <td>Dif. otros medios:</td>
+                      <td style={{ textAlign: 'right' }}>{declaradoOtros - esperadoOtros >= 0 ? '+' : '-'}{fmt(Math.abs(declaradoOtros - esperadoOtros))}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+              <div>{LINE}</div>
+            </>
+          );
+        })()}
 
         {/* Estado */}
         <div style={{ textAlign: 'center', padding: '6px 0', fontWeight: 'bold', fontSize: 13 }}>

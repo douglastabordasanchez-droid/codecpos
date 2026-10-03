@@ -37,6 +37,8 @@ import {
   Search,
   Bike,
   Landmark,
+  Layers,
+  Zap,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -61,6 +63,14 @@ import { employeeActivityLogService } from '../../lib/employeeActivityLogService
 import ModalCierreCaja, { type CierreDataModal } from './ModalCierreCaja';
 import ModalCierreDetallado from './ModalCierreDetallado';
 import ModalHistorialCierres from './ModalHistorialCierres';
+import {
+  MEDIOS_CIERRE_UNIVERSAL,
+  isCierreUniversalActivo,
+  setCierreUniversalActivo,
+  medioCierreDesdeMetodo,
+  type MedioCierreUniversal,
+  type MedioCuadrado,
+} from '../../lib/cierreUniversal';
 
 interface AperturaCaja {
   id: string;
@@ -105,6 +115,7 @@ interface CierreCaja {
     transferencia: number;
     bancolombia: number;
     rappi: number;
+    bre_b: number;
   };
   billetes: {
     b100000: number;
@@ -138,6 +149,11 @@ interface CierreCaja {
   transferenciaEsperada: number;
   tarjetaBancoEsperado: number;
   totalEsperadoAnalitico: number;
+  // Cierre universal: el cajero declaró lo recibido por cada medio y
+  // `diferencia` es la de TODOS los medios (ver lib/cierreUniversal.ts).
+  cierreUniversal?: boolean;
+  mediosUniversal?: MedioCuadrado[];
+  diferenciaEfectivo?: number;
 }
 
 interface GastoDetalleCierre {
@@ -171,7 +187,15 @@ export default function CierreCajaPage() {
     transferencia: 0,
     bancolombia: 0,
     rappi: 0,
+    bre_b: 0,
   });
+
+  // Cierre universal (solo el administrador lo activa): además del efectivo,
+  // el cajero declara lo recibido por cada medio electrónico.
+  const [cierreUniversal, setCierreUniversal] = useState<boolean>(() => isCierreUniversalActivo());
+  const [declaradosMedios, setDeclaradosMedios] = useState<Partial<Record<MedioCierreUniversal, string>>>({});
+  const [abonosPorMedio, setAbonosPorMedio] = useState<Partial<Record<MedioCierreUniversal, number>>>({});
+  const puedeConfigurarCierreUniversal = !!esSuperUsuario || !!esDesarrollador;
 
   // Conteo físico de billetes y monedas (para apertura y cierre)
   const [billetes, setBilletes] = useState({
@@ -407,7 +431,15 @@ export default function CierreCajaPage() {
       .filter((a) => a.monto > 0)
       .sort((a, b) => b.monto - a.monto);
 
-    return { abonosCarteraEfectivo, abonosCarteraTransferencia, abonosCarteraTarjetaBanco, abonosCarteraDetalle };
+    // Para el cierre universal: abonos no efectivo repartidos por medio exacto.
+    const abonosPorMedioCalc: Partial<Record<MedioCierreUniversal, number>> = {};
+    for (const a of abonosDia) {
+      const medio = medioCierreDesdeMetodo(String(a?.metodoPago || 'efectivo'));
+      const monto = Number(a?.monto) || 0;
+      if (medio && monto > 0) abonosPorMedioCalc[medio] = (abonosPorMedioCalc[medio] || 0) + monto;
+    }
+
+    return { abonosCarteraEfectivo, abonosCarteraTransferencia, abonosCarteraTarjetaBanco, abonosCarteraDetalle, abonosPorMedio: abonosPorMedioCalc };
   };
 
   const cargarDatosSistema = async (sesionIdDirecto?: string) => {
@@ -422,7 +454,7 @@ export default function CierreCajaPage() {
 
       const { gastosEfectivo, gastosTransferencia, gastosTarjetaBanco, salidasDevolucionEfectivo } =
         await calcularGastosYDevolucionesDelDia(sesionCajaId);
-      const { abonosCarteraEfectivo, abonosCarteraTransferencia, abonosCarteraTarjetaBanco } =
+      const { abonosCarteraEfectivo, abonosCarteraTransferencia, abonosCarteraTarjetaBanco, abonosPorMedio: abonosMedio } =
         await calcularAbonosCarteraDelDia(sesionCajaId);
 
       setTotalSistema(stats.totalIngresos);
@@ -435,7 +467,9 @@ export default function CierreCajaPage() {
         transferencia: stats.ventasPorMetodo.transferencia,
         bancolombia: stats.ventasPorMetodo.bancolombia,
         rappi: stats.ventasPorMetodo.rappi,
+        bre_b: Number(stats.ventasPorMetodo.bre_b) || 0,
       });
+      setAbonosPorMedio(abonosMedio);
       setGastosEfectivoDia(gastosEfectivo);
       setGastosTransferenciaDia(gastosTransferencia);
       setGastosTarjetaBancoDia(gastosTarjetaBanco);
@@ -547,11 +581,27 @@ export default function CierreCajaPage() {
     return totalContado - totalEsperado;
   };
 
-  const getEstadoCierre = (): 'cuadrado' | 'faltante' | 'sobrante' => {
-    const diferencia = calcularDiferencia();
+  const getEstadoCierre = (diferencia: number = calcularDiferencia()): 'cuadrado' | 'faltante' | 'sobrante' => {
     if (Math.abs(diferencia) <= 500) return 'cuadrado'; // Tolerancia de $500
     return diferencia < 0 ? 'faltante' : 'sobrante';
   };
+
+  const parseMonto = (valor?: string) => {
+    const n = Number(String(valor ?? '').replace(/[^\d]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  /** Cuadre por medio no efectivo: lo esperado (ventas + abonos de cartera) vs lo que el cajero declaró. */
+  const construirMediosUniversal = (
+    desglose: Record<string, number>,
+    abonos: Partial<Record<MedioCierreUniversal, number>>
+  ): MedioCuadrado[] =>
+    MEDIOS_CIERRE_UNIVERSAL.map((m) => ({
+      medio: m.key,
+      label: m.label,
+      esperado: Math.round((Number(desglose[m.key]) || 0) + (abonos[m.key] || 0)),
+      declarado: parseMonto(declaradosMedios[m.key]),
+    }));
 
   const formatCurrency = (value: number): string => {
     return `$${Number(value).toLocaleString('es-CO', { minimumFractionDigits: 0 })}`;
@@ -561,11 +611,25 @@ export default function CierreCajaPage() {
   const handleCerrarCaja = async () => {
     if (!aperturaActual) return;
 
-    if (totalContado === 0) {
+    const hayDeclarados = cierreUniversal && Object.values(declaradosMedios).some((v) => parseMonto(v) > 0);
+    if (totalContado === 0 && !hayDeclarados) {
       toast.error('Debes contar el efectivo en caja', {
         description: 'Ingresa los billetes y monedas actuales'
       });
       return;
+    }
+
+    if (cierreUniversal) {
+      // Cada medio que tuvo movimientos en el turno debe declararse (aunque sea
+      // 0), para que un campo olvidado no se confunda con dinero faltante.
+      const sinDeclarar = construirMediosUniversal(desgloseSistema, abonosPorMedio)
+        .filter((m) => m.esperado > 0 && String(declaradosMedios[m.medio] ?? '').trim() === '');
+      if (sinDeclarar.length > 0) {
+        toast.error('Falta declarar lo recibido por otros medios de pago', {
+          description: `Escribe cuánto llegó por: ${sinDeclarar.map((m) => m.label).join(', ')} (0 si no llegó nada).`,
+        });
+        return;
+      }
     }
 
     try {
@@ -589,6 +653,7 @@ export default function CierreCajaPage() {
         transferencia: Number(stats.ventasPorMetodo?.transferencia) || 0,
         bancolombia: Number(stats.ventasPorMetodo?.bancolombia) || 0,
         rappi: Number(stats.ventasPorMetodo?.rappi) || 0,
+        bre_b: Number(stats.ventasPorMetodo?.bre_b) || 0,
       };
       const totalSistemaActual = Number(stats.totalIngresos) || 0;
       const totalPropinasActual = Math.max(0, Number(stats.totalPropinas) || 0);
@@ -613,6 +678,7 @@ export default function CierreCajaPage() {
         abonosCarteraTransferencia: abonosCarteraTransferenciaActual,
         abonosCarteraTarjetaBanco: abonosCarteraTarjetaBancoActual,
         abonosCarteraDetalle: abonosCarteraDetalleActual,
+        abonosPorMedio: abonosPorMedioActual,
       } = await calcularAbonosCarteraDelDia(aperturaActual.id);
 
       const totalEsperadoEfectivo = calcularEfectivoEsperado(
@@ -623,11 +689,16 @@ export default function CierreCajaPage() {
       ) + abonosCarteraEfectivoActual;
       const transferenciaEsperada = Math.max(
         0,
-        (desgloseActual.transferencia + desgloseActual.nequi + desgloseActual.daviplata + desgloseActual.bancolombia + desgloseActual.rappi) - gastosTransferenciaActual
+        (desgloseActual.transferencia + desgloseActual.nequi + desgloseActual.daviplata + desgloseActual.bancolombia + desgloseActual.rappi + desgloseActual.bre_b) - gastosTransferenciaActual
       ) + abonosCarteraTransferenciaActual;
       const tarjetaBancoEsperado = Math.max(0, desgloseActual.tarjeta - gastosTarjetaBancoActual) + abonosCarteraTarjetaBancoActual;
       const totalEsperadoAnalitico = totalEsperadoEfectivo + transferenciaEsperada + tarjetaBancoEsperado;
-      const diferenciaActual = totalContado - totalEsperadoEfectivo;
+      const diferenciaEfectivoActual = totalContado - totalEsperadoEfectivo;
+      // Cierre universal: la diferencia suma la del efectivo y la de cada medio
+      // electrónico (declarado − esperado).
+      const mediosUniversalActual = cierreUniversal ? construirMediosUniversal(desgloseActual, abonosPorMedioActual) : undefined;
+      const diferenciaActual = diferenciaEfectivoActual
+        + (mediosUniversalActual || []).reduce((sum, m) => sum + (m.declarado - m.esperado), 0);
       const estadoActual: 'cuadrado' | 'faltante' | 'sobrante' =
         Math.abs(diferenciaActual) <= 500 ? 'cuadrado' : diferenciaActual < 0 ? 'faltante' : 'sobrante';
 
@@ -668,6 +739,9 @@ export default function CierreCajaPage() {
         transferenciaEsperada,
         tarjetaBancoEsperado,
         totalEsperadoAnalitico,
+        ...(mediosUniversalActual
+          ? { cierreUniversal: true, mediosUniversal: mediosUniversalActual, diferenciaEfectivo: diferenciaEfectivoActual }
+          : {}),
       };
 
       // Guardar cierre pendiente para uso después de que el usuario confirme
@@ -704,6 +778,9 @@ export default function CierreCajaPage() {
         ticketPromedio: stats.ticketPromedio || 0,
         productosTop,
         billetes: { ...billetes },
+        ...(mediosUniversalActual
+          ? { cierreUniversal: true, mediosUniversal: mediosUniversalActual, diferenciaEfectivo: diferenciaEfectivoActual }
+          : {}),
       };
 
       setCierreDataModal(modalData);
@@ -784,7 +861,9 @@ export default function CierreCajaPage() {
     setAperturaActual(null);
     setTurnoActivo(false);              // ← dispara useEffect → activeTab = 'apertura'
     setTotalSistema(0);
-    setDesgloseSistema({ efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, bancolombia: 0, rappi: 0 });
+    setDesgloseSistema({ efectivo: 0, tarjeta: 0, nequi: 0, daviplata: 0, transferencia: 0, bancolombia: 0, rappi: 0, bre_b: 0 });
+    setDeclaradosMedios({});
+    setAbonosPorMedio({});
     setBilletes({ b100000: 0, b50000: 0, b20000: 0, b10000: 0, b5000: 0, b2000: 0, b1000: 0, m500: 0, m200: 0, m100: 0, m50: 0 });
     setObservaciones('');
     setGastosEfectivoDia(0);
@@ -1030,15 +1109,22 @@ export default function CierreCajaPage() {
     }
   };
 
-  const diferencia = calcularDiferencia();
-  const estadoCierre = getEstadoCierre();
+  const diferenciaEfectivo = calcularDiferencia();
+  const mediosUniversal = construirMediosUniversal(desgloseSistema, abonosPorMedio);
+  const totalEsperadoOtrosMedios = mediosUniversal.reduce((sum, m) => sum + m.esperado, 0);
+  const totalDeclaradoOtrosMedios = mediosUniversal.reduce((sum, m) => sum + m.declarado, 0);
+  // Con cierre universal la diferencia es la de TODOS los medios de pago.
+  const diferencia = cierreUniversal
+    ? diferenciaEfectivo + (totalDeclaradoOtrosMedios - totalEsperadoOtrosMedios)
+    : diferenciaEfectivo;
+  const estadoCierre = getEstadoCierre(diferencia);
   // Si es cajero y no tiene el permiso verFaltanteCaja, oculta la diferencia en pantalla
   // (el cálculo sigue corriendo internamente y se guarda para el reporte impreso)
   const puedeVerFaltante =
     usuarioActual?.rol === 'super_usuario' || usuarioActual?.permisos?.verFaltanteCaja !== false;
   const transferenciaEsperada = Math.max(
     0,
-    (desgloseSistema.transferencia + desgloseSistema.nequi + desgloseSistema.daviplata + desgloseSistema.bancolombia + desgloseSistema.rappi) - gastosTransferenciaDia
+    (desgloseSistema.transferencia + desgloseSistema.nequi + desgloseSistema.daviplata + desgloseSistema.bancolombia + desgloseSistema.rappi + desgloseSistema.bre_b) - gastosTransferenciaDia
   ) + abonosCarteraTransferenciaDia;
   const tarjetaBancoEsperado = Math.max(0, desgloseSistema.tarjeta - gastosTarjetaBancoDia) + abonosCarteraTarjetaBancoDia;
   const totalEsperado = aperturaActual
@@ -1215,6 +1301,42 @@ export default function CierreCajaPage() {
         onClose={() => setShowHistorialCierres(false)}
         darkMode={darkMode}
       />
+
+      {/* Cierre universal — solo el administrador puede activarlo */}
+      {puedeConfigurarCierreUniversal && (
+        <div className={`mb-6 p-4 rounded-2xl border-2 flex items-start gap-3 ${
+          cierreUniversal
+            ? darkMode ? 'bg-indigo-500/10 border-indigo-500/40' : 'bg-indigo-50 border-indigo-300'
+            : darkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-gray-200'
+        }`}>
+          <input
+            id="cierre-universal"
+            type="checkbox"
+            checked={cierreUniversal}
+            onChange={(e) => {
+              setCierreUniversal(e.target.checked);
+              setCierreUniversalActivo(e.target.checked);
+              toast.success(e.target.checked ? 'Cierre universal activado' : 'Cierre universal desactivado', {
+                description: e.target.checked
+                  ? 'Los cierres de caja cuadrarán todos los medios de pago, no solo el efectivo.'
+                  : 'Los cierres de caja vuelven a cuadrar solo el efectivo.',
+              });
+            }}
+            className="mt-1 w-5 h-5 accent-indigo-600 cursor-pointer"
+          />
+          <label htmlFor="cierre-universal" className="cursor-pointer">
+            <span className={`font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+              <Layers className="w-4 h-4 text-indigo-500" />
+              Cierre universal (todos los medios de pago)
+            </span>
+            <span className={`block text-sm mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+              Al cerrar la caja, además del efectivo, el cajero declara lo recibido por tarjeta, Nequi, Daviplata,
+              Bre-B, transferencias, Bancolombia y Rappi. El cierre suma todos los medios y calcula la diferencia
+              sobre el total. Solo el administrador ve esta opción.
+            </span>
+          </label>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className={`grid w-full max-w-md grid-cols-2 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
@@ -1527,6 +1649,14 @@ export default function CierreCajaPage() {
                       </div>
                       <span className={`${darkMode ? 'text-white' : 'text-slate-900'} font-bold`}>{formatCurrency(desgloseSistema.rappi)}</span>
                     </div>
+
+                    <div className={`flex items-center justify-between p-3 ${darkMode ? 'bg-slate-700/30' : 'bg-gray-100'} rounded-lg`}>
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-teal-400" />
+                        <span className={`${darkMode ? 'text-slate-300' : 'text-slate-700'} text-sm`}>Bre-B</span>
+                      </div>
+                      <span className={`${darkMode ? 'text-white' : 'text-slate-900'} font-bold`}>{formatCurrency(desgloseSistema.bre_b)}</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1560,8 +1690,8 @@ export default function CierreCajaPage() {
                       </h3>
                       <p className={`${darkMode ? 'text-slate-400' : 'text-gray-500'} text-sm mb-4`}>
                         {estadoCierre === 'cuadrado'
-                          ? 'El conteo físico coincide con el sistema'
-                          : `Diferencia detectada: ${formatCurrency(Math.abs(diferencia))}`}
+                          ? (cierreUniversal ? 'Todos los medios de pago coinciden con el sistema' : 'El conteo físico coincide con el sistema')
+                          : `Diferencia detectada${cierreUniversal ? ' (todos los medios)' : ''}: ${formatCurrency(Math.abs(diferencia))}`}
                       </p>
                       <div className={`p-4 ${darkMode ? 'bg-slate-800/50' : 'bg-gray-100'} rounded-xl`}>
                         <p className={`${darkMode ? 'text-slate-400' : 'text-gray-500'} text-xs mb-1`}>DIFERENCIA</p>
@@ -1621,6 +1751,87 @@ export default function CierreCajaPage() {
                   </div>
 
                   <Separator className={`${darkMode ? 'bg-slate-700' : 'bg-gray-200'} mb-6`} />
+
+                  {/* Cierre universal: lo recibido por cada medio no efectivo */}
+                  {cierreUniversal && (
+                    <div className={`mb-6 p-4 rounded-xl border ${darkMode ? 'bg-indigo-500/5 border-indigo-500/30' : 'bg-indigo-50/60 border-indigo-200'}`}>
+                      <p className={`font-bold flex items-center gap-2 mb-1 ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+                        <Layers className="w-4 h-4" />
+                        Otros medios de pago recibidos
+                      </p>
+                      <p className={`text-xs mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                        Revisa el datáfono y las apps (Nequi, Daviplata, Bre-B, banco) y escribe cuánto llegó por cada medio
+                        en este turno. Si no llegó nada, escribe 0.
+                      </p>
+                      <div className="space-y-2">
+                        <div className={`hidden md:grid grid-cols-12 gap-3 text-xs font-semibold px-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          <span className="col-span-4">Medio</span>
+                          {puedeVerFaltante && <span className="col-span-3 text-right">Esperado</span>}
+                          <span className={puedeVerFaltante ? 'col-span-3' : 'col-span-8'}>Recibido</span>
+                          {puedeVerFaltante && <span className="col-span-2 text-right">Diferencia</span>}
+                        </div>
+                        {mediosUniversal.map((m) => {
+                          const difMedio = m.declarado - m.esperado;
+                          const requerido = m.esperado > 0;
+                          return (
+                            <div key={m.medio} className="grid grid-cols-12 gap-3 items-center">
+                              <Label htmlFor={`medio-${m.medio}`} className={`col-span-4 text-sm font-semibold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                                {m.label}{requerido && <span className="text-red-500"> *</span>}
+                              </Label>
+                              {puedeVerFaltante && (
+                                <span className={`col-span-3 text-right text-sm font-bold ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                                  {formatCurrency(m.esperado)}
+                                </span>
+                              )}
+                              <Input
+                                id={`medio-${m.medio}`}
+                                type="text"
+                                inputMode="numeric"
+                                value={declaradosMedios[m.medio] ?? ''}
+                                onChange={(e) => setDeclaradosMedios((prev) => ({ ...prev, [m.medio]: e.target.value.replace(/[^\d]/g, '') }))}
+                                placeholder="0"
+                                className={`${puedeVerFaltante ? 'col-span-3' : 'col-span-8'} text-right font-bold ${darkMode ? 'bg-slate-700/50 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+                              />
+                              {puedeVerFaltante && (
+                                <span className={`col-span-2 text-right text-sm font-bold ${
+                                  String(declaradosMedios[m.medio] ?? '') === '' ? (darkMode ? 'text-slate-500' : 'text-gray-400')
+                                    : Math.abs(difMedio) <= 0 ? 'text-green-500' : difMedio < 0 ? 'text-red-500' : 'text-orange-500'
+                                }`}>
+                                  {String(declaradosMedios[m.medio] ?? '') === '' ? '—' : `${difMedio >= 0 ? '+' : ''}${formatCurrency(difMedio)}`}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className={`mt-4 pt-3 border-t grid grid-cols-1 md:grid-cols-3 gap-3 ${darkMode ? 'border-indigo-500/20' : 'border-indigo-200'}`}>
+                        <div>
+                          <p className={`text-xs font-semibold ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>TOTAL CONTADO (TODOS LOS MEDIOS)</p>
+                          <p className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(totalContado + totalDeclaradoOtrosMedios)}</p>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Efectivo {formatCurrency(totalContado)} + otros medios {formatCurrency(totalDeclaradoOtrosMedios)}
+                          </p>
+                        </div>
+                        {puedeVerFaltante && (
+                          <div>
+                            <p className={`text-xs font-semibold ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>TOTAL ESPERADO (TODOS LOS MEDIOS)</p>
+                            <p className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(totalEsperado + totalEsperadoOtrosMedios)}</p>
+                            <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                              Efectivo {formatCurrency(totalEsperado)} + otros medios {formatCurrency(totalEsperadoOtrosMedios)}
+                            </p>
+                          </div>
+                        )}
+                        {puedeVerFaltante && (
+                          <div>
+                            <p className={`text-xs font-semibold ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>DIFERENCIA TOTAL</p>
+                            <p className={`text-2xl font-black ${estadoCierre === 'cuadrado' ? 'text-green-500' : estadoCierre === 'faltante' ? 'text-red-500' : 'text-orange-500'}`}>
+                              {diferencia >= 0 ? '+' : ''}{formatCurrency(diferencia)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Resumen del Cierre */}
                   <div className="space-y-4 mb-6">
@@ -1715,7 +1926,7 @@ export default function CierreCajaPage() {
                   <div className="flex gap-3">
                     <Button
                       onClick={handleCerrarCaja}
-                      disabled={isSaving || totalContado === 0}
+                      disabled={isSaving || (totalContado === 0 && !(cierreUniversal && totalDeclaradoOtrosMedios > 0))}
                       className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 h-14 text-lg font-bold"
                     >
                       {isSaving ? (

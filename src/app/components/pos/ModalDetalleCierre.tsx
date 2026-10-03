@@ -29,6 +29,7 @@ import autoTable from 'jspdf-autotable';
 import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
 import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
+import type { MedioCuadrado } from '../../lib/cierreUniversal';
 import TirillaCierreCaja, { obtenerPropinasCierre, type ProductoTop, type CierreDataModal } from './TirillaCierreCaja';
 
 export interface CierreDetalle {
@@ -52,6 +53,7 @@ export interface CierreDetalle {
     transferencia: number;
     bancolombia?: number;
     rappi?: number;
+    bre_b?: number;
   };
   billetes?: Record<string, number>;
   observaciones?: string;
@@ -71,6 +73,9 @@ export interface CierreDetalle {
   transferenciaEsperada?: number;
   tarjetaBancoEsperado?: number;
   totalEsperadoAnalitico?: number;
+  cierreUniversal?: boolean;
+  mediosUniversal?: MedioCuadrado[];
+  diferenciaEfectivo?: number;
 }
 
 interface Props {
@@ -155,7 +160,10 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
   })();
 
   const efectivoEsperado = cierre.totalFinal ?? (cierre.baseInicial + cierre.desglose.efectivo - (cierre.gastosEfectivo || 0) - (cierre.devoluciones || 0) + (cierre.abonosCarteraEfectivo || 0));
-  const totalElectronico = cierre.desglose.tarjeta + cierre.desglose.nequi + cierre.desglose.daviplata + cierre.desglose.transferencia + (cierre.desglose.bancolombia || 0) + (cierre.desglose.rappi || 0);
+  const totalElectronico = cierre.desglose.tarjeta + cierre.desglose.nequi + cierre.desglose.daviplata + cierre.desglose.transferencia + (cierre.desglose.bancolombia || 0) + (cierre.desglose.rappi || 0) + (cierre.desglose.bre_b || 0);
+  const esUniversal = !!cierre.cierreUniversal && (cierre.mediosUniversal || []).length > 0;
+  const esperadoOtrosMedios = (cierre.mediosUniversal || []).reduce((s, m) => s + m.esperado, 0);
+  const declaradoOtrosMedios = (cierre.mediosUniversal || []).reduce((s, m) => s + m.declarado, 0);
   // La propina es de los empleados: se descuenta para mostrar lo que realmente ganó el negocio.
   const { total: totalPropinas, porMetodo: propinasPorMetodo } = obtenerPropinasCierre(cierre);
   const ingresoNegocio = Math.max(0, cierre.totalSistema - totalPropinas);
@@ -204,6 +212,9 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
     ticketPromedio: cierre.ticketPromedio || 0,
     productosTop: cierre.productosTop || [],
     billetes: { ...BILLETES_VACIOS, ...(cierre.billetes || {}) },
+    cierreUniversal: cierre.cierreUniversal,
+    mediosUniversal: cierre.mediosUniversal,
+    diferenciaEfectivo: cierre.diferenciaEfectivo,
   };
 
   // ── Generar PDF corporativo A4 ──────────────────────────────────────────────
@@ -319,6 +330,7 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
         ['Transferencia Bancaria', cierre.desglose.transferencia],
         ['Bancolombia', cierre.desglose.bancolombia || 0],
         ['Rappi', cierre.desglose.rappi || 0],
+        ['Bre-B', cierre.desglose.bre_b || 0],
       ].filter(([, v]) => (v as number) > 0) as [string, number][];
 
       const metodoBody = metodos.map(([label, val]) => [label, fmt(val)]);
@@ -383,7 +395,7 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
         startY: y,
         margin: { left: 14, right: 14 },
         head: [['Concepto', 'Valor']],
-        body: [
+        body: ([
           ['Base inicial de caja', fmt(cierre.baseInicial)],
           ['(+) Ventas en efectivo', fmt(cierre.desglose.efectivo)],
           ['(-) Egresos en efectivo', fmt(-(totalEgresos))],
@@ -392,11 +404,21 @@ export default function ModalDetalleCierre({ open, onClose, cierre: cierreProp, 
             ? [[{ content: '   Incluye propinas en efectivo (a entregar a empleados)', styles: { textColor: C.amber } }, { content: fmt(Math.round(propinasPorMetodo.efectivo)), styles: { textColor: C.amber } }]]
             : []),
           [{ content: 'EFECTIVO REAL CONTADO POR CAJERO', styles: { fontStyle: 'bold' } }, { content: fmt(cierre.totalFisico), styles: { fontStyle: 'bold' } }],
+          ...(esUniversal
+            ? [
+                ['Diferencia en efectivo', `${(cierre.diferenciaEfectivo || 0) >= 0 ? '+' : ''}${fmt(cierre.diferenciaEfectivo || 0)}`],
+                ...(cierre.mediosUniversal || [])
+                  .filter((m) => m.esperado > 0 || m.declarado > 0)
+                  .map((m) => [`${m.label}: esperado ${fmt(m.esperado)} / recibido ${fmt(m.declarado)}`, `${m.declarado - m.esperado >= 0 ? '+' : ''}${fmt(m.declarado - m.esperado)}`]),
+                [{ content: 'TOTAL ESPERADO (TODOS LOS MEDIOS)', styles: { fontStyle: 'bold' } }, { content: fmt(efectivoEsperado + esperadoOtrosMedios), styles: { fontStyle: 'bold' } }],
+                [{ content: 'TOTAL RECIBIDO (TODOS LOS MEDIOS)', styles: { fontStyle: 'bold' } }, { content: fmt(cierre.totalFisico + declaradoOtrosMedios), styles: { fontStyle: 'bold' } }],
+              ]
+            : []),
           [
-            { content: `${estadoInfo.text} — DIFERENCIA`, styles: { fontStyle: 'bold', textColor: diferenciaColor, fillColor: arqueoBg } },
+            { content: `${estadoInfo.text} — DIFERENCIA${esUniversal ? ' TOTAL (TODOS LOS MEDIOS)' : ''}`, styles: { fontStyle: 'bold', textColor: diferenciaColor, fillColor: arqueoBg } },
             { content: `${cierre.diferencia >= 0 ? '+' : ''}${fmt(cierre.diferencia)}`, styles: { fontStyle: 'bold', textColor: diferenciaColor, halign: 'right', fillColor: arqueoBg } }
           ],
-        ],
+        ] as any[]),
         styles: { fontSize: 9, cellPadding: 3.5 },
         headStyles: { fillColor: C.purple, textColor: C.white, fontStyle: 'bold', fontSize: 8 },
         columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', fontStyle: 'bold' } },
