@@ -45,6 +45,7 @@ const GastosPage = lazyConReintento(() => import('./pages/GastosPage'));
 const CarteraPage = lazyConReintento(() => import('./pages/CarteraPage'));
 const DevolucionesPage = lazyConReintento(() => import('./pages/DevolucionesPage'));
 const CierreCajaPage = lazyConReintento(() => import('./pages/CierreCajaPage'));
+const DispositivosPage = lazyConReintento(() => import('./pages/DispositivosPage'));
 const PanelDesarrolladorPage = lazyConReintento(() => import('./pages/PanelDesarrolladorPage'));
 const FacturacionPage = lazyConReintento(() => import('./pages/FacturacionPage'));
 const TallerPage = lazyConReintento(() => import('./pages/TallerPage'));
@@ -100,6 +101,7 @@ export const router = createBrowserRouter([
       { path: 'cartera', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PUNTO_DE_VENTA}><CarteraPage /></ModuloGate></ConSuspense> },
       { path: 'devoluciones', element: <ConSuspense><ModuloGate modulo={ModuloPOS.DEVOLUCIONES}><DevolucionesPage /></ModuloGate></ConSuspense> },
       { path: 'caja', element: <ConSuspense><ModuloGate modulo={ModuloPOS.CIERRE_CAJA}><CierreCajaPage /></ModuloGate></ConSuspense> },
+      { path: 'dispositivos', element: <ConSuspense><DispositivosPage /></ConSuspense> },
       { path: 'taller', element: <ConSuspense><ModuloGate modulo={ModuloPOS.TALLER_REPARACIONES}><TallerPage /></ModuloGate></ConSuspense> },
       { path: 'panaderia', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PANADERIA_ONCES}><PanaderiaPage /></ModuloGate></ConSuspense> },
       { path: 'veterinaria', element: <ConSuspense><ModuloGate modulo={ModuloPOS.VETERINARIA}><VeterinariaPage /></ModuloGate></ConSuspense> },

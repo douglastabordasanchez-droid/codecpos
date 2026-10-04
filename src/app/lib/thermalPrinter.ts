@@ -13,6 +13,12 @@ export interface PrinterConfig {
   baudRate?: number;
   ancho?: 58 | 80; // mm
   encoding?: 'UTF-8' | 'ISO-8859-1' | 'CP437' | 'CP850';
+  /**
+   * Salida alternativa para los bytes ESC/POS. En la web/celular la usa
+   * src/pwa/lib/impresoraWeb.ts (USB, puerto serie o Bluetooth del navegador);
+   * en Electron se omite y se usa la salida nativa de siempre.
+   */
+  transporte?: (bytes: Uint8Array) => Promise<boolean>;
 }
 
 import {
@@ -227,6 +233,7 @@ export class ThermalPrinter {
   private ancho: 58 | 80;
   private encoding: string;
   private maxChars: number;
+  private transporte?: (bytes: Uint8Array) => Promise<boolean>;
 
   constructor(config: PrinterConfig) {
     this.puerto = config.puerto || PRINTER_WINDOWS_FALLBACK_PORT;
@@ -234,6 +241,7 @@ export class ThermalPrinter {
     this.ancho = config.ancho || 80;
     this.encoding = config.encoding || 'UTF-8';
     this.maxChars = this.ancho === 80 ? 48 : 32; // Caracteres por línea
+    this.transporte = config.transporte;
   }
 
   /**
@@ -1024,6 +1032,7 @@ export class ThermalPrinter {
    * Enviar bytes a la impresora
    */
   private async sendToPrinter(bytes: number[]): Promise<boolean> {
+    if (this.transporte) return this.transporte(new Uint8Array(bytes));
     try {
       if (!(window as any).electron) {
         console.error('❌ API de Electron no disponible');

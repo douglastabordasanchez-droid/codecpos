@@ -10,7 +10,7 @@
 import {
   Home, ShoppingCart, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
   DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee, Palette, PartyPopper, CreditCard,
-  FileBarChart, ReceiptText, LayoutDashboard, Calculator, Barcode, Tag, Truck, Users, Award, Store, PawPrint, User,
+  FileBarChart, ReceiptText, LayoutDashboard, Calculator, Barcode, Tag, Truck, Users, Award, Store, PawPrint, User, Printer,
 } from 'lucide-react';
 import { ModuloPOS } from '../../app/lib/permissions';
 
@@ -74,6 +74,7 @@ export const NAV_TODOS: ItemNavSidebar[] = [
   { grupo: 'herramientas', icon: DollarSign, label: 'Pagos', subtitulo: 'Pagos verificados por Codec Verify', path: '/pagos', modulo: ModuloPOS.CODEC_VERIFY },
   { grupo: 'herramientas', icon: Award, label: 'Fidelización', subtitulo: 'Consultar puntos de un cliente', path: '/fidelizacion', modulo: ModuloPOS.FIDELIZACION },
   { grupo: 'herramientas', icon: Bell, label: 'Alertas', subtitulo: 'Stock bajo y avisos', path: '/alertas' },
+  { grupo: 'herramientas', icon: Printer, label: 'Dispositivos', subtitulo: 'Impresora, cajón y lector de códigos', path: '/dispositivos' },
 
   { grupo: 'administracion', icon: Users, label: 'Personal', subtitulo: 'Equipo con acceso a la app', path: '/personal', soloAdmin: true, modulo: ModuloPOS.USUARIOS },
   { grupo: 'administracion', icon: Settings, label: 'Configuración', subtitulo: 'Datos del negocio y módulos', path: '/configuracion', soloAdmin: true, fijo: true },

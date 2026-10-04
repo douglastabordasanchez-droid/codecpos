@@ -153,10 +153,12 @@ export async function reclamarNotificacionPago(id: string, numeroFacturaLocal: s
 export function suscribirPagoEsperado(
   monto: number,
   numeroFacturaLocal: string,
-  onMatch: (row: NotificacionPagoRow) => void
+  onMatch: (row: NotificacionPagoRow) => void,
+  /** La web/celular pasa el negocio del usuario; Electron usa el de la instalación vinculada. */
+  clienteIdExplicito?: string | null,
 ): (() => void) | null {
   const client = getSupabaseClient();
-  const clienteId = getLinkedClienteId();
+  const clienteId = clienteIdExplicito || getLinkedClienteId();
   if (!client || !clienteId) return null;
 
   let resuelto = false;
