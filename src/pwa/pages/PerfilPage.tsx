@@ -20,6 +20,7 @@ import {
 } from '../lib/huellaLock';
 import logo from '/logo.png';
 import { TarjetaSoporte } from '../components/TarjetaSoporte';
+import { AjustesAlertasPago } from '../components/AjustesAlertasPago';
 
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -269,7 +270,8 @@ export default function PerfilPage() {
         </div>
       )}
 
-      <div className="mb-6">
+      <div className="mb-6 space-y-4">
+        <AjustesAlertasPago />
         <TarjetaSoporte />
       </div>
 

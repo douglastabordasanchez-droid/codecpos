@@ -119,4 +119,17 @@ class AndroidNotificationBridge(
 
     @JavascriptInterface
     fun huellaDisponible(): Boolean = huellaDisponibleEnDispositivo()
+
+    /** Pago detectado (en este u otro celular del negocio): suena fuerte y notifica, ver AlertaPagos. */
+    @JavascriptInterface
+    fun avisarPago(id: String, monto: Double, titulo: String, cuerpo: String, sonido: Boolean, notificacion: Boolean) {
+        AlertaPagos.alertarDesdeWeb(context, id, titulo, cuerpo, sonido, notificacion)
+    }
+
+    /** La app web guarda aquí si este celular suena y notifica los pagos (lo usa el lector nativo). */
+    @JavascriptInterface
+    fun configurarAlertasPago(sonido: Boolean, notificacion: Boolean) {
+        prefs.alertaSonido = sonido
+        prefs.alertaNotificacion = notificacion
+    }
 }

@@ -3,12 +3,13 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
   User, LogOut, Sun, Moon,
-  ShieldCheck, ShieldOff, Crown, Zap, PanelLeftClose, PanelLeftOpen, Bell,
+  ShieldCheck, ShieldOff, Crown, Zap, PanelLeftClose, PanelLeftOpen, Bell, Volume2, VolumeX,
 } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
-import { codecVerifyPwaActivo, alternarCodecVerifyPwa, suscribirNotificacionesPagoPwa } from '../lib/codecVerifyPwa';
+import { codecVerifyPwaActivo, alternarCodecVerifyPwa } from '../lib/codecVerifyPwa';
+import { useAlertasPago } from '../hooks/useAlertasPago';
 import { useMenuPersonalizado, type GrupoMenu, type ItemMenu } from '../hooks/useMenuPersonalizado';
 import { HojaAccionesModulo, ModulosOcultos, usePresionLarga } from './EdicionMenu';
 import logo from '/logo.png';
@@ -47,18 +48,7 @@ export function DesktopLayout() {
     return () => window.removeEventListener('codecverify-pwa:config-changed', actualizar);
   }, []);
 
-  useEffect(() => {
-    if (!verifyActivo || !empleado) return;
-    const unsubscribe = suscribirNotificacionesPagoPwa(empleado.cliente_id, (row) => {
-      const monto = `$${Number(row.monto).toLocaleString('es-CO')}`;
-      if (row.origen === 'automatizacion') {
-        toast.success(`✅ Pago verificado automáticamente: ${monto} · ${(row.entidad || '').toUpperCase()}`, { duration: 8000 });
-      } else {
-        toast.info(`💰 Pago manual reportado: ${monto} · ${(row.entidad || '').toUpperCase()}`, { duration: 8000 });
-      }
-    });
-    return () => unsubscribe?.();
-  }, [verifyActivo, empleado?.cliente_id]);
+  const { sonido, alternarSonido } = useAlertasPago(verifyActivo, empleado?.cliente_id);
 
   const toggleVerify = () => {
     const nuevo = alternarCodecVerifyPwa(empleado?.id);
@@ -158,6 +148,16 @@ export function DesktopLayout() {
             {verifyActivo ? <ShieldCheck className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
             Codec Verify {verifyActivo ? 'activo' : 'inactivo'}
           </button>
+          {verifyActivo && (
+            <button
+              onClick={alternarSonido}
+              className={`h-10 px-3 rounded-lg flex items-center gap-2 text-xs font-bold transition-colors ${sonido ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-900 text-slate-500'}`}
+              title={sonido ? 'Toca para silenciar el sonido de los pagos' : 'Toca para que suenen los pagos'}
+            >
+              {sonido ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              {sonido ? 'Sonido de pagos' : 'Pagos en silencio'}
+            </button>
+          )}
           <button
             onClick={() => navigate('/alertas')}
             className="h-10 w-10 rounded-lg flex items-center justify-center text-slate-300 hover:bg-slate-900"

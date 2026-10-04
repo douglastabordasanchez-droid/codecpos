@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
-import { Menu, Bell, ShieldCheck, ShieldOff, PanelBottomClose, PanelBottomOpen } from 'lucide-react';
+import { Menu, Bell, ShieldCheck, ShieldOff, PanelBottomClose, PanelBottomOpen, Volume2, VolumeX } from 'lucide-react';
 import { SideMenu } from './SideMenu';
 import { TiendaSwitcher } from './TiendaSwitcher';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { codecVerifyPwaActivo, alternarCodecVerifyPwa, suscribirNotificacionesPagoPwa } from '../lib/codecVerifyPwa';
+import { codecVerifyPwaActivo, alternarCodecVerifyPwa } from '../lib/codecVerifyPwa';
+import { useAlertasPago } from '../hooks/useAlertasPago';
 
 interface Props {
   navInferiorVisible: boolean;
@@ -24,18 +25,7 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
     return () => window.removeEventListener('codecverify-pwa:config-changed', actualizar);
   }, []);
 
-  useEffect(() => {
-    if (!verifyActivo || !empleado) return;
-    const unsubscribe = suscribirNotificacionesPagoPwa(empleado.cliente_id, (row) => {
-      const monto = `$${Number(row.monto).toLocaleString('es-CO')}`;
-      if (row.origen === 'automatizacion') {
-        toast.success(`✅ Pago verificado automáticamente: ${monto} · ${(row.entidad || '').toUpperCase()}`, { duration: 8000 });
-      } else {
-        toast.info(`💰 Pago manual reportado: ${monto} · ${(row.entidad || '').toUpperCase()}`, { duration: 8000 });
-      }
-    });
-    return () => unsubscribe?.();
-  }, [verifyActivo, empleado?.cliente_id]);
+  const { sonido, alternarSonido } = useAlertasPago(verifyActivo, empleado?.cliente_id);
 
   const toggleVerify = () => {
     const nuevo = alternarCodecVerifyPwa(empleado?.id);
@@ -66,6 +56,16 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
             >
               {verifyActivo ? <ShieldCheck className="w-5 h-5" /> : <ShieldOff className="w-5 h-5" />}
             </button>
+            {verifyActivo && (
+              <button
+                onClick={alternarSonido}
+                className={`w-9 h-9 rounded-lg flex items-center justify-center active:bg-slate-900 ${sonido ? 'text-emerald-400' : 'text-slate-500'}`}
+                aria-label={sonido ? 'Silenciar sonido de pagos' : 'Activar sonido de pagos'}
+                title={sonido ? 'Sonido de pagos activo, toca para silenciar' : 'Sonido de pagos silenciado, toca para activar'}
+              >
+                {sonido ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              </button>
+            )}
             <button
               onClick={() => navigate('/alertas')}
               className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-300 active:bg-slate-900"

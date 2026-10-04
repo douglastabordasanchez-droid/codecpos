@@ -55,10 +55,25 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_MODO_APRENDIZAJE, false)
         set(value) = prefs.edit().putBoolean(KEY_MODO_APRENDIZAJE, value).apply()
 
+    /** Sonido fuerte al recibir un pago (se cambia desde la app: Configuración o la bocina de la barra). */
+    var alertaSonido: Boolean
+        get() = prefs.getBoolean(KEY_ALERTA_SONIDO, true)
+        set(value) = prefs.edit().putBoolean(KEY_ALERTA_SONIDO, value).apply()
+
+    /** Notificación en la barra al recibir un pago. */
+    var alertaNotificacion: Boolean
+        get() = prefs.getBoolean(KEY_ALERTA_NOTIFICACION, true)
+        set(value) = prefs.edit().putBoolean(KEY_ALERTA_NOTIFICACION, value).apply()
+
     val estaEmparejado: Boolean get() = !webhookToken.isNullOrBlank()
 
     fun limpiar() {
+        // Al cerrar sesión se borra el emparejamiento, pero se conserva cómo quiere sonar este celular.
+        val sonido = alertaSonido
+        val notificacion = alertaNotificacion
         prefs.edit().clear().apply()
+        alertaSonido = sonido
+        alertaNotificacion = notificacion
     }
 
     fun guardarEmparejamiento(webhookToken: String, nombreNegocio: String?, entidades: Set<String>) {
@@ -73,6 +88,8 @@ class Prefs(context: Context) {
         private const val KEY_ENTIDADES = "entidades_habilitadas"
         private const val KEY_PAQUETES_PREFIX = "paquetes_"
         private const val KEY_MODO_APRENDIZAJE = "modo_aprendizaje"
+        private const val KEY_ALERTA_SONIDO = "alerta_pago_sonido"
+        private const val KEY_ALERTA_NOTIFICACION = "alerta_pago_notificacion"
 
         val DEFAULT_ENTIDADES = setOf("nequi", "bancolombia", "daviplata", "davivienda")
 

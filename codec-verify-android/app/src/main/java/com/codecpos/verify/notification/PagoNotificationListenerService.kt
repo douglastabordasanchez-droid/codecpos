@@ -80,6 +80,7 @@ class PagoNotificationListenerService : NotificationListenerService() {
             val resultado = api.registrarPagoAutomatico(webhookToken, texto, entidad)
             if (resultado.isSuccess) {
                 EventBus.registrar(EventoCapturado(entidad, paquete, texto.take(160), exitoso = true))
+                AlertaPagos.alertarDesdeLector(applicationContext, entidad, texto)
                 return@launch
             }
 
@@ -94,6 +95,7 @@ class PagoNotificationListenerService : NotificationListenerService() {
 
             val resultadoIA = api.interpretarConIA(webhookToken, texto, entidad)
             val exitoIA = resultadoIA.getOrDefault(false)
+            if (exitoIA) AlertaPagos.alertarDesdeLector(applicationContext, entidad, texto)
             EventBus.registrar(
                 EventoCapturado(
                     entidad = entidad,

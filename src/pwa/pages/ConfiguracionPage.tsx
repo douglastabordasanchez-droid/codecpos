@@ -13,6 +13,7 @@ import { NAV_TODOS } from '../lib/sidebarNav';
 import { obtenerPreferenciasMenu, alternarOculto } from '../lib/preferenciasMenu';
 import { estaEnAppAndroid, abrirAjustesNotificacionesAndroid } from '../lib/androidBridge';
 import { TarjetaSoporte } from '../components/TarjetaSoporte';
+import { AjustesAlertasPago } from '../components/AjustesAlertasPago';
 
 interface NegocioForm {
   nombre_negocio: string;
@@ -183,6 +184,8 @@ export default function ConfiguracionPage() {
             <SeccionDescargarApp />
 
             <TarjetaSoporte />
+
+            <AjustesAlertasPago />
 
             <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
               <div className="flex items-center gap-2">

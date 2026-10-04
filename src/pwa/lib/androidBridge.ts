@@ -26,6 +26,10 @@ interface AndroidCodecVerifyBridge {
   avisarCambioComanda(titulo: string, cuerpo: string, estado: string, tag: string): void;
   autenticarConHuella(requestId: string): void;
   huellaDisponible(): boolean;
+  /** Desde la versión 1.1 de la app: alerta de pago con el canal nativo (sonido fuerte por volumen de alarma). */
+  avisarPago?(id: string, monto: number, titulo: string, cuerpo: string, sonido: boolean, notificacion: boolean): void;
+  /** Desde la versión 1.1: guarda si este celular suena y notifica los pagos (lo usa también el lector nativo). */
+  configurarAlertasPago?(sonido: boolean, notificacion: boolean): void;
 }
 
 declare global {
@@ -51,6 +55,8 @@ if (typeof window !== 'undefined') {
 function getBridge(): AndroidCodecVerifyBridge | null {
   return typeof window !== 'undefined' && window.AndroidCodecVerify ? window.AndroidCodecVerify : null;
 }
+
+export const getAndroidBridge = getBridge;
 
 /** Se llama cada vez que hay un empleado autenticado (login o restauración de sesión). */
 export async function sincronizarSesionConAndroid(clienteId: string): Promise<void> {
