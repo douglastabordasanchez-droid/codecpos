@@ -11,21 +11,11 @@ import { createPortal } from 'react-dom';
 import { Check, Loader2, X } from 'lucide-react';
 import { suscribirPagoEsperado, type NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyService';
 import { nombreMedioPago } from '../../app/lib/voz';
+import { marcarMontoEsperado, colorMedioPago } from '../../app/lib/codecVerifyEspera';
 
 export const METODOS_TRANSFERENCIA = ['nequi', 'daviplata', 'bre_b', 'bancolombia', 'davivienda', 'transferencia'];
 
-const COLORES: Record<string, { color: string; fondo: string }> = {
-  nequi: { color: '#da0081', fondo: '#fde7f3' },
-  daviplata: { color: '#e30613', fondo: '#fde8e9' },
-  bancolombia: { color: '#2c2a29', fondo: '#fff5cc' },
-  davivienda: { color: '#e1251b', fondo: '#fde9e8' },
-  bre_b: { color: '#0b6bcb', fondo: '#e6f1fc' },
-  transferencia: { color: '#0f766e', fondo: '#e6f6f4' },
-};
-
-/** Mientras se espera un pago, la ventana general de "Pago recibido" no se abre encima. */
-let montoEsperado: number | null = null;
-export const esperandoMonto = () => montoEsperado;
+export { esperandoMonto } from '../../app/lib/codecVerifyEspera';
 
 interface Props {
   clienteId: string;
@@ -43,10 +33,10 @@ export function EsperandoPagoModal({ clienteId, monto, metodo, clave, onPagado, 
   const [segundos, setSegundos] = useState(0);
   const terminado = useRef(false);
   const nombre = nombreMedioPago(metodo) || 'transferencia';
-  const estilo = COLORES[metodo] || COLORES.transferencia;
+  const estilo = colorMedioPago(metodo);
 
   useEffect(() => {
-    montoEsperado = Math.round(monto);
+    marcarMontoEsperado(monto);
     const cancelar = suscribirPagoEsperado(monto, clave, (row) => {
       if (terminado.current) return;
       terminado.current = true;
@@ -54,7 +44,7 @@ export function EsperandoPagoModal({ clienteId, monto, metodo, clave, onPagado, 
       setTimeout(() => onPagado(row), 1400);
     }, clienteId);
     const reloj = window.setInterval(() => setSegundos((s) => s + 1), 1000);
-    return () => { cancelar?.(); window.clearInterval(reloj); montoEsperado = null; };
+    return () => { cancelar?.(); window.clearInterval(reloj); marcarMontoEsperado(null); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId, monto, clave]);
 

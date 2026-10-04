@@ -22,6 +22,9 @@ import { es } from 'date-fns/locale';
 import { Button } from '../ui/button';
 import { ModalPagoRecibidoNequi, PagoConfirmado } from './ModalPagoRecibidoNequi';
 import { suscribirPagoEsperado } from '../../lib/supabase/codecVerifyService';
+import { marcarMontoEsperado, colorMedioPago } from '../../lib/codecVerifyEspera';
+import { createPortal } from 'react-dom';
+import { Check, Loader2 } from 'lucide-react';
 
 // ─── Clave para logs de bypass ───────────────────────
 const BYPASS_LOG_KEY = 'codec-verify-bypass-log';
@@ -292,225 +295,103 @@ function NequiVerifyModalComponent({
     onConfirmar();
   };
 
+  // Mientras se espera este monto, el aviso general de "Pago recibido" no se abre encima.
+  useEffect(() => {
+    if (!visible || !codecActivo) return;
+    marcarMontoEsperado(monto);
+    return () => marcarMontoEsperado(null);
+  }, [visible, codecActivo, monto]);
+
+  // Igual que en la web: al llegar el pago se muestra "¡Pago recibido!" y la venta se confirma sola.
+  useEffect(() => {
+    if (!visible) return;
+    if (estado === 'verificado') {
+      const t = setTimeout(() => onConfirmar(), 1400);
+      return () => clearTimeout(t);
+    }
+    if (estado === 'bypass') onConfirmar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estado, visible]);
+
   const confirmButtonHabilitado = !codecActivo || estado === 'verificado' || estado === 'bypass';
 
   if (!visible) return null;
 
+  // Mismo diseño de la web (src/pwa/components/EsperandoPagoModal.tsx): tarjeta clara y grande.
+  const estilo = colorMedioPago(entidad);
+  const tiempo = `${Math.floor(segundosEspera / 60)}:${String(segundosEspera % 60).padStart(2, '0')}`;
+  const recibido = estado === 'verificado' && pagoConfirmado;
+
   return (
     <>
-      {/* ── MODAL DE VERIFICACIÓN ── */}
-      <AnimatePresence>
-        {visible && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9000] flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
-          >
-            <motion.div
-              initial={{ scale: 0.88, y: 30 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-              className="relative w-full max-w-md rounded-3xl overflow-hidden"
-              style={{
-                background: darkMode ? 'rgba(13,22,45,0.97)' : '#fff',
-                border: '1px solid rgba(249,115,22,0.25)',
-                boxShadow: '0 0 0 1px rgba(249,115,22,0.12), 0 24px 60px rgba(0,0,0,0.55)',
-                backdropFilter: 'blur(20px)',
-              }}
-            >
-              {/* Borde top naranja */}
-              <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, #f97316, transparent)' }} />
-
-              {/* Glow superior */}
-              <div className="absolute top-0 left-0 right-0 h-32 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(249,115,22,0.1), transparent 70%)' }} />
-
-              {/* Botón X */}
-              <button
-                onClick={onCancelar}
-                className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                <X className="w-4 h-4 text-slate-400" />
+      {createPortal(
+        <div className="fixed inset-0 z-[9000] flex items-center justify-center p-5" style={{ background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(3px)' }} role="dialog" aria-modal="true" aria-label="Esperando el pago">
+          <style>{`
+            @keyframes esperaOnda { 0% { transform: scale(.85); opacity: .7 } 100% { transform: scale(1.9); opacity: 0 } }
+            @keyframes esperaEntrada { from { opacity: 0; transform: translateY(12px) scale(.97) } to { opacity: 1; transform: none } }
+          `}</style>
+          <div className="relative w-full max-w-sm overflow-hidden rounded-[28px]" style={{ background: '#ffffff', boxShadow: '0 30px 80px rgba(15,23,42,.35)', animation: 'esperaEntrada .25s ease-out' }}>
+            {!recibido && (
+              <button onClick={onCancelar} aria-label="Cancelar" className="absolute right-4 top-4 p-1.5 rounded-full" style={{ color: '#94a3b8' }}>
+                <X className="w-5 h-5" />
               </button>
-
-              <div className="relative z-10 p-7">
-                {/* Header */}
-                <div className="flex flex-col items-center text-center mb-6">
-                  <div
-                    className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3"
-                    style={{ background: config.gradientIcon, boxShadow: `0 0 24px ${config.glow}` }}
-                  >
-                    {entidad === 'nequi' ? (
-                      <svg className="w-9 h-9 text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z" />
-                      </svg>
-                    ) : (
-                      <Landmark className="w-9 h-9 text-white" />
-                    )}
-                  </div>
-                  <h3 className="font-black text-2xl mb-1" style={{ color: darkMode ? '#fff' : '#0f172a' }}>
-                    Pago con {config.label}
-                  </h3>
-                  <p className="text-sm" style={{ color: darkMode ? '#64748b' : '#94a3b8' }}>
-                    Total a cobrar
-                  </p>
-                  <div className="mt-2 font-black text-4xl" style={{ color: config.accent, textShadow: `0 0 24px ${config.accentSoft}` }}>
-                    ${monto.toLocaleString('es-CO')}
-                  </div>
-                </div>
-
-                {/* ─── BLOQUE CODEC VERIFY ─── */}
-                {codecActivo && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-2xl mb-5 overflow-hidden"
-                    style={{
-                      background: estado === 'verificado'
-                        ? 'rgba(16,185,129,0.07)'
-                        : estado === 'bypass'
-                          ? 'rgba(234,179,8,0.07)'
-                          : 'rgba(249,115,22,0.07)',
-                      border: `1px solid ${estado === 'verificado' ? 'rgba(16,185,129,0.25)' : estado === 'bypass' ? 'rgba(234,179,8,0.25)' : 'rgba(249,115,22,0.22)'}`,
-                    }}
-                  >
-                    {/* Barra superior de estado */}
-                    <div
-                      className="flex items-center justify-between px-4 py-2"
-                      style={{ background: estado === 'verificado' ? 'rgba(16,185,129,0.1)' : estado === 'bypass' ? 'rgba(234,179,8,0.1)' : 'rgba(249,115,22,0.1)' }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4" style={{ color: estado === 'verificado' ? '#10b981' : estado === 'bypass' ? '#eab308' : '#f97316' }} />
-                        <span className="text-xs font-bold" style={{ color: estado === 'verificado' ? '#10b981' : estado === 'bypass' ? '#eab308' : '#f97316' }}>
-                          CODEC Verify
-                        </span>
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
-                          style={{
-                            background: estado === 'verificado' ? 'rgba(16,185,129,0.2)' : estado === 'bypass' ? 'rgba(234,179,8,0.2)' : 'rgba(249,115,22,0.2)',
-                            color: estado === 'verificado' ? '#10b981' : estado === 'bypass' ? '#eab308' : '#f97316',
-                          }}
-                        >
-                          {estado === 'verificado' ? 'CONFIRMADO' : estado === 'bypass' ? 'BYPASS' : 'ACTIVO'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {estado === 'esperando' && <CronometroEspera segundos={segundosEspera} />}
-                      </div>
-                    </div>
-
-                    <div className="p-4">
-                      {/* Estado: Esperando */}
-                      {estado === 'esperando' && (
-                        <div className="flex flex-col items-center py-3 gap-3">
-                          <RadarWave />
-                          <div className="text-center">
-                            <p className="font-bold text-sm flex items-center justify-center gap-1" style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                              Esperando el pago
-                              <TypingDots />
-                            </p>
-                            <p className="text-xs mt-1" style={{ color: darkMode ? '#475569' : '#94a3b8' }}>
-                              CODEC Verify está escuchando en tiempo real
-                            </p>
-                          </div>
-
-                          {/* Botón de bypass */}
-                          <button
-                            onClick={() => setShowBypass(true)}
-                            className="flex items-center gap-1.5 text-xs transition-all hover:opacity-80"
-                            style={{ color: darkMode ? '#475569' : '#94a3b8' }}
-                          >
-                            <Unlock className="w-3.5 h-3.5" />
-                            Apagar verificación (requiere justificación)
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Estado: Verificado */}
-                      {estado === 'verificado' && pagoConfirmado && (
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                            style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.35)' }}
-                          >
-                            <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-sm text-emerald-400">Pago verificado ✓</p>
-                            <p className="text-xs" style={{ color: darkMode ? '#64748b' : '#94a3b8' }}>
-                              {pagoConfirmado.remitente && `De: ${pagoConfirmado.remitente} · `}
-                              {format(pagoConfirmado.timestamp, 'HH:mm:ss')}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Estado: Bypass */}
-                      {estado === 'bypass' && (
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                            style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.3)' }}
-                          >
-                            <AlertTriangle className="w-5 h-5 text-yellow-400" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-sm text-yellow-400">Verificación omitida</p>
-                            <p className="text-xs" style={{ color: darkMode ? '#64748b' : '#94a3b8' }}>
-                              Registrado en auditoría · {cajeroNombre}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
+            )}
+            <div className="px-7 pt-9 pb-6 text-center" style={{ background: recibido ? 'linear-gradient(180deg,#ecfdf5,#fff)' : `linear-gradient(180deg, ${estilo.fondo}, #ffffff)` }}>
+              <div className="relative mx-auto mb-5 w-20 h-20">
+                {codecActivo && !recibido && (
+                  <>
+                    <span className="absolute inset-0 rounded-full" style={{ background: estilo.color, animation: 'esperaOnda 1.8s ease-out infinite' }} />
+                    <span className="absolute inset-0 rounded-full" style={{ background: estilo.color, animation: 'esperaOnda 1.8s ease-out .9s infinite' }} />
+                  </>
                 )}
-
-                {/* Botones de acción */}
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={onCancelar}
-                    className="flex-1 h-13 rounded-2xl"
-                    style={{ borderColor: darkMode ? 'rgba(255,255,255,0.12)' : undefined, color: darkMode ? '#94a3b8' : undefined }}
-                  >
-                    Cancelar
-                  </Button>
-                  <button
-                    onClick={handleConfirmar}
-                    disabled={!confirmButtonHabilitado}
-                    className="flex-1 h-13 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all"
-                    style={{
-                      background: confirmButtonHabilitado
-                        ? 'linear-gradient(135deg, #10b981, #059669)'
-                        : 'rgba(255,255,255,0.06)',
-                      color: confirmButtonHabilitado ? '#fff' : darkMode ? '#334155' : '#94a3b8',
-                      boxShadow: confirmButtonHabilitado ? '0 4px 16px rgba(16,185,129,0.4)' : 'none',
-                      border: confirmButtonHabilitado ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                      cursor: confirmButtonHabilitado ? 'pointer' : 'not-allowed',
-                      height: '52px',
-                    }}
-                  >
-                    {!confirmButtonHabilitado
-                      ? <><Lock className="w-4 h-4" /> Esperando pago</>
-                      : <><ChevronRight className="w-5 h-5" /> Confirmar Pago</>
-                    }
-                  </button>
+                <div className="relative w-20 h-20 rounded-full flex items-center justify-center" style={{ background: recibido ? '#10b981' : estilo.color }}>
+                  {recibido
+                    ? <Check className="w-10 h-10" strokeWidth={3} style={{ color: '#fff' }} />
+                    : codecActivo ? <Loader2 className="w-9 h-9 animate-spin" style={{ color: '#fff' }} /> : <Landmark className="w-9 h-9" style={{ color: '#fff' }} />}
                 </div>
-
-                {!confirmButtonHabilitado && codecActivo && (
-                  <p className="text-center text-xs mt-2.5" style={{ color: darkMode ? '#334155' : '#cbd5e1' }}>
-                    El botón se habilitará automáticamente al recibir el pago
-                  </p>
-                )}
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <p className="text-base font-bold" style={{ color: recibido ? '#047857' : estilo.color }}>
+                {recibido ? '¡Pago recibido!' : codecActivo ? 'Esperando el pago' : `Pago con ${config.label}`}
+              </p>
+              <p className="mt-1 font-black tracking-tight leading-none" style={{ color: '#0f172a', fontSize: '48px' }}>
+                ${Math.round(monto).toLocaleString('es-CO')}
+              </p>
+              <span className="inline-flex items-center gap-1.5 mt-4 px-3 py-1 rounded-full text-sm font-bold" style={{ background: estilo.fondo, color: estilo.color }}>
+                <span className="w-2 h-2 rounded-full" style={{ background: estilo.color }} /> {config.label}
+              </span>
+              <p className="mt-4 text-sm" style={{ color: '#64748b' }}>
+                {recibido
+                  ? `Codec Verify confirmó la transferencia${pagoConfirmado?.timestamp ? ` a las ${format(pagoConfirmado.timestamp, 'HH:mm')}` : ''}. Terminando la venta...`
+                  : codecActivo
+                    ? `Pídele al cliente que transfiera el valor exacto por ${config.label}. La venta se confirma sola cuando llegue.`
+                    : 'Confirma cuando veas el pago en tu cuenta.'}
+              </p>
+              {codecActivo && !recibido && <p className="mt-2 text-xs font-semibold tabular-nums" style={{ color: '#94a3b8' }}>Esperando {tiempo}</p>}
+            </div>
+
+            {!recibido && (
+              <div className="px-7 pb-6 space-y-2.5">
+                {codecActivo && segundosEspera >= 90 && (
+                  <p className="text-xs rounded-xl px-3 py-2" style={{ background: '#fffbeb', color: '#92400e' }}>
+                    ¿Ya le salió el pago al cliente? Revisa que el celular con Codec Verify tenga internet, o confirma manualmente si viste el pago.
+                  </p>
+                )}
+                <button
+                  onClick={() => (codecActivo ? setShowBypass(true) : handleConfirmar())}
+                  className="w-full h-12 rounded-2xl text-sm font-bold"
+                  style={{ background: '#0f172a', color: '#ffffff' }}
+                >
+                  {codecActivo ? 'Confirmar sin verificar' : 'Confirmar pago'}
+                </button>
+                <button onClick={onCancelar} className="w-full h-11 rounded-2xl text-sm font-semibold" style={{ background: '#f1f5f9', color: '#0f172a' }}>
+                  Cancelar y cambiar el medio de pago
+                </button>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* ── MODAL BYPASS (justificación) ── */}
       <AnimatePresence>
@@ -592,12 +473,6 @@ function NequiVerifyModalComponent({
         )}
       </AnimatePresence>
 
-      {/* ── POPUP PAGO RECIBIDO ── */}
-      <ModalPagoRecibidoNequi
-        visible={showPagoRecibido}
-        pago={pagoConfirmado}
-        onCerrar={() => setShowPagoRecibido(false)}
-      />
     </>
   );
 }

@@ -18,6 +18,8 @@ import {
 } from '../../lib/supabase/codecVerifyService';
 import { isLinked } from '../../lib/supabase/tenantLink';
 import { anunciarPagoRecibido, nombreMedioPago } from '../../lib/voz';
+import { abrirPopupPago } from '../../../pwa/components/PopupPagoRecibido';
+import { esperandoMonto } from '../../lib/codecVerifyEspera';
 
 export interface PagoEntrante {
   id: string;
@@ -224,10 +226,9 @@ export function useCodecVerify() {
     // "confirme" algo que el propio dueño ya recibió en su celular/correo.
     // Solo se avisa; el flujo manual sí sigue abriendo el modal de 30s.
     if (row.origen === 'automatizacion') {
-      toast.success(`✅ Pago verificado automáticamente: $${pago.monto.toLocaleString('es-CO')} · ${pago.banco.toUpperCase()}`, {
-        duration: 8000,
-        description: pago.remitente !== 'Sin referencia' ? pago.remitente : undefined,
-      });
+      // Misma ventana grande "Pago recibido" de la web (PopupPagoRecibido). Si una venta está
+      // esperando justo ese monto, su propia ventana lo muestra y aquí no se repite.
+      if (esperandoMonto() !== Math.round(Number(row.monto))) abrirPopupPago(row);
       return;
     }
 

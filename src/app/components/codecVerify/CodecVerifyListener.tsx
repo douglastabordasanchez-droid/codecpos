@@ -6,6 +6,11 @@
 
 import { useCodecVerify, AlertaPagoEntrante } from './AlertaPagoEntrante';
 import { useEffect, useState } from 'react';
+import { PopupPagoRecibido } from '../../../pwa/components/PopupPagoRecibido';
+import { isVozActiva, setVozActiva } from '../../lib/voz';
+
+// En Electron "Silenciar" apaga la voz de Codec Verify (la misma de su pantalla de conexión).
+const SILENCIO_ELECTRON = { estaSilenciado: () => !isVozActiva(), poner: (silenciar: boolean) => setVozActiva(!silenciar) };
 
 function leerCodecVerifyHabilitado(): boolean {
   try {
@@ -57,6 +62,9 @@ function CodecVerifyListenerContent() {
 
   return (
     <>
+      {/* Ventana grande de pago recibido (mismo diseño de la web) */}
+      <PopupPagoRecibido rutaPagos="/codec-verify" silencio={SILENCIO_ELECTRON} />
+
       {/* Alerta de pago entrante */}
       <AlertaPagoEntrante
         pago={pagoEntrante}

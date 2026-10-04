@@ -26,6 +26,18 @@ export function abrirPopupPago(row: NotificacionPagoRow, ejemplo = false) {
 
 const DURACION_MS = 20_000;
 
+interface PropsPopup {
+  /** Ruta de la pantalla de pagos ('/pagos' en la web, '/codec-verify' en Electron). */
+  rutaPagos?: string;
+  /** Cómo se silencia en este cliente (por defecto, las alertas de la web). */
+  silencio?: { estaSilenciado: () => boolean; poner: (silenciar: boolean) => void };
+}
+
+const SILENCIO_WEB = {
+  estaSilenciado: () => { const p = obtenerAlertasPago(); return !p.sonido && !p.voz; },
+  poner: (silenciar: boolean) => { guardarAlertasPago({ sonido: !silenciar, voz: !silenciar }); },
+};
+
 const BANCOS: Record<string, { nombre: string; color: string; fondo: string }> = {
   nequi: { nombre: 'Nequi', color: '#da0081', fondo: '#fde7f3' },
   daviplata: { nombre: 'Daviplata', color: '#e30613', fondo: '#fde8e9' },
@@ -40,11 +52,11 @@ function infoBanco(entidad: string | null) {
   return BANCOS[clave] || { nombre: clave ? clave.charAt(0).toUpperCase() + clave.slice(1) : 'Pago', color: '#0f766e', fondo: '#e6f6f4' };
 }
 
-export function PopupPagoRecibido() {
+export function PopupPagoRecibido({ rutaPagos = '/pagos', silencio = SILENCIO_WEB }: PropsPopup = {}) {
   const navigate = useNavigate();
   const [actual, setActual] = useState<DetallePagoPopup | null>(null);
   const [extra, setExtra] = useState(0);
-  const [silenciado, setSilenciado] = useState(() => { const p = obtenerAlertasPago(); return !p.sonido && !p.voz; });
+  const [silenciado, setSilenciado] = useState(() => silencio.estaSilenciado());
   const temporizador = useRef<number | null>(null);
   const abierto = useRef(false);
 
@@ -54,8 +66,7 @@ export function PopupPagoRecibido() {
       setExtra((n) => (abierto.current ? n + 1 : 0));
       abierto.current = true;
       setActual(detalle);
-      const p = obtenerAlertasPago();
-      setSilenciado(!p.sonido && !p.voz);
+      setSilenciado(silencio.estaSilenciado());
     };
     window.addEventListener(EVENTO_PAGO_RECIBIDO, alRecibir);
     return () => window.removeEventListener(EVENTO_PAGO_RECIBIDO, alRecibir);
@@ -78,7 +89,7 @@ export function PopupPagoRecibido() {
 
   const alternarSilencio = () => {
     const nuevo = !silenciado;
-    guardarAlertasPago({ sonido: !nuevo, voz: !nuevo });
+    silencio.poner(nuevo);
     setSilenciado(nuevo);
   };
 
@@ -161,7 +172,7 @@ export function PopupPagoRecibido() {
           </button>
           <div className="flex gap-2.5">
             <button
-              onClick={() => { cerrar(); navigate('/pagos'); }}
+              onClick={() => { cerrar(); navigate(rutaPagos); }}
               className="flex-1 h-11 rounded-2xl text-sm font-semibold"
               style={{ background: '#f1f5f9', color: '#0f172a' }}
             >
