@@ -9,7 +9,7 @@ import { Label } from '../../app/components/ui/label';
 import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { obtenerCategoriasPorTipo } from '../../data/tipos-negocio';
+import { obtenerCategoriasPorTipo, obtenerAtributosPorTipo, normalizarTipoNegocio } from '../../data/tipos-negocio';
 
 const UNIDADES = ['unidad', 'kg', 'g', 'lb', 'l', 'ml', 'paquete'];
 const MAX_FOTOS = 6;
@@ -25,11 +25,22 @@ interface FormState {
   unidad: string;
   iva: string;
   fotos: string[];
+  /** Según el tipo de negocio (Mi negocio): talla y color en ropa, marca en ferretería, etc. */
+  talla: string;
+  color: string;
+  marca: string;
 }
+
+/** Datos extra que la nube guarda por producto y su etiqueta. */
+const ATRIBUTOS_GUARDABLES: Array<{ clave: 'talla' | 'color' | 'marca'; etiqueta: string; ejemplo: string }> = [
+  { clave: 'talla', etiqueta: 'Talla', ejemplo: 'S, M, L, 32...' },
+  { clave: 'color', etiqueta: 'Color', ejemplo: 'Negro, azul...' },
+  { clave: 'marca', etiqueta: 'Marca', ejemplo: 'Marca del producto' },
+];
 
 const VACIO: FormState = {
   nombre: '', codigo_barras: '', categoria: '', precio_venta: '', costo: '',
-  stock: '', stock_minimo: '', unidad: 'unidad', iva: '0', fotos: [],
+  stock: '', stock_minimo: '', unidad: 'unidad', iva: '0', fotos: [], talla: '', color: '', marca: '',
 };
 
 function createImage(url: string): Promise<HTMLImageElement> {
@@ -85,6 +96,7 @@ export default function ProductoFormPage() {
   const [cargando, setCargando] = useState(!esNuevo);
   const [guardando, setGuardando] = useState(false);
   const [categoriasExistentes, setCategoriasExistentes] = useState<string[]>([]);
+  const [atributosNegocio, setAtributosNegocio] = useState<string[]>([]);
   const [categoriaNueva, setCategoriaNueva] = useState(false);
 
   const [imagenOriginal, setImagenOriginal] = useState<string | null>(null);
@@ -125,6 +137,9 @@ export default function ProductoFormPage() {
             unidad: data.unidad || 'unidad',
             iva: String(data.iva ?? '0'),
             fotos,
+            talla: data.talla || '',
+            color: data.color || '',
+            marca: data.marca || '',
           });
         }
         setCargando(false);
@@ -148,7 +163,8 @@ export default function ProductoFormPage() {
       client.from('clientes_pos').select('tipo_negocio').eq('id', empleado.cliente_id).maybeSingle(),
       client.from('productos').select('categoria').eq('cliente_id', empleado.cliente_id).not('categoria', 'is', null).limit(3000),
     ]).then(([{ data: clienteData }, { data: productosData }]) => {
-      const tipoNegocio = (clienteData as { tipo_negocio: string | null } | null)?.tipo_negocio || 'minimercado';
+      const tipoNegocio = normalizarTipoNegocio((clienteData as { tipo_negocio: string | null } | null)?.tipo_negocio);
+      setAtributosNegocio(obtenerAtributosPorTipo(tipoNegocio));
       const delCatalogo = obtenerCategoriasPorTipo(tipoNegocio);
       const propias = ((productosData || []) as { categoria: string }[]).map((r) => r.categoria).filter(Boolean);
       const combinadas = [...new Set([...delCatalogo, ...propias])];
@@ -269,6 +285,8 @@ export default function ProductoFormPage() {
       iva: Number(form.iva) || 0,
       foto_url: form.fotos[0] || null,
       fotos_urls: form.fotos.length > 0 ? form.fotos : null,
+      // Solo se envían los datos extra que usa este tipo de negocio, para no borrar los que vengan de Electron.
+      ...Object.fromEntries(ATRIBUTOS_GUARDABLES.filter((a) => atributosNegocio.includes(a.clave)).map((a) => [a.clave, form[a.clave].trim() || null])),
       updated_by: empleado.id,
     };
 
@@ -441,6 +459,17 @@ export default function ProductoFormPage() {
             <Input type="number" inputMode="numeric" value={form.iva} onChange={(e) => setForm({ ...form, iva: e.target.value })} className="h-12 bg-slate-900/70 border-slate-800 text-white" />
           </div>
         </div>
+
+        {ATRIBUTOS_GUARDABLES.some((a) => atributosNegocio.includes(a.clave)) && (
+          <div className="grid grid-cols-2 gap-3">
+            {ATRIBUTOS_GUARDABLES.filter((a) => atributosNegocio.includes(a.clave)).map((a) => (
+              <div key={a.clave} className="space-y-1.5">
+                <Label className="text-slate-400 text-xs">{a.etiqueta}</Label>
+                <Input value={form[a.clave]} placeholder={a.ejemplo} onChange={(e) => setForm({ ...form, [a.clave]: e.target.value })} className="h-12 bg-slate-900/70 border-slate-800 text-white" />
+              </div>
+            ))}
+          </div>
+        )}
 
         <Button onClick={handleGuardar} disabled={guardando} className="w-full h-14 text-base bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20">
           {guardando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}

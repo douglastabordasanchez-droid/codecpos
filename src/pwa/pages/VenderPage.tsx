@@ -31,6 +31,7 @@ import { EsperandoPagoModal, METODOS_TRANSFERENCIA } from '../components/Esperan
 import type { NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyService';
 import { obtenerDispositivos, imprimirTicket, abrirCajon, tieneImpresoraDirecta } from '../lib/impresoraWeb';
 import { armarTicketVenta } from '../lib/ticketVentaWeb';
+import { useMiNegocio } from '../hooks/useMiNegocio';
 
 interface ProductoFila {
   id: string;
@@ -40,6 +41,8 @@ interface ProductoFila {
   stock: number;
   codigo_barras: string | null;
   foto_url: string | null;
+  talla?: string | null;
+  color?: string | null;
 }
 
 const METODOS_PAGO = [
@@ -94,6 +97,10 @@ export default function VenderPage() {
   const [productos, setProductos] = useState<ProductoFila[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [categoria, setCategoria] = useState<string | null>(null);
+  const [tallaFiltro, setTallaFiltro] = useState<string | null>(null);
+  // Mi negocio (el mismo de Electron): en tienda de ropa se ven talla y color y se filtra por talla.
+  const { miNegocio } = useMiNegocio();
+  const modoRopa = miNegocio?.tipoNegocio === 'ropa';
   const [cargando, setCargando] = useState(true);
   const [carrito, setCarrito] = useState<Record<string, ItemCarritoMovil>>({});
   const [configPropina, setConfigPropina] = useState({ activa: false, porcentaje: 0 });
@@ -144,7 +151,7 @@ export default function VenderPage() {
     const client = getSupabaseClient();
     const { data } = await client!
       .from('productos')
-      .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url')
+      .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color')
       .eq('cliente_id', empleado.cliente_id)
       .eq('activo', true)
       .order('nombre');
@@ -193,8 +200,14 @@ export default function VenderPage() {
     [productos],
   );
 
+  const tallas = useMemo(
+    () => (modoRopa ? [...new Set(productos.map((p) => p.talla).filter(Boolean) as string[])] : []),
+    [productos, modoRopa],
+  );
+
   const filtrados = productos.filter((p) => {
     if (categoria && p.categoria !== categoria) return false;
+    if (tallaFiltro && p.talla !== tallaFiltro) return false;
     const q = busqueda.toLowerCase();
     return !q || p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q) || (p.codigo_barras || '').includes(busqueda);
   });
@@ -220,7 +233,14 @@ export default function VenderPage() {
       }
       return {
         ...prev,
-        [p.id]: { productoId: p.id, nombre: p.nombre, precio: actual?.precio ?? p.precio_venta, precioOriginal: p.precio_venta, cantidad },
+        [p.id]: {
+          productoId: p.id,
+          // En tienda de ropa el nombre lleva talla y color: así salen en el carrito, el ticket y la factura.
+          nombre: modoRopa ? [p.nombre, p.talla ? `Talla ${p.talla}` : '', p.color || ''].filter(Boolean).join(' · ') : p.nombre,
+          precio: actual?.precio ?? p.precio_venta,
+          precioOriginal: p.precio_venta,
+          cantidad,
+        },
       };
     });
   };
@@ -532,6 +552,21 @@ export default function VenderPage() {
         </div>
       )}
 
+      {tallas.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 [scrollbar-width:none]">
+          <span className="text-slate-500 text-[11px] font-bold uppercase tracking-wide shrink-0 mr-1">Talla</span>
+          {[null, ...tallas].map((t) => (
+            <button
+              key={t ?? 'todas'}
+              onClick={() => setTallaFiltro(t)}
+              className={`h-8 min-w-8 px-2.5 rounded-lg text-xs font-bold shrink-0 ${tallaFiltro === t ? 'bg-white text-slate-950' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}
+            >
+              {t ?? 'Todas'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {cargando ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-amber-400 animate-spin" /></div>
       ) : filtrados.length === 0 ? (
@@ -553,6 +588,12 @@ export default function VenderPage() {
                 </div>
                 <div className="p-2.5">
                   <p className="text-white text-sm font-semibold leading-tight line-clamp-2 min-h-[2.4em]">{p.nombre}</p>
+                  {modoRopa && (p.talla || p.color) && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {p.talla && <span className="px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold">{p.talla}</span>}
+                      {p.color && <span className="px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px]">{p.color}</span>}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mt-1">
                     <span className="text-emerald-400 font-black text-sm">{money(p.precio_venta)}</span>
                     <span className={`text-[10px] ${p.stock <= 3 ? 'text-red-400' : 'text-slate-500'}`}>{p.stock} und</span>

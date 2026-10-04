@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { getSupabaseClient } from '../lib/supabase/config';
-import { isLinked } from '../lib/supabase/tenantLink';
+import { isLinked, getLinkedClienteId } from '../lib/supabase/tenantLink';
+import { normalizarTipoNegocio } from '../../data/tipos-negocio';
 
 export interface BusinessConfig {
   tipoNegocio: string;
@@ -38,7 +39,7 @@ function loadConfig(): BusinessConfig {
     if (stored) {
       const parsed = JSON.parse(stored);
       const raw = parsed.tipoNegocio ?? 'minimercado';
-      const tipoNegocio = ID_MIGRATIONS[raw] ?? raw;
+      const tipoNegocio = normalizarTipoNegocio(ID_MIGRATIONS[raw] ?? raw);
       return {
         tipoNegocio,
         nombreNegocio: parsed.nombreNegocio ?? 'Mi Negocio',
@@ -58,47 +59,72 @@ function loadConfig(): BusinessConfig {
 
 const BusinessContext = createContext<BusinessContextType | undefined>(undefined);
 
+function guardarLocal(c: BusinessConfig) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(c));
+    localStorage.setItem(LEGACY_KEY, c.tipoNegocio);
+  } catch { /* storage full */ }
+  window.dispatchEvent(new CustomEvent('codec-business-changed', { detail: c }));
+}
+
 export function BusinessProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<BusinessConfig>(loadConfig);
+  const configRef = useRef(config);
+  configRef.current = config;
 
-  const setBusinessConfig = useCallback((newConfig: BusinessConfig) => {
-    const tipoAnterior = config.tipoNegocio;
+  // "Mi negocio" también se puede configurar desde la web/celular: Electron lo
+  // trae de la nube al abrir, al volver a la ventana y cada 2 minutos.
+  useEffect(() => {
+    const traer = async () => {
+      const clienteId = getLinkedClienteId();
+      if (!isLinked() || !clienteId) return;
+      const client = getSupabaseClient();
+      const { data, error } = await client!
+        .from('clientes_pos')
+        .select('tipo_negocio, nombre_negocio, propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio')
+        .eq('id', clienteId)
+        .maybeSingle();
+      if (error || !data) return;
+      const d = data as Record<string, any>;
+      const actual = configRef.current;
+      const nube: BusinessConfig = {
+        tipoNegocio: d.tipo_negocio ? normalizarTipoNegocio(d.tipo_negocio) : actual.tipoNegocio,
+        nombreNegocio: d.nombre_negocio || actual.nombreNegocio,
+        propinaActiva: d.propina_activa === true,
+        porcentajePropinaPredeterminado: Math.max(0, Number(d.porcentaje_propina_predeterminado) || 0),
+        permitirModificarPrecio: d.permitir_modificar_precio === true,
+      };
+      if (JSON.stringify(nube) !== JSON.stringify(actual)) {
+        setConfig(nube);
+        guardarLocal(nube);
+      }
+    };
+    traer();
+    const alEnfocar = () => { traer(); };
+    window.addEventListener('focus', alEnfocar);
+    const intervalo = window.setInterval(traer, 120_000);
+    return () => { window.removeEventListener('focus', alEnfocar); window.clearInterval(intervalo); };
+  }, []);
+
+  const setBusinessConfig = useCallback((nuevo: BusinessConfig) => {
+    const newConfig = { ...nuevo, tipoNegocio: normalizarTipoNegocio(nuevo.tipoNegocio) };
+    const cambio = JSON.stringify(newConfig) !== JSON.stringify(config);
     setConfig(newConfig);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newConfig));
-      localStorage.setItem(LEGACY_KEY, newConfig.tipoNegocio);
-    } catch { /* storage full */ }
-    window.dispatchEvent(new CustomEvent('codec-business-changed', { detail: newConfig }));
+    guardarLocal(newConfig);
 
-    // 🐛 FIX: clientes_pos.tipo_negocio nunca se actualizaba cuando el dueño
-    // cambiaba el tipo de negocio aquí (100% local hasta ahora) — la PWA
-    // (categorías de producto dinámicas por tipo de negocio) quedaba viendo
-    // siempre el valor del registro original, o vacío. Best-effort: si falla
-    // (sin internet, sin vincular todavía) no bloquea el cambio local.
-    if (newConfig.tipoNegocio !== tipoAnterior && isLinked()) {
+    // Se sube todo de una vez (misma función que usa la web/celular) para que
+    // "Mi negocio" quede igual en todo el sistema. Best-effort: sin internet o
+    // sin vincular, el cambio local igual queda.
+    if (cambio && isLinked()) {
       const client = getSupabaseClient();
-      client?.rpc('actualizar_tipo_negocio', { p_tipo_negocio: newConfig.tipoNegocio }).then(({ error }) => {
-        if (error) console.warn('[BusinessContext] No se pudo sincronizar tipo_negocio a la nube:', error.message);
-      });
-    }
-    if (
-      isLinked() &&
-      (newConfig.propinaActiva !== config.propinaActiva || newConfig.porcentajePropinaPredeterminado !== config.porcentajePropinaPredeterminado)
-    ) {
-      const client = getSupabaseClient();
-      client?.rpc('actualizar_configuracion_propina', {
+      client?.rpc('actualizar_mi_negocio', {
+        p_tipo_negocio: newConfig.tipoNegocio,
+        p_nombre_negocio: newConfig.nombreNegocio || 'Mi Negocio',
         p_propina_activa: newConfig.propinaActiva,
-        p_porcentaje_propina_predeterminado: newConfig.porcentajePropinaPredeterminado,
+        p_porcentaje_propina: newConfig.porcentajePropinaPredeterminado,
+        p_permitir_modificar_precio: newConfig.permitirModificarPrecio,
       }).then(({ error }) => {
-        if (error) console.warn('[BusinessContext] No se pudo sincronizar configuración de propina:', error.message);
-      });
-    }
-    if (isLinked() && newConfig.permitirModificarPrecio !== config.permitirModificarPrecio) {
-      const client = getSupabaseClient();
-      client?.rpc('actualizar_configuracion_precio_manual', {
-        p_permitir: newConfig.permitirModificarPrecio,
-      }).then(({ error }) => {
-        if (error) console.warn('[BusinessContext] No se pudo sincronizar configuración de precio manual:', error.message);
+        if (error) console.warn('[BusinessContext] No se pudo sincronizar Mi negocio a la nube:', error.message);
       });
     }
   }, [config]);

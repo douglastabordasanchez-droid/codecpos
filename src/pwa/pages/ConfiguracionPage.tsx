@@ -15,6 +15,7 @@ import { estaEnAppAndroid, abrirAjustesNotificacionesAndroid } from '../lib/andr
 import { TarjetaSoporte } from '../components/TarjetaSoporte';
 import { AjustesAlertasPago } from '../components/AjustesAlertasPago';
 import { ConectarIphone } from '../components/ConectarIphone';
+import { ConfigurarMiNegocio } from '../components/ConfigurarMiNegocio';
 
 interface NegocioForm {
   nombre_negocio: string;
@@ -182,6 +183,8 @@ export default function ConfiguracionPage() {
       ) : (
         <>
           <div className="px-5 space-y-4">
+            <ConfigurarMiNegocio />
+
             <SeccionDescargarApp />
 
             <TarjetaSoporte />

@@ -439,3 +439,23 @@ export function obtenerSugerenciaIVA(tipoNegocio: string, categoria?: string): b
   
   return false;
 }
+
+const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+/**
+ * Convierte cualquier forma del tipo de negocio al código del catálogo:
+ * "Tienda de Ropa" → "ropa", "Juguetería" → "jugueteria", "retail" → "minimercado".
+ * Igual que normalizar_tipo_negocio() en la base de datos (migración 0106).
+ */
+export function normalizarTipoNegocio(valor?: string | null): string {
+  const v = sinTildes(String(valor || ''));
+  if (!v) return 'minimercado';
+  if (TIPOS_NEGOCIO[v]) return v;
+  const porNombre = Object.values(TIPOS_NEGOCIO).find((t) => sinTildes(t.nombre) === v || sinTildes(t.nombre).split(' / ').includes(v));
+  if (porNombre) return porNombre.id;
+  const alias: Record<string, string> = {
+    retail: 'minimercado', farmacia: 'drogueria', tienda_ropa: 'ropa', miscelanea: 'minimercado', deposito: 'ferreteria',
+    servicios: 'minimercado', otros: 'minimercado', licoreria: 'licores', 'tienda de barrio': 'minimercado',
+  };
+  return alias[v] || v;
+}

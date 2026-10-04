@@ -83,6 +83,9 @@ export interface Producto {
   tematica?: string;
   calibreGlobo?: string;
   colorAcabado?: string;
+  /** Modo ropa: talla y color de la prenda (viajan a la nube, migración 0106). */
+  talla?: string;
+  color?: string;
   marca?: string;
   esDulceria?: boolean;
   permitirFraccion?: boolean;
