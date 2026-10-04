@@ -185,8 +185,6 @@ export default function ConfiguracionPage() {
 
             <TarjetaSoporte />
 
-            <AjustesAlertasPago />
-
             <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Store className="w-4 h-4 text-amber-400" />
@@ -350,6 +348,8 @@ export default function ConfiguracionPage() {
                 })}
               </div>
             </div>
+
+            <AjustesAlertasPago />
 
             <div className="bg-slate-900/70 backdrop-blur border border-purple-800/40 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-1">

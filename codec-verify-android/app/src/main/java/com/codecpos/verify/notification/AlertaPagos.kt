@@ -14,6 +14,8 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -22,7 +24,8 @@ import com.codecpos.verify.data.Prefs
 import com.codecpos.verify.ui.MainActivity
 
 /**
- * Alerta de "pago recibido" de Codec Verify: sonido fuerte, vibración y
+ * Alerta de "pago recibido" de Codec Verify: sonido fuerte, una voz que dice
+ * el monto ("Has recibido un pago de 12345 pesos por Nequi"), vibración y
  * notificación en la barra del celular.
  *
  * El sonido se reproduce por el volumen de ALARMA (no el de notificaciones),
@@ -44,6 +47,47 @@ object AlertaPagos {
     @Volatile private var ultimaAlertaNativa = 0L
     private val idsAvisados = LinkedHashSet<String>()
     private var reproductor: MediaPlayer? = null
+    private var tts: TextToSpeech? = null
+    @Volatile private var ttsListo = false
+    private var fraseEnEspera: String? = null
+
+    /** Motor de voz del celular en español, por el volumen de alarma (igual que el sonido). */
+    private fun hablar(context: Context, frase: String) {
+        if (frase.isBlank()) return
+        val motor = tts
+        if (motor != null && ttsListo) {
+            motor.speak(frase, TextToSpeech.QUEUE_FLUSH, null, "pago-${System.currentTimeMillis()}")
+            return
+        }
+        fraseEnEspera = frase
+        if (motor != null) return // inicializando: dirá la frase al quedar listo
+        tts = TextToSpeech(context.applicationContext) { estado ->
+            val m = tts ?: return@TextToSpeech
+            if (estado != TextToSpeech.SUCCESS) return@TextToSpeech
+            val idioma = listOf(Locale("es", "CO"), Locale("es", "US"), Locale("es", "MX"), Locale("es"))
+                .firstOrNull { m.isLanguageAvailable(it) >= TextToSpeech.LANG_AVAILABLE }
+            if (idioma != null) m.language = idioma
+            m.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            m.setSpeechRate(0.95f)
+            ttsListo = true
+            fraseEnEspera?.let { m.speak(it, TextToSpeech.QUEUE_FLUSH, null, "pago-inicial") }
+            fraseEnEspera = null
+        }
+    }
+
+    /** "Recibiste $50.000 de ..." da 50000 (solo para la voz; el monto oficial lo calcula el servidor). */
+    private fun montoDelTexto(texto: String): Long? {
+        val m = Regex("""\$\s?([0-9][0-9.,]*)""").find(texto) ?: return null
+        var crudo = m.groupValues[1].trimEnd('.', ',')
+        // Centavos al final (",00" o ".00"): se quitan.
+        crudo = crudo.replace(Regex("[.,][0-9]{2}$"), "")
+        return crudo.filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }
+    }
 
     private fun crearCanal(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -67,18 +111,23 @@ object AlertaPagos {
         val prefs = Prefs(context.applicationContext)
         ultimaAlertaNativa = System.currentTimeMillis()
         val nombre = entidad.replaceFirstChar { it.uppercase() }
+        val monto = montoDelTexto(textoBanco)
+        val frase = if (monto != null) "Has recibido un pago de $monto pesos por $nombre." else "Has recibido un pago por $nombre."
+        val montoVisible = monto?.let { "%,d".format(it).replace(',', '.') }
         mostrar(
             context,
             tag = "pago-nativo-${ultimaAlertaNativa}",
-            titulo = "Pago recibido por $nombre",
+            titulo = if (montoVisible != null) "Pago recibido \$$montoVisible" else "Pago recibido por $nombre",
             cuerpo = textoBanco.take(240),
+            frase = frase,
             sonido = prefs.alertaSonido,
             notificacion = prefs.alertaNotificacion,
+            voz = prefs.alertaVoz,
         )
     }
 
     /** Alerta pedida por la web (pago detectado en otro celular del negocio o una prueba). */
-    fun alertarDesdeWeb(context: Context, id: String, titulo: String, cuerpo: String, sonido: Boolean, notificacion: Boolean) {
+    fun alertarDesdeWeb(context: Context, id: String, titulo: String, cuerpo: String, frase: String, sonido: Boolean, notificacion: Boolean, voz: Boolean) {
         synchronized(idsAvisados) {
             if (!idsAvisados.add(id)) return
             if (idsAvisados.size > 200) idsAvisados.remove(idsAvisados.first())
@@ -86,14 +135,17 @@ object AlertaPagos {
         // Si este mismo celular acaba de alertar el pago con su lector nativo, no se repite.
         val esPrueba = id.startsWith("prueba-")
         if (!esPrueba && System.currentTimeMillis() - ultimaAlertaNativa < VENTANA_DUPLICADO_MS) return
-        mostrar(context, "pago-$id", titulo, cuerpo, sonido, notificacion)
+        mostrar(context, "pago-$id", titulo, cuerpo, frase, sonido, notificacion, voz)
     }
 
-    private fun mostrar(context: Context, tag: String, titulo: String, cuerpo: String, sonido: Boolean, notificacion: Boolean) {
+    private fun mostrar(context: Context, tag: String, titulo: String, cuerpo: String, frase: String, sonido: Boolean, notificacion: Boolean, voz: Boolean) {
         val app = context.applicationContext
+        val decir = if (voz) frase else ""
         if (sonido) {
-            sonar(app)
+            sonar(app) { if (decir.isNotBlank()) hablar(app, decir) } // la voz entra al terminar los campanazos
             vibrar(app)
+        } else if (decir.isNotBlank()) {
+            hablar(app, decir)
         }
         if (!notificacion || !puedeNotificar(app)) return
         crearCanal(app)
@@ -118,7 +170,7 @@ object AlertaPagos {
         } catch (_: SecurityException) { /* sin permiso */ }
     }
 
-    private fun sonar(context: Context) {
+    private fun sonar(context: Context, alTerminar: () -> Unit) {
         try {
             reproductor?.release()
             val uri = Uri.parse("android.resource://${context.packageName}/${R.raw.pago_recibido}")
@@ -131,11 +183,17 @@ object AlertaPagos {
                 )
                 setDataSource(context, uri)
                 setVolume(1f, 1f)
-                setOnCompletionListener { it.release(); if (reproductor === it) reproductor = null }
+                setOnCompletionListener {
+                    it.release()
+                    if (reproductor === it) reproductor = null
+                    alTerminar()
+                }
                 prepare()
                 start()
             }
-        } catch (_: Exception) { /* sin audio: queda la notificación */ }
+        } catch (_: Exception) {
+            alTerminar() // sin el tono, al menos la voz
+        }
     }
 
     private fun vibrar(context: Context) {

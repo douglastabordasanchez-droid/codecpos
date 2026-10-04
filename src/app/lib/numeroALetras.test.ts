@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { valorEnLetras } from './numeroALetras';
+import { frasePagoRecibido } from './voz';
 
 describe('valor en letras', () => {
   it.each([
@@ -22,5 +23,14 @@ describe('valor en letras', () => {
     [15990.5, 'Quince mil novecientos noventa pesos con 50/100 m/cte'],
   ])('%s', (n, esperado) => {
     expect(valorEnLetras(n)).toBe(esperado);
+  });
+});
+
+describe('frase del anuncio de pago', () => {
+  it('dice el monto en palabras y el banco', () => {
+    expect(frasePagoRecibido(12345, 'NEQUI')).toBe('Has recibido un pago de doce mil trescientos cuarenta y cinco pesos por Nequi.');
+    expect(frasePagoRecibido(21000)).toBe('Has recibido un pago de veintiún mil pesos.');
+    expect(frasePagoRecibido(1000000, 'daviplata')).toBe('Has recibido un pago de un millón de pesos por Daviplata.');
+    expect(frasePagoRecibido(0)).toBe('Has recibido un pago.');
   });
 });

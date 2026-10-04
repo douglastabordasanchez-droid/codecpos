@@ -10,6 +10,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { codecVerifyPwaActivo, alternarCodecVerifyPwa } from '../lib/codecVerifyPwa';
 import { useAlertasPago } from '../hooks/useAlertasPago';
+import { PopupPagoRecibido } from './PopupPagoRecibido';
 import { useMenuPersonalizado, type GrupoMenu, type ItemMenu } from '../hooks/useMenuPersonalizado';
 import { HojaAccionesModulo, ModulosOcultos, usePresionLarga } from './EdicionMenu';
 import logo from '/logo.png';
@@ -92,6 +93,7 @@ export function DesktopLayout() {
           <ModulosOcultos ocultos={ocultos} colapsado={colapsado} />
           {!colapsado && <p className="px-3 text-[10px] text-slate-600">Mantén presionado o clic derecho en un módulo para editarlo.</p>}
         </nav>
+        <PopupPagoRecibido />
         {editando && <HojaAccionesModulo item={editando.item} hermanos={editando.hermanos} onCerrar={() => setEditando(null)} />}
 
         <div className="px-3 py-3 border-t border-slate-800/80 space-y-1 shrink-0">

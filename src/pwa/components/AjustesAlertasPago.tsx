@@ -4,12 +4,12 @@
  * y en Mi perfil.
  */
 import { useEffect, useState } from 'react';
-import { BellRing, Volume2, Play } from 'lucide-react';
+import { BellRing, Volume2, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  obtenerAlertasPago, guardarAlertasPago, reproducirSonidoPago, pedirPermisoNotificaciones, permisoNotificaciones,
-  EVENTO_ALERTAS_PAGO, alertarPago,
+  obtenerAlertasPago, guardarAlertasPago, pedirPermisoNotificaciones, permisoNotificaciones, EVENTO_ALERTAS_PAGO,
 } from '../lib/alertaPagos';
+import { mostrarEjemploPago } from '../hooks/useAlertasPago';
 import { estaEnAppAndroid, getAndroidBridge } from '../lib/androidBridge';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
 
@@ -51,15 +51,6 @@ export function AjustesAlertasPago() {
     cambiar({ notificacion: !prefs.notificacion });
   };
 
-  const probar = async () => {
-    if (enApp && appActualizada) {
-      await alertarPago({ id: `prueba-${Date.now()}`, monto: 50000, entidad: 'nequi', referencia: null, origen: 'automatizacion', estado: 'confirmado' });
-      return;
-    }
-    const sono = await reproducirSonidoPago(prefs.volumen);
-    try { navigator.vibrate?.([450, 150, 450, 150, 700]); } catch { /* sin vibración */ }
-    if (!sono) toast.error('El navegador bloqueó el sonido. Toca la pantalla y vuelve a probar.');
-  };
 
   return (
     <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
@@ -69,7 +60,7 @@ export function AjustesAlertasPago() {
           <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Alertas de pago en este dispositivo</span>
         </div>
         <p className="text-slate-500 text-xs">
-          Cuando Codec Verify detecta un pago, este dispositivo suena fuerte y avisa.
+          Cuando Codec Verify detecta un pago, este dispositivo suena fuerte, una voz dice el monto y aparece el aviso.
           {!codecVerifyPwaActivo() && ' Ahora Codec Verify está apagado aquí: actívalo con el escudo de la barra superior.'}
         </p>
       </div>
@@ -80,6 +71,14 @@ export function AjustesAlertasPago() {
           <p className="text-slate-500 text-xs">{enApp && appActualizada ? 'Suena por el volumen de alarma, aunque el celular esté en silencio.' : 'Suena mientras la app esté abierta.'}</p>
         </div>
         <Interruptor activo={prefs.sonido} etiqueta="Sonido fuerte" onClick={() => cambiar({ sonido: !prefs.sonido })} />
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-white text-sm font-semibold">Voz</p>
+          <p className="text-slate-500 text-xs">Dice el monto: «Has recibido un pago de doce mil trescientos cuarenta y cinco pesos por Nequi».</p>
+        </div>
+        <Interruptor activo={prefs.voz} etiqueta="Voz" onClick={() => cambiar({ voz: !prefs.voz })} />
       </div>
 
       <div className="flex items-center justify-between gap-3">
@@ -104,9 +103,10 @@ export function AjustesAlertasPago() {
         </div>
       )}
 
-      <button onClick={probar} className="w-full h-11 rounded-xl bg-slate-800 text-white text-sm font-semibold flex items-center justify-center gap-2">
-        <Play className="w-4 h-4" /> Probar sonido de pago
+      <button onClick={() => mostrarEjemploPago()} className="w-full h-12 rounded-xl bg-emerald-600 text-sm font-bold flex items-center justify-center gap-2" style={{ color: '#ffffff' }}>
+        <Eye className="w-4 h-4" /> Ver ejemplo de un pago
       </button>
+      <p className="text-slate-500 text-[11px] -mt-2 text-center">Simula un pago de $12.345 por Nequi: verás el aviso y oirás el sonido y la voz.</p>
 
       {enApp && !appActualizada && (
         <p className="text-amber-400 text-xs">Actualiza la app Codec POS de Android para que el sonido funcione aunque la app esté cerrada.</p>

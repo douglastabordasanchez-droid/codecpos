@@ -26,10 +26,10 @@ interface AndroidCodecVerifyBridge {
   avisarCambioComanda(titulo: string, cuerpo: string, estado: string, tag: string): void;
   autenticarConHuella(requestId: string): void;
   huellaDisponible(): boolean;
-  /** Desde la versión 1.1 de la app: alerta de pago con el canal nativo (sonido fuerte por volumen de alarma). */
-  avisarPago?(id: string, monto: number, titulo: string, cuerpo: string, sonido: boolean, notificacion: boolean): void;
-  /** Desde la versión 1.1: guarda si este celular suena y notifica los pagos (lo usa también el lector nativo). */
-  configurarAlertasPago?(sonido: boolean, notificacion: boolean): void;
+  /** Desde la versión 1.1.1 de la app: alerta de pago nativa (sonido fuerte y voz por el volumen de alarma). */
+  avisarPago?(id: string, monto: number, titulo: string, cuerpo: string, frase: string, sonido: boolean, notificacion: boolean, voz: boolean): void;
+  /** Desde la versión 1.1.1: guarda si este celular suena, notifica y habla los pagos (lo usa también el lector nativo). */
+  configurarAlertasPago?(sonido: boolean, notificacion: boolean, voz: boolean): void;
 }
 
 declare global {

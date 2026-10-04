@@ -7,6 +7,7 @@ import { TiendaSwitcher } from './TiendaSwitcher';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { codecVerifyPwaActivo, alternarCodecVerifyPwa } from '../lib/codecVerifyPwa';
 import { useAlertasPago } from '../hooks/useAlertasPago';
+import { PopupPagoRecibido } from './PopupPagoRecibido';
 
 interface Props {
   navInferiorVisible: boolean;
@@ -85,6 +86,7 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
         </div>
       </div>
       <SideMenu open={menuAbierto} onClose={() => setMenuAbierto(false)} />
+      <PopupPagoRecibido />
     </>
   );
 }

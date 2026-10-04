@@ -11,19 +11,22 @@
  */
 import type { NotificacionPagoRow } from './codecVerifyPwa';
 import { getAndroidBridge } from './androidBridge';
+import { frasePagoRecibido, reproducirConWebSpeech } from '../../app/lib/voz';
 
 export interface PreferenciasAlertaPago {
   /** Sonido fuerte al entrar un pago. */
   sonido: boolean;
   /** Notificación del sistema (barra de notificaciones). */
   notificacion: boolean;
+  /** Voz que dice el monto: "Has recibido un pago de doce mil pesos por Nequi". */
+  voz: boolean;
   /** Volumen del sonido en la web, de 0 a 1. */
   volumen: number;
 }
 
 const CLAVE = 'codecverify_alertas_pago';
 export const EVENTO_ALERTAS_PAGO = 'codecverify:alertas-pago';
-const POR_DEFECTO: PreferenciasAlertaPago = { sonido: true, notificacion: true, volumen: 1 };
+const POR_DEFECTO: PreferenciasAlertaPago = { sonido: true, notificacion: true, voz: true, volumen: 1 };
 /** Base de la app (/app/ en producción); las rutas de sonido e ícono cuelgan de ahí. */
 const BASE: string = ((import.meta as any).env?.BASE_URL as string | undefined) || '/';
 const RUTA_SONIDO = `${BASE}sonidos/pago-recibido.wav`.replace(/\/{2,}/g, '/');
@@ -40,12 +43,17 @@ export function guardarAlertasPago(cambios: Partial<PreferenciasAlertaPago>): Pr
   const nuevas = { ...obtenerAlertasPago(), ...cambios };
   try { localStorage.setItem(CLAVE, JSON.stringify(nuevas)); } catch { /* sin almacenamiento */ }
   // La app de Android también lo necesita: su lector nativo suena aunque la app esté cerrada.
-  try { getAndroidBridge()?.configurarAlertasPago?.(nuevas.sonido, nuevas.notificacion); } catch { /* app vieja */ }
+  try { getAndroidBridge()?.configurarAlertasPago?.(nuevas.sonido, nuevas.notificacion, nuevas.voz); } catch { /* app vieja */ }
   window.dispatchEvent(new CustomEvent(EVENTO_ALERTAS_PAGO));
   return nuevas;
 }
 
-export const alternarSonidoPagos = () => guardarAlertasPago({ sonido: !obtenerAlertasPago().sonido });
+/** La bocina de la barra: si suena o habla, silencia ambos; si estaba en silencio, activa ambos. */
+export function alternarSonidoPagos() {
+  const p = obtenerAlertasPago();
+  const activar = !(p.sonido || p.voz);
+  return guardarAlertasPago({ sonido: activar, voz: activar });
+}
 
 // ── Sonido en la web ────────────────────────────────────────────────────────
 // Los navegadores no dejan reproducir audio hasta que la persona toca la
@@ -153,11 +161,13 @@ export async function alertarPago(row: NotificacionPagoRow): Promise<{ sono: boo
   const prefs = obtenerAlertasPago();
   const { titulo, cuerpo } = textoPago(row);
 
+  const frase = frasePagoRecibido(Number(row.monto) || 0, row.entidad);
+
   const android = getAndroidBridge();
   if (android?.avisarPago) {
     try {
-      android.avisarPago(row.id, Number(row.monto) || 0, titulo, cuerpo, prefs.sonido, prefs.notificacion);
-      return { sono: prefs.sonido };
+      android.avisarPago(row.id, Number(row.monto) || 0, titulo, cuerpo, frase, prefs.sonido, prefs.notificacion, prefs.voz);
+      return { sono: prefs.sonido || prefs.voz };
     } catch { /* app vieja: se sigue con la web */ }
   }
 
@@ -165,6 +175,10 @@ export async function alertarPago(row: NotificacionPagoRow): Promise<{ sono: boo
   if (prefs.sonido) {
     sono = await reproducirSonidoPago(prefs.volumen);
     try { navigator.vibrate?.([450, 150, 450, 150, 700]); } catch { /* sin vibración */ }
+  }
+  if (prefs.voz) {
+    // La voz entra cuando terminan los dos campanazos (1,7 segundos).
+    setTimeout(() => reproducirConWebSpeech(frase), prefs.sonido && sono ? 1700 : 0);
   }
   if (prefs.notificacion && (document.hidden || !document.hasFocus())) {
     await notificarSistema(titulo, cuerpo, `pago-${row.id}`);

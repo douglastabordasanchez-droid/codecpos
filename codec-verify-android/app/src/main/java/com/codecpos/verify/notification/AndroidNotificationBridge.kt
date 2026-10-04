@@ -122,14 +122,15 @@ class AndroidNotificationBridge(
 
     /** Pago detectado (en este u otro celular del negocio): suena fuerte y notifica, ver AlertaPagos. */
     @JavascriptInterface
-    fun avisarPago(id: String, monto: Double, titulo: String, cuerpo: String, sonido: Boolean, notificacion: Boolean) {
-        AlertaPagos.alertarDesdeWeb(context, id, titulo, cuerpo, sonido, notificacion)
+    fun avisarPago(id: String, monto: Double, titulo: String, cuerpo: String, frase: String, sonido: Boolean, notificacion: Boolean, voz: Boolean) {
+        AlertaPagos.alertarDesdeWeb(context, id, titulo, cuerpo, frase, sonido, notificacion, voz)
     }
 
     /** La app web guarda aquí si este celular suena y notifica los pagos (lo usa el lector nativo). */
     @JavascriptInterface
-    fun configurarAlertasPago(sonido: Boolean, notificacion: Boolean) {
+    fun configurarAlertasPago(sonido: Boolean, notificacion: Boolean, voz: Boolean) {
         prefs.alertaSonido = sonido
         prefs.alertaNotificacion = notificacion
+        prefs.alertaVoz = voz
     }
 }

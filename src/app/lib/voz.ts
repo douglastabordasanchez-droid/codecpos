@@ -18,6 +18,8 @@
  *      CodecVerifyConexionPage.tsx).
  */
 
+import { enteroALetras } from './numeroALetras';
+
 interface CodecVerifyConfig {
   enabled?: boolean;
   vozActiva?: boolean;
@@ -115,7 +117,7 @@ function obtenerVozPreferida(): SpeechSynthesisVoice | null {
   return voces[0]; // ya viene ordenada por puntaje — la mejor candidata primero
 }
 
-function reproducirConWebSpeech(texto: string): void {
+export function reproducirConWebSpeech(texto: string): void {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   try {
     const utterance = new SpeechSynthesisUtterance(texto);
@@ -168,8 +170,21 @@ export function anunciarVoz(texto: string): void {
   });
 }
 
+/**
+ * Frase del anuncio, igual en Electron, la web y el celular:
+ * "Has recibido un pago de doce mil trescientos cuarenta y cinco pesos por Nequi."
+ * El monto va en palabras para que ninguna voz lo lea mal ("12.345" algunas
+ * voces lo leen como doce punto tres cuatro cinco).
+ */
+export function frasePagoRecibido(monto: number, entidad?: string | null): string {
+  const n = Math.round(Math.abs(Number(monto) || 0));
+  const letras = enteroALetras(n).replace(/veintiuno$/, 'veintiún').replace(/uno$/, 'un');
+  const pesos = n >= 1_000_000 && n % 1_000_000 === 0 ? 'de pesos' : 'pesos';
+  const banco = (entidad || '').trim();
+  const porBanco = banco ? ` por ${banco.charAt(0).toUpperCase()}${banco.slice(1).toLowerCase()}` : '';
+  return n > 0 ? `Has recibido un pago de ${letras} ${pesos}${porBanco}.` : `Has recibido un pago${porBanco}.`;
+}
+
 export function anunciarPagoRecibido(monto: number, entidad?: string): void {
-  const montoTexto = Math.round(monto || 0).toLocaleString('es-CO');
-  const entidadTexto = entidad ? ` por ${entidad}` : '';
-  anunciarVoz(`Pago recibido${entidadTexto}. ${montoTexto} pesos.`);
+  anunciarVoz(frasePagoRecibido(monto, entidad));
 }
