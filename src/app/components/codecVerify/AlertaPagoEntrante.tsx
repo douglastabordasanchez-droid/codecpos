@@ -17,7 +17,7 @@ import {
   NotificacionPagoRow,
 } from '../../lib/supabase/codecVerifyService';
 import { isLinked } from '../../lib/supabase/tenantLink';
-import { anunciarPagoRecibido } from '../../lib/voz';
+import { anunciarPagoRecibido, nombreMedioPago } from '../../lib/voz';
 
 export interface PagoEntrante {
   id: string;
@@ -189,7 +189,7 @@ export function useCodecVerify() {
     const pago: PagoEntrante = {
       id: row.id,
       monto: row.monto || 0,
-      banco: row.entidad || 'desconocido',
+      banco: nombreMedioPago(row.entidad) || 'desconocido',
       remitente: row.referencia || 'Sin referencia',
       timestamp: new Date().toLocaleTimeString('es-CO'),
     };

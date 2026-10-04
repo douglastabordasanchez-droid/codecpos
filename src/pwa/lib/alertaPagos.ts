@@ -11,7 +11,7 @@
  */
 import type { NotificacionPagoRow } from './codecVerifyPwa';
 import { getAndroidBridge } from './androidBridge';
-import { frasePagoRecibido, reproducirConWebSpeech } from '../../app/lib/voz';
+import { frasePagoRecibido, reproducirConWebSpeech, nombreMedioPago } from '../../app/lib/voz';
 
 export interface PreferenciasAlertaPago {
   /** Sonido fuerte al entrar un pago. */
@@ -75,9 +75,24 @@ async function prepararAudio(): Promise<void> {
 }
 
 if (typeof window !== 'undefined') {
-  const desbloquear = () => { prepararAudio(); };
-  window.addEventListener('pointerdown', desbloquear, { once: true, passive: true });
-  window.addEventListener('keydown', desbloquear, { once: true });
+  // El iPhone es más estricto: el audio y la voz solo se habilitan dentro de un toque real.
+  // Se prepara el audio y se "despierta" la voz con una frase vacía y muda.
+  let listo = false;
+  const desbloquear = () => {
+    if (listo) return;
+    listo = true;
+    prepararAudio();
+    try {
+      if ('speechSynthesis' in window) {
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0;
+        window.speechSynthesis.speak(u);
+      }
+    } catch { /* sin voz */ }
+  };
+  for (const evento of ['pointerdown', 'touchend', 'click', 'keydown']) {
+    window.addEventListener(evento, desbloquear, { passive: true });
+  }
 }
 
 export async function reproducirSonidoPago(volumen = obtenerAlertasPago().volumen): Promise<boolean> {
@@ -141,8 +156,7 @@ const yaAvisados = new Set<string>();
 
 export function textoPago(row: Pick<NotificacionPagoRow, 'monto' | 'entidad' | 'origen'>) {
   const monto = `$${Number(row.monto).toLocaleString('es-CO')}`;
-  const entidad = (row.entidad || '').trim();
-  const nombreEntidad = entidad ? entidad.charAt(0).toUpperCase() + entidad.slice(1).toLowerCase() : '';
+  const nombreEntidad = nombreMedioPago(row.entidad);
   return {
     titulo: row.origen === 'automatizacion' ? `Pago recibido ${monto}` : `Pago reportado ${monto}`,
     cuerpo: row.origen === 'automatizacion'

@@ -14,6 +14,7 @@ import { obtenerPreferenciasMenu, alternarOculto } from '../lib/preferenciasMenu
 import { estaEnAppAndroid, abrirAjustesNotificacionesAndroid } from '../lib/androidBridge';
 import { TarjetaSoporte } from '../components/TarjetaSoporte';
 import { AjustesAlertasPago } from '../components/AjustesAlertasPago';
+import { ConectarIphone } from '../components/ConectarIphone';
 
 interface NegocioForm {
   nombre_negocio: string;
@@ -363,6 +364,7 @@ export default function ConfiguracionPage() {
 
               {form.webhook_token ? (
                 <div className="space-y-3">
+                  <ConectarIphone token={form.webhook_token} />
                   <div>
                     <Label className="text-slate-400 text-xs">Token del negocio</Label>
                     <div className="flex gap-2 mt-1.5">

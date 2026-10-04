@@ -67,16 +67,24 @@ class PagoNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        if (entidad == null) return // paquete no habilitado, ignorar
-        if (entidad !in prefs.entidadesHabilitadas) return
-
         val texto = extraerTexto(sbn.notification)
         if (texto.isBlank()) return
+        val habilitadas = prefs.entidadesHabilitadas
+
+        // El método de pago lo dice el contenido: un aviso de Bre-B es Bre-B aunque llegue por la app de
+        // Bancolombia, Nu, Davivienda o cualquier otro banco.
+        val entidadFinal = when {
+            "bre_b" in habilitadas && esPagoBreB(texto) && paquete !in Prefs.APPS_EXCLUIDAS -> "bre_b"
+            entidad == null -> return // app que no es de un banco habilitado
+            entidad !in habilitadas -> return
+            else -> entidad
+        }
 
         val webhookToken = prefs.webhookToken
         if (webhookToken.isNullOrBlank()) return // app aún no emparejada
 
         scope.launch {
+            val entidad = entidadFinal
             val resultado = api.registrarPagoAutomatico(webhookToken, texto, entidad)
             if (resultado.isSuccess) {
                 EventBus.registrar(EventoCapturado(entidad, paquete, texto.take(160), exitoso = true))
@@ -107,6 +115,11 @@ class PagoNotificationListenerService : NotificationListenerService() {
             )
         }
     }
+
+    /** "Recibiste $50.000 por Bre-B", "Te enviaron plata con tu llave Bre-B"... (solo pagos recibidos). */
+    private fun esPagoBreB(texto: String): Boolean =
+        Regex("(?i)bre[\\s-]?b\\b").containsMatchIn(texto) &&
+            Regex("(?i)recib|te envi|te transfir|te lleg|abon|ingres|deposit").containsMatchIn(texto)
 
     private fun resolverEntidad(paquete: String): String? =
         prefs.paquetesPorEntidad.entries.firstOrNull { (_, paquetes) -> paquete in paquetes }?.key

@@ -4,7 +4,7 @@
  * y en Mi perfil.
  */
 import { useEffect, useState } from 'react';
-import { BellRing, Volume2, Eye } from 'lucide-react';
+import { BellRing, Volume2, Eye, Smartphone, Share, SquarePlus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   obtenerAlertasPago, guardarAlertasPago, pedirPermisoNotificaciones, permisoNotificaciones, EVENTO_ALERTAS_PAGO,
@@ -12,6 +12,7 @@ import {
 import { mostrarEjemploPago } from '../hooks/useAlertasPago';
 import { estaEnAppAndroid, getAndroidBridge } from '../lib/androidBridge';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
+import { estadoPush, activarPush, desactivarPush, esIphone, type EstadoPush } from '../lib/pushPagos';
 
 function Interruptor({ activo, onClick, etiqueta }: { activo: boolean; onClick: () => void; etiqueta: string }) {
   return (
@@ -32,6 +33,24 @@ export function AjustesAlertasPago() {
   const [prefs, setPrefs] = useState(obtenerAlertasPago);
   const [permiso, setPermiso] = useState(permisoNotificaciones);
   const enApp = estaEnAppAndroid();
+  const [push, setPush] = useState<EstadoPush | null>(null);
+  const [activandoPush, setActivandoPush] = useState(false);
+
+  useEffect(() => { estadoPush().then(setPush); }, []);
+
+  const alternarPush = async () => {
+    setActivandoPush(true);
+    if (push === 'activo') {
+      await desactivarPush();
+      toast('Avisos con la app cerrada desactivados en este dispositivo');
+    } else {
+      const r = await activarPush();
+      if (r.ok) toast.success('Listo: este dispositivo avisará los pagos aunque la app esté cerrada');
+      else toast.error(r.mensaje || 'No se pudo activar');
+    }
+    setPush(await estadoPush());
+    setActivandoPush(false);
+  };
   const appActualizada = !!getAndroidBridge()?.avisarPago;
 
   useEffect(() => {
@@ -90,6 +109,39 @@ export function AjustesAlertasPago() {
         </div>
         <Interruptor activo={prefs.notificacion} etiqueta="Notificaciones" onClick={activarNotificaciones} />
       </div>
+
+      {push && push !== 'app-android' && (
+        <div className="rounded-xl bg-slate-950/50 border border-slate-800 p-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-white text-sm font-semibold flex items-center gap-1.5"><Smartphone className="w-4 h-4 text-emerald-400" /> Avisos con la app cerrada</p>
+              <p className="text-slate-500 text-xs">
+                {push === 'activo' && 'Activos: llega la notificación aunque la app esté cerrada o el celular bloqueado.'}
+                {push === 'inactivo' && 'Recibe la notificación del pago aunque la app esté cerrada.'}
+                {push === 'bloqueado' && (esIphone() ? 'Bloqueadas: actívalas en Ajustes del iPhone > Notificaciones > Codec POS.' : 'Bloqueadas por el navegador: actívalas en los ajustes del sitio.')}
+                {push === 'no-soportado' && 'Este navegador no permite avisos con la app cerrada. Usa Chrome, Edge o Safari actualizados.'}
+                {push === 'falta-instalar' && 'En iPhone, primero agrega Codec POS a la pantalla de inicio:'}
+              </p>
+            </div>
+            {(push === 'activo' || push === 'inactivo') && (
+              activandoPush
+                ? <Loader2 className="w-5 h-5 text-emerald-400 animate-spin shrink-0" />
+                : <Interruptor activo={push === 'activo'} etiqueta="Avisos con la app cerrada" onClick={alternarPush} />
+            )}
+          </div>
+          {push === 'falta-instalar' && (
+            <ol className="text-slate-300 text-xs space-y-1.5 pl-1">
+              <li className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold shrink-0">1</span>Abre esta página en <b>Safari</b>.</li>
+              <li className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold shrink-0">2</span>Toca <Share className="w-3.5 h-3.5 inline" /> <b>Compartir</b>.</li>
+              <li className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold shrink-0">3</span>Elige <SquarePlus className="w-3.5 h-3.5 inline" /> <b>Agregar a pantalla de inicio</b>.</li>
+              <li className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold shrink-0">4</span>Abre Codec POS desde ese ícono, entra a esta sección y activa los avisos.</li>
+            </ol>
+          )}
+          {esIphone() && push !== 'falta-instalar' && (
+            <p className="text-slate-500 text-[11px]">En iPhone la notificación suena con el tono del sistema; el sonido de caja y la voz se oyen al abrir la app.</p>
+          )}
+        </div>
+      )}
 
       {!(enApp && appActualizada) && prefs.sonido && (
         <div className="flex items-center gap-3">

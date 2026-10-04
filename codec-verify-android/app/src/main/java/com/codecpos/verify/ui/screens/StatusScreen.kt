@@ -57,6 +57,7 @@ fun StatusScreen(
             "bancolombia" to "Bancolombia (incluye pago por Llave)",
             "daviplata" to "Daviplata",
             "davivienda" to "Davivienda",
+            "bre_b" to "Bre-B (pagos desde cualquier banco)",
         ).forEach { (id, label) ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

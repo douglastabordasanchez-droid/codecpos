@@ -110,7 +110,7 @@ object AlertaPagos {
     fun alertarDesdeLector(context: Context, entidad: String, textoBanco: String) {
         val prefs = Prefs(context.applicationContext)
         ultimaAlertaNativa = System.currentTimeMillis()
-        val nombre = entidad.replaceFirstChar { it.uppercase() }
+        val nombre = if (entidad == "bre_b") "Bre-B" else entidad.replaceFirstChar { it.uppercase() }
         val monto = montoDelTexto(textoBanco)
         val frase = if (monto != null) "Has recibido un pago de $monto pesos por $nombre." else "Has recibido un pago por $nombre."
         val montoVisible = monto?.let { "%,d".format(it).replace(',', '.') }

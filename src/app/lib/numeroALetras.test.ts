@@ -32,5 +32,6 @@ describe('frase del anuncio de pago', () => {
     expect(frasePagoRecibido(21000)).toBe('Has recibido un pago de veintiún mil pesos.');
     expect(frasePagoRecibido(1000000, 'daviplata')).toBe('Has recibido un pago de un millón de pesos por Daviplata.');
     expect(frasePagoRecibido(0)).toBe('Has recibido un pago.');
+    expect(frasePagoRecibido(80000, 'bre_b')).toBe('Has recibido un pago de ochenta mil pesos por Bre-B.');
   });
 });

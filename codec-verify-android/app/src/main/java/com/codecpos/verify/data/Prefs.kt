@@ -33,7 +33,15 @@ class Prefs(context: Context) {
         set(value) = prefs.edit().putString(KEY_NOMBRE, value).apply()
 
     var entidadesHabilitadas: Set<String>
-        get() = prefs.getStringSet(KEY_ENTIDADES, DEFAULT_ENTIDADES) ?: DEFAULT_ENTIDADES
+        get() {
+            val guardadas = prefs.getStringSet(KEY_ENTIDADES, DEFAULT_ENTIDADES) ?: DEFAULT_ENTIDADES
+            // Bre-B llegó en la versión 1.1.1: se activa una sola vez para quien ya tenía la app.
+            if (!prefs.getBoolean(KEY_BRE_B_MIGRADO, false)) {
+                prefs.edit().putBoolean(KEY_BRE_B_MIGRADO, true).putStringSet(KEY_ENTIDADES, guardadas + "bre_b").apply()
+                return guardadas + "bre_b"
+            }
+            return guardadas
+        }
         set(value) = prefs.edit().putStringSet(KEY_ENTIDADES, value).apply()
 
     /** Paquetes de apps bancarias a escuchar por entidad — editable porque los
@@ -98,8 +106,9 @@ class Prefs(context: Context) {
         private const val KEY_ALERTA_SONIDO = "alerta_pago_sonido"
         private const val KEY_ALERTA_NOTIFICACION = "alerta_pago_notificacion"
         private const val KEY_ALERTA_VOZ = "alerta_pago_voz"
+        private const val KEY_BRE_B_MIGRADO = "bre_b_migrado"
 
-        val DEFAULT_ENTIDADES = setOf("nequi", "bancolombia", "daviplata", "davivienda")
+        val DEFAULT_ENTIDADES = setOf("nequi", "bancolombia", "daviplata", "davivienda", "bre_b")
 
         // Nombres de paquete verificados contra las fichas públicas de Google
         // Play (agosto 2026) — aun así, si algún banco cambia de paquete o el
@@ -116,6 +125,21 @@ class Prefs(context: Context) {
             // App del banco Davivienda propiamente dicha — distinta de la billetera
             // Daviplata de arriba (paquetes y notificaciones separados).
             "davivienda" to setOf("com.davivienda.daviviendaapp"),
+            // Bre-B viene de CUALQUIER banco. Estas son apps de otros bancos que se escuchan siempre;
+            // además, cualquier notificación que diga "Bre-B" y sea un pago recibido se toma como Bre-B
+            // aunque venga de una app que no está aquí (ver PagoNotificationListenerService).
+            "bre_b" to setOf(
+                "com.nu.production", // Nu Colombia
+                "com.bancodebogota.bancamovil", // Banco de Bogotá
+                "co.com.bbva.mb", // BBVA Colombia
+            ),
+        )
+
+        /** Apps de chat y redes: nunca se leen como pago aunque el texto diga Bre-B. */
+        val APPS_EXCLUIDAS = setOf(
+            "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.thunderdog.challegram",
+            "com.facebook.orca", "com.facebook.katana", "com.instagram.android", "com.zhiliaoapp.musically",
+            "com.google.android.youtube", "com.twitter.android", "com.discord", "com.Slack",
         )
     }
 }

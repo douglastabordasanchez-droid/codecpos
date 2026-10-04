@@ -176,12 +176,24 @@ export function anunciarVoz(texto: string): void {
  * El monto va en palabras para que ninguna voz lo lea mal ("12.345" algunas
  * voces lo leen como doce punto tres cuatro cinco).
  */
+const NOMBRES_MEDIO: Record<string, string> = {
+  nequi: 'Nequi', daviplata: 'Daviplata', bancolombia: 'Bancolombia', davivienda: 'Davivienda',
+  bre_b: 'Bre-B', breb: 'Bre-B', 'bre-b': 'Bre-B', transferencia: 'transferencia', tarjeta: 'tarjeta',
+};
+
+/** Nombre para mostrar y decir del medio de pago (bre_b → Bre-B). */
+export function nombreMedioPago(entidad?: string | null): string {
+  const clave = (entidad || '').trim().toLowerCase();
+  if (!clave || clave === 'otro') return '';
+  return NOMBRES_MEDIO[clave] || clave.charAt(0).toUpperCase() + clave.slice(1);
+}
+
 export function frasePagoRecibido(monto: number, entidad?: string | null): string {
   const n = Math.round(Math.abs(Number(monto) || 0));
   const letras = enteroALetras(n).replace(/veintiuno$/, 'veintiún').replace(/uno$/, 'un');
   const pesos = n >= 1_000_000 && n % 1_000_000 === 0 ? 'de pesos' : 'pesos';
-  const banco = (entidad || '').trim();
-  const porBanco = banco ? ` por ${banco.charAt(0).toUpperCase()}${banco.slice(1).toLowerCase()}` : '';
+  const banco = nombreMedioPago(entidad);
+  const porBanco = banco ? ` por ${banco}` : '';
   return n > 0 ? `Has recibido un pago de ${letras} ${pesos}${porBanco}.` : `Has recibido un pago${porBanco}.`;
 }
 

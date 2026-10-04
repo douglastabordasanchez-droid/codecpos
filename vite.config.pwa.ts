@@ -93,6 +93,8 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,wav}'],
+        // Notificaciones push de pagos (Codec Verify): ver public/push-sw.js.
+        importScripts: ['push-sw.js'],
       },
     }),
   ],
