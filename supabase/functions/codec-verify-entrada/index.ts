@@ -95,13 +95,20 @@ Deno.serve(async (req: Request) => {
     .eq('cliente_id', negocio.id).eq('referencia', referencia).gte('created_at', hace10).limit(1).maybeSingle();
   if (repetido) return json({ ok: true, duplicado: true, mensaje: 'Ese pago ya estaba registrado.' });
 
-  const { error } = await admin.rpc('registrar_pago_automatico', { p_token: token, p_monto: texto, p_entidad: entidad, p_referencia: referencia });
+  const origen = url.searchParams.get('origen') === 'correo' ? 'correo' : 'iphone';
+  // Constancia de los avisos que no se vuelven pago (se ven en Configuración > Codec Verify).
+  const anotar = (resultado: string, detalle: string) =>
+    admin.rpc('registrar_evento_codec_verify', { p_token: token, p_origen: origen, p_entidad: entidad, p_resultado: resultado, p_detalle: detalle, p_texto: texto });
+
+  const { error } = await admin.rpc('registrar_pago_automatico', { p_token: token, p_monto: texto, p_entidad: entidad, p_referencia: referencia, p_origen: origen });
   if (!error) return json({ ok: true, mensaje: 'Pago registrado en Codec Verify.' });
 
   if (/saliente/i.test(error.message)) {
+    await anotar('ignorado', 'Movimiento saliente');
     return json({ ok: false, ignorado: true, mensaje: 'Es un movimiento saliente; no se registra como pago recibido.' });
   }
   if (!/No se pudo extraer el monto/i.test(error.message)) {
+    await anotar('error', error.message.slice(0, 200));
     return json({ ok: false, mensaje: error.message }, 422);
   }
 
@@ -112,6 +119,7 @@ Deno.serve(async (req: Request) => {
     body: JSON.stringify({ p_token: token, p_texto: texto, p_entidad: entidad }),
   }).then((r) => r.json()).catch(() => null);
   if (ia?.ok) return json({ ok: true, mensaje: `Pago de $${Number(ia.monto).toLocaleString('es-CO')} registrado (leído con IA).` });
+  await anotar('no_leido', 'No se encontró el monto en el aviso');
   return json({ ok: false, mensaje: 'No se encontró un monto de pago recibido en el mensaje.' }, 422);
 });
 

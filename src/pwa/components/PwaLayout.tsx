@@ -8,6 +8,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { BottomNav } from './BottomNav';
 import { TopBar } from './TopBar';
 import { DesktopLayout } from './DesktopLayout';
+import { SucursalFlotante } from './SucursalFlotante';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 
@@ -95,6 +96,7 @@ export function PwaLayout() {
         <Outlet />
       </main>
       {navInferiorVisible && <BottomNav />}
+      <SucursalFlotante sobreNavInferior={navInferiorVisible} />
     </>
   );
 }

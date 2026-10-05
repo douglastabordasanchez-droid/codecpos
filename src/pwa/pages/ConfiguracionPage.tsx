@@ -16,6 +16,9 @@ import { TarjetaSoporte } from '../components/TarjetaSoporte';
 import { AjustesAlertasPago } from '../components/AjustesAlertasPago';
 import { ConectarIphone } from '../components/ConectarIphone';
 import { ConfigurarMiNegocio } from '../components/ConfigurarMiNegocio';
+import { SeccionPlegable } from '../components/SeccionPlegable';
+import { UltimosAvisosCodecVerify } from '../components/UltimosAvisosCodecVerify';
+import { UserCircle, Briefcase, BellRing, ShieldCheck as EscudoPagos } from 'lucide-react';
 
 interface NegocioForm {
   nombre_negocio: string;
@@ -42,7 +45,8 @@ export default function ConfiguracionPage() {
   const [permitirModificarPrecio, setPermitirModificarPrecio] = useState(false);
   const [guardandoPrecioManual, setGuardandoPrecioManual] = useState(false);
 
-  const puedeVer = empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  // Configuración la abren todos (Mi perfil, alertas, menú, soporte); lo del negocio solo el administrador.
+  const puedeVer = !!empleado;
   const enAppAndroid = estaEnAppAndroid();
 
   useEffect(() => {
@@ -175,25 +179,27 @@ export default function ConfiguracionPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
       <div className="px-5 pt-8 pb-4">
         <h1 className="text-white text-xl font-black">Configuración</h1>
-        <p className="text-slate-400 text-sm">Datos del negocio y módulos activos</p>
+        <p className="text-slate-400 text-sm">Toca una sección para abrirla</p>
       </div>
 
       {cargando || !form ? (
         <p className="text-slate-500 text-sm text-center py-12">Cargando...</p>
       ) : (
         <>
-          <div className="px-5 space-y-4">
-            <ConfigurarMiNegocio />
+          <div className="px-5 space-y-3">
+            <SeccionPlegable titulo="Mi perfil" subtitulo={empleado.nombre_completo} icono={UserCircle} colorIcono="text-sky-400">
+              <ResumenPerfil />
+            </SeccionPlegable>
 
-            <SeccionDescargarApp />
+            {esAdmin && (
+              <SeccionPlegable titulo="Configurar mi negocio" subtitulo="Tipo de negocio, propina y precios" icono={Briefcase}>
+                <ConfigurarMiNegocio embebido />
+              </SeccionPlegable>
+            )}
 
-            <TarjetaSoporte />
-
-            <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <Store className="w-4 h-4 text-amber-400" />
-                <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Datos del negocio</span>
-              </div>
+            {esAdmin && (
+            <SeccionPlegable titulo="Datos del negocio" subtitulo={form.nombre_negocio || 'Nombre, NIT y contacto'} icono={Store}>
+            <div className="space-y-4">
 
               <div className="space-y-1.5">
                 <Label className="text-slate-400 text-xs">Nombre comercial</Label>
@@ -246,18 +252,17 @@ export default function ConfiguracionPage() {
                 {guardando ? 'Guardando...' : 'Guardar cambios'}
               </Button>
             </div>
+            </SeccionPlegable>
+            )}
 
-            <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                {form.plan === 'PREMIUM' ? (
-                  <Crown className="w-4 h-4 text-amber-400" />
-                ) : (
-                  <Zap className="w-4 h-4 text-sky-400" />
-                )}
-                <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">
-                  Plan {form.plan === 'PREMIUM' ? 'Premium' : 'Básico'}
-                </span>
-              </div>
+            {esAdmin && (
+            <SeccionPlegable
+              titulo={`Plan ${form.plan === 'PREMIUM' ? 'Premium' : 'Básico'} · módulos`}
+              subtitulo={cargandoModulos ? 'Cargando módulos...' : `${modulosActivosInfo.length} módulos activos`}
+              icono={form.plan === 'PREMIUM' ? Crown : Zap}
+              colorIcono={form.plan === 'PREMIUM' ? 'text-amber-400' : 'text-sky-400'}
+            >
+            <div>
               <div className="flex items-center gap-2 mb-2">
                 <Layers className="w-4 h-4 text-purple-400" />
                 <span className="text-white text-sm font-semibold">
@@ -274,36 +279,9 @@ export default function ConfiguracionPage() {
               <p className="text-slate-500 text-xs mt-3">
                 Los módulos se gestionan desde el Panel Desarrollador de Codec Studio. Contáctalos para activar o desactivar alguno.
               </p>
-            </div>
 
-            {esAdmin && (
-              <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-1">
-                  <Tag className="w-4 h-4 text-amber-400" />
-                  <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Modificar precio manualmente</span>
-                </div>
-                <p className="text-slate-500 text-xs mb-4">
-                  Permite editar el precio de un producto en el carrito al momento de cobrar — útil para dar rebajas puntuales.
-                  El descuento queda registrado en la venta, no se pierde en el margen.
-                </p>
-                <label className="flex items-center justify-between gap-4 cursor-pointer">
-                  <span className="text-white text-sm font-semibold">Permitir modificar el valor</span>
-                  <button
-                    type="button"
-                    disabled={guardandoPrecioManual}
-                    onClick={() => handleGuardarPrecioManual(!permitirModificarPrecio)}
-                    className={`shrink-0 w-11 h-6 rounded-full relative transition-colors disabled:opacity-50 ${
-                      permitirModificarPrecio ? 'bg-emerald-500' : 'bg-slate-700'
-                    }`}
-                  >
-                    {guardandoPrecioManual ? (
-                      <Loader2 className="w-4 h-4 text-white animate-spin absolute top-1 left-1" />
-                    ) : (
-                      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${permitirModificarPrecio ? 'right-0.5' : 'left-0.5'}`} />
-                    )}
-                  </button>
-                </label>
-              </div>
+            </div>
+            </SeccionPlegable>
             )}
 
             {tieneModuloDePago(ModuloPOS.FACTURACION_DIAN) && (
@@ -324,11 +302,8 @@ export default function ConfiguracionPage() {
             </Link>
             )}
 
-            <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-1">
-                <PanelLeft className="w-4 h-4 text-sky-400" />
-                <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Personalizar sidebar</span>
-              </div>
+            <SeccionPlegable titulo="Personalizar menú lateral" subtitulo="Ocultar, renombrar u ordenar módulos" icono={PanelLeft} colorIcono="text-sky-400">
+            <div>
               <p className="text-slate-500 text-xs mb-4">
                 Elige qué módulos aparecen en tu menú lateral. Los que ocultes siguen activos, solo dejan de mostrarse en la navegación.
                 También puedes mantener presionado cualquier módulo del menú para renombrarlo o moverlo. Se guarda en tu cuenta: se ve igual en el computador y en el celular.
@@ -352,14 +327,15 @@ export default function ConfiguracionPage() {
                 })}
               </div>
             </div>
+            </SeccionPlegable>
 
-            <AjustesAlertasPago />
+            <SeccionPlegable titulo="Alertas de pago en este dispositivo" subtitulo="Sonido, voz y notificaciones" icono={BellRing} colorIcono="text-emerald-400">
+              <AjustesAlertasPago embebido />
+            </SeccionPlegable>
 
-            <div className="bg-slate-900/70 backdrop-blur border border-purple-800/40 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-1">
-                <ShieldCheck className="w-4 h-4 text-purple-400" />
-                <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Automatización de pagos · Codec Verify</span>
-              </div>
+            {esAdmin && (
+            <SeccionPlegable titulo="Automatización de pagos · Codec Verify" subtitulo="Celular, iPhone, correo y avisos recibidos" icono={EscudoPagos} colorIcono="text-purple-400" destacada>
+            <div>
               <p className="text-slate-500 text-xs mb-4">
                 Conecta un correo o SMS de confirmación de pago (Nequi, Daviplata...) para que el POS se entere solo,
                 sin que nadie tenga que escribir el monto a mano. Este token es el único requisito de seguridad — no lo compartas.
@@ -367,6 +343,7 @@ export default function ConfiguracionPage() {
 
               {form.webhook_token ? (
                 <div className="space-y-3">
+                  <UltimosAvisosCodecVerify clienteId={empleado.cliente_id} />
                   <ConectarIphone token={form.webhook_token} />
                   <div>
                     <Label className="text-slate-400 text-xs">Token del negocio</Label>
@@ -489,9 +466,47 @@ export default function ConfiguracionPage() {
                 </button>
               )}
             </div>
+            </SeccionPlegable>
+            )}
+
+            <SeccionPlegable titulo="Descargar la app" subtitulo="Instálala en este celular o computador" icono={Download}>
+              <SeccionDescargarApp embebido />
+            </SeccionPlegable>
+
+            <TarjetaSoporte />
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Mi perfil (resumen dentro de Configuración) ────────────────────────────
+
+const ROLES_PERFIL: Record<string, string> = {
+  super_usuario: 'Dueño', admin: 'Administrador', cajero: 'Cajero', tecnico: 'Técnico', mesero: 'Mesero', cocina: 'Cocina', barra: 'Barra',
+};
+
+function ResumenPerfil() {
+  const { empleado } = usePwaAuth();
+  if (!empleado) return null;
+  const rolPropio = (empleado as any).permisos?.rolPersonalizadoNombre as string | undefined;
+  const foto = (empleado as any).foto_url as string | undefined;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="w-14 h-14 rounded-2xl bg-slate-800 overflow-hidden flex items-center justify-center shrink-0">
+          {foto ? <img src={foto} alt="" className="w-full h-full object-cover" /> : <UserCircle className="w-8 h-8 text-slate-500" />}
+        </div>
+        <div className="min-w-0">
+          <p className="text-white font-bold truncate">{empleado.nombre_completo}</p>
+          <p className="text-slate-400 text-xs">{rolPropio || ROLES_PERFIL[empleado.rol] || empleado.rol}</p>
+          {(empleado as any).telefono && <p className="text-slate-500 text-xs">{(empleado as any).telefono}</p>}
+        </div>
+      </div>
+      <Link to="/perfil" className="w-full h-11 rounded-xl bg-slate-800 text-white text-sm font-semibold flex items-center justify-center gap-2">
+        Editar mi perfil <ChevronRight className="w-4 h-4" />
+      </Link>
     </div>
   );
 }
@@ -518,7 +533,7 @@ function esSafariIOS(): boolean {
   return /iphone|ipad|ipod/i.test(ua) && /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
 }
 
-function SeccionDescargarApp() {
+function SeccionDescargarApp({ embebido = false }: { embebido?: boolean }) {
   const [plataforma] = useState(detectarPlataforma);
   const yaInstalada = typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches;
 
@@ -532,11 +547,13 @@ function SeccionDescargarApp() {
   }
 
   return (
-    <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
-      <div className="flex items-center gap-2">
-        <Download className="w-4 h-4 text-amber-400" />
-        <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Descargar la app en este celular</span>
-      </div>
+    <div className={embebido ? 'space-y-4' : 'bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4'}>
+      {!embebido && (
+        <div className="flex items-center gap-2">
+          <Download className="w-4 h-4 text-amber-400" />
+          <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Descargar la app en este celular</span>
+        </div>
+      )}
 
       {plataforma === 'ios' ? (
         <div className="space-y-3">

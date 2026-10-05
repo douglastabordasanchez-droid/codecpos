@@ -14,6 +14,10 @@ export interface MiNegocio {
   propinaActiva: boolean;
   porcentajePropina: number;
   permitirModificarPrecio: boolean;
+  /** Módulos que el administrador ocultó en todo el sistema. */
+  modulosOcultos: string[];
+  /** Módulos contratados (los activa Codec en el Panel Desarrollador). */
+  modulosContratados: string[];
 }
 
 export const EVENTO_MI_NEGOCIO = 'codecpos:mi-negocio';
@@ -28,7 +32,7 @@ export function useMiNegocio() {
     if (!clienteId) return;
     const { data } = await getSupabaseClient()!
       .from('clientes_pos')
-      .select('tipo_negocio, nombre_negocio, propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio')
+      .select('tipo_negocio, nombre_negocio, propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio, modulos_ocultos, modulos_activos')
       .eq('id', clienteId)
       .maybeSingle();
     if (!data) return;
@@ -39,6 +43,8 @@ export function useMiNegocio() {
       propinaActiva: d.propina_activa === true,
       porcentajePropina: Math.max(0, Number(d.porcentaje_propina_predeterminado) || 0),
       permitirModificarPrecio: d.permitir_modificar_precio === true,
+      modulosOcultos: Array.isArray(d.modulos_ocultos) ? d.modulos_ocultos : [],
+      modulosContratados: Array.isArray(d.modulos_activos) ? d.modulos_activos : [],
     };
     cache = { clienteId, datos: nuevos };
     setDatos(nuevos);
@@ -64,6 +70,8 @@ export async function guardarMiNegocio(d: MiNegocio) {
     p_permitir_modificar_precio: d.permitirModificarPrecio,
   });
   if (error) throw new Error(error.message);
+  const { error: e2 } = await getSupabaseClient()!.rpc('actualizar_modulos_ocultos', { p_modulos: d.modulosOcultos });
+  if (e2) throw new Error(e2.message);
   cache = null;
   window.dispatchEvent(new CustomEvent(EVENTO_MI_NEGOCIO));
 }

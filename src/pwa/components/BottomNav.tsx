@@ -1,9 +1,9 @@
 import { NavLink } from 'react-router';
+import { Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { Home, Receipt, DollarSign, Bell, Coffee, Wrench, Lock, Package, User, Wallet, RotateCcw, Menu as MenuIcon, LayoutDashboard, FileBarChart, Barcode, Tag, Truck, Users, Award, Calculator, Store, Palette, PartyPopper, PackagePlus, type LucideIcon } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { MENU_INFERIOR_CATALOGO, type MenuInferiorItemId } from '../../app/lib/menuInferiorCatalogo';
-import { SucursalSwitcher } from './SucursalSwitcher';
 import logo from '/logo.png';
 
 const ICONOS: Record<MenuInferiorItemId, LucideIcon> = {
@@ -106,7 +106,13 @@ export function BottomNav() {
           </NavLink>
         )}
 
-        {esAdmin && <SucursalSwitcher variant="bottomnav" />}
+        {/* Configuración en la barra (antes era Sucursal: ahora es un botón flotante, ver SucursalFlotante). */}
+        {esAdmin && (
+          <NavLink to="/configuracion" className={linkClass}>
+            <Settings className="w-5 h-5 shrink-0" />
+            <span className="text-[9px] font-semibold truncate max-w-full">Ajustes</span>
+          </NavLink>
+        )}
         {derecha.map(renderItem)}
       </nav>
     </>

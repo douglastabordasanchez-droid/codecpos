@@ -48,7 +48,7 @@ export function useModulosActivos() {
 
       const { data } = await client
         .from('clientes_pos')
-        .select('plan, modulos_activos, modulos_web, app_movil_habilitada, menu_inferior')
+        .select('plan, modulos_activos, modulos_web, modulos_ocultos, app_movil_habilitada, menu_inferior')
         .eq('id', empleado.cliente_id)
         .maybeSingle();
 
@@ -58,6 +58,7 @@ export function useModulosActivos() {
         plan: string | null;
         modulos_activos: string[] | null;
         modulos_web: string[] | null;
+        modulos_ocultos: string[] | null;
         app_movil_habilitada: boolean | null;
         menu_inferior: unknown;
       } | null;
@@ -80,6 +81,11 @@ export function useModulosActivos() {
       // SUBCONJUNTO de la licencia: nunca puede conceder un módulo no
       // comprado. `null` = el dueño todavía no eligió → se ve todo lo
       // licenciado, igual que antes de existir esta columna.
+      // Módulos que el administrador ocultó en "Configurar mi negocio" (migración 0108).
+      if (row?.modulos_ocultos?.length) {
+        const ocultos = new Set(row.modulos_ocultos);
+        modulosNegocio = modulosNegocio.filter((m) => !ocultos.has(m));
+      }
       if (row?.modulos_web) {
         const permitidosEnWeb = new Set(row.modulos_web as ModuloPOS[]);
         // Facturación electrónica se contrata aparte: si está en la licencia
@@ -101,9 +107,13 @@ export function useModulosActivos() {
 
     cargar();
     const interval = window.setInterval(cargar, REFRESH_MS);
+    // Al guardar "Configurar mi negocio" (módulos ocultos) se refresca de inmediato.
+    const alCambiarNegocio = () => { cargar(); };
+    window.addEventListener('codecpos:mi-negocio', alCambiarNegocio);
     return () => {
       cancelado = true;
       window.clearInterval(interval);
+      window.removeEventListener('codecpos:mi-negocio', alCambiarNegocio);
     };
   }, [empleado?.cliente_id]);
 

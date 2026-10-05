@@ -9,6 +9,8 @@ export interface BusinessConfig {
   propinaActiva: boolean;
   porcentajePropinaPredeterminado: number;
   permitirModificarPrecio: boolean;
+  /** Módulos que el administrador ocultó en "Configurar mi negocio" (web/celular), migración 0108. */
+  modulosOcultos?: string[];
 }
 
 interface BusinessContextType {
@@ -17,6 +19,7 @@ interface BusinessContextType {
   propinaActiva: boolean;
   porcentajePropinaPredeterminado: number;
   permitirModificarPrecio: boolean;
+  modulosOcultos: string[];
   setBusinessConfig: (config: BusinessConfig) => void;
 }
 
@@ -46,6 +49,7 @@ function loadConfig(): BusinessConfig {
         propinaActiva: parsed.propinaActiva === true,
         porcentajePropinaPredeterminado: Math.max(0, Number(parsed.porcentajePropinaPredeterminado) || 0),
         permitirModificarPrecio: parsed.permitirModificarPrecio === true,
+        modulosOcultos: Array.isArray(parsed.modulosOcultos) ? parsed.modulosOcultos : [],
       };
     }
     const legacyType = localStorage.getItem(LEGACY_KEY);
@@ -81,7 +85,7 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       const client = getSupabaseClient();
       const { data, error } = await client!
         .from('clientes_pos')
-        .select('tipo_negocio, nombre_negocio, propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio')
+        .select('tipo_negocio, nombre_negocio, propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio, modulos_ocultos')
         .eq('id', clienteId)
         .maybeSingle();
       if (error || !data) return;
@@ -93,6 +97,7 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
         propinaActiva: d.propina_activa === true,
         porcentajePropinaPredeterminado: Math.max(0, Number(d.porcentaje_propina_predeterminado) || 0),
         permitirModificarPrecio: d.permitir_modificar_precio === true,
+        modulosOcultos: Array.isArray(d.modulos_ocultos) ? d.modulos_ocultos : [],
       };
       if (JSON.stringify(nube) !== JSON.stringify(actual)) {
         setConfig(nube);
@@ -107,7 +112,8 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setBusinessConfig = useCallback((nuevo: BusinessConfig) => {
-    const newConfig = { ...nuevo, tipoNegocio: normalizarTipoNegocio(nuevo.tipoNegocio) };
+    // Los módulos ocultos se manejan desde la web: Electron los conserva al guardar lo demás.
+    const newConfig = { ...config, ...nuevo, tipoNegocio: normalizarTipoNegocio(nuevo.tipoNegocio) };
     const cambio = JSON.stringify(newConfig) !== JSON.stringify(config);
     setConfig(newConfig);
     guardarLocal(newConfig);
@@ -139,9 +145,10 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       propinaActiva: config.propinaActiva,
       porcentajePropinaPredeterminado: config.porcentajePropinaPredeterminado,
       permitirModificarPrecio: config.permitirModificarPrecio,
+      modulosOcultos: config.modulosOcultos || [],
       setBusinessConfig,
     }),
-    [config.tipoNegocio, config.nombreNegocio, config.propinaActiva, config.porcentajePropinaPredeterminado, config.permitirModificarPrecio, setBusinessConfig]
+    [config.tipoNegocio, config.nombreNegocio, config.propinaActiva, config.porcentajePropinaPredeterminado, config.permitirModificarPrecio, config.modulosOcultos, setBusinessConfig]
   );
 
   return (

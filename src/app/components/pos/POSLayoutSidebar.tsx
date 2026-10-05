@@ -30,6 +30,7 @@ import {
   type ConfiguracionModulosGlobal,
 } from '../../lib/permissions';
 import logoImage from '/logo.png';
+import { useBusinessContext } from '../../contexts/BusinessContext';
 
 type MenuItemType = {
   path: string;
@@ -62,6 +63,7 @@ export default function POSLayoutSidebar() {
   const location = useLocation();
   const { darkMode, toggleDarkMode, uiScale } = usePOS();
   const { usuarioActual, esSuperUsuario, esDesarrollador, cerrarSesion, estaAutenticado, modoAdminTemporalActivo, activarModoAdminTemporal, desactivarModoAdminTemporal } = useAuth();
+  const { modulosOcultos: modulosOcultosNegocio } = useBusinessContext();
   const { planInfo, hasFeature } = usePlanRestrictions();
   // Cola de envíos DIAN en segundo plano (null si este negocio no la usa).
   const colaDian = useColaDian();
@@ -471,6 +473,12 @@ export default function POSLayoutSidebar() {
     // FILTRO 1: Licencia del desarrollador (máxima prioridad — restricción real de producto)
     if (item.moduloId && !esModuloPermitidoLicenciaDesarrollador(item.moduloId)) {
       return { allowed: false, reason: 'hidden_by_license' };
+    }
+
+    // Módulos que el administrador ocultó en "Configurar mi negocio" (web o celular): se ocultan
+    // también aquí para que todo el sistema quede configurado igual (migración 0108).
+    if (item.moduloId && modulosOcultosNegocio.includes(item.moduloId)) {
+      return { allowed: false, reason: 'disabled_globally' };
     }
 
     // 🛡️ FIX: "Personalización del Espacio de Trabajo" (Configuración) dice

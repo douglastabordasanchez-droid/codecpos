@@ -685,13 +685,18 @@ export default function VenderPage() {
 
       {metodoPago === 'efectivo' && totalAPagar > 0 && (
         <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-300 text-sm w-24 shrink-0">Recibido</span>
-            <input type="number" inputMode="numeric" min={0} placeholder={String(totalAPagar)} value={recibido} onChange={(e) => setRecibido(e.target.value)} className="h-11 flex-1 px-3 rounded-lg bg-slate-950 border border-slate-700 text-white text-lg font-bold text-right" />
+          <div className="flex items-center gap-3">
+            <span className="text-slate-300 text-sm shrink-0">Recibido</span>
+            {/* min-w-0: sin esto la casilla numérica no se encoge y empuja toda la hoja fuera de la pantalla */}
+            <input type="number" inputMode="numeric" min={0} placeholder={String(totalAPagar)} value={recibido} onChange={(e) => setRecibido(e.target.value)} className="h-11 min-w-0 flex-1 w-full px-3 rounded-lg bg-slate-950 border border-slate-700 text-white text-lg font-bold text-right" />
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             {billetesSugeridos(totalAPagar).map((b) => (
-              <button key={b} onClick={() => setRecibido(String(b))} className="h-8 px-2.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold">
+              <button
+                key={b}
+                onClick={() => setRecibido(String(b))}
+                className={`h-9 rounded-lg text-xs font-bold border ${recibidoNum === b ? 'bg-amber-500 border-amber-500 text-slate-950' : 'bg-slate-900 border-slate-700 text-white'}`}
+              >
                 {b === totalAPagar ? 'Exacto' : money(b)}
               </button>
             ))}
@@ -913,7 +918,7 @@ export default function VenderPage() {
       {mostrarCheckout && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end lg:items-center justify-center" onClick={() => !ventaCompletada && !procesando && setMostrarCheckout(false)}>
           <div
-            className="w-full lg:max-w-lg bg-slate-950 rounded-t-3xl lg:rounded-3xl border-t lg:border border-slate-800 max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]"
+            className="w-full lg:max-w-lg bg-slate-950 rounded-t-3xl lg:rounded-3xl border-t lg:border border-slate-800 max-h-[90vh] overflow-y-auto overflow-x-hidden pb-[env(safe-area-inset-bottom)]"
             onClick={(e) => e.stopPropagation()}
           >
             {ventaCompletada ? (

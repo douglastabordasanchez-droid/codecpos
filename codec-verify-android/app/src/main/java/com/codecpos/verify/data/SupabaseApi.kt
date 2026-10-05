@@ -34,6 +34,38 @@ class SupabaseApi {
     private val anonKey = BuildConfig.SUPABASE_ANON_KEY
 
     /**
+     * Deja constancia de un aviso que no se pudo registrar (migración 0107):
+     * así el negocio ve en Configuración que el celular sí leyó el aviso del
+     * banco y por qué no se volvió pago. Nunca lanza error.
+     */
+    suspend fun registrarEvento(
+        webhookToken: String,
+        entidad: String,
+        resultado: String,
+        detalle: String?,
+        texto: String,
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val body = buildJsonObject {
+                put("p_token", webhookToken)
+                put("p_origen", "android")
+                put("p_entidad", entidad)
+                put("p_resultado", resultado)
+                put("p_detalle", (detalle ?: "").take(300))
+                put("p_texto", texto.take(300))
+            }.toString()
+            val request = Request.Builder()
+                .url("$baseUrl/rest/v1/rpc/registrar_evento_codec_verify")
+                .addHeader("apikey", anonKey)
+                .addHeader("Authorization", "Bearer $anonKey")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toRequestBody(jsonMedia))
+                .build()
+            client.newCall(request).execute().close()
+        } catch (_: Exception) { /* sin red: no es crítico */ }
+    }
+
+    /**
      * Reemplaza la acción HTTP de MacroDroid: envía el texto CRUDO de la
      * notificación — el regex ya corregido en Postgres hace todo el parseo
      * (ver supabase/migrations/0045_registrar_pago_automatico_fix_bancolombia.sql).

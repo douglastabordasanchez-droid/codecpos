@@ -29,7 +29,7 @@ function Interruptor({ activo, onClick, etiqueta }: { activo: boolean; onClick: 
   );
 }
 
-export function AjustesAlertasPago() {
+export function AjustesAlertasPago({ embebido = false }: { embebido?: boolean } = {}) {
   const [prefs, setPrefs] = useState(obtenerAlertasPago);
   const [permiso, setPermiso] = useState(permisoNotificaciones);
   const enApp = estaEnAppAndroid();
@@ -72,12 +72,14 @@ export function AjustesAlertasPago() {
 
 
   return (
-    <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4">
+    <div className={embebido ? 'space-y-4' : 'bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-4'}>
       <div>
-        <div className="flex items-center gap-2 mb-1">
-          <BellRing className="w-4 h-4 text-emerald-400" />
-          <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Alertas de pago en este dispositivo</span>
-        </div>
+        {!embebido && (
+          <div className="flex items-center gap-2 mb-1">
+            <BellRing className="w-4 h-4 text-emerald-400" />
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Alertas de pago en este dispositivo</span>
+          </div>
+        )}
         <p className="text-slate-500 text-xs">
           Cuando Codec Verify detecta un pago, este dispositivo suena fuerte, una voz dice el monto y aparece el aviso.
           {!codecVerifyPwaActivo() && ' Ahora Codec Verify está apagado aquí: actívalo con el escudo de la barra superior.'}

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { TIPOS_NEGOCIO } from '../../data/tipos-negocio';
+import { MODULOS_ESPECIALIZADOS, MODULO_POR_TIPO, ocultosParaTipo } from '../../data/modulosEspecializados';
 import { useMiNegocio, guardarMiNegocio, type MiNegocio } from '../hooks/useMiNegocio';
 
 const ICONOS: Record<string, LucideIcon> = {
@@ -25,7 +26,7 @@ function Interruptor({ activo, onClick, etiqueta }: { activo: boolean; onClick: 
   );
 }
 
-export function ConfigurarMiNegocio() {
+export function ConfigurarMiNegocio({ embebido = false }: { embebido?: boolean } = {}) {
   const { miNegocio } = useMiNegocio();
   const [form, setForm] = useState<MiNegocio | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -52,12 +53,14 @@ export function ConfigurarMiNegocio() {
   };
 
   return (
-    <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-5">
+    <div className={embebido ? 'space-y-5' : 'bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-5 space-y-5'}>
       <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Briefcase className="w-4 h-4 text-amber-400" />
-          <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Configurar mi negocio</span>
-        </div>
+        {!embebido && (
+          <div className="flex items-center gap-2 mb-1">
+            <Briefcase className="w-4 h-4 text-amber-400" />
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Configurar mi negocio</span>
+          </div>
+        )}
         <p className="text-slate-500 text-xs">Lo mismo que en Electron, en Configuración › Mi negocio. Lo que cambies aquí se aplica en todo el sistema.</p>
       </div>
 
@@ -81,7 +84,8 @@ export function ConfigurarMiNegocio() {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setForm({ ...form, tipoNegocio: t.id })}
+                // Elegir el tipo deja el sistema listo para ese negocio: muestra su módulo y oculta los demás especializados.
+                onClick={() => setForm({ ...form, tipoNegocio: t.id, modulosOcultos: ocultosParaTipo(t.id, form.modulosOcultos) })}
                 className={`relative text-left rounded-xl p-3 border transition-all ${activo ? 'border-amber-500 bg-amber-500/10' : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'}`}
               >
                 {activo && <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center"><Check className="w-3 h-3 text-slate-950" /></span>}
@@ -97,6 +101,51 @@ export function ConfigurarMiNegocio() {
             {tipo.atributosEspeciales.length > 0 && ` Datos extra de cada producto: ${tipo.atributosEspeciales.slice(0, 4).join(', ')}.`}
           </p>
         )}
+      </div>
+
+      <div>
+        <p className="text-slate-400 text-xs mb-1">Módulos de tu negocio</p>
+        <p className="text-slate-500 text-[11px] mb-2">Lo que actives aquí aparece en la web, el celular y Electron; lo apagado se oculta en todo el sistema.</p>
+        <div className="space-y-2">
+          {MODULOS_ESPECIALIZADOS.map((m) => {
+            const contratado = form.modulosContratados.includes(m.id);
+            const visible = contratado && !form.modulosOcultos.includes(m.id);
+            const sugerido = MODULO_POR_TIPO[form.tipoNegocio] === m.id;
+            return (
+              <div key={m.id} className={`flex items-center gap-3 rounded-xl border p-3 ${visible ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-slate-800 bg-slate-950/40'}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-white text-sm font-semibold flex items-center gap-2">
+                    {m.nombre}
+                    {sugerido && <span className="px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 text-[10px] font-bold">Para tu tipo</span>}
+                  </p>
+                  <p className="text-slate-500 text-[11px] truncate">{m.descripcion}</p>
+                </div>
+                {contratado ? (
+                  <Interruptor
+                    activo={visible}
+                    etiqueta={m.nombre}
+                    onClick={() => setForm({
+                      ...form,
+                      modulosOcultos: visible ? [...form.modulosOcultos, m.id] : form.modulosOcultos.filter((x) => x !== m.id),
+                    })}
+                  />
+                ) : (
+                  <a
+                    href={`https://wa.me/573238646844?text=${encodeURIComponent(`Hola, quiero activar el módulo ${m.nombre} en Codec POS.`)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="shrink-0 text-[11px] font-bold text-amber-400 border border-amber-500/40 rounded-lg px-2 py-1"
+                  >
+                    Pedir
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {MODULO_POR_TIPO[form.tipoNegocio] && !form.modulosContratados.includes(MODULO_POR_TIPO[form.tipoNegocio]!) && (
+          <p className="text-amber-400 text-[11px] mt-2">Tu plan aún no incluye el módulo de este tipo de negocio. Tócale «Pedir» y te lo activamos.</p>
+        )}
+        {form.tipoNegocio === 'ropa' && <p className="text-slate-400 text-[11px] mt-2">Modo ropa: talla y color en productos y al vender, y filtro por talla.</p>}
       </div>
 
       <div className="space-y-3">
