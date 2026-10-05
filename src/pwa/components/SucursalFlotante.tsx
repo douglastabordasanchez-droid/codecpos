@@ -10,7 +10,7 @@
  * toque, la opción de escanear el QR de la sede donde se está parado y "ver
  * todas". Los empleados no lo ven: quedan anclados a su sede fija.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as PointerEventReact } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router';
 import { Building2, QrCode, Check, Layers, X, Loader2 } from 'lucide-react';
@@ -24,6 +24,10 @@ import { EscanerTiendaQR, type QRPayloadTienda } from './EscanerTiendaQR';
 
 interface Sede { id: string; nombre: string; principal: boolean }
 
+/** Posición elegida por el usuario (fracción del ancho y alto de la pantalla), por dispositivo. */
+const CLAVE_POSICION = 'codecpos_sede_flotante_posicion';
+const MARGEN = 8;
+
 /** Pantallas con su propia barra fija abajo: ahí el botón taparía el cobro. */
 const OCULTO_EN = ['/vender'];
 
@@ -36,6 +40,23 @@ export function SucursalFlotante({ sobreNavInferior }: { sobreNavInferior: boole
   const [sedes, setSedes] = useState<Sede[] | null>(null);
   const [abierto, setAbierto] = useState(false);
   const [escaneando, setEscaneando] = useState(false);
+
+  // ── Arrastrar el botón a cualquier parte de la pantalla ──
+  const [posicion, setPosicion] = useState<{ x: number; y: number } | null>(() => {
+    try { return JSON.parse(localStorage.getItem(CLAVE_POSICION) || 'null'); } catch { return null; }
+  });
+  const [, setRedibujar] = useState(0);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const arrastre = useRef<{ dx: number; dy: number; x0: number; y0: number; movido: boolean } | null>(null);
+  const fueArrastre = useRef(false);
+  const ultimaPosicion = useRef<{ x: number; y: number } | null>(null);
+
+  // Si cambia el tamaño de la pantalla (girar el celular), el botón se vuelve a acomodar dentro.
+  useEffect(() => {
+    const alCambiar = () => setRedibujar((n) => n + 1);
+    window.addEventListener('resize', alCambiar);
+    return () => window.removeEventListener('resize', alCambiar);
+  }, []);
 
   useEffect(() => suscribirSucursalActiva(() => setSucursalLocal(getSucursalActiva())), []);
 
@@ -82,14 +103,59 @@ export function SucursalFlotante({ sobreNavInferior }: { sobreNavInferior: boole
     );
   }
 
+  const ubicar = (left: number, top: number) => {
+    const b = botonRef.current;
+    const ancho = b?.offsetWidth || 120;
+    const alto = b?.offsetHeight || 48;
+    return {
+      left: Math.min(Math.max(MARGEN, left), window.innerWidth - ancho - MARGEN),
+      top: Math.min(Math.max(MARGEN, top), window.innerHeight - alto - MARGEN),
+    };
+  };
+
+  const alPresionar = (e: PointerEventReact<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    arrastre.current = { dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY, movido: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const alMover = (e: PointerEventReact<HTMLButtonElement>) => {
+    const a = arrastre.current;
+    if (!a) return;
+    // Un toque que apenas se mueve sigue siendo un toque (abre la lista).
+    if (!a.movido && Math.hypot(e.clientX - a.x0, e.clientY - a.y0) < 6) return;
+    a.movido = true;
+    const { left, top } = ubicar(e.clientX - a.dx, e.clientY - a.dy);
+    ultimaPosicion.current = { x: left / window.innerWidth, y: top / window.innerHeight };
+    setPosicion(ultimaPosicion.current);
+  };
+  const alSoltar = () => {
+    const a = arrastre.current;
+    arrastre.current = null;
+    if (!a?.movido) return;
+    fueArrastre.current = true;
+    try { localStorage.setItem(CLAVE_POSICION, JSON.stringify(ultimaPosicion.current)); } catch { /* sin almacenamiento */ }
+  };
+
+  const estiloPosicion = posicion ? ubicar(posicion.x * window.innerWidth, posicion.y * window.innerHeight) : undefined;
+
   return (
     <>
       <button
-        onClick={() => setAbierto(true)}
-        className={`fixed left-4 z-30 h-12 pl-3 pr-4 rounded-full flex items-center gap-2 shadow-lg border max-w-[60vw] ${
+        ref={botonRef}
+        onPointerDown={alPresionar}
+        onPointerMove={alMover}
+        onPointerUp={alSoltar}
+        onPointerCancel={alSoltar}
+        onClick={() => {
+          if (fueArrastre.current) { fueArrastre.current = false; return; }
+          setAbierto(true);
+        }}
+        style={{ ...(estiloPosicion || {}), touchAction: 'none' }}
+        className={`fixed z-30 h-12 pl-3 pr-4 rounded-full flex items-center gap-2 shadow-lg border max-w-[60vw] select-none cursor-grab active:cursor-grabbing ${
           sucursal ? 'bg-emerald-600 border-emerald-500' : 'bg-slate-900 border-slate-700'
-        } ${sobreNavInferior ? 'bottom-[calc(5.5rem+env(safe-area-inset-bottom))]' : 'bottom-[calc(1rem+env(safe-area-inset-bottom))]'}`}
-        aria-label="Sucursal"
+        } ${posicion ? '' : `left-4 ${sobreNavInferior ? 'bottom-[calc(5.5rem+env(safe-area-inset-bottom))]' : 'bottom-[calc(1rem+env(safe-area-inset-bottom))]'}`}`}
+        aria-label="Sucursal (arrástralo para moverlo)"
+        title="Toca para cambiar de sede · arrástralo para moverlo"
       >
         <Building2 className="w-5 h-5 shrink-0" style={{ color: sucursal ? '#fff' : undefined }} />
         <span className={`text-xs font-bold truncate ${sucursal ? '' : 'text-white'}`} style={sucursal ? { color: '#fff' } : undefined}>
