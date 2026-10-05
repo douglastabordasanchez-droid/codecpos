@@ -7,8 +7,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/index.css';
 
-// Importación directa sin lazy loading para evitar errores en Figma Make
-import App from './app/App.tsx';
+import { prepararAlmacenGrande } from './app/lib/almacenGrande';
 
 // Prevenir errores de comunicación en Figma Make
 const isFigmaMake = typeof window !== 'undefined' && window.location.hostname.includes('figma.com');
@@ -24,7 +23,12 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 
 // Wrapper con error boundary para entornos como Figma Make
-const renderApp = () => {
+// El catálogo y el stock por sede viven en IndexedDB (no caben en localStorage
+// con miles de referencias): se cargan a memoria ANTES de importar la app, que
+// los lee de forma síncrona desde el primer momento (ver almacenGrande.ts).
+const renderApp = async () => {
+  await prepararAlmacenGrande().catch((e) => console.error('[almacén]', e));
+  const { default: App } = await import('./app/App.tsx');
   try {
     root.render(
       <StrictMode>

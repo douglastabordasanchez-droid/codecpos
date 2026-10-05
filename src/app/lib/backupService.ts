@@ -8,6 +8,7 @@ import { dbManager } from './indexedDB';
 import { logger } from './logger';
 import { storeEvents } from './electronStore';
 import { historicoService } from './historicoService';
+import { guardarAlmacenGrandeAhora } from './almacenGrande';
 
 interface BackupData {
   version: string;
@@ -891,6 +892,8 @@ class BackupService {
     if (!window.electron?.backup?.onBeforeQuitBackup) return;
     window.electron.backup.onBeforeQuitBackup(async () => {
       try {
+        // Lo último del catálogo y del stock por sede (ver almacenGrande.ts) se guarda antes de salir.
+        await guardarAlmacenGrandeAhora().catch(() => {});
         await this.createBackup();
       } catch (error) {
         logger.error('Error creando el backup de cierre', error as Error);

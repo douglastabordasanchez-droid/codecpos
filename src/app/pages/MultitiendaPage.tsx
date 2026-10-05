@@ -16,13 +16,17 @@ import {
   Tienda, TipoTienda, Transferencia, ItemTransferencia,
   listarTiendas, listarTransferencias,
   ejecutarTransferencia, getEstadisticasMultitienda,
-  productosConStockDeTienda, inicializarStockDesdeCatalogo,
+  productosConStockDeTienda, inicializarStockDesdeCatalogo, getTiendaActiva, getTiendaActivaId,
 } from '../lib/multitiendaService';
 import { useMultitienda } from '../contexts/MultitiendaContext';
 import { ModalQRTienda } from '../components/pos/ModalQRTienda';
 import { ICONOS_TIENDA_PRESET, IconoTienda } from '../lib/tiendaIconos';
 import { toast } from 'sonner';
 import { usePOS } from '../contexts/POSContext';
+import { useAuth } from '../contexts/AuthContext';
+import { getLinkedClienteId } from '../lib/supabase/tenantLink';
+import { activarMultitiendaNube, obtenerConfigMultitienda } from '../lib/multitiendaNube';
+import { MultitiendaNube } from '../components/multitienda/MultitiendaNube';
 
 // ──────────────────────────────────────────────
 //  HELPERS
@@ -975,7 +979,7 @@ function InventarioPorTienda({ tiendas }: { tiendas: Tienda[] }) {
 
 type Tab = 'tiendas' | 'inventario' | 'historial';
 
-export default function MultitiendaPage() {
+function MultitiendaLocal() {
   const { tiendas, tiendaActual, cambiarTienda, recargarTiendas, borrarTienda } = useMultitienda();
   const { darkMode } = usePOS();
   const dm = (d: string, l: string) => darkMode ? d : l;
@@ -1205,6 +1209,65 @@ export default function MultitiendaPage() {
         onClose={() => setTiendaQR(null)}
         tienda={tiendaQR}
       />
+    </div>
+  );
+}
+/**
+ * Con la multitienda en la nube activada (migración 0111) la caja usa la misma
+ * pantalla que la web: stock por sede en la nube, transferencias "en camino"
+ * y recepción. Sin activarla, sigue el modo local de siempre.
+ */
+export default function MultitiendaPage() {
+  const { sesionActiva } = useAuth();
+  const clienteId = getLinkedClienteId();
+  const [nube, setNube] = useState<boolean | null>(clienteId ? null : false);
+  const esAdmin = ['super_usuario', 'admin'].includes(String(sesionActiva?.rol || ''));
+
+  useEffect(() => {
+    if (!clienteId) return;
+    obtenerConfigMultitienda().then((c) => setNube(c.nube)).catch(() => setNube(false));
+  }, [clienteId]);
+
+  if (nube === null) return <div className="p-10 text-center text-slate-400">Cargando multitienda...</div>;
+  if (nube && clienteId) {
+    return (
+      <div className="h-screen overflow-y-auto p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="mb-4">
+          <h1 className="text-white text-2xl font-black">Multitienda</h1>
+          <p className="text-slate-400 text-sm">Inventario de cada sede en la nube y transferencias entre ellas · esta caja es {getTiendaActiva()?.nombre || 'Tienda Principal'}</p>
+        </div>
+        <MultitiendaNube clienteId={clienteId} esAdmin={esAdmin} miSede={getTiendaActivaId()} />
+      </div>
+    );
+  }
+  return (
+    <>
+      {clienteId && esAdmin && <BannerActivarNube onActivada={() => setNube(true)} />}
+      <MultitiendaLocal />
+    </>
+  );
+}
+
+function BannerActivarNube({ onActivada }: { onActivada: () => void }) {
+  const [activando, setActivando] = useState(false);
+  return (
+    <div className="mx-6 mt-6 p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 flex flex-col md:flex-row md:items-center gap-3">
+      <p className="text-sm text-amber-100 flex-1">
+        <strong>¿Varias sedes, cada una con su caja?</strong> Activa el inventario por sede en la nube: todas las cajas, la web y el celular ven el mismo stock, y las transferencias quedan en camino hasta que la sede las recibe.
+      </p>
+      <button
+        onClick={async () => {
+          if (!window.confirm('¿Activar la multitienda en la nube? Desde ahora el stock de cada sede se maneja en la nube.')) return;
+          setActivando(true);
+          try { await activarMultitiendaNube(); toast.success('Multitienda en la nube activada'); onActivada(); }
+          catch (e) { toast.error('No se pudo activar', { description: (e as Error).message }); }
+          finally { setActivando(false); }
+        }}
+        disabled={activando}
+        className="h-10 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-sm disabled:opacity-50 shrink-0"
+      >
+        {activando ? 'Activando...' : 'Activar en la nube'}
+      </button>
     </div>
   );
 }

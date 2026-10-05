@@ -4,6 +4,8 @@
  * 100% offline — localStorage
  */
 
+import { leerJSONGrande } from './almacenGrande';
+
 // ──────────────────────────────────────────────
 //  TIPOS
 // ──────────────────────────────────────────────
@@ -64,6 +66,22 @@ const KEY_TIENDA_ACTIVA  = 'multitienda_activa_id';
 
 function uid(): string {
   return `tid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Catálogo de la caja indexado por id, sin volver a interpretar 'pos-productos'
+ * (14 MB con 20.000 referencias) en cada consulta de stock: se rehace solo
+ * cuando el catálogo cambia. De solo lectura.
+ */
+let indiceCache: { lista: any[]; mapa: Map<string, any> } | null = null;
+function catalogo(): any[] {
+  const lista = leerJSONGrande<any[]>('pos-productos', []);
+  return Array.isArray(lista) ? lista : [];
+}
+function indicePorId(): Map<string, any> {
+  const lista = catalogo();
+  if (!indiceCache || indiceCache.lista !== lista) indiceCache = { lista, mapa: new Map(lista.map((p: any) => [p.id, p])) };
+  return indiceCache.mapa;
 }
 
 function getStockMap(): StockMap {
@@ -199,9 +217,7 @@ export function getTiendaActiva(): Tienda | null {
 export function getStockEnTienda(productoId: string, tiendaId: string): number {
   if (tiendaId === 'tienda_principal' || esTiendaPrincipal(tiendaId)) {
     try {
-      const raw = localStorage.getItem('pos-productos');
-      const productos: any[] = raw ? JSON.parse(raw) : [];
-      const p = productos.find((p: any) => p.id === productoId);
+      const p = indicePorId().get(productoId);
       return p?.stock ?? 0;
     } catch { return 0; }
   } else {
@@ -241,16 +257,34 @@ export function setStockEnTienda(productoId: string, tiendaId: string, nuevoStoc
 }
 
 /**
+ * Multitienda en la nube: aplica de una vez el stock de una sede que no es la
+ * principal, tal como lo tiene la nube (una sola escritura, no una por producto).
+ */
+export function aplicarStockSedeDesdeNube(tiendaId: string, cambios: Record<string, number>): number {
+  const ids = Object.keys(cambios);
+  if (ids.length === 0) return 0;
+  const map = getStockMap();
+  const actual = map[tiendaId] ?? {};
+  let distintos = 0;
+  for (const id of ids) {
+    if (actual[id] !== cambios[id]) { actual[id] = cambios[id]; distintos++; }
+  }
+  if (distintos > 0) {
+    map[tiendaId] = actual;
+    saveStockMap(map);
+  }
+  return distintos;
+}
+
+/**
  * Obtiene el resumen de stock de TODOS los productos en una tienda dada.
  * Retorna un objeto { productoId → stock }
  */
 export function getStockResumenTienda(tiendaId: string): Record<string, number> {
   if (tiendaId === 'tienda_principal' || esTiendaPrincipal(tiendaId)) {
     try {
-      const raw = localStorage.getItem('pos-productos');
-      const productos: any[] = raw ? JSON.parse(raw) : [];
       const res: Record<string, number> = {};
-      productos.forEach((p: any) => { res[p.id] = p.stock ?? 0; });
+      catalogo().forEach((p: any) => { res[p.id] = p.stock ?? 0; });
       return res;
     } catch { return {}; }
   } else {
@@ -411,8 +445,7 @@ export function ejecutarTransferencia(solicitud: SolicitudTransferencia): Transf
 export function getEstadisticasMultitienda() {
   const tiendas = listarTiendas();
   const transferencias = getTransferencias();
-  const raw = localStorage.getItem('pos-productos');
-  const productos: any[] = raw ? JSON.parse(raw) : [];
+  const productos = catalogo();
 
   const totalProductos = productos.length;
   const tiendaStats = tiendas.map(t => {

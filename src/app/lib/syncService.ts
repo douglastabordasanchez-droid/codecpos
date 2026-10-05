@@ -12,7 +12,7 @@
 import { dbManager, Producto, Venta } from './indexedDB';
 import { getSupabaseClient } from './supabase/config';
 import { getLinkedClienteId, restablecerSesionSync } from './supabase/tenantLink';
-import { listarTiendas, getStockResumenTienda, ejecutarTransferencia, reemplazarTiendasDesdeNube } from './multitiendaService';
+import { listarTiendas, getStockResumenTienda, ejecutarTransferencia, reemplazarTiendasDesdeNube, getTiendaActivaId, aplicarStockSedeDesdeNube } from './multitiendaService';
 import { descargarTiendas } from './supabase/tiendasSyncService';
 import { descargarConfiguracionEmpresaDesdeNube, sincronizarConfiguracionEmpresaPendiente } from './supabase/empresaConfigSyncService';
 import { listarCuentasCartera, guardarCuentaCarteraRaw, registrarAbonoEnCierre, CuentaCartera } from './carteraService';
@@ -44,6 +44,59 @@ async function guardarMarcaServidor(clave: string, filas: Array<Record<string, a
     if (typeof valor === 'string' && (!marca || Date.parse(valor) > Date.parse(marca))) marca = valor;
   }
   if (marca) await dbManager.setConfig(clave, marca);
+}
+
+/**
+ * Multitienda en la nube (migración 0111): el stock de cada sede lo lleva la
+ * nube. La caja deja de subir cantidades absolutas (cada venta descuenta en la
+ * nube) y baja el stock de su sede. Se recuerda aquí y se refresca en cada
+ * revisión completa.
+ */
+const CLAVE_MULTITIENDA_NUBE = 'multitienda_nube';
+export function multitiendaEnNube(): boolean {
+  return localStorage.getItem(CLAVE_MULTITIENDA_NUBE) === '1';
+}
+
+/** Lo vendido en esta caja que todavía no subió a la nube, por producto local. */
+async function vendidoSinSubir(): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>();
+  const sumar = (items: any[] | undefined) => (items || []).forEach((it) => {
+    const id = it?.productoId || it?.id;
+    if (id) mapa.set(id, (mapa.get(id) || 0) + (Number(it.cantidad) || 0));
+  });
+  try { (await dbManager.getVentasPendientes()).forEach((v) => sumar(v.items)); } catch { /* sin base local */ }
+  try { JSON.parse(localStorage.getItem('pos-ventas-pendientes') || '[]').forEach((v: any) => sumar(v?.items)); } catch { /* vacío */ }
+  return mapa;
+}
+
+/** ¿Esta caja es la de la sede principal? (ahí el stock vive en productos.stock). */
+function cajaEsSedePrincipal(): boolean {
+  const activa = getTiendaActivaId();
+  return !activa || activa === 'tienda_principal' || !!listarTiendas().find((t) => t.id === activa)?.esPrincipal;
+}
+
+/**
+ * Multitienda en la nube: la caja ya no sube la cantidad absoluta (cada venta descuenta en
+ * la nube). Si el stock local de un producto no cuadra con el último que dio la nube menos lo
+ * vendido aquí sin subir, alguien lo ajustó a mano en esta caja (llegada de mercancía, conteo):
+ * se registra en la nube como ajuste de la sede principal, con su constancia en el kardex.
+ */
+async function subirAjustesManualesStock(
+  client: NonNullable<ReturnType<typeof getSupabaseClient>>,
+  productos: Array<{ supabaseId?: string | null; id: string; stock?: number; stockNube?: number }>,
+): Promise<void> {
+  if (!multitiendaEnNube() || !cajaEsSedePrincipal()) return;
+  const pendiente = await vendidoSinSubir();
+  const ajustes = productos.flatMap((p) => {
+    if (!p.supabaseId || typeof p.stockNube !== 'number') return [];
+    const vendido = pendiente.get(p.id) || 0;
+    const esperado = p.stockNube - vendido;
+    const local = Number(p.stock) || 0;
+    return Math.abs(local - esperado) > 0.0001 ? [{ producto_id: p.supabaseId, cantidad: local + vendido }] : [];
+  });
+  if (ajustes.length === 0) return;
+  const { error } = await client.rpc('cargar_stock_sede', { p_tienda: 'tienda_principal', p_items: ajustes, p_modo: 'fijar' });
+  if (error) throw error;
 }
 const STEP_TIMEOUT_MS = 20_000;
 
@@ -157,6 +210,8 @@ function construirEntradaLocalStorage(producto: Producto, existente: any | undef
     precio: producto.precio,
     costo: producto.costo,
     stock: producto.stock,
+    // Último stock que dio la nube (multitienda en la nube): sirve para distinguir un ajuste manual de una venta.
+    stockNube: (producto as any).stockNube ?? existente?.stockNube,
     stockMinimo: producto.stockMinimo,
     minStock: producto.stockMinimo,
     categoria: producto.categoria,
@@ -343,6 +398,9 @@ class SyncService {
           this.aplicarCambioRemotoProducto((payload.new ?? payload.old) as any).catch(() => {});
         }
       );
+    canal = canal.on('postgres_changes' as any, { event: '*', schema: 'public', table: 'tiendas_stock', filter: filtro } as any, (payload: any) => {
+      if (multitiendaEnNube() && payload?.new?.tienda_id === getTiendaActivaId()) this.pedirPasos(['pull_stock_sede']);
+    });
     for (const [tabla, evento, paso] of avisos) {
       canal = canal.on('postgres_changes' as any, { event: evento, schema: 'public', table: tabla, filter: filtro } as any, (payload: any) => {
         if (deOtroLado(payload)) this.pedirPasos([paso]);
@@ -414,6 +472,8 @@ class SyncService {
     const pasosBajada: Array<[string, () => Promise<void>]> = [
       ['pull_configuracion_empresa', async () => { await descargarConfiguracionEmpresaDesdeNube(); }],
       ['pull_tiendas', async () => {
+        const { data: cfg } = await client.rpc('obtener_config_multitienda');
+        if (cfg && typeof cfg === 'object') localStorage.setItem(CLAVE_MULTITIENDA_NUBE, (cfg as any).nube ? '1' : '0');
         const tiendas = await descargarTiendas();
         if (tiendas?.length) {
           // 🚀 FIX rendimiento: antes se avisaba "tiendas sincronizadas" en
@@ -430,6 +490,7 @@ class SyncService {
         }
       }],
       ['pull_productos', () => this.pullProductosRemotos(client, clienteId)],
+      ['pull_stock_sede', () => this.pullStockSede(client, clienteId)],
       ['pull_ventas', () => this.pullVentasRemotas(client, clienteId)],
       ['pull_gastos', () => this.pullGastosRemotos(client, clienteId)],
       ['pull_cierres', () => this.pullCierresRemotos(client, clienteId)],
@@ -527,6 +588,19 @@ class SyncService {
     let resultado: Producto;
 
     if (local) {
+      // Multitienda en la nube: el stock de la sede principal lo lleva la nube. Aunque haya una
+      // edición local pendiente (o los relojes no coincidan), se toma su stock menos lo vendido
+      // aquí que aún no subió; el resto de la edición local se respeta.
+      if (multitiendaEnNube() && (local.syncStatus === 'pending' || local.updatedAt >= remoteUpdatedAt)) {
+        const pendiente = (await vendidoSinSubir()).get(local.id) || 0;
+        const stockNube = Math.max(0, Number(remote.stock) - pendiente);
+        if (Number(local.stock) === stockNube) return null;
+        const soloStock: Producto = { ...local, stock: stockNube, supabaseId: remote.id, stockNube: Number(remote.stock) } as Producto;
+        await dbManager.putProductoRaw(soloStock);
+        if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(soloStock);
+        if (opts?.productosLocales) opts.productosLocales[opts.productosLocales.indexOf(local)] = soloStock;
+        return soloStock;
+      }
       // Hay una edición local sin subir todavía: no la pisamos con la remota.
       if (local.syncStatus === 'pending') return null;
       // Local ya está al día o más reciente (last-write-wins por updatedAt).
@@ -572,7 +646,8 @@ class SyncService {
         supabaseId: remote.id,
         updatedAt: remoteUpdatedAt,
         syncStatus: 'synced',
-      };
+        stockNube: Number(remote.stock),
+      } as Producto;
       await dbManager.putProductoRaw(actualizado);
       if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(actualizado);
       if (opts?.productosLocales) opts.productosLocales[opts.productosLocales.indexOf(local)] = actualizado;
@@ -662,6 +737,48 @@ class SyncService {
    * un numero LOCAL fresco (mismo contador que usa POSPageNew para ventas
    * nuevas) y se conserva el numero de Supabase solo como referencia.
    */
+  /**
+   * Multitienda en la nube, caja de una sede que no es la principal: baja el stock de SU
+   * sede (solo lo que cambió desde la última vez, por la fecha del servidor) y le resta lo
+   * vendido aquí que todavía no subió. La principal ya lo recibe con los productos.
+   */
+  private async pullStockSede(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    if (!multitiendaEnNube()) return;
+    const sede = getTiendaActivaId();
+    if (!sede || sede === 'tienda_principal' || listarTiendas().find((t) => t.id === sede)?.esPrincipal) return;
+
+    const clave = `lastPullStockSede_${sede}`;
+    const desde = await dbManager.getConfig(clave);
+    const filas: Array<{ producto_id: string; cantidad: number; actualizado_en: string }> = [];
+    for (let pagina = 0; ; pagina++) {
+      let q = client.from('tiendas_stock').select('producto_id, cantidad, actualizado_en')
+        .eq('cliente_id', clienteId).eq('tienda_id', sede)
+        .order('actualizado_en', { ascending: true }).range(pagina * 1000, pagina * 1000 + 999);
+      if (desde) q = q.gt('actualizado_en', desde);
+      const { data, error } = await q;
+      if (error) throw error;
+      filas.push(...((data || []) as any[]));
+      if (!data || data.length < 1000) break;
+    }
+    if (filas.length === 0) return;
+
+    const mapaGuardado = (await dbManager.getConfig('productosIdMap')) as Record<string, string> | null;
+    const localPorSupabase = new Map<string, string>();
+    for (const [local, supa] of Object.entries(mapaGuardado || {})) localPorSupabase.set(supa, local);
+    for (const p of await dbManager.getAllProductos()) if (p.supabaseId) localPorSupabase.set(p.supabaseId, p.id);
+
+    const pendiente = await vendidoSinSubir();
+    const cambios: Record<string, number> = {};
+    for (const f of filas) {
+      const local = localPorSupabase.get(f.producto_id);
+      if (local) cambios[local] = Math.max(0, Number(f.cantidad) - (pendiente.get(local) || 0));
+    }
+    if (aplicarStockSedeDesdeNube(sede, cambios) > 0) {
+      window.dispatchEvent(new CustomEvent('codecpos:productos-sincronizados'));
+    }
+    await guardarMarcaServidor(clave, filas, 'actualizado_en', desde);
+  }
+
   private async pullVentasRemotas(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
     const lastPull = await dbManager.getConfig('lastPullVentas');
 
@@ -1084,6 +1201,8 @@ class SyncService {
     const pendientes = await dbManager.getProductosPendientes();
     if (pendientes.length === 0) return;
 
+    await subirAjustesManualesStock(client, pendientes as any);
+
     for (const p of pendientes) {
       const payload = {
         cliente_id: clienteId,
@@ -1093,7 +1212,7 @@ class SyncService {
         categoria: p.categoria || null,
         precio_venta: p.precio,
         costo: p.costo,
-        stock: p.stock,
+        ...(multitiendaEnNube() && p.supabaseId ? {} : { stock: p.stock }),
         stock_minimo: p.stockMinimo,
         unidad: p.unidad || null,
         iva: p.iva,
@@ -1188,6 +1307,7 @@ class SyncService {
     // $0 aunque el producto sí tuviera costo registrado. Se guarda aquí,
     // en el mismo punto donde se conoce el UUID real recién asignado.
     const mapaIdSupabase: Record<string, string> = { ...((await dbManager.getConfig('productosIdMap')) || {}) };
+    await subirAjustesManualesStock(client, pendientes.map((p: any) => ({ ...p, supabaseId: p.supabaseId || mapaIdSupabase[p.id] })));
 
     for (const p of pendientes) {
       const { data: filaSubida, error } = await client.from('productos').upsert(
@@ -1199,7 +1319,7 @@ class SyncService {
           categoria: p.categoria || null,
           precio_venta: p.precio ?? 0,
           costo: p.costo ?? 0,
-          stock: p.stock ?? 0,
+          ...(multitiendaEnNube() && mapaIdSupabase[p.id] ? {} : { stock: p.stock ?? 0 }),
           stock_minimo: p.minStock ?? p.stockMinimo ?? null,
           iva: p.aplicaIVA ? 19 : 0,
           fecha_vencimiento: p.fechaVencimiento || null,
@@ -1508,6 +1628,9 @@ class SyncService {
    * hacia el stock real, solo se sube.
    */
   private async pushTiendasStock(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    // En la nube el stock por sede lo llevan las transferencias y las ventas: subir la
+    // versión de esta caja pisaría lo que hicieron las demás sedes.
+    if (multitiendaEnNube()) return;
     const tiendas = listarTiendas();
     if (tiendas.length === 0) return;
 

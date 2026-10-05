@@ -329,6 +329,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // — evita escanear el catálogo completo (hasta 20,000 productos en
   // licencias pagas) en cada tecla presionada.
   const busquedaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const indiceBusquedaRef = useRef<{ productos: unknown; textos: string[] }>({ productos: null, textos: [] });
   const [procesandoPago, setProcesandoPago] = useState(false);
   const [mostrarPago, setMostrarPago] = useState(false);
   const [ventaActual, setVentaActual] = useState<any>(null);
@@ -1220,16 +1221,23 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     // 🚀 El filtro sobre el catálogo completo se debounce ~120ms — imperceptible
     // al escribir, pero evita repetir el escaneo completo en cada tecla.
     busquedaTimeoutRef.current = setTimeout(() => {
-      const t = texto.toLowerCase();
-      const coincidencias = productos.filter(p =>
-        p.codigo.toLowerCase().includes(t) ||
-        p.nombre.toLowerCase().includes(t) ||
-        String(p.keyword || '').toLowerCase().includes(t) ||
-        String(p.categoria || '').toLowerCase().includes(t) ||
-        String(p.marca || '').toLowerCase().includes(t) ||
-        String(p.talla || '').toLowerCase().includes(t) ||
-        String(p.color || '').toLowerCase().includes(t)
-      ).slice(0, 8); // Limitar a 8 resultados
+      // Índice de texto en minúsculas armado una vez por catálogo (con 20.000 referencias
+      // antes se pasaban a minúsculas 7 campos de cada producto en cada búsqueda) y se
+      // deja de buscar al tener 8; el código exacto (lector de barras) va primero.
+      const t = texto.toLowerCase().trim();
+      const indice = indiceBusquedaRef.current.productos === productos
+        ? indiceBusquedaRef.current.textos
+        : (indiceBusquedaRef.current = {
+            productos,
+            textos: productos.map(p => [p.codigo, p.nombre, p.keyword, p.categoria, p.marca, p.talla, p.color]
+              .map(v => String(v || '').toLowerCase()).join('')),
+          }).textos;
+      const coincidencias: typeof productos = [];
+      const exacto = productos.find(p => String(p.codigo || '').toLowerCase() === t);
+      if (exacto) coincidencias.push(exacto);
+      for (let i = 0; i < productos.length && coincidencias.length < 8; i++) {
+        if (productos[i] !== exacto && indice[i].includes(t)) coincidencias.push(productos[i]);
+      }
 
       if (coincidencias.length > 0) {
         setProductosSugeridos(coincidencias);
