@@ -8,7 +8,7 @@ import {
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
-import { codecVerifyPwaActivo, alternarCodecVerifyPwa } from '../lib/codecVerifyPwa';
+import { codecVerifyPwaActivo, alternarCodecVerifyPwa, seguirCodecVerifyPwa } from '../lib/codecVerifyPwa';
 import { useAlertasPago } from '../hooks/useAlertasPago';
 import { PopupPagoRecibido } from './PopupPagoRecibido';
 import { useMenuPersonalizado, type GrupoMenu, type ItemMenu } from '../hooks/useMenuPersonalizado';
@@ -46,7 +46,11 @@ export function DesktopLayout() {
   useEffect(() => {
     const actualizar = () => setVerifyActivo(codecVerifyPwaActivo());
     window.addEventListener('codecverify-pwa:config-changed', actualizar);
-    return () => window.removeEventListener('codecverify-pwa:config-changed', actualizar);
+    const dejarDeSeguir = seguirCodecVerifyPwa();
+    return () => {
+      window.removeEventListener('codecverify-pwa:config-changed', actualizar);
+      dejarDeSeguir();
+    };
   }, []);
 
   const { sonido, alternarSonido } = useAlertasPago(verifyActivo, empleado?.cliente_id);
@@ -54,7 +58,7 @@ export function DesktopLayout() {
   const toggleVerify = () => {
     const nuevo = alternarCodecVerifyPwa(empleado?.id);
     setVerifyActivo(nuevo);
-    toast.success(nuevo ? 'Codec Verify activado' : 'Codec Verify desactivado');
+    toast.success(nuevo ? 'Codec Verify encendido: se leen solo los pagos recibidos' : 'Codec Verify apagado: no se lee ningún aviso');
   };
 
   if (cargando) {

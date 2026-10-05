@@ -103,9 +103,14 @@ Deno.serve(async (req: Request) => {
   const { error } = await admin.rpc('registrar_pago_automatico', { p_token: token, p_monto: texto, p_entidad: entidad, p_referencia: referencia, p_origen: origen });
   if (!error) return json({ ok: true, mensaje: 'Pago registrado en Codec Verify.' });
 
-  if (/saliente/i.test(error.message)) {
-    await anotar('ignorado', 'Movimiento saliente');
-    return json({ ok: false, ignorado: true, mensaje: 'Es un movimiento saliente; no se registra como pago recibido.' });
+  // Con Codec Verify apagado en el POS no se anota nada (migración 0109).
+  if (/apagado/i.test(error.message)) {
+    return json({ ok: false, ignorado: true, mensaje: 'Codec Verify está apagado en el POS; el aviso no se leyó.' });
+  }
+  // Dinero enviado por el propio negocio, solicitudes, promociones, códigos...
+  if (/saliente|No es un pago recibido/i.test(error.message)) {
+    await anotar('ignorado', error.message.slice(0, 200));
+    return json({ ok: false, ignorado: true, mensaje: 'No es dinero recibido; no se registra como pago.' });
   }
   if (!/No se pudo extraer el monto/i.test(error.message)) {
     await anotar('error', error.message.slice(0, 200));

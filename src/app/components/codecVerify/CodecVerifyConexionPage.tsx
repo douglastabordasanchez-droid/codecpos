@@ -83,15 +83,39 @@ export default function CodecVerifyConexionPage() {
     }
   });
 
-  const alternarCodecVerifyActivo = () => {
-    const nuevoValor = !codecVerifyActivo;
-    setCodecVerifyActivo(nuevoValor);
+  const guardarCodecVerifyLocal = (valor: boolean) => {
+    setCodecVerifyActivo(valor);
     localStorage.setItem(
       'codecverify_config',
-      JSON.stringify({ ...JSON.parse(localStorage.getItem('codecverify_config') || '{}'), enabled: nuevoValor })
+      JSON.stringify({ ...JSON.parse(localStorage.getItem('codecverify_config') || '{}'), enabled: valor })
     );
     window.dispatchEvent(new CustomEvent('codecverify:config-changed'));
-    toast.success(nuevoValor ? 'Codec Verify activado' : 'Codec Verify desactivado');
+  };
+
+  // El interruptor es del negocio (migración 0109): con él apagado, ni los
+  // celulares ni el servidor leen avisos. Aquí se trae el estado de la nube.
+  useEffect(() => {
+    getSupabaseClient()
+      ?.rpc('obtener_codec_verify_activo')
+      .then(({ data, error }) => {
+        if (!error && typeof data === 'boolean' && data !== codecVerifyActivo) guardarCodecVerifyLocal(data);
+      });
+    // Solo al abrir la pantalla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const alternarCodecVerifyActivo = async () => {
+    const nuevoValor = !codecVerifyActivo;
+    const client = getSupabaseClient();
+    if (client) {
+      const { error } = await client.rpc('cambiar_codec_verify_activo', { p_activo: nuevoValor });
+      if (error) {
+        toast.error('No se pudo cambiar Codec Verify. Revisa la conexión a internet.');
+        return;
+      }
+    }
+    guardarCodecVerifyLocal(nuevoValor);
+    toast.success(nuevoValor ? 'Codec Verify encendido: se leen solo los pagos recibidos' : 'Codec Verify apagado: no se lee ningún aviso');
   };
 
   const [vozActiva, setVozActivaState] = useState(() => isVozActiva());

@@ -5,7 +5,7 @@ import { Menu, Bell, ShieldCheck, ShieldOff, PanelBottomClose, PanelBottomOpen, 
 import { SideMenu } from './SideMenu';
 import { TiendaSwitcher } from './TiendaSwitcher';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { codecVerifyPwaActivo, alternarCodecVerifyPwa } from '../lib/codecVerifyPwa';
+import { codecVerifyPwaActivo, alternarCodecVerifyPwa, seguirCodecVerifyPwa } from '../lib/codecVerifyPwa';
 import { useAlertasPago } from '../hooks/useAlertasPago';
 import { PopupPagoRecibido } from './PopupPagoRecibido';
 
@@ -23,7 +23,11 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
   useEffect(() => {
     const actualizar = () => setVerifyActivo(codecVerifyPwaActivo());
     window.addEventListener('codecverify-pwa:config-changed', actualizar);
-    return () => window.removeEventListener('codecverify-pwa:config-changed', actualizar);
+    const dejarDeSeguir = seguirCodecVerifyPwa();
+    return () => {
+      window.removeEventListener('codecverify-pwa:config-changed', actualizar);
+      dejarDeSeguir();
+    };
   }, []);
 
   const { sonido, alternarSonido } = useAlertasPago(verifyActivo, empleado?.cliente_id);
@@ -31,7 +35,7 @@ export function TopBar({ navInferiorVisible, onToggleNavInferior }: Props) {
   const toggleVerify = () => {
     const nuevo = alternarCodecVerifyPwa(empleado?.id);
     setVerifyActivo(nuevo);
-    toast.success(nuevo ? 'Codec Verify activado en este celular' : 'Codec Verify desactivado');
+    toast.success(nuevo ? 'Codec Verify encendido: se leen solo los pagos recibidos' : 'Codec Verify apagado: no se lee ningún aviso');
   };
 
   return (

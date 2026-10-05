@@ -5,6 +5,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
+import com.codecpos.verify.BuildConfig
 import com.codecpos.verify.data.Prefs
 import com.codecpos.verify.data.SupabaseApi
 import kotlinx.coroutines.CoroutineScope
@@ -21,11 +23,11 @@ import java.io.IOException
  * las que vienen de un paquete habilitado, reenvía el texto crudo al mismo
  * RPC de Supabase que ya usa MacroDroid hoy.
  *
- * A propósito NO intenta parsear el monto aquí — esa lógica ya vive,
- * probada y corregida, en Postgres (registrar_pago_automatico). Duplicarla
- * en Kotlin sería mantener el mismo regex en dos lugares. Si ese regex no
- * logra extraer un monto, se intenta UNA vez más con la Edge Function
- * `interpretar-pago-ia` (IA como respaldo, no como método principal).
+ * Solo envía avisos con Codec Verify encendido en el POS y que ClasificadorAviso
+ * reconoce como dinero RECIBIDO; los pagos y envíos del propio negocio no salen
+ * del celular. El monto lo lee Postgres (registrar_pago_automatico), que vuelve
+ * a clasificar el aviso. Si ese regex no logra extraer un monto, se intenta UNA
+ * vez más con la Edge Function `interpretar-pago-ia` (IA como respaldo).
  */
 class PagoNotificationListenerService : NotificationListenerService() {
 
@@ -66,6 +68,13 @@ class PagoNotificationListenerService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         super.onNotificationPosted(sbn)
         if (sbn.packageName == packageName) return // ignorar nuestras propias notificaciones
+
+        // 1) Interruptor del negocio: con Codec Verify apagado en el POS el aviso se descarta
+        //    aquí mismo, sin leerlo, guardarlo ni enviarlo.
+        val webhookToken = prefs.webhookToken
+        if (webhookToken.isNullOrBlank()) return // app aún no emparejada
+        if (!prefs.codecVerifyActivo && estadoReciente()) return
+
         // El resumen de un grupo repite lo que ya trae cada notificación individual.
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
@@ -92,23 +101,34 @@ class PagoNotificationListenerService : NotificationListenerService() {
         if (texto.isBlank()) return
         val habilitadas = prefs.entidadesHabilitadas
 
+        // 2) ¿Entró dinero? Solo un aviso RECIBIDO puede volverse pago; lo que el propio negocio
+        //    paga o envía, las solicitudes, promociones y códigos no salen del celular.
+        val clase = ClasificadorAviso.clasificar(texto)
+
         // El método de pago lo dice el contenido: un aviso de Bre-B es Bre-B aunque llegue por la app de
         // Bancolombia, Nu, Davivienda o cualquier otro banco.
         val entidadFinal = when {
-            "bre_b" in habilitadas && esPagoBreB(texto) && paquete !in Prefs.APPS_EXCLUIDAS -> "bre_b"
+            "bre_b" in habilitadas && esAvisoBreB(texto) && paquete !in Prefs.APPS_EXCLUIDAS &&
+                (entidad != null || clase.clase == ClasificadorAviso.Clase.RECIBIDO) -> "bre_b"
             entidad == null -> return // app que no es de un banco habilitado
             entidad !in habilitadas -> return
             else -> entidad
         }
-
-        val webhookToken = prefs.webhookToken
-        if (webhookToken.isNullOrBlank()) return // app aún no emparejada
 
         // Las apps de los bancos actualizan la misma notificación varias veces: un solo registro por aviso.
         if (yaVisto("${sbn.key}|$texto")) return
 
         scope.launch {
             val entidad = entidadFinal
+            if (!confirmarActivo(webhookToken)) return@launch
+            val monto = ClasificadorAviso.montoVisible(texto)
+
+            if (clase.clase != ClasificadorAviso.Clase.RECIBIDO) {
+                // Solo queda en el registro de este celular: el texto no se envía a ningún lado.
+                anotar(entidad, paquete, texto, clase, monto, "IGNORADO", exitoso = false, error = "${clase.clase.etiqueta}: ${clase.motivo}")
+                return@launch
+            }
+
             // Sin internet se reintenta (3 s, 10 s y 30 s) antes de darlo por perdido.
             var resultado = api.registrarPagoAutomatico(webhookToken, texto, entidad)
             for (espera in longArrayOf(3_000, 10_000, 30_000)) {
@@ -117,19 +137,24 @@ class PagoNotificationListenerService : NotificationListenerService() {
                 resultado = api.registrarPagoAutomatico(webhookToken, texto, entidad)
             }
             if (resultado.isSuccess) {
-                EventBus.registrar(EventoCapturado(entidad, paquete, texto.take(160), exitoso = true))
+                anotar(entidad, paquete, texto, clase, monto, "RECIBIDO", exitoso = true)
                 AlertaPagos.alertarDesdeLector(applicationContext, entidad, texto)
                 return@launch
             }
 
             val mensaje = resultado.exceptionOrNull()?.message.orEmpty()
+            // Lo apagaron en el POS mientras llegaba el aviso: no se anota nada.
+            if (mensaje.contains("apagado")) {
+                prefs.codecVerifyActivo = false
+                return@launch
+            }
             // Solo se recurre a la IA cuando el regex falló por no poder EXTRAER
-            // un monto — nunca cuando rechazó a propósito (transacción saliente,
+            // un monto — nunca cuando rechazó a propósito (no es dinero recibido,
             // token inválido), esos casos no deben insistirse con otro intento.
             if (!mensaje.contains("No se pudo extraer el monto")) {
-                EventBus.registrar(EventoCapturado(entidad, paquete, texto.take(160), exitoso = false, error = mensaje))
-                val tipo = if (mensaje.contains("saliente")) "ignorado" else "error"
-                api.registrarEvento(webhookToken, entidad, tipo, mensaje.take(200), texto)
+                val ignorado = mensaje.contains("saliente") || mensaje.contains("No es un pago recibido")
+                anotar(entidad, paquete, texto, clase, monto, if (ignorado) "IGNORADO" else "ERROR", exitoso = false, error = mensaje)
+                api.registrarEvento(webhookToken, entidad, if (ignorado) "ignorado" else "error", mensaje.take(200), texto)
                 return@launch
             }
 
@@ -137,22 +162,55 @@ class PagoNotificationListenerService : NotificationListenerService() {
             val exitoIA = resultadoIA.getOrDefault(false)
             if (exitoIA) AlertaPagos.alertarDesdeLector(applicationContext, entidad, texto)
             else api.registrarEvento(webhookToken, entidad, "no_leido", "No se encontró el monto en el aviso", texto)
-            EventBus.registrar(
-                EventoCapturado(
-                    entidad = entidad,
-                    paquete = paquete,
-                    resumen = if (exitoIA) "[IA] ${texto.take(150)}" else texto.take(160),
-                    exitoso = exitoIA,
-                    error = if (exitoIA) null else (resultadoIA.exceptionOrNull()?.message ?: "El regex y la IA no lograron leer el monto"),
-                )
+            anotar(
+                entidad, paquete, texto, clase, monto,
+                if (exitoIA) "RECIBIDO (IA)" else "SIN MONTO",
+                exitoso = exitoIA,
+                error = if (exitoIA) null else (resultadoIA.exceptionOrNull()?.message ?: "El regex y la IA no lograron leer el monto"),
             )
         }
     }
 
-    /** "Recibiste $50.000 por Bre-B", "Te enviaron plata con tu llave Bre-B"... (solo pagos recibidos). */
-    private fun esPagoBreB(texto: String): Boolean =
-        Regex("(?i)bre[\\s-]?b\\b").containsMatchIn(texto) &&
-            Regex("(?i)recib|te envi|te transfir|te lleg|abon|ingres|deposit").containsMatchIn(texto)
+    /** El estado del interruptor se considera al día durante 2 minutos. */
+    private fun estadoReciente(): Boolean =
+        System.currentTimeMillis() - prefs.codecVerifyActivoConsultadoEn < 2 * 60_000
+
+    /** ¿Codec Verify sigue encendido en el POS? Pregunta al servidor si lo último que se sabe es viejo. */
+    private suspend fun confirmarActivo(webhookToken: String): Boolean {
+        if (estadoReciente()) return prefs.codecVerifyActivo
+        val activo = api.codecVerifyActivo(webhookToken) ?: return prefs.codecVerifyActivo // sin internet: lo último conocido
+        prefs.codecVerifyActivo = activo
+        return activo
+    }
+
+    /**
+     * Registro de lo que leyó el lector: pantalla de estado de la app y, en las versiones de
+     * desarrollo, Logcat con el texto completo (APP, hora, clasificación, valor y resultado)
+     * para ajustar los patrones con avisos reales.
+     */
+    private fun anotar(
+        entidad: String,
+        paquete: String,
+        texto: String,
+        clase: ClasificadorAviso.Resultado,
+        monto: String?,
+        resultado: String,
+        exitoso: Boolean,
+        error: String? = null,
+    ) {
+        val resumen = listOfNotNull(resultado, monto, texto.take(140)).joinToString(" · ")
+        EventBus.registrar(EventoCapturado(entidad, paquete, resumen, exitoso = exitoso, error = error))
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                "CodecVerify",
+                "APP=$paquete | FECHA=${java.util.Date()} | CLASIFICACION=${clase.clase.etiqueta} (${clase.motivo}) | " +
+                    "VALOR=${monto ?: "-"} | RESULTADO=$resultado | TEXTO=$texto",
+            )
+        }
+    }
+
+    /** El aviso menciona Bre-B (si es dinero recibido lo decide ClasificadorAviso). */
+    private fun esAvisoBreB(texto: String): Boolean = Regex("(?i)bre[\\s-]?b\\b").containsMatchIn(texto)
 
     companion object {
         /** Pide a Android que vuelva a conectar el lector (se llama al abrir la app y si se desconecta). */

@@ -78,6 +78,18 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_ALERTA_VOZ, true)
         set(value) = prefs.edit().putBoolean(KEY_ALERTA_VOZ, value).apply()
 
+    /**
+     * Interruptor de Codec Verify del negocio (clientes_pos.codec_verify_activo, migración 0109).
+     * Apagado: el lector descarta cualquier aviso sin leerlo ni enviarlo. Se guarda aquí para
+     * decidir al instante; lo actualizan la app web (al encender o apagar) y la consulta al servidor.
+     */
+    var codecVerifyActivo: Boolean
+        get() = prefs.getBoolean(KEY_CV_ACTIVO, false)
+        set(value) = prefs.edit().putBoolean(KEY_CV_ACTIVO, value).putLong(KEY_CV_ACTIVO_EN, System.currentTimeMillis()).apply()
+
+    /** Cuándo se supo por última vez el estado del interruptor (0 = nunca). */
+    val codecVerifyActivoConsultadoEn: Long get() = prefs.getLong(KEY_CV_ACTIVO_EN, 0L)
+
     val estaEmparejado: Boolean get() = !webhookToken.isNullOrBlank()
 
     fun limpiar() {
@@ -107,6 +119,8 @@ class Prefs(context: Context) {
         private const val KEY_ALERTA_NOTIFICACION = "alerta_pago_notificacion"
         private const val KEY_ALERTA_VOZ = "alerta_pago_voz"
         private const val KEY_BRE_B_MIGRADO = "bre_b_migrado"
+        private const val KEY_CV_ACTIVO = "codec_verify_activo"
+        private const val KEY_CV_ACTIVO_EN = "codec_verify_activo_en"
 
         val DEFAULT_ENTIDADES = setOf("nequi", "bancolombia", "daviplata", "davivienda", "bre_b")
 
@@ -135,11 +149,16 @@ class Prefs(context: Context) {
             ),
         )
 
-        /** Apps de chat y redes: nunca se leen como pago aunque el texto diga Bre-B. */
+        /**
+         * Apps de chat, redes y correo: nunca se leen como pago aunque el texto diga Bre-B.
+         * El correo del banco repite el aviso que ya llegó por su app (registraba el pago dos veces).
+         */
         val APPS_EXCLUIDAS = setOf(
             "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.thunderdog.challegram",
             "com.facebook.orca", "com.facebook.katana", "com.instagram.android", "com.zhiliaoapp.musically",
             "com.google.android.youtube", "com.twitter.android", "com.discord", "com.Slack",
+            "com.google.android.gm", "com.microsoft.office.outlook", "com.samsung.android.email.provider",
+            "com.yahoo.mobile.client.android.mail",
         )
     }
 }

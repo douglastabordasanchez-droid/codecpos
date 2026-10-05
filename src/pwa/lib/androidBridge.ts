@@ -30,6 +30,8 @@ interface AndroidCodecVerifyBridge {
   avisarPago?(id: string, monto: number, titulo: string, cuerpo: string, frase: string, sonido: boolean, notificacion: boolean, voz: boolean): void;
   /** Desde la versión 1.1.1: guarda si este celular suena, notifica y habla los pagos (lo usa también el lector nativo). */
   configurarAlertasPago?(sonido: boolean, notificacion: boolean, voz: boolean): void;
+  /** Desde la versión 1.1.4: Codec Verify encendido o apagado en el POS (apagado, el lector no lee nada). */
+  configurarCodecVerify?(activo: boolean): void;
 }
 
 declare global {

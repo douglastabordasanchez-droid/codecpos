@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { getAndroidBridge } from './androidBridge';
 
 const STORAGE_KEY = 'codecverify_pwa_config';
 
@@ -10,18 +11,27 @@ export function codecVerifyPwaActivo(): boolean {
   }
 }
 
+function guardarLocal(activo: boolean): void {
+  const antes = codecVerifyPwaActivo();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ enabled: activo }));
+  // El lector de la app Android descarta todos los avisos mientras esté apagado.
+  try { getAndroidBridge()?.configurarCodecVerify?.(activo); } catch { /* app vieja */ }
+  if (antes !== activo) window.dispatchEvent(new CustomEvent('codecverify-pwa:config-changed'));
+}
+
 /**
- * `empleadoId` es opcional para no romper llamadas existentes, pero sin él
- * Electron nunca se entera de que este celular activó Codec Verify — ver
- * migración 0041 y CodecVerifyConexionPage.tsx ("Celulares conectados").
+ * El interruptor es del negocio (clientes_pos.codec_verify_activo, migración
+ * 0109): lo comparten Electron, la web y los celulares, y con él apagado el
+ * servidor no registra ningún aviso. `empleadoId` sigue marcando el celular
+ * en "Celulares conectados" de Electron (migración 0041).
  */
 export function alternarCodecVerifyPwa(empleadoId?: string): boolean {
   const nuevo = !codecVerifyPwaActivo();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ enabled: nuevo }));
-  window.dispatchEvent(new CustomEvent('codecverify-pwa:config-changed'));
+  guardarLocal(nuevo);
 
+  const client = getSupabaseClient();
+  client?.rpc('cambiar_codec_verify_activo', { p_activo: nuevo }).then(() => {});
   if (empleadoId) {
-    const client = getSupabaseClient();
     client
       ?.from('empleados')
       .update({ codec_verify_activo: nuevo, codec_verify_actualizado_en: new Date().toISOString() })
@@ -30,6 +40,20 @@ export function alternarCodecVerifyPwa(empleadoId?: string): boolean {
   }
 
   return nuevo;
+}
+
+/** Trae el estado del interruptor del negocio (al abrir la app y al volver a ella). */
+export async function sincronizarCodecVerifyPwa(): Promise<void> {
+  const { data, error } = (await getSupabaseClient()?.rpc('obtener_codec_verify_activo')) ?? {};
+  if (!error && typeof data === 'boolean') guardarLocal(data);
+}
+
+/** Sincroniza ahora y cada vez que la app vuelve a primer plano; devuelve cómo dejar de hacerlo. */
+export function seguirCodecVerifyPwa(): () => void {
+  sincronizarCodecVerifyPwa();
+  const alVolver = () => { if (document.visibilityState === 'visible') sincronizarCodecVerifyPwa(); };
+  document.addEventListener('visibilitychange', alVolver);
+  return () => document.removeEventListener('visibilitychange', alVolver);
 }
 
 export interface NotificacionPagoRow {

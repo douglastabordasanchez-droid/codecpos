@@ -126,6 +126,12 @@ class AndroidNotificationBridge(
         AlertaPagos.alertarDesdeWeb(context, id, titulo, cuerpo, frase, sonido, notificacion, voz)
     }
 
+    /** La app web avisa si Codec Verify está encendido en el POS: apagado, el lector no lee ningún aviso. */
+    @JavascriptInterface
+    fun configurarCodecVerify(activo: Boolean) {
+        prefs.codecVerifyActivo = activo
+    }
+
     /** La app web guarda aquí si este celular suena y notifica los pagos (lo usa el lector nativo). */
     @JavascriptInterface
     fun configurarAlertasPago(sonido: Boolean, notificacion: Boolean, voz: Boolean) {

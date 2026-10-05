@@ -34,6 +34,28 @@ class SupabaseApi {
     private val anonKey = BuildConfig.SUPABASE_ANON_KEY
 
     /**
+     * Interruptor de Codec Verify del negocio (migración 0109). null si no se
+     * pudo consultar (sin internet): quien llama decide con lo último que sabía.
+     */
+    suspend fun codecVerifyActivo(webhookToken: String): Boolean? = withContext(Dispatchers.IO) {
+        try {
+            val body = buildJsonObject { put("p_token", webhookToken) }.toString()
+            val request = Request.Builder()
+                .url("$baseUrl/rest/v1/rpc/codec_verify_esta_activo")
+                .addHeader("apikey", anonKey)
+                .addHeader("Authorization", "Bearer $anonKey")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toRequestBody(jsonMedia))
+                .build()
+            client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) null else resp.body?.string()?.trim()?.toBooleanStrictOrNull()
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
      * Deja constancia de un aviso que no se pudo registrar (migración 0107):
      * así el negocio ve en Configuración que el celular sí leyó el aviso del
      * banco y por qué no se volvió pago. Nunca lanza error.
