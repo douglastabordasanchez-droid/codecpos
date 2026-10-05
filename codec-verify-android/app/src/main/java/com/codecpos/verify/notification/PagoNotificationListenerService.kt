@@ -107,7 +107,14 @@ class PagoNotificationListenerService : NotificationListenerService() {
 
         // El método de pago lo dice el contenido: un aviso de Bre-B es Bre-B aunque llegue por la app de
         // Bancolombia, Nu, Davivienda o cualquier otro banco.
+        // SMS del banco: DaviPlata avisa en su app "Recibiste Plata..." SIN valor y el valor llega por SMS
+        // (código 85888). Solo cuentan SMS de códigos cortos o contactos con nombre de banco.
+        val esSms = paquete in Prefs.APPS_SMS
+        val entidadSms = if (esSms) ClasificadorAviso.entidadDeSms(remitente(sbn.notification), texto) else null
+        if (esSms && (entidadSms == null || clase.clase != ClasificadorAviso.Clase.RECIBIDO)) return
+
         val entidadFinal = when {
+            esSms -> if (entidadSms in habilitadas || entidadSms == "sms_banco") entidadSms!! else return
             "bre_b" in habilitadas && esAvisoBreB(texto) && paquete !in Prefs.APPS_EXCLUIDAS &&
                 (entidad != null || clase.clase == ClasificadorAviso.Clase.RECIBIDO) -> "bre_b"
             entidad == null -> return // app que no es de un banco habilitado
@@ -129,6 +136,19 @@ class PagoNotificationListenerService : NotificationListenerService() {
                 return@launch
             }
 
+            // Entrada sin valor (DaviPlata): el pago se registra con el SMS del banco que trae el valor.
+            if (!ClasificadorAviso.tieneValor(texto)) {
+                anotar(entidad, paquete, texto, clase, monto, "ESPERANDO SMS", exitoso = false, error = "El aviso no trae el valor; se registra con el SMS del banco")
+                return@launch
+            }
+
+            // El mismo pago avisado por la app y por SMS: solo se registra una vez.
+            val valor = ClasificadorAviso.valorEnPesos(texto)
+            if (valor != null && yaRegistradoPorOtraVia(valor, esSms)) {
+                anotar(entidad, paquete, texto, clase, monto, "DUPLICADO", exitoso = false, error = "Ese pago ya se registró por ${if (esSms) "la app del banco" else "SMS"}")
+                return@launch
+            }
+
             // Sin internet se reintenta (3 s, 10 s y 30 s) antes de darlo por perdido.
             var resultado = api.registrarPagoAutomatico(webhookToken, texto, entidad)
             for (espera in longArrayOf(3_000, 10_000, 30_000)) {
@@ -137,6 +157,7 @@ class PagoNotificationListenerService : NotificationListenerService() {
                 resultado = api.registrarPagoAutomatico(webhookToken, texto, entidad)
             }
             if (resultado.isSuccess) {
+                if (valor != null) recordarRegistro(valor, esSms)
                 anotar(entidad, paquete, texto, clase, monto, "RECIBIDO", exitoso = true)
                 AlertaPagos.alertarDesdeLector(applicationContext, entidad, texto)
                 return@launch
@@ -170,6 +191,27 @@ class PagoNotificationListenerService : NotificationListenerService() {
             )
         }
     }
+
+    /** Pagos registrados hace poco: valor, si llegó por SMS y cuándo (para no duplicar app + SMS). */
+    private val registrosRecientes = ArrayDeque<Triple<Long, Boolean, Long>>()
+
+    private fun yaRegistradoPorOtraVia(valor: Long, esSms: Boolean): Boolean = synchronized(registrosRecientes) {
+        val limite = System.currentTimeMillis() - 3 * 60_000
+        registrosRecientes.removeAll { it.third < limite }
+        val previo = registrosRecientes.firstOrNull { it.first == valor && it.second != esSms } ?: return false
+        registrosRecientes.remove(previo) // un SMS cubre un solo aviso de la app (dos pagos iguales seguidos sí cuentan)
+        true
+    }
+
+    private fun recordarRegistro(valor: Long, esSms: Boolean) = synchronized(registrosRecientes) {
+        registrosRecientes.addLast(Triple(valor, esSms, System.currentTimeMillis()))
+        while (registrosRecientes.size > 30) registrosRecientes.removeFirst()
+    }
+
+    /** Remitente del SMS: el título de la notificación ("85888" o el nombre del contacto). */
+    private fun remitente(notification: Notification): String =
+        notification.extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()
+            ?: notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
 
     /** El estado del interruptor se considera al día durante 2 minutos. */
     private fun estadoReciente(): Boolean =

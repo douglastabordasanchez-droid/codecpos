@@ -54,6 +54,48 @@ object ClasificadorAviso {
     /** Solo para el registro en pantalla: el monto que cuenta lo lee el servidor. */
     fun montoVisible(texto: String): String? = MONTO.find(texto)?.value
 
+    /** ¿El aviso trae algún valor? DaviPlata avisa "Recibiste Plata..." sin valor: el valor llega por SMS. */
+    fun tieneValor(texto: String): Boolean = texto.any { it.isDigit() }
+
+    private val VALOR = Regex("(?i)(?:\\$\\s?|(?:recib\\w*|envi\\w*|pas\\w*|transfiri\\w*|pag\\w*)\\D{0,40}?)([0-9][0-9.,]*)")
+
+    /**
+     * Valor en pesos sin separadores ("$50.000" y "50000" dan 50000), solo para no
+     * registrar dos veces el mismo pago cuando llega por la app y por SMS.
+     */
+    fun valorEnPesos(texto: String): Long? {
+        val crudo = VALOR.find(texto)?.groupValues?.get(1) ?: return null
+        val sinCentavos = crudo.replace(Regex("[.,]\\d{2}$"), "")
+        return sinCentavos.filter { it.isDigit() }.toLongOrNull()
+    }
+
+    /** Nombre de banco o billetera en el remitente de un SMS ("DaviPlata", "Bancolombia"...). */
+    private val BANCOS = listOf(
+        "daviplata" to "daviplata", "nequi" to "nequi", "bancolombia" to "bancolombia", "davivienda" to "davivienda",
+        "bbva" to "bre_b", "nu " to "bre_b", "banco de bogota" to "bre_b", "bre-b" to "bre_b", "breb" to "bre_b",
+    )
+
+    /**
+     * Remitentes de SMS de bancos conocidos (código corto). 85888 es DaviPlata
+     * (verificado con un pago real el 2026-10-05).
+     */
+    private val CODIGOS_SMS = mapOf("85888" to "daviplata")
+
+    /**
+     * ¿Este SMS viene de un banco? Solo de un código corto (4 a 6 dígitos) o de
+     * un contacto con nombre de banco: un SMS desde un celular normal que diga
+     * "Recibiste $500.000" es una estafa común y nunca se toma como pago.
+     * Devuelve la entidad, o "sms_banco" si es un código corto sin banco conocido.
+     */
+    fun entidadDeSms(remitente: String, texto: String): String? {
+        val r = normalizar(remitente).trim()
+        val codigo = r.filter { it.isDigit() }
+        if (r.matches(Regex("\\d{4,6}"))) {
+            return CODIGOS_SMS[codigo] ?: BANCOS.firstOrNull { normalizar(texto).contains(it.first) }?.second ?: "sms_banco"
+        }
+        return BANCOS.firstOrNull { "$r ".contains(it.first) }?.second
+    }
+
     /** Minúsculas, sin tildes ni signos de apertura y con un solo espacio entre palabras. */
     fun normalizar(texto: String): String =
         Normalizer.normalize(texto, Normalizer.Form.NFD)

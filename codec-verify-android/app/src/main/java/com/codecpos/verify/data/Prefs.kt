@@ -149,6 +149,12 @@ class Prefs(context: Context) {
             ),
         )
 
+        /** Apps de mensajes de texto: se leen solo los SMS de bancos (ver ClasificadorAviso.entidadDeSms). */
+        val APPS_SMS = setOf(
+            "com.samsung.android.messaging", "com.google.android.apps.messaging", "com.android.mms",
+            "com.android.messaging", "com.motorola.messaging", "com.miui.mms", "com.oneplus.mms",
+        )
+
         /**
          * Apps de chat, redes y correo: nunca se leen como pago aunque el texto diga Bre-B.
          * El correo del banco repite el aviso que ya llegó por su app (registraba el pago dos veces).

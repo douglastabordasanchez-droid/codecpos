@@ -42,6 +42,8 @@ class ClasificadorAvisoTest {
         "otro" to "¿Ya activaste tus tarjetas virtuales? | Hazlo y úsalas para hacer tus compras digitales y suscripciones en línea.",
         "recibido" to "Envío | INGRID DURAN te envió 50, ¡lo mejor!",
         "recibido" to "Te enviaron plata por Bre-B | Te enviaron $50. Entra a tu app y revisa tu saldo.",
+        "recibido" to "85888 | Recibiste $50. Para saber mas, consulta tus movimientos.",
+        "recibido" to "DaviPlata | Transaccion exitosa: Recibiste Plata de otra entidad usando Llaves, consulta el detalle de tus movimientos desde el app DaviPlata.",
     )
 
     @Test
@@ -50,5 +52,25 @@ class ClasificadorAvisoTest {
             ClasificadorAviso.clasificar(texto).clase.name.lowercase() != esperado
         }
         assertEquals("Casos mal clasificados: $mal", emptyList<Pair<String, String>>(), mal)
+    }
+
+    @Test
+    fun smsDeBancoSoloDesdeCodigoCortoOContacto() {
+        assertEquals("daviplata", ClasificadorAviso.entidadDeSms("85888", "Recibiste $50. Para saber mas"))
+        assertEquals("nequi", ClasificadorAviso.entidadDeSms("85954", "Nequi: recibiste $20.000"))
+        assertEquals("sms_banco", ClasificadorAviso.entidadDeSms("89123", "Recibiste $20.000"))
+        assertEquals("bancolombia", ClasificadorAviso.entidadDeSms("Bancolombia", "Recibiste una transferencia por $41,000.00"))
+        // Un celular cualquiera que diga "Recibiste $500.000" es una estafa común: nunca cuenta.
+        assertEquals(null, ClasificadorAviso.entidadDeSms("+57 300 123 4567", "Recibiste $500.000 de DaviPlata"))
+        assertEquals(null, ClasificadorAviso.entidadDeSms("Mamá", "Recibiste $50.000"))
+    }
+
+    @Test
+    fun valorDelAviso() {
+        assertEquals(false, ClasificadorAviso.tieneValor("DaviPlata | Transaccion exitosa: Recibiste Plata de otra entidad usando Llaves"))
+        assertEquals(50L, ClasificadorAviso.valorEnPesos("85888 | Recibiste $50. Para saber mas"))
+        assertEquals(50L, ClasificadorAviso.valorEnPesos("Envío | INGRID DURAN te envió 50, ¡lo mejor!"))
+        assertEquals(41000L, ClasificadorAviso.valorEnPesos("Recibiste una transferencia de KAREN por $41,000.00"))
+        assertEquals(25000L, ClasificadorAviso.valorEnPesos("Te enviaron $25.000"))
     }
 }
