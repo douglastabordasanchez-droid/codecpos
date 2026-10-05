@@ -45,6 +45,14 @@ interface Window {
       notifyQuitBackupComplete: () => void;
     };
 
+    /** Carpeta de archivo del historial (ver src/app/lib/retencionDatos.ts). */
+    archivo?: {
+      elegirCarpeta: () => Promise<{ ok: boolean; carpeta?: string; cancelado?: boolean; error?: string }>;
+      verificar: (carpeta: string) => Promise<{ ok: boolean; ruta?: string; error?: string }>;
+      guardar: (datos: { carpeta: string; subcarpeta: string; nombre: string; contenido: string }) => Promise<{ ok: boolean; ruta?: string; bytes?: number; error?: string }>;
+      abrir: (carpeta: string) => Promise<{ ok: boolean; error?: string }>;
+    };
+
     // 🛡️ BLINDAJE — Caja negra de auditoría física (.log en disco)
     logs?: {
       readRecent: (limit?: number) => Promise<{ success: boolean; lines: string[]; error?: string }>;
@@ -157,4 +165,10 @@ declare module '*.gif' {
 declare module '*.webp' {
   const content: string;
   export default content;
+}
+
+// Vite: importar un archivo como enlace (por ejemplo el worker de pdf.js en pdfVista.ts).
+declare module '*?url' {
+  const url: string;
+  export default url;
 }

@@ -1137,6 +1137,20 @@ class IndexedDBManager {
     });
   }
 
+  /** Borra varias ventas en una sola transacción (limpieza del historial viejo, ver retencionDatos.ts). */
+  async deleteVentas(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const db = await this.ensureDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.VENTAS], 'readwrite');
+      const store = transaction.objectStore(STORES.VENTAS);
+      ids.forEach((id) => store.delete(id));
+      transaction.oncomplete = () => resolve(ids.length);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  }
+
   async deleteUsuario(id: string): Promise<void> {
     const db = await this.ensureDB();
     return new Promise((resolve, reject) => {

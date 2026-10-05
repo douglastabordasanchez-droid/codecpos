@@ -257,6 +257,17 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   /**
+   * Carpeta de archivo del historial (electron/archivoHistorico.js): lo que
+   * tiene más de un mes se guarda ahí antes de borrarse de la caja.
+   */
+  archivo: {
+    elegirCarpeta: () => ipcRenderer.invoke('archivo:elegir-carpeta'),
+    verificar: (carpeta) => ipcRenderer.invoke('archivo:verificar', carpeta),
+    guardar: (datos) => ipcRenderer.invoke('archivo:guardar', datos),
+    abrir: (carpeta) => ipcRenderer.invoke('archivo:abrir', carpeta),
+  },
+
+  /**
    * Facturación electrónica DIAN — certificado/PIN cifrados con safeStorage.
    * El contenido real nunca vuelve al renderer, solo metadata/booleanos.
    * Ver electron/dianSecrets.js

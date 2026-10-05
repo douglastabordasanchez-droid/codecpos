@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, Share2, Loader2, Receipt, Printer } from 'lucide-react';
+import { Search, Share2, Loader2, Receipt, Eye } from 'lucide-react';
+import { toast } from 'sonner';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { compartirRecibo, verFactura } from '../lib/compartirFactura';
+import { compartirRecibo, obtenerDatosFactura } from '../lib/compartirFactura';
+import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactura';
+import { precargarVisorPdf } from '../../app/lib/pdfVista';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
@@ -41,7 +44,7 @@ export default function VentasPage() {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [compartiendoId, setCompartiendoId] = useState<string | null>(null);
-  const [viendoId, setViendoId] = useState<string | null>(null);
+  const [viendo, setViendo] = useState<VentaFila | null>(null);
 
   useEffect(() => {
     if (!empleado) return;
@@ -89,15 +92,9 @@ export default function VentasPage() {
   const handleCompartir = async (v: VentaFila) => {
     if (!empleado || compartiendoId) return;
     setCompartiendoId(v.id);
-    await compartirRecibo(empleado.cliente_id, v);
+    const r = await compartirRecibo(empleado.cliente_id, v);
+    if (!r.ok) toast.error(r.error || 'No se pudo compartir la factura');
     setCompartiendoId(null);
-  };
-
-  const handleVer = async (v: VentaFila) => {
-    if (!empleado || viendoId) return;
-    setViendoId(v.id);
-    await verFactura(empleado.cliente_id, v);
-    setViendoId(null);
   };
 
   return (
@@ -165,13 +162,14 @@ export default function VentasPage() {
               </div>
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => handleVer(v)}
-                  disabled={viendoId === v.id}
-                  className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 disabled:opacity-50"
-                  aria-label="Ver / imprimir factura"
-                  title="Ver / imprimir factura"
+                  onClick={() => setViendo(v)}
+                  onPointerEnter={precargarVisorPdf}
+                  onTouchStart={precargarVisorPdf}
+                  className="h-8 w-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-amber-400"
+                  aria-label="Ver factura"
+                  title="Ver factura"
                 >
-                  {viendoId === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                  <Eye className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => handleCompartir(v)}
@@ -192,6 +190,15 @@ export default function VentasPage() {
         <div className="px-5 mt-4 flex items-center justify-center gap-2 text-slate-600 text-xs">
           <Receipt className="w-4 h-4" /> Las ventas hechas desde Vender aparecen aquí al instante
         </div>
+      )}
+
+      {empleado && viendo && (
+        <ModalVistaFactura
+          abierta
+          onCerrar={() => setViendo(null)}
+          titulo={`FAC${String(viendo.numero ?? 0).padStart(6, '0')}`}
+          obtenerDatos={() => obtenerDatosFactura(empleado.cliente_id, viendo)}
+        />
       )}
     </div>
   );

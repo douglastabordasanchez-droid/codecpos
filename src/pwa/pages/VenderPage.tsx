@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera, Share2, Receipt, Printer, Inbox, ShieldCheck,
+  ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera, Share2, Eye, Printer, Inbox, ShieldCheck,
 } from 'lucide-react';
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 import { toast } from 'sonner';
@@ -23,7 +23,8 @@ import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil } from '../lib
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { crearCuentaCarteraMovil } from '../lib/carteraMovilService';
-import { compartirRecibo, verFactura } from '../lib/compartirFactura';
+import { compartirRecibo, obtenerDatosFactura } from '../lib/compartirFactura';
+import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactura';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
@@ -464,15 +465,14 @@ export default function VenderPage() {
   const handleCompartirFactura = async () => {
     if (!empleado || !ventaCompletada) return;
     setCompartiendo(true);
-    await compartirRecibo(empleado.cliente_id, datosFactura());
+    const r = await compartirRecibo(empleado.cliente_id, datosFactura());
+    if (!r.ok) toast.error(r.error || 'No se pudo compartir la factura');
     setCompartiendo(false);
   };
 
-  const handleVerFactura = async () => {
+  const handleVerFactura = () => {
     if (!empleado || !ventaCompletada) return;
     setViendoFactura(true);
-    await verFactura(empleado.cliente_id, datosFactura());
-    setViendoFactura(false);
   };
 
   const cerrarTodo = () => {
@@ -796,8 +796,8 @@ export default function VenderPage() {
           {imprimiendo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />} Imprimir ticket
         </button>
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={handleVerFactura} disabled={viendoFactura} className="h-12 rounded-xl border border-slate-700 bg-slate-900/50 text-slate-300 text-sm font-semibold flex items-center justify-center gap-1.5">
-            {viendoFactura ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />} Factura PDF
+          <button onClick={handleVerFactura} className="h-12 rounded-xl border border-slate-700 bg-slate-900/50 text-slate-300 text-sm font-semibold flex items-center justify-center gap-1.5">
+            <Eye className="w-4 h-4" /> Ver factura
           </button>
           <button onClick={handleCompartirFactura} disabled={compartiendo} className="h-12 rounded-xl border border-slate-700 bg-slate-900/50 text-slate-300 text-sm font-semibold flex items-center justify-center gap-1.5">
             {compartiendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />} Compartir
@@ -810,6 +810,14 @@ export default function VenderPage() {
         )}
         <button onClick={cerrarTodo} className="w-full h-12 rounded-xl bg-slate-800 text-white text-sm font-bold">Nueva venta</button>
       </div>
+      {viendoFactura && empleado && (
+        <ModalVistaFactura
+          abierta
+          onCerrar={() => setViendoFactura(false)}
+          titulo={`FAC${String(ventaCompletada.numero ?? 0).padStart(6, '0')}`}
+          obtenerDatos={() => obtenerDatosFactura(empleado.cliente_id, datosFactura())}
+        />
+      )}
     </div>
   );
 

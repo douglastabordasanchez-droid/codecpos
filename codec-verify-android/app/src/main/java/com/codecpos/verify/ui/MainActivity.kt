@@ -266,6 +266,7 @@ private fun CodecVerifyApp(viewModel: CodecVerifyViewModel, activity: FragmentAc
                             },
                             onAutenticarConHuella = { requestId -> autenticarConHuellaNativa(activity, this, requestId) },
                             huellaDisponibleEnDispositivo = { huellaDisponibleEnDispositivo(activity) },
+                            actividad = { activity },
                         ),
                         "AndroidCodecVerify",
                     )

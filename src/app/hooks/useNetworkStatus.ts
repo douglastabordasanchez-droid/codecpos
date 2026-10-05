@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { syncService, SyncStatus } from '../lib/syncService';
 import { verificarYSubirBackupNube } from '../lib/supabase/backupCloudService';
+import { electronStore } from '../lib/electronStore';
 
 export function useNetworkStatus() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -36,6 +37,10 @@ export function useNetworkStatus() {
       setSyncStatus(status);
     };
 
+    // Una venta recién cobrada sube a la nube en segundos (el ciclo normal es cada minuto).
+    const subirVenta = () => syncService.subirPendientesPronto();
+    electronStore.onVentaNueva(subirVenta);
+
     // Agregar listeners de red
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -48,6 +53,7 @@ export function useNetworkStatus() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       syncService.removeListener(handleSyncStatusChange);
+      electronStore.offVentaNueva(subirVenta);
       // 🚀 FIX rendimiento: cierra el canal de Supabase Realtime y el
       // polling de auto-sync — antes no se llamaba nunca a stop() y el
       // canal `productos-sync-*` quedaba abierto para siempre.

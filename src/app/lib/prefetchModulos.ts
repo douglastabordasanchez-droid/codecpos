@@ -21,31 +21,18 @@
  * silencio: es solo una optimización, la ruta real lo vuelve a intentar
  * normalmente cuando el usuario navegue ahí.
  */
+// Solo los módulos que usa cualquier negocio a diario. Precargar también los
+// especializados (Taller, Artes gráficas, Panadería, Veterinaria...) dejaba en
+// memoria el código de módulos que muchos negocios ni tienen activos: esos se
+// cargan la primera vez que se abren.
 const modulosPrecargables: Array<() => Promise<unknown>> = [
   () => import('../components/pos/POSPageNew'),
   () => import('../components/pos/ProductosPage'),
   () => import('../components/pos/VentasPage'),
   () => import('../components/pos/DashboardPOSPage'),
-  () => import('../components/pos/AlertasPage'),
-  () => import('../components/pos/ConfiguracionPage'),
   () => import('../components/pos/CierreCajaPage'),
-  () => import('../components/pos/ReportesPage'),
   () => import('../components/pos/GastosPage'),
-  () => import('../components/pos/ContabilidadPage'),
-  () => import('../components/pos/DevolucionesPage'),
-  () => import('../components/devices/DispositivosPage'),
-  () => import('../pages/FidelizacionPage'),
-  () => import('../pages/ProveedoresPage'),
-  () => import('../pages/PromocionesPage'),
-  () => import('../pages/MultitiendaPage'),
-  () => import('../pages/CodigosBarrasPageFull'),
-  () => import('../components/taller/TallerPage'),
-  () => import('../components/artesGraficas/ArtesGraficasPage'),
-  () => import('../components/papeleriaPinateria/PapeleriaPinateriaPage'),
-  () => import('../components/pos/PanaderiaOncesPage'),
-  () => import('../components/pos/VeterinariaPage'),
-  () => import('../components/monitoreo/MonitoreoTerminalesPage'),
-  () => import('../pages/FacturacionElectronicaPage'),
+  () => import('../components/pos/ConfiguracionPage'),
 ];
 
 let precargaIniciada = false;

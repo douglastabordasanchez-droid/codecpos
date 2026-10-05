@@ -14,6 +14,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.codecpos.verify.R
 import com.codecpos.verify.data.Prefs
+import com.codecpos.verify.ui.DocumentosNativos
 
 /**
  * Expuesto a la PWA (que corre dentro del WebView) como `window.AndroidCodecVerify`
@@ -33,6 +34,8 @@ class AndroidNotificationBridge(
     private val onPedirPermisoNotificaciones: () -> Unit,
     private val onAutenticarConHuella: (requestId: String) -> Unit,
     private val huellaDisponibleEnDispositivo: () -> Boolean,
+    /** La actividad visible: compartir e imprimir necesitan abrir pantallas del sistema. */
+    private val actividad: () -> android.app.Activity?,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -124,6 +127,29 @@ class AndroidNotificationBridge(
     @JavascriptInterface
     fun avisarPago(id: String, monto: Double, titulo: String, cuerpo: String, frase: String, sonido: Boolean, notificacion: Boolean, voz: Boolean) {
         AlertaPagos.alertarDesdeWeb(context, id, titulo, cuerpo, frase, sonido, notificacion, voz)
+    }
+
+    /** Comparte un archivo (la factura en PDF) con la hoja de compartir de Android. Desde la versión 1.1.5. */
+    @JavascriptInterface
+    fun compartirArchivo(base64: String, nombre: String, mime: String, texto: String): Boolean = try {
+        val archivo = DocumentosNativos.guardarTemporal(context, base64, nombre)
+        mainHandler.post { DocumentosNativos.compartir(actividad() ?: context, archivo, mime, texto) }
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    /** Imprime un PDF con el servicio de impresión de Android. Desde la versión 1.1.5. */
+    @JavascriptInterface
+    fun imprimirPdf(base64: String, nombre: String): Boolean = try {
+        val archivo = DocumentosNativos.guardarTemporal(context, base64, nombre)
+        val visible = actividad()
+        if (visible == null) false else {
+            mainHandler.post { DocumentosNativos.imprimirPdf(visible, archivo, nombre) }
+            true
+        }
+    } catch (_: Exception) {
+        false
     }
 
     /** La app web avisa si Codec Verify está encendido en el POS: apagado, el lector no lee ningún aviso. */

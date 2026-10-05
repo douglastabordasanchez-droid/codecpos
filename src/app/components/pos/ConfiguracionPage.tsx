@@ -17,6 +17,7 @@ import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRealMachineUUID } from '../../utils/machineId';
 import { SyncStatusCard } from '../electron/SyncStatusCard';
+import { ArchivoHistorialCard } from '../retencion/ArchivoHistorialCard';
 import { VinculacionNubeCard } from '../electron/VinculacionNubeCard';
 import { ModulosAppWebCard } from '../electron/ModulosAppWebCard';
 import { CodecLogoHorizontal, CodecFavicon } from '../shared/CodecLogos';
@@ -2258,6 +2259,7 @@ export default function ConfiguracionPage() {
           borderColor="border-emerald-700/40"
         >
           <div className="space-y-5">
+            <ArchivoHistorialCard darkMode={darkMode} />
             <div className={`p-4 rounded-xl border ${darkMode ? 'bg-slate-800/50 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
               <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Descarga un archivo con toda la información de tu negocio (productos, ventas, usuarios).

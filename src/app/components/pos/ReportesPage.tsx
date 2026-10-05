@@ -409,7 +409,7 @@ export default function ReportesPage() {
       <div className={`mb-6 p-3.5 rounded-2xl border-2 flex items-start gap-3 ${darkMode ? 'bg-amber-500/10 border-amber-500/30' : 'bg-amber-50 border-amber-200'}`}>
         <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
         <p className={`text-sm ${darkMode ? 'text-amber-200' : 'text-amber-700'}`}>
-          <strong>Los reportes se conservan 6 meses.</strong> Descarga periódicamente en PDF o Excel para conservarlos permanentemente.
+          <strong>Esta caja guarda el último mes de ventas.</strong> Lo anterior sigue en la nube (consúltalo en la web). Descarga en PDF o Excel lo que quieras conservar en el computador.
         </p>
       </div>
 

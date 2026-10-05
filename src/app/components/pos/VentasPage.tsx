@@ -45,6 +45,9 @@ import { PremiumButton } from '../licencia/PremiumFeature';
 import { descargarReporteVentasPDF, descargarFacturaPDF, enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
 import { descargarReporteVentasExcel } from '../../lib/excelGenerator';
 import ModalImprimirFactura from './ModalImprimirFactura';
+import { ModalVistaFactura, type DatosFactura } from '../factura/ModalVistaFactura';
+import { precargarVisorPdf } from '../../lib/pdfVista';
+import { getCached } from '../../lib/cachedLocalStorage';
 
 type FiltroFecha = 'hoy' | 'ayer' | 'semana' | 'mes' | 'todos' | 'personalizado';
 type OrdenVentas = 'fecha_desc' | 'fecha_asc' | 'total_desc';
@@ -75,9 +78,11 @@ export default function VentasPage() {
   // pausa corta antes de rendirse (electronStore.obtenerVentas() ya se
   // autorepara del lado de IndexedDB; esto cubre el margen de una carrera de
   // arranque) y deja un botón real para reintentar a mano.
-  const cargarVentas = async (intento = 0) => {
+  const cargarVentas = async (intento = 0, enSegundoPlano = false) => {
     try {
-      setLoading(true);
+      // Las recargas por una venta nueva o por la sincronización no tapan la
+      // pantalla con "Cargando ventas...": solo la primera carga lo muestra.
+      if (!enSegundoPlano) setLoading(true);
       const ventasData = await electronStore.obtenerVentas();
 
       // ✅ Asegurar que todos los números son numéricos
@@ -99,7 +104,7 @@ export default function VentasPage() {
     } catch (error) {
       console.error('❌ Error cargando ventas:', error);
       if (intento < 2) {
-        setTimeout(() => cargarVentas(intento + 1), 1000);
+        setTimeout(() => cargarVentas(intento + 1, enSegundoPlano), 1000);
         return;
       }
       toast.error('Error al cargar las ventas', {
@@ -202,8 +207,11 @@ export default function VentasPage() {
     cargarVentas();
 
     // 📡 Escuchar nuevas ventas en tiempo real
-    const handleVentaNueva = (_nuevaVenta: Venta) => {
-      cargarVentas();
+    // Varias ventas seguidas (o una sincronización que baja muchas) se juntan en una sola recarga.
+    let espera: ReturnType<typeof setTimeout> | null = null;
+    const handleVentaNueva = () => {
+      if (espera) clearTimeout(espera);
+      espera = setTimeout(() => { espera = null; cargarVentas(0, true); }, 400);
     };
 
     electronStore.onVentaNueva(handleVentaNueva);
@@ -212,11 +220,12 @@ export default function VentasPage() {
     // dispara este evento — pero antes nadie lo escuchaba, así que una venta
     // móvil solo aparecía acá tras recargar. Se refresca igual que una venta
     // nueva local.
-    window.addEventListener('codecpos:ventas-sincronizadas', handleVentaNueva as EventListener);
+    window.addEventListener('codecpos:ventas-sincronizadas', handleVentaNueva);
 
     return () => {
+      if (espera) clearTimeout(espera);
       electronStore.offVentaNueva(handleVentaNueva);
-      window.removeEventListener('codecpos:ventas-sincronizadas', handleVentaNueva as EventListener);
+      window.removeEventListener('codecpos:ventas-sincronizadas', handleVentaNueva);
     };
   }, []);
 
@@ -362,22 +371,23 @@ export default function VentasPage() {
     }
   };
 
-  // 📄 Descargar factura individual como PDF
-  const descargarFacturaIndividual = async (venta: Venta) => {
-    try {
-      const config = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
-      const empresa = {
-        nombreComercial: config.nombreComercial || 'CODEC POS',
-        razonSocial: config.razonSocial || '',
-        nit: config.nit || '',
-        direccion: config.direccion || '',
-        telefono: config.telefono || '',
-        email: config.email || '',
-        ciudad: config.ciudad || '',
-        logoUrl: config.logoUrl || '',
-      };
-
-      const ventaPDF = {
+  // 📄 Datos de la factura de una venta local, iguales para verla y para descargarla.
+  const armarFactura = (venta: Venta): DatosFactura => {
+    const config = getCached('codec_pos_config', {} as Record<string, any>);
+    const empresa = {
+      nombreComercial: config.nombreComercial || 'CODEC POS',
+      razonSocial: config.razonSocial || '',
+      nit: config.nit || '',
+      direccion: config.direccion || '',
+      telefono: config.telefono || '',
+      email: config.email || '',
+      ciudad: config.ciudad || '',
+      logoUrl: config.logoUrl || '',
+    };
+    const extra = venta as any;
+    return {
+      config: empresa,
+      venta: {
         numeroFactura: venta.numeroFactura || venta.id,
         fecha: venta.fecha,
         items: venta.items.map(i => ({
@@ -393,16 +403,23 @@ export default function VentasPage() {
         cajero: venta.cajero,
         cliente: venta.cliente || 'Consumidor final',
         descuento: venta.descuento || 0,
-        pagoMixto: (venta as any).pagoMixto || null,
-        fechaVencimiento: (venta as any).carteraFechaVencimiento || undefined,
-        cufe: (venta as any).cufe || null,
-        qrUrl: (venta as any).qrUrl || null,
-        numeroElectronico: (venta as any).folioElectronico || null,
+        propina: Number(extra.propina) || 0,
+        pagoMixto: extra.pagoMixto || null,
+        fechaVencimiento: extra.carteraFechaVencimiento || undefined,
+        cufe: extra.cufe || null,
+        qrUrl: extra.qrUrl || null,
+        numeroElectronico: extra.folioElectronico || null,
         mesa: venta.mesa,
         referencia_mesa: venta.referencia_mesa,
-      };
+      },
+    };
+  };
 
-      await descargarFacturaPDF(ventaPDF, empresa);
+  // 📄 Descargar factura individual como PDF
+  const descargarFacturaIndividual = async (venta: Venta) => {
+    try {
+      const { venta: ventaPDF, config } = armarFactura(venta);
+      await descargarFacturaPDF(ventaPDF, config);
       toast.success(`📄 Factura ${venta.numeroFactura || venta.id} descargada`);
     } catch (error) {
       console.error('Error descargando factura:', error);
@@ -990,10 +1007,11 @@ export default function VentasPage() {
                           <div className="flex gap-2 justify-center flex-nowrap">
                             <Button
                               onClick={() => setVentaSeleccionada(venta)}
+                              onPointerEnter={precargarVisorPdf}
                               size="sm"
                               variant="outline"
                               className="border-purple-500 text-purple-500 hover:bg-purple-500/10"
-                              title="Ver detalles"
+                              title="Ver factura"
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -1085,99 +1103,20 @@ export default function VentasPage() {
         </div>
       )}
 
-      {/* Modal de Detalle de Venta */}
-      <AnimatePresence>
-        {ventaSeleccionada && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-            onClick={() => setVentaSeleccionada(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-slate-800 rounded-2xl max-w-2xl w-full p-8 max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-2xl font-bold text-white mb-6">Detalle de Venta</h2>
-              
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-slate-400 text-sm">Factura</p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-white font-bold">{ventaSeleccionada.id}</p>
-                      <button
-                        onClick={() => copiarNumeroFactura(ventaSeleccionada.id)}
-                        className="h-5 w-5 inline-flex items-center justify-center rounded-sm border border-slate-500/60 text-slate-300 hover:text-white hover:border-slate-300 hover:bg-slate-700/70 transition-all"
-                        title="Copiar número de factura"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">Cajero</p>
-                    <p className="text-white font-bold">{ventaSeleccionada.cajero}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">Fecha</p>
-                    <p className="text-white font-bold">
-                      {format(new Date(ventaSeleccionada.fecha), 'dd/MM/yyyy HH:mm', { locale: es })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">Método de Pago</p>
-                    <p className="text-white font-bold">{ventaSeleccionada.metodoPago.toUpperCase()}</p>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-700 pt-4">
-                  <h3 className="text-white font-bold mb-4">Productos</h3>
-                  {ventaSeleccionada.items.map((item, index) => (
-                    <div key={index} className="flex justify-between items-center py-2 border-b border-slate-700 last:border-0">
-                      <div>
-                        <p className="text-white font-medium">{item.nombre}</p>
-                        <p className="text-slate-400 text-sm">
-                          {item.cantidad} x {formatCurrency(item.precio)}
-                        </p>
-                      </div>
-                      <p className="text-white font-bold">{formatCurrency(item.subtotal)}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="border-t border-slate-700 pt-4 space-y-2">
-                  <div className="flex justify-between text-slate-300">
-                    <span>Subtotal:</span>
-                    <span>{formatCurrency(ventaSeleccionada.subtotal)}</span>
-                  </div>
-                  {ventaSeleccionada.descuento > 0 && (
-                    <div className="flex justify-between text-red-400">
-                      <span>Descuento:</span>
-                      <span>-{formatCurrency(ventaSeleccionada.descuento)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-white text-xl font-bold">
-                    <span>TOTAL:</span>
-                    <span>{formatCurrency(ventaSeleccionada.total)}</span>
-                  </div>
-                </div>
-
-                <Button
-                  onClick={() => setVentaSeleccionada(null)}
-                  className="w-full bg-purple-600 hover:bg-purple-700"
-                >
-                  Cerrar
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Vista previa de la factura completa (el mismo PDF que recibe el cliente) */}
+      {ventaSeleccionada && (
+        <ModalVistaFactura
+          abierta
+          onCerrar={() => setVentaSeleccionada(null)}
+          titulo={ventaSeleccionada.numeroFactura || ventaSeleccionada.id}
+          obtenerDatos={async () => armarFactura(ventaSeleccionada)}
+          onImprimir={() => {
+            const venta = ventaSeleccionada;
+            setVentaSeleccionada(null);
+            setVentaParaImprimir(venta);
+          }}
+        />
+      )}
 
       {/* Modal de Impresión de Factura */}
       <ModalImprimirFactura

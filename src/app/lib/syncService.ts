@@ -18,7 +18,33 @@ import { descargarConfiguracionEmpresaDesdeNube, sincronizarConfiguracionEmpresa
 import { listarCuentasCartera, guardarCuentaCarteraRaw, registrarAbonoEnCierre, CuentaCartera } from './carteraService';
 import { listarClientes, guardarClienteRaw, Cliente } from './fidelizacionService';
 
-const SYNC_INTERVAL = 30000; // 30 segundos
+/**
+ * Ritmo de la sincronización (antes: los 21 pasos, con todas las descargas, cada 30 s).
+ *  - Cada minuto: solo se SUBE lo pendiente de esta caja y la señal de "caja
+ *    conectada" (la web la da por desconectada a los 2 minutos). Sin nada
+ *    pendiente no sale ninguna consulta de descarga.
+ *  - En vivo: la nube avisa por Realtime cuando la web o el celular crean algo
+ *    (ventas, gastos, cartera...) y se descarga solo esa parte.
+ *  - Cada 20 minutos: revisión completa de respaldo, por si se perdió un aviso.
+ */
+const SYNC_RAPIDO_MS = 60_000;
+const SYNC_COMPLETO_MS = 20 * 60_000;
+
+/**
+ * Hasta dónde se descargó cada tabla. Se guarda la fecha del SERVIDOR del
+ * último registro recibido, no la hora de este computador: con la hora local,
+ * un reloj adelantado (o un cambio hecho mientras corría la consulta) dejaba
+ * registros por fuera para siempre (productos editados en la web que nunca
+ * llegaban a la caja).
+ */
+async function guardarMarcaServidor(clave: string, filas: Array<Record<string, any>> | null | undefined, campo: string, anterior: unknown): Promise<void> {
+  let marca = typeof anterior === 'string' ? anterior : null;
+  for (const fila of filas || []) {
+    const valor = fila?.[campo];
+    if (typeof valor === 'string' && (!marca || Date.parse(valor) > Date.parse(marca))) marca = valor;
+  }
+  if (marca) await dbManager.setConfig(clave, marca);
+}
 const STEP_TIMEOUT_MS = 20_000;
 
 /**
@@ -217,6 +243,10 @@ class SyncService {
   private isSyncing = false;
   private started = false;
   private syncInterval: number | null = null;
+  private syncRapidoInterval: number | null = null;
+  /** Pasos de descarga pedidos por Realtime mientras otro ciclo corría (se ejecutan al terminar). */
+  private pasosPedidos = new Set<string>();
+  private esperaPasosPedidos: number | null = null;
   /** Última foto de stock por tienda subida con éxito (ver pushTiendasStock). */
   private ultimaFirmaTiendasStock: string | null = null;
   /** Texto de 'pos-productos' del último ciclo sin nada pendiente de subir (ver pushProductosLocalStorage). */
@@ -224,8 +254,12 @@ class SyncService {
   private realtimeChannel: ReturnType<NonNullable<ReturnType<typeof getSupabaseClient>>['channel']> | null = null;
   private listeners: Set<(status: SyncStatus) => void> = new Set();
 
-  /** Debe llamarse una vez al entrar al POS. Idempotente. */
+  /** Pantallas que usan la sincronización (indicador de venta, tarjeta de Configuración...). */
+  private usuarios = 0;
+
+  /** Debe llamarse una vez al entrar al POS. Cada start() lleva su stop(). */
   async start(): Promise<void> {
+    this.usuarios++;
     if (this.started) return;
     this.started = true;
 
@@ -235,9 +269,10 @@ class SyncService {
   }
 
   startAutoSync(): void {
-    if (this.syncInterval) clearInterval(this.syncInterval);
+    this.stopAutoSync();
     this.sync();
-    this.syncInterval = window.setInterval(() => this.sync(), SYNC_INTERVAL);
+    this.syncInterval = window.setInterval(() => this.sync(), SYNC_COMPLETO_MS);
+    this.syncRapidoInterval = window.setInterval(() => this.syncRapido(), SYNC_RAPIDO_MS);
   }
 
   stopAutoSync(): void {
@@ -245,6 +280,19 @@ class SyncService {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+    if (this.syncRapidoInterval) {
+      clearInterval(this.syncRapidoInterval);
+      this.syncRapidoInterval = null;
+    }
+    if (this.esperaPasosPedidos) {
+      clearTimeout(this.esperaPasosPedidos);
+      this.esperaPasosPedidos = null;
+    }
+  }
+
+  /** Una venta, gasto o cambio recién hecho en esta caja: se sube en unos segundos sin esperar el minuto. */
+  subirPendientesPronto(): void {
+    this.pedirPasos(['__subida__']);
   }
 
   /**
@@ -255,6 +303,10 @@ class SyncService {
    * Debe llamarse desde el cleanup del efecto que invoca start().
    */
   stop(): void {
+    // Antes, salir de Configuración (que también la usa) apagaba la sincronización
+    // de toda la caja aunque la pantalla de venta siguiera abierta.
+    this.usuarios = Math.max(0, this.usuarios - 1);
+    if (this.usuarios > 0) return;
     this.stopAutoSync();
     if (this.realtimeChannel) {
       try { getSupabaseClient()?.removeChannel(this.realtimeChannel); } catch { /* no crítico */ }
@@ -268,23 +320,68 @@ class SyncService {
     const clienteId = getLinkedClienteId();
     if (!client || !clienteId || this.realtimeChannel) return;
 
-    this.realtimeChannel = client
+    const filtro = `cliente_id=eq.${clienteId}`;
+    // Lo que crea esta misma caja vuelve como aviso con su local_id: se ignora (ya lo tiene).
+    const deOtroLado = (payload: any) => !(payload?.new && payload.new.local_id);
+    const avisos: Array<[string, string, string]> = [
+      ['ventas', 'INSERT', 'pull_ventas'],
+      ['gastos', 'INSERT', 'pull_gastos'],
+      ['devoluciones', 'INSERT', 'pull_devoluciones'],
+      ['cierres_caja', '*', 'pull_cierres'],
+      ['cuentas_cartera', '*', 'pull_cartera'],
+      ['clientes_fidelizacion', '*', 'pull_clientes_fidelizacion'],
+      ['solicitudes_transferencia', 'INSERT', 'procesar_transferencias'],
+      ['empresa_configuraciones', '*', 'pull_configuracion_empresa'],
+    ];
+
+    let canal = client
       .channel(`productos-sync-${clienteId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'productos', filter: `cliente_id=eq.${clienteId}` },
+        { event: '*', schema: 'public', table: 'productos', filter: filtro },
         (payload) => {
           this.aplicarCambioRemotoProducto((payload.new ?? payload.old) as any).catch(() => {});
         }
-      )
-      .subscribe();
+      );
+    for (const [tabla, evento, paso] of avisos) {
+      canal = canal.on('postgres_changes' as any, { event: evento, schema: 'public', table: tabla, filter: filtro } as any, (payload: any) => {
+        if (deOtroLado(payload)) this.pedirPasos([paso]);
+      });
+    }
+    this.realtimeChannel = canal.subscribe();
   }
 
+  /** Junta los avisos que llegan seguidos (2 s) y corre solo esos pasos. */
+  private pedirPasos(pasos: string[]): void {
+    pasos.forEach((p) => this.pasosPedidos.add(p));
+    if (this.esperaPasosPedidos) clearTimeout(this.esperaPasosPedidos);
+    this.esperaPasosPedidos = window.setTimeout(() => {
+      this.esperaPasosPedidos = null;
+      if (this.isSyncing) return this.pedirPasos([]); // se reintenta cuando termine el ciclo en curso
+      const pedidos = [...this.pasosPedidos];
+      this.pasosPedidos.clear();
+      if (pedidos.length === 0) return;
+      const subida = pedidos.includes('__subida__');
+      const bajada = pedidos.filter((p) => p !== '__subida__');
+      this.ejecutarCiclo({ bajada, subida, silencioso: true }).catch(() => {});
+    }, 2000);
+  }
+
+  /** Cada minuto: sube lo pendiente de esta caja y avisa que sigue conectada. */
+  async syncRapido(): Promise<void> {
+    await this.ejecutarCiclo({ bajada: [], subida: true, silencioso: true });
+  }
+
+  /** Revisión completa: descarga todo lo nuevo de la nube y sube lo pendiente. */
   async sync(): Promise<void> {
+    await this.ejecutarCiclo({ bajada: 'todo', subida: true, silencioso: false });
+  }
+
+  private async ejecutarCiclo(opciones: { bajada: string[] | 'todo'; subida: boolean; silencioso: boolean }): Promise<void> {
     if (this.isSyncing) return;
 
     if (!navigator.onLine) {
-      this.notifyListeners({ status: 'offline', message: 'Sin conexión a internet', lastSync: null });
+      if (!opciones.silencioso) this.notifyListeners({ status: 'offline', message: 'Sin conexión a internet', lastSync: null });
       return;
     }
 
@@ -296,7 +393,7 @@ class SyncService {
       // pantalla de venta principal) — pero para un negocio que nunca
       // configuró la nube esto no es un error, es simplemente el estado
       // normal. Estado neutral propio para no alarmar innecesariamente.
-      this.notifyListeners({
+      if (!opciones.silencioso) this.notifyListeners({
         status: 'unlinked',
         message: 'Esperando conexión con app',
         lastSync: null,
@@ -305,10 +402,8 @@ class SyncService {
     }
 
     this.isSyncing = true;
-    // 🔍 DIAGNÓSTICO TEMPORAL — flicker "Productos en Carrito" (reporte
-    // Papotas 2026-09-16). Quitar una vez identificada la causa real.
-    console.log('[SYNC START]', performance.now());
-    this.notifyListeners({ status: 'syncing', message: 'Sincronizando datos...', lastSync: null });
+    // Los ciclos rápidos no avisan "Sincronizando..." para no redibujar la pantalla de venta cada minuto.
+    if (!opciones.silencioso) this.notifyListeners({ status: 'syncing', message: 'Sincronizando datos...', lastSync: null });
 
     // 🛡️ Antes un solo paso que fallaba (p. ej. IndexedDB rechazando un
     // producto por una restricción de índice) abortaba el resto del ciclo
@@ -316,8 +411,7 @@ class SyncService {
     // avisa a la PWA que esta caja está conectada. Cada paso ahora aísla su
     // propio error: uno fallido se registra pero no bloquea a los demás, y
     // el heartbeat siempre llega a ejecutarse.
-    const pasos: Array<[string, () => Promise<void>]> = [
-      ['push_configuracion_empresa', async () => { await sincronizarConfiguracionEmpresaPendiente(); }],
+    const pasosBajada: Array<[string, () => Promise<void>]> = [
       ['pull_configuracion_empresa', async () => { await descargarConfiguracionEmpresaDesdeNube(); }],
       ['pull_tiendas', async () => {
         const tiendas = await descargarTiendas();
@@ -342,17 +436,24 @@ class SyncService {
       ['pull_devoluciones', () => this.pullDevolucionesRemotas(client, clienteId)],
       ['pull_cartera', () => this.pullCarteraRemota(client, clienteId)],
       ['pull_clientes_fidelizacion', () => this.pullClientesFidelizacionRemotos(client, clienteId)],
+      ['backfill_producto_id_venta_items', () => this.backfillProductoIdVentaItems(client, clienteId)],
+      ['procesar_transferencias', () => this.procesarSolicitudesTransferencia(client, clienteId)],
+    ];
+    const pasosSubida: Array<[string, () => Promise<void>]> = [
+      ['push_configuracion_empresa', async () => { await sincronizarConfiguracionEmpresaPendiente(); }],
       ['push_productos', () => this.pushProductosPendientes(client, clienteId)],
       ['push_productos_localstorage', () => this.pushProductosLocalStorage(client, clienteId)],
       ['push_gastos', () => this.pushGastosLocalStorage(client, clienteId)],
       ['push_ventas', () => this.pushVentasPendientes(client, clienteId)],
-      ['backfill_producto_id_venta_items', () => this.backfillProductoIdVentaItems(client, clienteId)],
       ['push_tiendas_stock', () => this.pushTiendasStock(client, clienteId)],
-      ['procesar_transferencias', () => this.procesarSolicitudesTransferencia(client, clienteId)],
       ['push_cierres', () => this.pushCierresPendientes(client, clienteId)],
       ['push_devoluciones', () => this.pushDevolucionesLocalStorage(client, clienteId)],
       ['push_cartera', () => this.pushCarteraPendiente(client, clienteId)],
       ['push_heartbeat', () => this.pushSesionActivaHeartbeat(client, clienteId)],
+    ];
+    const pasos = [
+      ...(opciones.bajada === 'todo' ? pasosBajada : pasosBajada.filter(([nombre]) => (opciones.bajada as string[]).includes(nombre))),
+      ...(opciones.subida ? pasosSubida : []),
     ];
 
     let primerError: unknown = null;
@@ -367,20 +468,19 @@ class SyncService {
     }
 
     if (primerError) {
+      // Un error en un ciclo rápido sí se muestra: algo no pudo subir.
       this.notifyListeners({
         status: 'error',
         message: `Error: ${primerError instanceof Error ? primerError.message : 'Desconocido'}`,
         lastSync: null,
       });
-    } else {
+    } else if (!opciones.silencioso) {
       const lastSync = new Date().toISOString();
       await dbManager.setConfig('lastSyncTime', lastSync);
-      await dbManager.addLog('sync', 'Sincronización completada exitosamente');
       this.notifyListeners({ status: 'success', message: 'Sincronización completada', lastSync });
     }
 
     this.isSyncing = false;
-    console.log('[SYNC END]', performance.now());
   }
 
   // ==================== PULL ====================
@@ -412,7 +512,7 @@ class SyncService {
       window.dispatchEvent(new CustomEvent('codecpos:productos-sincronizados'));
     }
 
-    await dbManager.setConfig('lastPullProductos', new Date().toISOString());
+    await guardarMarcaServidor('lastPullProductos', data, 'updated_at', lastPull);
   }
 
   private async aplicarCambioRemotoProducto(
@@ -581,7 +681,7 @@ class SyncService {
     const yaExisten = new Set(ventasLocales.filter((v) => v.supabaseId).map((v) => v.supabaseId));
     const pendientesDePull = remotas.filter((r) => !yaExisten.has(r.id));
     if (pendientesDePull.length === 0) {
-      await dbManager.setConfig('lastPullVentas', new Date().toISOString());
+      await guardarMarcaServidor('lastPullVentas', remotas, 'created_at', lastPull);
       return;
     }
 
@@ -632,7 +732,7 @@ class SyncService {
     }
 
     localStorage.setItem('pos-ultima-factura', String(siguienteNumero - 1));
-    await dbManager.setConfig('lastPullVentas', new Date().toISOString());
+    await guardarMarcaServidor('lastPullVentas', remotas, 'created_at', lastPull);
     await dbManager.addLog('pull_ventas_movil', `${pendientesDePull.length} ventas de la app móvil bajadas a la caja`);
     window.dispatchEvent(new CustomEvent('codecpos:ventas-sincronizadas'));
   }
@@ -693,7 +793,7 @@ class SyncService {
       }
     }
 
-    await dbManager.setConfig('lastPullGastos', new Date().toISOString());
+    await guardarMarcaServidor('lastPullGastos', remotos, 'created_at', lastPull);
   }
 
   /**
@@ -755,7 +855,7 @@ class SyncService {
       }
     }
 
-    await dbManager.setConfig('lastPullCierres', new Date().toISOString());
+    await guardarMarcaServidor('lastPullCierres', remotos, 'created_at', lastPull);
   }
 
   /**
@@ -827,7 +927,7 @@ class SyncService {
       }
     }
 
-    await dbManager.setConfig('lastPullDevoluciones', new Date().toISOString());
+    await guardarMarcaServidor('lastPullDevoluciones', remotos, 'created_at', lastPull);
   }
 
   /**
@@ -844,7 +944,7 @@ class SyncService {
     const { data, error } = await query;
     if (error) throw error;
     if (!data || data.length === 0) {
-      await dbManager.setConfig('lastPullCartera', new Date().toISOString());
+      await guardarMarcaServidor('lastPullCartera', data, 'updated_at', lastPull);
       return;
     }
 
@@ -922,7 +1022,7 @@ class SyncService {
     }
 
     await dbManager.addLog('pull_cartera', `${data.length} cuenta(s) de cartera sincronizadas`);
-    await dbManager.setConfig('lastPullCartera', new Date().toISOString());
+    await guardarMarcaServidor('lastPullCartera', data, 'updated_at', lastPull);
   }
 
   /**
@@ -940,7 +1040,7 @@ class SyncService {
     const { data, error } = await query;
     if (error) throw error;
     if (!data || data.length === 0) {
-      await dbManager.setConfig('lastPullClientesFidelizacion', new Date().toISOString());
+      await guardarMarcaServidor('lastPullClientesFidelizacion', data, 'updated_at', lastPull);
       return;
     }
 
@@ -973,7 +1073,7 @@ class SyncService {
     if (nuevos > 0) {
       await dbManager.addLog('pull_clientes_fidelizacion', `${nuevos} cliente(s) nuevos desde la app móvil`);
     }
-    await dbManager.setConfig('lastPullClientesFidelizacion', new Date().toISOString());
+    await guardarMarcaServidor('lastPullClientesFidelizacion', data, 'updated_at', lastPull);
   }
 
   // ==================== PUSH ====================

@@ -10,6 +10,7 @@ import { useSyncModulosNube } from '../../hooks/useSyncModulosNube';
 import { useAvisoLicencia } from '../../hooks/useAvisoLicencia';
 import { LanProvider } from '../../contexts/LanContext';
 import { precargarModulosEnSegundoPlano } from '../../lib/prefetchModulos';
+import { AvisoRetencionDatos } from '../retencion/AvisoRetencionDatos';
 
 /**
  * Wrapper para proteger el layout y asegurar que el AuthContext esté disponible
@@ -85,6 +86,7 @@ export default function ProtectedLayout() {
       <POSLayoutSidebar />
       <CodecVerifyListener />
       <AutoUpdateListener />
+      <AvisoRetencionDatos />
     </LanProvider>
   );
 }

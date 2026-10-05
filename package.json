@@ -1,6 +1,6 @@
 {
   "name": "codecpos",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Sistema de Punto de Venta Profesional - Codec Studio",
   "author": "Codec Studio <contacto@codecstudio.com> (https://codecstudio.online)",
   "license": "SEE LICENSE IN electron/assets/LICENSE.txt",
@@ -101,6 +101,7 @@
     "node-forge": "^1.3.1",
     "node-ipc": "^12.0.0",
     "node-thermal-printer": "^4.6.0",
+    "pdfjs-dist": "4.10.38",
     "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-day-picker": "8.10.1",

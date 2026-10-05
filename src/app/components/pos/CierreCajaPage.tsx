@@ -1207,7 +1207,7 @@ export default function CierreCajaPage() {
                 ⚠️ Aviso importante de contabilidad
               </p>
               <p className={`text-sm ${darkMode ? 'text-amber-200' : 'text-amber-700'}`}>
-                El sistema conserva información por 6 meses. Descarga periódicamente tu contabilidad para evitar pérdida de datos.
+                Este computador guarda el último mes (lo anterior sigue en la nube). En Configuración › Respaldo puedes autorizar una carpeta para guardar una copia cada mes.
               </p>
             </div>
             <Button

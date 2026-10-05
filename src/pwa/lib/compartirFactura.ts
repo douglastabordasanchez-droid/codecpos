@@ -10,6 +10,7 @@
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { construirUrlQR } from '../../app/lib/dian/softwareSecurityCode';
 import { generarFacturaPDF, nombreArchivoFactura, type ConfigEmpresa, type Venta as VentaFactura } from '../../app/lib/pdfGenerator';
+import { compartirPdf, descargarPdf } from '../../app/lib/archivoPdf';
 
 interface VentaParaCompartir {
   id: string;
@@ -21,19 +22,27 @@ interface VentaParaCompartir {
 }
 
 /**
- * Datos del negocio como los ve Electron: la configuración de empresa que
- * Electron sincroniza (empresa_configuraciones.datos), su logo (bucket
- * empresa-logos) y, de respaldo, la ficha del negocio en clientes_pos.
+ * Los datos del negocio y el enlace del logo son iguales para todas las
+ * facturas: se guardan 4 minutos (el enlace firmado del logo dura 5) para que
+ * abrir varias facturas seguidas no repita esas consultas.
  */
-async function construirDatosFactura(clienteId: string, venta: VentaParaCompartir) {
+const configCache = new Map<string, { hasta: number; promesa: Promise<ConfigEmpresa> }>();
+
+function configDelNegocio(clienteId: string): Promise<ConfigEmpresa> {
+  const guardada = configCache.get(clienteId);
+  if (guardada && guardada.hasta > Date.now()) return guardada.promesa;
+  const promesa = cargarConfigDelNegocio(clienteId);
+  configCache.set(clienteId, { hasta: Date.now() + 4 * 60_000, promesa });
+  promesa.catch(() => configCache.delete(clienteId));
+  return promesa;
+}
+
+async function cargarConfigDelNegocio(clienteId: string): Promise<ConfigEmpresa> {
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
-
-  const [{ data: negocio }, { data: empresa }, { data: items }, { data: ventaFila }] = await Promise.all([
+  const [{ data: negocio }, { data: empresa }] = await Promise.all([
     client.from('clientes_pos').select('nombre_negocio, nit, telefono, email, ciudad').eq('id', clienteId).maybeSingle(),
     client.from('empresa_configuraciones').select('datos, logo_path').eq('cliente_id', clienteId).maybeSingle(),
-    client.from('venta_items').select('nombre, cantidad, precio_unitario, subtotal').eq('venta_id', venta.id),
-    client.from('ventas').select('numero, local_id, descuento, propina, metodos_multiples').eq('id', venta.id).maybeSingle(),
   ]);
 
   const n = (negocio as Record<string, any> | null) || {};
@@ -64,6 +73,24 @@ async function construirDatosFactura(clienteId: string, venta: VentaParaComparti
     rangoAutorizadoHasta: datos.rangoAutorizadoHasta || '',
     logoUrl,
   };
+
+  return config;
+}
+
+/**
+ * Datos del negocio como los ve Electron: la configuración de empresa que
+ * Electron sincroniza (empresa_configuraciones.datos), su logo (bucket
+ * empresa-logos) y, de respaldo, la ficha del negocio en clientes_pos.
+ */
+export async function obtenerDatosFactura(clienteId: string, venta: VentaParaCompartir): Promise<{ config: ConfigEmpresa; venta: VentaFactura }> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+
+  const [config, { data: items }, { data: ventaFila }] = await Promise.all([
+    configDelNegocio(clienteId),
+    client.from('venta_items').select('nombre, cantidad, precio_unitario, subtotal').eq('venta_id', venta.id),
+    client.from('ventas').select('numero, local_id, descuento, propina, metodos_multiples').eq('id', venta.id).maybeSingle(),
+  ]);
 
   const v = (ventaFila as Record<string, any> | null) || {};
   const pagoMixto = v.metodos_multiples && typeof v.metodos_multiples === 'object' && !Array.isArray(v.metodos_multiples)
@@ -117,62 +144,25 @@ async function construirDatosFactura(clienteId: string, venta: VentaParaComparti
     if (f.cliente_email) facturaVenta.clienteEmail = f.cliente_email;
   }
 
-  return { config, facturaVenta };
+  return { config, venta: facturaVenta };
 }
 
 /**
- * Abre la factura en una pestaña nueva usando el visor de PDF nativo del
- * navegador — ese visor ya trae su propio botón de imprimir, así que
- * cualquier impresora instalada en Windows (térmica incluida, si tiene
- * driver) queda disponible sin integración adicional. Es el respaldo real
- * si Electron falla: misma factura, mismo generador (pdfGenerator.ts), solo
- * cambia cómo se le entrega al usuario.
+ * Comparte el PDF: en la app Android con la hoja nativa, en el celular con la
+ * del sistema; si el equipo no comparte archivos, se descarga el PDF y se abre
+ * WhatsApp con el mensaje para adjuntarlo a mano.
  */
-export async function verFactura(clienteId: string, venta: VentaParaCompartir): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const { config, facturaVenta } = await construirDatosFactura(clienteId, venta);
-    const blob = await generarFacturaPDF(facturaVenta, config);
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'No se pudo generar el PDF' };
-  }
-}
-
 export async function compartirRecibo(clienteId: string, venta: VentaParaCompartir): Promise<{ ok: boolean; error?: string }> {
   try {
-    const { config, facturaVenta } = await construirDatosFactura(clienteId, venta);
+    const { config, venta: facturaVenta } = await obtenerDatosFactura(clienteId, venta);
     const blob = await generarFacturaPDF(facturaVenta, config);
     const nombreArchivo = nombreArchivoFactura(facturaVenta);
+    const mensaje = `Factura ${facturaVenta.numeroFactura} · ${config.nombreComercial} · Total: $${facturaVenta.total.toLocaleString('es-CO')}`;
 
-    const archivo = new File([blob], nombreArchivo, { type: 'application/pdf' });
+    if (await compartirPdf(blob, nombreArchivo, `Factura ${facturaVenta.numeroFactura}`, mensaje)) return { ok: true };
 
-    if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-      await navigator.share({
-        files: [archivo],
-        title: `Factura ${facturaVenta.numeroFactura}`,
-        text: `Factura ${facturaVenta.numeroFactura} · ${config.nombreComercial}`,
-      });
-      return { ok: true };
-    }
-
-    // Fallback: sin soporte de archivos en Web Share — se descarga el PDF y
-    // se abre WhatsApp con un mensaje, el usuario adjunta el archivo desde
-    // su carpeta de descargas.
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = nombreArchivo;
-    link.click();
-    URL.revokeObjectURL(url);
-
-    const mensaje = encodeURIComponent(
-      `Factura ${facturaVenta.numeroFactura} · ${config.nombreComercial} · Total: $${facturaVenta.total.toLocaleString('es-CO')}`
-    );
-    window.open(`https://wa.me/?text=${mensaje}`, '_blank');
-
+    descargarPdf(blob, nombreArchivo);
+    window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'No se pudo generar el PDF' };

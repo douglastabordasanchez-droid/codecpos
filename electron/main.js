@@ -25,6 +25,7 @@ import { SerialPort } from 'serialport';
 import { lanServer } from './lan/lanServer.js';
 import { lanClient } from './lan/lanClient.js';
 import * as backupManager from './backupManager.js';
+import * as archivoHistorico from './archivoHistorico.js';
 import * as fileLogger from './fileLogger.js';
 import { iniciarAutoUpdater, checarActualizaciones, instalarActualizacionAhora } from './autoUpdater.js';
 import * as dianSecrets from './dianSecrets.js';
@@ -1401,6 +1402,19 @@ ipcMain.handle('backup:get-last-info', async () => {
 });
 
 ipcMain.handle('backup:get-dir', async () => backupManager.getBackupsDir());
+
+// Carpeta de archivo del historial (ver electron/archivoHistorico.js y
+// src/app/lib/retencionDatos.ts): la caja guarda ahí lo que tiene más de un
+// mes antes de borrarlo de su base local.
+ipcMain.handle('archivo:elegir-carpeta', async (event) =>
+  archivoHistorico.elegirCarpeta(dialog, BrowserWindow.fromWebContents(event.sender)));
+ipcMain.handle('archivo:verificar', async (_, carpeta) => archivoHistorico.verificar(carpeta));
+ipcMain.handle('archivo:guardar', async (_, { carpeta, subcarpeta, nombre, contenido }) => {
+  const r = await archivoHistorico.guardar(carpeta, subcarpeta, nombre, contenido);
+  fileLogger.writeLog(r.ok ? 'INFO' : 'ERROR', r.ok ? `Archivo de historial guardado: ${r.ruta}` : 'No se pudo guardar el archivo de historial', r.ok ? { bytes: r.bytes } : { error: r.error });
+  return r;
+});
+ipcMain.handle('archivo:abrir', async (_, carpeta) => archivoHistorico.abrir(shell, carpeta));
 
 // "Reparar base de datos": la única operación honesta y segura que Node puede
 // ejecutar sobre un IndexedDB de Chromium dañado es descartar el storage de
