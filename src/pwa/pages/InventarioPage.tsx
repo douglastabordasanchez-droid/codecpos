@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Search, Package } from 'lucide-react';
+import { Plus, Search, Package, Upload } from 'lucide-react';
 import { Input } from '../../app/components/ui/input';
 import { Button } from '../../app/components/ui/button';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
@@ -36,22 +36,37 @@ export default function InventarioPage() {
     if (!empleado) return;
     setCargando(true);
     const client = getSupabaseClient();
-    const { data } = await client!
-      .from('productos')
-      .select('id, nombre, categoria, precio_venta, stock, stock_minimo, foto_url, activo')
-      .eq('cliente_id', empleado.cliente_id)
-      .order('nombre');
-    let filas = (data as ProductoFila[]) || [];
+    // El servidor entrega máximo 1.000 filas por consulta: se piden por páginas para que
+    // un negocio con miles de referencias vea todo su inventario (antes se cortaba en 1.000).
+    let filas: ProductoFila[] = [];
+    for (let desde = 0; ; desde += 1000) {
+      const { data } = await client!
+        .from('productos')
+        .select('id, nombre, categoria, precio_venta, stock, stock_minimo, foto_url, activo')
+        .eq('cliente_id', empleado.cliente_id)
+        .order('nombre')
+        .order('id')
+        .range(desde, desde + 999);
+      filas = filas.concat((data as ProductoFila[]) || []);
+      if (!data || data.length < 1000) break;
+    }
 
     // 🏪 Multi-Tienda: mostrar el stock de la sucursal activa (tiendas_stock),
     // no siempre el de Tienda Principal (productos.stock) — mismo criterio
     // que VenderPage.tsx.
     if (tiendaEfectiva && tiendaEfectiva !== 'tienda_principal') {
-      const { data: stockTienda } = await client!
-        .from('tiendas_stock')
-        .select('producto_id, cantidad')
-        .eq('cliente_id', empleado.cliente_id)
-        .eq('tienda_id', tiendaEfectiva);
+      const stockTienda: Array<{ producto_id: string; cantidad: number }> = [];
+      for (let desde = 0; ; desde += 1000) {
+        const { data } = await client!
+          .from('tiendas_stock')
+          .select('producto_id, cantidad')
+          .eq('cliente_id', empleado.cliente_id)
+          .eq('tienda_id', tiendaEfectiva)
+          .order('producto_id')
+          .range(desde, desde + 999);
+        stockTienda.push(...((data as any[]) || []));
+        if (!data || data.length < 1000) break;
+      }
       const stockPorProducto = new Map((stockTienda || []).map((s: any) => [s.producto_id, Number(s.cantidad) || 0]));
       filas = filas.map((p) => ({ ...p, stock: stockPorProducto.get(p.id) ?? 0 }));
     }
@@ -77,6 +92,16 @@ export default function InventarioPage() {
           <h1 className="text-white text-xl font-black">Inventario</h1>
           <p className="text-slate-400 text-sm">{productos.length} productos</p>
         </div>
+        <div className="flex items-center gap-2">
+        {esAdmin && (
+          <button
+            onClick={() => navigate('/inventario/importar')}
+            className="h-11 px-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold inline-flex items-center gap-1.5"
+            title="Cargar muchos productos con una plantilla de Excel"
+          >
+            <Upload className="w-4 h-4" /> Importar
+          </button>
+        )}
         <Button
           onClick={() => navigate('/inventario/nuevo')}
           size="icon"
@@ -84,6 +109,7 @@ export default function InventarioPage() {
         >
           <Plus className="w-5 h-5" />
         </Button>
+        </div>
       </div>
 
       <SucursalFiltro />

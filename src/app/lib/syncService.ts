@@ -57,8 +57,15 @@ export function multitiendaEnNube(): boolean {
   return localStorage.getItem(CLAVE_MULTITIENDA_NUBE) === '1';
 }
 
-/** Lo vendido en esta caja que todavía no subió a la nube, por producto local. */
-async function vendidoSinSubir(): Promise<Map<string, number>> {
+/** Lo vendido en esta caja que todavía no subió a la nube, por producto local (se guarda 3 s: en un lote se consulta por cada producto). */
+let vendidoSinSubirCache: { hasta: number; promesa: Promise<Map<string, number>> } | null = null;
+function vendidoSinSubir(): Promise<Map<string, number>> {
+  if (vendidoSinSubirCache && vendidoSinSubirCache.hasta > Date.now()) return vendidoSinSubirCache.promesa;
+  const promesa = calcularVendidoSinSubir();
+  vendidoSinSubirCache = { hasta: Date.now() + 3000, promesa };
+  return promesa;
+}
+async function calcularVendidoSinSubir(): Promise<Map<string, number>> {
   const mapa = new Map<string, number>();
   const sumar = (items: any[] | undefined) => (items || []).forEach((it) => {
     const id = it?.productoId || it?.id;
@@ -98,6 +105,16 @@ async function subirAjustesManualesStock(
   const { error } = await client.rpc('cargar_stock_sede', { p_tienda: 'tienda_principal', p_items: ajustes, p_modo: 'fijar' });
   if (error) throw error;
 }
+/** Posición de cada producto local por su id de la nube ("s:…") y su id local ("l:…"). */
+function indiceProductos(productos: Producto[]): Map<string, number> {
+  const indice = new Map<string, number>();
+  productos.forEach((p, i) => {
+    indice.set(`l:${p.id}`, i);
+    if (p.supabaseId) indice.set(`s:${p.supabaseId}`, i);
+  });
+  return indice;
+}
+
 const STEP_TIMEOUT_MS = 20_000;
 
 /**
@@ -299,6 +316,9 @@ class SyncService {
   private started = false;
   private syncInterval: number | null = null;
   private syncRapidoInterval: number | null = null;
+  /** Cambios de productos que llegan por Realtime, agrupados (ver setupRealtime). */
+  private cambiosProductos: any[] = [];
+  private esperaCambiosProductos: number | null = null;
   /** Pasos de descarga pedidos por Realtime mientras otro ciclo corría (se ejecutan al terminar). */
   private pasosPedidos = new Set<string>();
   private esperaPasosPedidos: number | null = null;
@@ -395,7 +415,16 @@ class SyncService {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'productos', filter: filtro },
         (payload) => {
-          this.aplicarCambioRemotoProducto((payload.new ?? payload.old) as any).catch(() => {});
+          // Pocos cambios (una edición en la web) se aplican uno por uno al instante; una
+          // importación de miles se baja en lote con el paso normal (una sola escritura).
+          this.cambiosProductos.push((payload.new ?? payload.old) as any);
+          if (this.esperaCambiosProductos) return;
+          this.esperaCambiosProductos = window.setTimeout(() => {
+            this.esperaCambiosProductos = null;
+            const lote = this.cambiosProductos.splice(0);
+            if (lote.length > 20) return this.pedirPasos(['pull_productos']);
+            lote.forEach((r) => this.aplicarCambioRemotoProducto(r).catch(() => {}));
+          }, 1500);
         }
       );
     canal = canal.on('postgres_changes' as any, { event: '*', schema: 'public', table: 'tiendas_stock', filter: filtro } as any, (payload: any) => {
@@ -549,11 +578,20 @@ class SyncService {
   private async pullProductosRemotos(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
     const lastPull = await dbManager.getConfig('lastPullProductos');
 
-    let query = client.from('productos').select('*').eq('cliente_id', clienteId);
-    if (lastPull) query = query.gt('updated_at', lastPull);
-
-    const { data, error } = await query;
-    if (error) throw error;
+    // Por páginas y en orden: el servidor entrega máximo 1.000 filas por consulta y, como la
+    // marca guarda hasta dónde se bajó, sin esto un catálogo grande (importado desde la web)
+    // se quedaba en 1.000 productos y el resto no llegaba nunca.
+    const data: any[] = [];
+    for (let desde = 0; ; desde += 1000) {
+      let query = client.from('productos').select('*').eq('cliente_id', clienteId)
+        .order('updated_at', { ascending: true }).order('id', { ascending: true })
+        .range(desde, desde + 999);
+      if (lastPull) query = query.gt('updated_at', lastPull);
+      const { data: pagina, error } = await query;
+      if (error) throw error;
+      data.push(...(pagina || []));
+      if (!pagina || pagina.length < 1000) break;
+    }
 
     // ⚡ Lote: cada item se aplica a IndexedDB individualmente (async, no
     // bloquea), pero el espejo en localStorage['pos-productos'] se hace UNA
@@ -563,8 +601,9 @@ class SyncService {
     // se recargaba completo por CADA producto remoto: 500 cambios = 500
     // lecturas del inventario entero).
     const productosLocales = (data || []).length > 0 ? await dbManager.getAllProductos() : [];
+    const indice = indiceProductos(productosLocales);
     for (const remote of data || []) {
-      const actualizado = await this.aplicarCambioRemotoProducto(remote, { skipLocalStorageSync: true, productosLocales });
+      const actualizado = await this.aplicarCambioRemotoProducto(remote, { skipLocalStorageSync: true, productosLocales, indice });
       if (actualizado) actualizados.push(actualizado);
     }
     if (actualizados.length > 0) {
@@ -578,12 +617,21 @@ class SyncService {
 
   private async aplicarCambioRemotoProducto(
     remote: any,
-    opts?: { skipLocalStorageSync?: boolean; productosLocales?: Producto[] }
+    opts?: { skipLocalStorageSync?: boolean; productosLocales?: Producto[]; indice?: Map<string, number> }
   ): Promise<Producto | null> {
     if (!remote) return null;
 
     const productos = opts?.productosLocales ?? await dbManager.getAllProductos();
-    const local = productos.find((p) => p.supabaseId === remote.id || (remote.local_id && p.id === remote.local_id));
+    // Con índice (lotes grandes) se busca directo; recorrer 20.000 productos por cada uno era cuadrático.
+    const posicion = opts?.indice ? (opts.indice.get(`s:${remote.id}`) ?? (remote.local_id ? opts.indice.get(`l:${remote.local_id}`) : undefined)) : undefined;
+    const local = opts?.indice
+      ? (posicion !== undefined ? productos[posicion] : undefined)
+      : productos.find((p) => p.supabaseId === remote.id || (remote.local_id && p.id === remote.local_id));
+    const reemplazar = (nuevo: Producto) => {
+      if (!opts?.productosLocales || !local) return;
+      const i = posicion ?? opts.productosLocales.indexOf(local);
+      if (i >= 0) opts.productosLocales[i] = nuevo;
+    };
     const remoteUpdatedAt = new Date(remote.updated_at).getTime();
     let resultado: Producto;
 
@@ -598,7 +646,7 @@ class SyncService {
         const soloStock: Producto = { ...local, stock: stockNube, supabaseId: remote.id, stockNube: Number(remote.stock) } as Producto;
         await dbManager.putProductoRaw(soloStock);
         if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(soloStock);
-        if (opts?.productosLocales) opts.productosLocales[opts.productosLocales.indexOf(local)] = soloStock;
+        reemplazar(soloStock);
         return soloStock;
       }
       // Hay una edición local sin subir todavía: no la pisamos con la remota.
@@ -650,7 +698,7 @@ class SyncService {
       } as Producto;
       await dbManager.putProductoRaw(actualizado);
       if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(actualizado);
-      if (opts?.productosLocales) opts.productosLocales[opts.productosLocales.indexOf(local)] = actualizado;
+      reemplazar(actualizado);
       resultado = actualizado;
     } else {
       const nuevoId: string = remote.local_id || `remote-${remote.id}`;
@@ -710,7 +758,11 @@ class SyncService {
       };
       await dbManager.putProductoRaw(producto);
       if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(producto);
-      opts?.productosLocales?.push(producto);
+      if (opts?.productosLocales) {
+        opts.productosLocales.push(producto);
+        opts.indice?.set(`l:${producto.id}`, opts.productosLocales.length - 1);
+        if (producto.supabaseId) opts.indice?.set(`s:${producto.supabaseId}`, opts.productosLocales.length - 1);
+      }
       resultado = producto;
     }
 

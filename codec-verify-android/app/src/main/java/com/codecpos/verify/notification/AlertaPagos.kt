@@ -126,6 +126,25 @@ object AlertaPagos {
         )
     }
 
+    /**
+     * El banco avisó que entró dinero pero sin el valor (DaviPlata): suena enseguida para que
+     * el cajero lo sepa; cuando llegue el SMS con el valor, sonará de nuevo con el monto.
+     */
+    fun alertarEntradaSinValor(context: Context, entidad: String, textoBanco: String) {
+        val prefs = Prefs(context.applicationContext)
+        val nombre = when (entidad) { "bre_b" -> "Bre-B"; "otros_bancos" -> "transferencia"; else -> entidad.replaceFirstChar { it.uppercase() } }
+        mostrar(
+            context,
+            tag = "entrada-${System.currentTimeMillis()}",
+            titulo = "Entró dinero por $nombre",
+            cuerpo = "El valor llega en el mensaje del banco. ${textoBanco.take(200)}",
+            frase = "Entró dinero por $nombre. El valor llega en el mensaje del banco.",
+            sonido = prefs.alertaSonido,
+            notificacion = prefs.alertaNotificacion,
+            voz = prefs.alertaVoz,
+        )
+    }
+
     /** Alerta pedida por la web (pago detectado en otro celular del negocio o una prueba). */
     fun alertarDesdeWeb(context: Context, id: String, titulo: String, cuerpo: String, frase: String, sonido: Boolean, notificacion: Boolean, voz: Boolean) {
         synchronized(idsAvisados) {

@@ -43,6 +43,11 @@ class ClasificadorAvisoTest {
         "recibido" to "Envío | INGRID DURAN te envió 50, ¡lo mejor!",
         "recibido" to "Te enviaron plata por Bre-B | Te enviaron $50. Entra a tu app y revisa tu saldo.",
         "recibido" to "85888 | Recibiste $50. Para saber mas, consulta tus movimientos.",
+        "enviado" to "Tu plata llegó con éxito | Envío exitoso, la plata ya está en el Nequi destino. Recuerda que...",
+        "recibido" to "Banco X | Te mandaron $30.000 desde otra entidad",
+        "recibido" to "Billetera | Se acreditó un abono de $15.000 a tu cuenta",
+        "recibido" to "Lulo | Nuevo ingreso por $40.000",
+        "otro" to "Tienda | Recibiste un bono de bienvenida de $10.000",
         "recibido" to "DaviPlata | Transaccion exitosa: Recibiste Plata de otra entidad usando Llaves, consulta el detalle de tus movimientos desde el app DaviPlata.",
     )
 

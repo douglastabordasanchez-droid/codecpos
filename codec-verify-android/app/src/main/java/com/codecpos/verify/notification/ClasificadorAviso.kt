@@ -25,20 +25,22 @@ object ClasificadorAviso {
             "recibimos tu|compraste|compra (en|aprobada|rechazada|por|exitosa|realizada)|retiraste|retiro (en|de|por|exitoso)|" +
             "sacaste|se debito|debitamos|debito (de|por|en|automatico)|te cobramos|cobro (de|por)|cuota de manejo|salio de tu|" +
             "salida de dinero|recarga (exitosa|de)|recargaste|fondos insuficientes|saldo insuficiente|rechazad[ao]|" +
-            "declinad[ao]|no procesad[ao]|no fue posible|no se pudo|fallid[ao])"
+            "declinad[ao]|no procesad[ao]|no fue posible|no se pudo|fallid[ao]|envio exitoso|tu plata llego|ya esta en el nequi destino|nequi destino|llego a su destino)"
     )
 
     private val NO_ES_MOVIMIENTO = Regex(
         "(solicitud|te pidi|te esta pidiendo|pidiendo plata|cobrarte|codigo de (seguridad|verificacion|acceso)|tu codigo|" +
             "clave dinamica|contrasena|token|inicio de sesion|iniciaste sesion|ingresaste|nuevo dispositivo|" +
-            "alerta de seguridad|promo|descuento|cashback|puntos|bono de|gana |sorteo|credito aprobado|prestamo|monedas|gemas|diamantes|millas|cupon|recompensa)"
+            "alerta de seguridad|promo|descuento|cashback|puntos|\\bbono de|gana |sorteo|credito aprobado|prestamo|monedas|gemas|diamantes|millas|cupon|recompensa)"
     )
 
     private val ENTRADA = Regex(
         "(recibiste|has recibido|te enviaron|te envio|te transfirieron|te transfirio|te llego|te llegaron|te pasaron|" +
             "te paso|te consignaron|te consigno|te abonaron|te abono|te depositaron|te deposito|te pagaron|te pago|" +
             "pago recibido|dinero recibido|plata recibida|transferencia recibida|abono recibido|abono a tu|abonamos|" +
-            "consignacion (exitosa|recibida)|entrada de dinero|ingreso de dinero|tu (cuenta|nequi|daviplata|llave) recibio)"
+            "consignacion (exitosa|recibida)|entrada de dinero|ingreso de dinero|tu (cuenta|nequi|daviplata|llave) recibio|" +
+            "te mandaron|te mando|te giraron|te giro|te acreditaron|se acredito|se acreditaron|acreditamos|nuevo ingreso|" +
+            "tienes un ingreso|ingreso a tu|entro dinero|entro plata|te entro|transferencia entrante|envio recibido|deposito recibido|giro recibido)"
     )
 
     private val MONTO = Regex("\\$\\s?([0-9][0-9.,]*)")

@@ -160,6 +160,7 @@ class PagoNotificationListenerService : NotificationListenerService() {
                 anotar(entidad, paquete, textoFinal, clase, monto, "ESPERANDO SMS", exitoso = false, error = "El aviso no trae el valor; se registra con el SMS del banco")
                 // Este aviso llega antes que el SMS: la venta que espera el pago lo muestra al instante
                 // para que el cajero pueda confirmarlo sin esperar el valor.
+                AlertaPagos.alertarEntradaSinValor(applicationContext, entidad, textoFinal)
                 api.registrarEvento(webhookToken, entidad, "sin_valor", "Entró dinero; el valor llega por SMS", textoFinal)
                 return@launch
             }
