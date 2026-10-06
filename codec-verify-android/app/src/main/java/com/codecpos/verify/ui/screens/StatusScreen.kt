@@ -58,6 +58,7 @@ fun StatusScreen(
             "daviplata" to "Daviplata",
             "davivienda" to "Davivienda",
             "bre_b" to "Bre-B (pagos desde cualquier banco)",
+            "otros_bancos" to "Cualquier banco o billetera (entradas de dinero de otras apps)",
         ).forEach { (id, label) ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

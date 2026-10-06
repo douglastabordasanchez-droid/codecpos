@@ -11,6 +11,15 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
+    <!-- Para mostrar el nombre del banco o billetera de cualquier app que avise un pago
+         (ver PagoNotificationListenerService.nombreApp): ver las apps que tienen ícono. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".CodecVerifyApp"
         android:allowBackup="false"

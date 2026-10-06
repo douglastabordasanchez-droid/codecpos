@@ -126,57 +126,62 @@ class PagoNotificationListenerService : NotificationListenerService() {
             esSms -> if (entidadSms in habilitadas || entidadSms == "sms_banco") entidadSms!! else return
             "bre_b" in habilitadas && esAvisoBreB(texto) && paquete !in Prefs.APPS_EXCLUIDAS &&
                 (entidad != null || clase.clase == ClasificadorAviso.Clase.RECIBIDO) -> "bre_b"
-            entidad == null -> return // app que no es de un banco habilitado
-            entidad !in habilitadas -> return
-            else -> entidad
+            entidad != null -> if (entidad in habilitadas) entidad else return
+            // Cualquier otra app (banco o billetera fuera de la lista) que avise que ENTRÓ dinero:
+            // puede ser el pago de un cliente. Debe ser una entrada y hablar de dinero.
+            Prefs.OTROS_BANCOS in habilitadas && paquete !in Prefs.APPS_EXCLUIDAS &&
+                clase.clase == ClasificadorAviso.Clase.RECIBIDO && ClasificadorAviso.hablaDeDinero(texto) -> Prefs.OTROS_BANCOS
+            else -> return
         }
+        // De qué app vino (para saber en Codec POS qué banco fue): "Lulo Bank | Recibiste $20.000".
+        val textoFinal = if (entidadFinal == Prefs.OTROS_BANCOS) "${nombreApp(paquete)} | $texto" else texto
 
         // Las apps de los bancos actualizan la misma notificación varias veces: un solo registro por aviso.
         // La hora del aviso distingue un pago nuevo de una actualización: Nequi publica cada
         // "Te enviaron $50" con el mismo identificador y el mismo texto, y antes un segundo
         // pago igual dentro de 10 minutos se tomaba como repetido y no se leía.
         val horaAviso = sbn.notification.`when`.takeIf { it > 0 } ?: sbn.postTime
-        val republicado = vistoHaceSegundos("${sbn.key}|$texto")
-        if (yaVisto("${sbn.key}|$horaAviso|$texto") || republicado) return
+        val republicado = vistoHaceSegundos("${sbn.key}|$textoFinal")
+        if (yaVisto("${sbn.key}|$horaAviso|$textoFinal") || republicado) return
 
         scope.launch {
             val entidad = entidadFinal
             if (!confirmarActivo(webhookToken)) return@launch
-            val monto = ClasificadorAviso.montoVisible(texto)
+            val monto = ClasificadorAviso.montoVisible(textoFinal)
 
             if (clase.clase != ClasificadorAviso.Clase.RECIBIDO) {
                 // Solo queda en el registro de este celular: el texto no se envía a ningún lado.
-                anotar(entidad, paquete, texto, clase, monto, "IGNORADO", exitoso = false, error = "${clase.clase.etiqueta}: ${clase.motivo}")
+                anotar(entidad, paquete, textoFinal, clase, monto, "IGNORADO", exitoso = false, error = "${clase.clase.etiqueta}: ${clase.motivo}")
                 return@launch
             }
 
             // Entrada sin valor (DaviPlata): el pago se registra con el SMS del banco que trae el valor.
-            if (!ClasificadorAviso.tieneValor(texto)) {
-                anotar(entidad, paquete, texto, clase, monto, "ESPERANDO SMS", exitoso = false, error = "El aviso no trae el valor; se registra con el SMS del banco")
+            if (!ClasificadorAviso.tieneValor(textoFinal)) {
+                anotar(entidad, paquete, textoFinal, clase, monto, "ESPERANDO SMS", exitoso = false, error = "El aviso no trae el valor; se registra con el SMS del banco")
                 // Este aviso llega antes que el SMS: la venta que espera el pago lo muestra al instante
                 // para que el cajero pueda confirmarlo sin esperar el valor.
-                api.registrarEvento(webhookToken, entidad, "sin_valor", "Entró dinero; el valor llega por SMS", texto)
+                api.registrarEvento(webhookToken, entidad, "sin_valor", "Entró dinero; el valor llega por SMS", textoFinal)
                 return@launch
             }
 
             // El mismo pago avisado por la app y por SMS: solo se registra una vez.
-            val valor = ClasificadorAviso.valorEnPesos(texto)
+            val valor = ClasificadorAviso.valorEnPesos(textoFinal)
             if (valor != null && yaRegistradoPorOtraVia(valor, esSms)) {
-                anotar(entidad, paquete, texto, clase, monto, "DUPLICADO", exitoso = false, error = "Ese pago ya se registró por ${if (esSms) "la app del banco" else "SMS"}")
+                anotar(entidad, paquete, textoFinal, clase, monto, "DUPLICADO", exitoso = false, error = "Ese pago ya se registró por ${if (esSms) "la app del banco" else "SMS"}")
                 return@launch
             }
 
             // Sin internet se reintenta (3 s, 10 s y 30 s) antes de darlo por perdido.
-            var resultado = api.registrarPagoAutomatico(webhookToken, texto, entidad)
+            var resultado = api.registrarPagoAutomatico(webhookToken, textoFinal, entidad)
             for (espera in longArrayOf(3_000, 10_000, 30_000)) {
                 if (resultado.isSuccess || resultado.exceptionOrNull() !is IOException || resultado.exceptionOrNull()?.message?.contains("HTTP") == true) break
                 delay(espera)
-                resultado = api.registrarPagoAutomatico(webhookToken, texto, entidad)
+                resultado = api.registrarPagoAutomatico(webhookToken, textoFinal, entidad)
             }
             if (resultado.isSuccess) {
                 if (valor != null) recordarRegistro(valor, esSms)
-                anotar(entidad, paquete, texto, clase, monto, "RECIBIDO", exitoso = true)
-                AlertaPagos.alertarDesdeLector(applicationContext, entidad, texto)
+                anotar(entidad, paquete, textoFinal, clase, monto, "RECIBIDO", exitoso = true)
+                AlertaPagos.alertarDesdeLector(applicationContext, entidad, textoFinal)
                 return@launch
             }
 
@@ -191,17 +196,17 @@ class PagoNotificationListenerService : NotificationListenerService() {
             // token inválido), esos casos no deben insistirse con otro intento.
             if (!mensaje.contains("No se pudo extraer el monto")) {
                 val ignorado = mensaje.contains("saliente") || mensaje.contains("No es un pago recibido")
-                anotar(entidad, paquete, texto, clase, monto, if (ignorado) "IGNORADO" else "ERROR", exitoso = false, error = mensaje)
-                api.registrarEvento(webhookToken, entidad, if (ignorado) "ignorado" else "error", mensaje.take(200), texto)
+                anotar(entidad, paquete, textoFinal, clase, monto, if (ignorado) "IGNORADO" else "ERROR", exitoso = false, error = mensaje)
+                api.registrarEvento(webhookToken, entidad, if (ignorado) "ignorado" else "error", mensaje.take(200), textoFinal)
                 return@launch
             }
 
-            val resultadoIA = api.interpretarConIA(webhookToken, texto, entidad)
+            val resultadoIA = api.interpretarConIA(webhookToken, textoFinal, entidad)
             val exitoIA = resultadoIA.getOrDefault(false)
-            if (exitoIA) AlertaPagos.alertarDesdeLector(applicationContext, entidad, texto)
-            else api.registrarEvento(webhookToken, entidad, "no_leido", "No se encontró el monto en el aviso", texto)
+            if (exitoIA) AlertaPagos.alertarDesdeLector(applicationContext, entidad, textoFinal)
+            else api.registrarEvento(webhookToken, entidad, "no_leido", "No se encontró el monto en el aviso", textoFinal)
             anotar(
-                entidad, paquete, texto, clase, monto,
+                entidad, paquete, textoFinal, clase, monto,
                 if (exitoIA) "RECIBIDO (IA)" else "SIN MONTO",
                 exitoso = exitoIA,
                 error = if (exitoIA) null else (resultadoIA.exceptionOrNull()?.message ?: "El regex y la IA no lograron leer el monto"),
@@ -223,6 +228,13 @@ class PagoNotificationListenerService : NotificationListenerService() {
     private fun recordarRegistro(valor: Long, esSms: Boolean) = synchronized(registrosRecientes) {
         registrosRecientes.addLast(Triple(valor, esSms, System.currentTimeMillis()))
         while (registrosRecientes.size > 30) registrosRecientes.removeFirst()
+    }
+
+    /** Nombre visible de la app ("Lulo Bank"); si Android no lo deja ver, el paquete. */
+    private fun nombreApp(paquete: String): String = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(paquete, 0)).toString()
+    } catch (_: Exception) {
+        paquete
     }
 
     /** Remitente del SMS: el título de la notificación ("85888" o el nombre del contacto). */

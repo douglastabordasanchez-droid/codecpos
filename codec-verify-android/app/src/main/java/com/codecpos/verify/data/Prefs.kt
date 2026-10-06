@@ -35,12 +35,18 @@ class Prefs(context: Context) {
     var entidadesHabilitadas: Set<String>
         get() {
             val guardadas = prefs.getStringSet(KEY_ENTIDADES, DEFAULT_ENTIDADES) ?: DEFAULT_ENTIDADES
+            var resultado = guardadas
             // Bre-B llegó en la versión 1.1.1: se activa una sola vez para quien ya tenía la app.
             if (!prefs.getBoolean(KEY_BRE_B_MIGRADO, false)) {
-                prefs.edit().putBoolean(KEY_BRE_B_MIGRADO, true).putStringSet(KEY_ENTIDADES, guardadas + "bre_b").apply()
-                return guardadas + "bre_b"
+                resultado = resultado + "bre_b"
+                prefs.edit().putBoolean(KEY_BRE_B_MIGRADO, true).putStringSet(KEY_ENTIDADES, resultado).apply()
             }
-            return guardadas
+            // "Cualquier banco o billetera" llegó en la 1.1.8: también se activa una sola vez.
+            if (!prefs.getBoolean(KEY_OTROS_MIGRADO, false)) {
+                resultado = resultado + OTROS_BANCOS
+                prefs.edit().putBoolean(KEY_OTROS_MIGRADO, true).putStringSet(KEY_ENTIDADES, resultado).apply()
+            }
+            return resultado
         }
         set(value) = prefs.edit().putStringSet(KEY_ENTIDADES, value).apply()
 
@@ -119,10 +125,14 @@ class Prefs(context: Context) {
         private const val KEY_ALERTA_NOTIFICACION = "alerta_pago_notificacion"
         private const val KEY_ALERTA_VOZ = "alerta_pago_voz"
         private const val KEY_BRE_B_MIGRADO = "bre_b_migrado"
+        private const val KEY_OTROS_MIGRADO = "otros_bancos_migrado"
+
+        /** Cualquier app (banco o billetera fuera de la lista) que avise una entrada de dinero. */
+        const val OTROS_BANCOS = "otros_bancos"
         private const val KEY_CV_ACTIVO = "codec_verify_activo"
         private const val KEY_CV_ACTIVO_EN = "codec_verify_activo_en"
 
-        val DEFAULT_ENTIDADES = setOf("nequi", "bancolombia", "daviplata", "davivienda", "bre_b")
+        val DEFAULT_ENTIDADES = setOf("nequi", "bancolombia", "daviplata", "davivienda", "bre_b", "otros_bancos")
 
         // Nombres de paquete verificados contra las fichas públicas de Google
         // Play (agosto 2026) — aun así, si algún banco cambia de paquete o el
@@ -165,6 +175,8 @@ class Prefs(context: Context) {
             "com.google.android.youtube", "com.twitter.android", "com.discord", "com.Slack",
             "com.google.android.gm", "com.microsoft.office.outlook", "com.samsung.android.email.provider",
             "com.yahoo.mobile.client.android.mail",
+            "com.google.android.gms", "com.android.systemui", "com.android.vending", "com.google.android.googlequicksearchbox",
+            "com.facebook.lite", "com.snapchat.android", "com.linkedin.android", "com.pinterest",
         )
     }
 }

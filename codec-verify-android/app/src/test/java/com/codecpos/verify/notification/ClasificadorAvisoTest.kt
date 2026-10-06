@@ -73,4 +73,17 @@ class ClasificadorAvisoTest {
         assertEquals(41000L, ClasificadorAviso.valorEnPesos("Recibiste una transferencia de KAREN por $41,000.00"))
         assertEquals(25000L, ClasificadorAviso.valorEnPesos("Te enviaron $25.000"))
     }
+
+    @Test
+    fun otrosBancosSoloSiHablaDeDinero() {
+        // Bancos y billeteras fuera de la lista
+        assertEquals(true, ClasificadorAviso.hablaDeDinero("Lulo Bank | Recibiste $20.000 de CARLOS"))
+        assertEquals(true, ClasificadorAviso.hablaDeDinero("Nu | Te llegó plata por Bre-B: 35.000"))
+        assertEquals(true, ClasificadorAviso.hablaDeDinero("Banco de Bogotá | Recibiste una transferencia de 15000 pesos"))
+        assertEquals(ClasificadorAviso.Clase.RECIBIDO, ClasificadorAviso.clasificar("Lulo Bank | Recibiste $20.000 de CARLOS").clase)
+        // No son dinero: juegos y apps de puntos
+        assertEquals(false, ClasificadorAviso.hablaDeDinero("Candy Crush | Recibiste 500 vidas"))
+        assertEquals(ClasificadorAviso.Clase.OTRO, ClasificadorAviso.clasificar("Juego | Recibiste 500 monedas de oro").clase)
+        assertEquals(ClasificadorAviso.Clase.OTRO, ClasificadorAviso.clasificar("Aerolínea | Recibiste 2.000 millas").clase)
+    }
 }

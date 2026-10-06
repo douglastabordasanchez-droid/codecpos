@@ -31,7 +31,7 @@ object ClasificadorAviso {
     private val NO_ES_MOVIMIENTO = Regex(
         "(solicitud|te pidi|te esta pidiendo|pidiendo plata|cobrarte|codigo de (seguridad|verificacion|acceso)|tu codigo|" +
             "clave dinamica|contrasena|token|inicio de sesion|iniciaste sesion|ingresaste|nuevo dispositivo|" +
-            "alerta de seguridad|promo|descuento|cashback|puntos|bono de|gana |sorteo|credito aprobado|prestamo)"
+            "alerta de seguridad|promo|descuento|cashback|puntos|bono de|gana |sorteo|credito aprobado|prestamo|monedas|gemas|diamantes|millas|cupon|recompensa)"
     )
 
     private val ENTRADA = Regex(
@@ -53,6 +53,14 @@ object ClasificadorAviso {
 
     /** Solo para el registro en pantalla: el monto que cuenta lo lee el servidor. */
     fun montoVisible(texto: String): String? = MONTO.find(texto)?.value
+
+    private val DINERO = Regex("(\\$|\\bcop\\b|pesos|plata|dinero|transferencia|transfiri|consignacion|consigno|abono|bre-?b|llave|deposito|giro|saldo)")
+
+    /**
+     * ¿El aviso habla de dinero? Para apps que no están en la lista de bancos: un juego
+     * que diga "Recibiste 500 monedas" no es un pago.
+     */
+    fun hablaDeDinero(texto: String): Boolean = DINERO.containsMatchIn(normalizar(texto))
 
     /** ¿El aviso trae algún valor? DaviPlata avisa "Recibiste Plata..." sin valor: el valor llega por SMS. */
     fun tieneValor(texto: String): Boolean = texto.any { it.isDigit() }
