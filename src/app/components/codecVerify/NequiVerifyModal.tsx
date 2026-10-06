@@ -24,7 +24,9 @@ import { ModalPagoRecibidoNequi, PagoConfirmado } from './ModalPagoRecibidoNequi
 import { suscribirPagoEsperado } from '../../lib/supabase/codecVerifyService';
 import { marcarMontoEsperado, colorMedioPago } from '../../lib/codecVerifyEspera';
 import { createPortal } from 'react-dom';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, BellRing } from 'lucide-react';
+import { getSupabaseClient } from '../../lib/supabase/config';
+import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 
 // ─── Clave para logs de bypass ───────────────────────
 const BYPASS_LOG_KEY = 'codec-verify-bypass-log';
@@ -175,6 +177,8 @@ interface Props {
   /** Qué método de pago se está verificando — cambia texto/color, no la lógica. */
   entidad?: EntidadPago;
   onCancelar: () => void;
+  /** La X: cerrar y volver a la venta (si no se pasa, hace lo mismo que onCancelar). */
+  onCerrar?: () => void;
   onConfirmar: () => void;
   /**
    * Se dispara apenas CODEC Verify detecta el pago (match automático o
@@ -191,7 +195,7 @@ interface Props {
 //  COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════
 function NequiVerifyModalComponent({
-  visible, monto, darkMode, cajeroNombre, numeroFactura, entidad = 'nequi', onCancelar, onConfirmar, onPagoDetectado,
+  visible, monto, darkMode, cajeroNombre, numeroFactura, entidad = 'nequi', onCancelar, onCerrar, onConfirmar, onPagoDetectado,
 }: Props) {
   const codecActivo = isCodecVerifyActivo();
   const config = ENTIDAD_CONFIG[entidad];
@@ -244,6 +248,23 @@ function NequiVerifyModalComponent({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, codecActivo, estado, monto]);
+
+  // El banco avisó que entró dinero pero sin el valor (DaviPlata): se muestra al instante para
+  // que el cajero confirme sin esperar el SMS que trae el valor (igual que en la web).
+  const [avisoSinValor, setAvisoSinValor] = useState<string | null>(null);
+  useEffect(() => {
+    setAvisoSinValor(null);
+    if (!visible || !codecActivo || estado !== 'esperando') return;
+    const client = getSupabaseClient();
+    const clienteId = getLinkedClienteId();
+    if (!client || !clienteId) return;
+    const canal = client.channel(`aviso-sin-valor-caja-${Date.now()}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'codec_verify_eventos', filter: `cliente_id=eq.${clienteId}` }, (payload: any) => {
+        if (payload?.new?.resultado === 'sin_valor') setAvisoSinValor(String(payload.new.entidad || 'el banco'));
+      })
+      .subscribe();
+    return () => { client.removeChannel(canal); };
+  }, [visible, codecActivo, estado]);
 
   // Cronómetro de espera
   useEffect(() => {
@@ -332,7 +353,7 @@ function NequiVerifyModalComponent({
           `}</style>
           <div className="relative w-full max-w-sm overflow-hidden rounded-[28px]" style={{ background: '#ffffff', boxShadow: '0 30px 80px rgba(15,23,42,.35)', animation: 'esperaEntrada .25s ease-out' }}>
             {!recibido && (
-              <button onClick={onCancelar} aria-label="Cancelar" className="absolute right-4 top-4 p-1.5 rounded-full" style={{ color: '#94a3b8' }}>
+              <button onClick={onCerrar ?? onCancelar} aria-label="Cerrar y volver a la venta" title="Cerrar y volver a la venta" className="absolute right-3 top-3 w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 z-10" style={{ color: '#64748b' }}>
                 <X className="w-5 h-5" />
               </button>
             )}
@@ -371,7 +392,20 @@ function NequiVerifyModalComponent({
 
             {!recibido && (
               <div className="px-7 pb-6 space-y-2.5">
-                {codecActivo && segundosEspera >= 90 && (
+                {codecActivo && avisoSinValor && (
+                  <div className="rounded-2xl px-4 py-3 text-left space-y-2.5" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                    <p className="text-sm font-bold flex items-center gap-2" style={{ color: '#047857' }}>
+                      <BellRing className="w-4 h-4" /> {avisoSinValor === 'daviplata' ? 'DaviPlata' : avisoSinValor === 'bre_b' ? 'Bre-B' : avisoSinValor} avisó que entró dinero
+                    </p>
+                    <p className="text-xs" style={{ color: '#065f46' }}>
+                      Ese aviso no trae el valor; el valor llega en unos minutos por SMS y la venta se confirma sola. Si ya verificaste que es este pago, confírmalo ahora.
+                    </p>
+                    <button onClick={handleConfirmar} className="w-full h-11 rounded-xl text-sm font-bold" style={{ background: '#10b981', color: '#ffffff' }}>
+                      Ya entró: confirmar ${Math.round(monto).toLocaleString('es-CO')}
+                    </button>
+                  </div>
+                )}
+                {codecActivo && segundosEspera >= 90 && !avisoSinValor && (
                   <p className="text-xs rounded-xl px-3 py-2" style={{ background: '#fffbeb', color: '#92400e' }}>
                     ¿Ya le salió el pago al cliente? Revisa que el celular con Codec Verify tenga internet, o confirma manualmente si viste el pago.
                   </p>
@@ -393,8 +427,11 @@ function NequiVerifyModalComponent({
         document.body,
       )}
 
-      {/* ── MODAL BYPASS (justificación) ── */}
-      <AnimatePresence>
+      {/* ── MODAL BYPASS (justificación) ──
+          Va al final del documento, como el modal principal: antes se dibujaba dentro de la
+          pantalla de venta y quedaba tapado por "Esperando el pago", así que "Confirmar sin
+          verificar" parecía no hacer nada. */}
+      {createPortal(<AnimatePresence>
         {showBypass && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -471,7 +508,7 @@ function NequiVerifyModalComponent({
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>, document.body)}
 
     </>
   );

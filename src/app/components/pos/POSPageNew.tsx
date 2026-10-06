@@ -4144,6 +4144,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               }
             }}
             onCancelar={() => { setShowVerificacionPagoModal(false); setShowPagoModal(true); }}
+            onCerrar={() => { setShowVerificacionPagoModal(false); setShowPagoModal(false); }}
             onConfirmar={() => {
               setShowVerificacionPagoModal(false);
               procesarVenta(entidadVerificacion);

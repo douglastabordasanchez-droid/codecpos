@@ -7,7 +7,17 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/index.css';
 
+import { MotionGlobalConfig } from 'motion/react';
 import { prepararAlmacenGrande } from './app/lib/almacenGrande';
+
+// ⚡ Modo liviano de la caja (Electron): sin vidrio esmerilado, animaciones decorativas
+// limitadas y transiciones instantáneas. Las animaciones infinitas obligaban a redibujar
+// varias veces por segundo capas con desenfoque (212 en la app): CPU y GPU ocupados todo
+// el tiempo aunque nadie tocara la caja. Ver html.modo-caja en src/styles/index.css.
+if (typeof window !== 'undefined' && (window as any).electron) {
+  document.documentElement.classList.add('modo-caja');
+  MotionGlobalConfig.skipAnimations = true;
+}
 
 // Prevenir errores de comunicación en Figma Make
 const isFigmaMake = typeof window !== 'undefined' && window.location.hostname.includes('figma.com');
