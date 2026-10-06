@@ -8,7 +8,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Loader2, X } from 'lucide-react';
+import { BellRing, Check, Loader2, X } from 'lucide-react';
+import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { suscribirPagoEsperado, type NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyService';
 import { nombreMedioPago } from '../../app/lib/voz';
 import { marcarMontoEsperado, colorMedioPago } from '../../app/lib/codecVerifyEspera';
@@ -32,6 +33,8 @@ export function EsperandoPagoModal({ clienteId, monto, metodo, clave, onPagado, 
   const [recibido, setRecibido] = useState<NotificacionPagoRow | null>(null);
   const [segundos, setSegundos] = useState(0);
   const terminado = useRef(false);
+  /** Aviso del banco de que entró dinero pero sin el valor (DaviPlata): el valor llega después por SMS. */
+  const [avisoSinValor, setAvisoSinValor] = useState<{ entidad: string; hora: number } | null>(null);
   const nombre = nombreMedioPago(metodo) || 'transferencia';
   const estilo = colorMedioPago(metodo);
 
@@ -43,8 +46,14 @@ export function EsperandoPagoModal({ clienteId, monto, metodo, clave, onPagado, 
       setRecibido(row);
       setTimeout(() => onPagado(row), 1400);
     }, clienteId);
+    const client = getSupabaseClient();
+    const canal = client?.channel(`aviso-sin-valor-${clave}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'codec_verify_eventos', filter: `cliente_id=eq.${clienteId}` }, (payload: any) => {
+        if (payload?.new?.resultado === 'sin_valor' && !terminado.current) setAvisoSinValor({ entidad: payload.new.entidad || 'el banco', hora: Date.now() });
+      })
+      .subscribe();
     const reloj = window.setInterval(() => setSegundos((s) => s + 1), 1000);
-    return () => { cancelar?.(); window.clearInterval(reloj); marcarMontoEsperado(null); };
+    return () => { cancelar?.(); if (canal) client?.removeChannel(canal); window.clearInterval(reloj); marcarMontoEsperado(null); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId, monto, clave]);
 
@@ -93,7 +102,20 @@ export function EsperandoPagoModal({ clienteId, monto, metodo, clave, onPagado, 
 
         {!recibido && (
           <div className="px-7 pb-6 space-y-2.5">
-            {segundos >= 90 && (
+            {avisoSinValor && (
+              <div className="rounded-2xl px-4 py-3 text-left space-y-2.5" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                <p className="text-sm font-bold flex items-center gap-2" style={{ color: '#047857' }}>
+                  <BellRing className="w-4 h-4" /> {nombreMedioPago(avisoSinValor.entidad) || avisoSinValor.entidad} avisó que entró dinero
+                </p>
+                <p className="text-xs" style={{ color: '#065f46' }}>
+                  Ese aviso no trae el valor; el valor llega en unos minutos por SMS y la venta se confirma sola. Si ya verificaste que es este pago, confírmalo ahora.
+                </p>
+                <button onClick={onConfirmarManual} className="w-full h-11 rounded-xl text-sm font-bold" style={{ background: '#10b981', color: '#ffffff' }}>
+                  Ya entró: confirmar ${Math.round(monto).toLocaleString('es-CO')}
+                </button>
+              </div>
+            )}
+            {segundos >= 90 && !avisoSinValor && (
               <p className="text-xs rounded-xl px-3 py-2" style={{ background: '#fffbeb', color: '#92400e' }}>
                 ¿Ya le salió el pago al cliente? Revisa que el celular con Codec Verify tenga internet, o confirma manualmente si viste el pago.
               </p>

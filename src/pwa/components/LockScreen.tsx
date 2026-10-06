@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Fingerprint, LogOut, Loader2 } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
@@ -16,17 +16,30 @@ export default function LockScreen({ empleadoId, onDesbloqueado }: LockScreenPro
   const [verificando, setVerificando] = useState(false);
   const [error, setError] = useState('');
 
-  const intentarDesbloquear = async () => {
+  const pidiendo = useRef(false);
+
+  const intentarDesbloquear = useCallback(async () => {
+    if (pidiendo.current) return;
+    pidiendo.current = true;
     setVerificando(true);
     setError('');
     const ok = await verificarHuella(empleadoId);
+    pidiendo.current = false;
     setVerificando(false);
     if (ok) {
       onDesbloqueado();
     } else {
-      setError('No se pudo validar la huella. Inténtalo de nuevo.');
+      setError('No se pudo validar la huella. Toca la huella para intentarlo de nuevo.');
     }
-  };
+  }, [empleadoId, onDesbloqueado]);
+
+  // La ventana de la huella aparece sola apenas se muestra el bloqueo, sin tocar nada.
+  // Una sola vez: si la cancelan, queda el botón (repetirla sola podría no dejar salir).
+  useEffect(() => {
+    const t = setTimeout(() => { intentarDesbloquear(); }, 350);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center px-6">

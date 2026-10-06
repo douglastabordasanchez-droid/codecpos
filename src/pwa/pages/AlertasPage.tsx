@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Package, TrendingUp, Bell } from 'lucide-react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { limpiarAvisosDelIcono } from '../lib/androidBridge';
 
 interface ProductoBajo {
   id: string;
@@ -24,6 +25,8 @@ const fadeUp = {
 };
 
 export default function AlertasPage() {
+  // Al abrir la campanita se limpian los avisos y el número sobre el ícono de la app.
+  useEffect(() => { limpiarAvisosDelIcono(); }, []);
   const { empleado } = usePwaAuth();
   const [stockBajo, setStockBajo] = useState<ProductoBajo[]>([]);
   const [ventasGrandes, setVentasGrandes] = useState<VentaReciente[]>([]);

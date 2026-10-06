@@ -152,6 +152,15 @@ class AndroidNotificationBridge(
         false
     }
 
+    /**
+     * Se abrió la campanita (Alertas): se quitan los avisos de la app de la barra de
+     * Android y con ellos el número sobre el ícono. Desde la versión 1.1.7.
+     */
+    @JavascriptInterface
+    fun limpiarNotificaciones() {
+        try { NotificationManagerCompat.from(context).cancelAll() } catch (_: Exception) { /* nada que limpiar */ }
+    }
+
     /** La app web avisa si Codec Verify está encendido en el POS: apagado, el lector no lee ningún aviso. */
     @JavascriptInterface
     fun configurarCodecVerify(activo: Boolean) {

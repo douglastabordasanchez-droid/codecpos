@@ -58,6 +58,15 @@ class PagoNotificationListenerService : NotificationListenerService() {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > 200
     }
 
+    /** El mismo aviso re-publicado en menos de 20 s (algunas apps lo hacen al agruparlo) no es un pago nuevo. */
+    private val ultimosTextos = HashMap<String, Long>()
+    private fun vistoHaceSegundos(clave: String): Boolean = synchronized(ultimosTextos) {
+        val ahora = System.currentTimeMillis()
+        ultimosTextos.entries.removeAll { ahora - it.value > 60_000 }
+        val antes = ultimosTextos.put(clave, ahora)
+        antes != null && ahora - antes < 20_000
+    }
+
     private fun yaVisto(clave: String): Boolean = synchronized(vistos) {
         val ahora = System.currentTimeMillis()
         val antes = vistos[clave]
@@ -123,7 +132,12 @@ class PagoNotificationListenerService : NotificationListenerService() {
         }
 
         // Las apps de los bancos actualizan la misma notificación varias veces: un solo registro por aviso.
-        if (yaVisto("${sbn.key}|$texto")) return
+        // La hora del aviso distingue un pago nuevo de una actualización: Nequi publica cada
+        // "Te enviaron $50" con el mismo identificador y el mismo texto, y antes un segundo
+        // pago igual dentro de 10 minutos se tomaba como repetido y no se leía.
+        val horaAviso = sbn.notification.`when`.takeIf { it > 0 } ?: sbn.postTime
+        val republicado = vistoHaceSegundos("${sbn.key}|$texto")
+        if (yaVisto("${sbn.key}|$horaAviso|$texto") || republicado) return
 
         scope.launch {
             val entidad = entidadFinal
@@ -139,6 +153,9 @@ class PagoNotificationListenerService : NotificationListenerService() {
             // Entrada sin valor (DaviPlata): el pago se registra con el SMS del banco que trae el valor.
             if (!ClasificadorAviso.tieneValor(texto)) {
                 anotar(entidad, paquete, texto, clase, monto, "ESPERANDO SMS", exitoso = false, error = "El aviso no trae el valor; se registra con el SMS del banco")
+                // Este aviso llega antes que el SMS: la venta que espera el pago lo muestra al instante
+                // para que el cajero pueda confirmarlo sin esperar el valor.
+                api.registrarEvento(webhookToken, entidad, "sin_valor", "Entró dinero; el valor llega por SMS", texto)
                 return@launch
             }
 

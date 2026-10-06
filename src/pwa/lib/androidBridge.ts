@@ -32,6 +32,8 @@ interface AndroidCodecVerifyBridge {
   configurarAlertasPago?(sonido: boolean, notificacion: boolean, voz: boolean): void;
   /** Desde la versión 1.1.4: Codec Verify encendido o apagado en el POS (apagado, el lector no lee nada). */
   configurarCodecVerify?(activo: boolean): void;
+  /** Desde la versión 1.1.7: quita los avisos de la app de la barra (y el número del ícono). */
+  limpiarNotificaciones?(): void;
 }
 
 declare global {
@@ -174,4 +176,17 @@ export function autenticarConHuellaAndroid(): Promise<boolean> {
       resolve(false);
     }
   });
+}
+
+/**
+ * Se abrieron las alertas (campanita): se quitan los avisos de la app de la
+ * barra y el número sobre el ícono, en la app Android y en la web instalada.
+ */
+export async function limpiarAvisosDelIcono(): Promise<void> {
+  try { getBridge()?.limpiarNotificaciones?.(); } catch { /* app vieja */ }
+  try { await (navigator as Navigator & { clearAppBadge?: () => Promise<void> }).clearAppBadge?.(); } catch { /* sin soporte */ }
+  try {
+    const registro = await navigator.serviceWorker?.getRegistration();
+    (await registro?.getNotifications())?.forEach((n) => n.close());
+  } catch { /* sin service worker */ }
 }

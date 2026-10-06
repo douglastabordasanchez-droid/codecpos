@@ -24,8 +24,8 @@ android {
         applicationId = "com.codecpos.verify"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.1.6"
+        versionCode = 9
+        versionName = "1.1.7"
 
         // 🔗 Mismo backend que ya usan Electron/PWA (src/app/lib/supabase/config.ts) —
         // URL + anon key son públicos por diseño (protegidos por RLS), no son secretos.

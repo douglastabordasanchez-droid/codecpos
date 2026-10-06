@@ -23,7 +23,8 @@ interface Evento {
 const RESULTADOS: Record<string, { etiqueta: string; icono: typeof CheckCircle2; color: string }> = {
   registrado: { etiqueta: 'Pago registrado', icono: CheckCircle2, color: 'text-emerald-400' },
   no_leido: { etiqueta: 'No se encontró el monto', icono: AlertTriangle, color: 'text-amber-400' },
-  ignorado: { etiqueta: 'Ignorado (movimiento saliente)', icono: MinusCircle, color: 'text-slate-500' },
+  ignorado: { etiqueta: 'Ignorado (no es dinero recibido)', icono: MinusCircle, color: 'text-slate-500' },
+  sin_valor: { etiqueta: 'Entró dinero, el valor llega por SMS', icono: CheckCircle2, color: 'text-sky-400' },
   error: { etiqueta: 'Error', icono: XCircle, color: 'text-red-400' },
 };
 

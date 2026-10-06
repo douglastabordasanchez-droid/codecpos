@@ -6,6 +6,8 @@ import { debeBloquear, huellaHabilitada, registrarActividad } from '../lib/huell
  * empleado activó el desbloqueo por huella. Sin huella activada, nunca
  * bloquea (comportamiento actual, sin cambios) — es una función opcional.
  */
+const CLAVE_SESION = 'codecpos_huella_sesion_desbloqueada';
+
 export function useAutoLock(empleadoId: string | undefined) {
   const [bloqueado, setBloqueado] = useState(false);
 
@@ -15,8 +17,11 @@ export function useAutoLock(empleadoId: string | undefined) {
       return;
     }
 
-    // Al montar (abrir/reabrir la app): si ya pasaron los 10 min, bloquear.
-    setBloqueado(debeBloquear(empleadoId));
+    // Al abrir la app desde cero siempre se pide la huella; dentro de la misma sesión
+    // (recargas, volver de otra app) solo tras 10 min en segundo plano.
+    let abiertaDesdeCero = true;
+    try { abiertaDesdeCero = sessionStorage.getItem(CLAVE_SESION) !== empleadoId; } catch { /* sin sessionStorage */ }
+    setBloqueado(abiertaDesdeCero || debeBloquear(empleadoId));
 
     const alCambiarVisibilidad = () => {
       if (document.visibilityState === 'hidden') {
@@ -38,6 +43,7 @@ export function useAutoLock(empleadoId: string | undefined) {
 
   const desbloquear = useCallback(() => {
     if (empleadoId) registrarActividad(empleadoId);
+    try { if (empleadoId) sessionStorage.setItem(CLAVE_SESION, empleadoId); } catch { /* sin sessionStorage */ }
     setBloqueado(false);
   }, [empleadoId]);
 
