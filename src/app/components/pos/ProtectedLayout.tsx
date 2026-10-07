@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import POSLayoutSidebar from './POSLayoutSidebar';
@@ -11,13 +11,21 @@ import { useAvisoLicencia } from '../../hooks/useAvisoLicencia';
 import { LanProvider } from '../../contexts/LanContext';
 import { precargarModulosEnSegundoPlano } from '../../lib/prefetchModulos';
 import { AvisoRetencionDatos } from '../retencion/AvisoRetencionDatos';
+import { useBloqueoLicencia } from '../../hooks/useBloqueoLicencia';
+import { PantallaBloqueoLicencia } from '../licencia/PantallaBloqueoLicencia';
+
+const PlanVencidoPage = lazy(() => import('./PlanVencidoPage'));
 
 /**
  * Wrapper para proteger el layout y asegurar que el AuthContext esté disponible
  */
 export default function ProtectedLayout() {
   const navigate = useNavigate();
-  const { estaAutenticado } = useAuth();
+  const { estaAutenticado, esDesarrollador, cerrarSesion } = useAuth();
+  // 🔒 Suspendido o vencido desde el panel de Codec Studio: el sistema no se
+  // puede usar (ver useBloqueoLicencia). El staff de Codec Studio no se bloquea.
+  const { motivo: motivoBloqueo, nombreNegocio, revisar: revisarLicencia } = useBloqueoLicencia(estaAutenticado);
+  const [mostrarPago, setMostrarPago] = useState(false);
 
   // 🔍 DIAGNÓSTICO TEMPORAL — flicker "Productos en Carrito" (reporte Papotas
   // 2026-09-16): instrumentación para detectar qué provoca que el contenido
@@ -76,6 +84,36 @@ export default function ProtectedLayout() {
           <p className="text-white text-lg font-semibold">Verificando sesión...</p>
         </div>
       </div>
+    );
+  }
+
+  if (motivoBloqueo && !esDesarrollador) {
+    if (mostrarPago && motivoBloqueo === 'VENCIDA') {
+      return (
+        <Suspense fallback={null}>
+          <div className="min-h-screen">
+            <button onClick={() => { setMostrarPago(false); revisarLicencia(); }} className="m-4 text-sm text-slate-400 underline">Volver</button>
+            <PlanVencidoPage />
+          </div>
+        </Suspense>
+      );
+    }
+    return (
+      <PantallaBloqueoLicencia
+        motivo={motivoBloqueo}
+        nombreNegocio={nombreNegocio}
+        onVerificar={revisarLicencia}
+        onCerrarSesion={cerrarSesion}
+        accionExtra={motivoBloqueo === 'VENCIDA' ? (
+          <button
+            type="button"
+            onClick={() => setMostrarPago(true)}
+            className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-sm"
+          >
+            Pagar ahora
+          </button>
+        ) : undefined}
+      />
     );
   }
 

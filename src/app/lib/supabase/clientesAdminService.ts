@@ -312,6 +312,29 @@ export async function activarPruebaGratisAdmin(clienteId: string, dias: number =
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Suspende o reactiva al cliente en su licencia (migración 0115). Al
+ * suspender, Electron, la web y la app del cliente quedan bloqueadas; al
+ * reactivar vuelve al estado que tenía (prueba o activa). Devuelve el estado
+ * nuevo de la licencia.
+ */
+export async function suspenderClienteAdmin(clienteId: string, suspender: boolean): Promise<string> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { data, error } = await client.rpc('suspender_cliente_admin', { p_cliente_id: clienteId, p_suspender: suspender });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+/** Suma días a la licencia actual sin cambiar el plan (migración 0115). Devuelve la nueva fecha de vencimiento. */
+export async function darDiasCortesiaAdmin(clienteId: string, dias: number): Promise<string> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { data, error } = await client.rpc('dar_dias_cortesia_admin', { p_cliente_id: clienteId, p_dias: dias });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
 /** Activa/desactiva el acceso a la app móvil (PWA) para este cliente — gate de pago, ver migración 0026. */
 export async function actualizarAppMovilClienteAdmin(clienteId: string, habilitada: boolean): Promise<void> {
   const client = getSupabaseClient();

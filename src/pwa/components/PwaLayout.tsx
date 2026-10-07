@@ -11,6 +11,7 @@ import { DesktopLayout } from './DesktopLayout';
 import { SucursalFlotante } from './SucursalFlotante';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 import { useModulosActivos } from '../hooks/useModulosActivos';
+import { PantallaBloqueoLicencia } from '../../app/components/licencia/PantallaBloqueoLicencia';
 
 /**
  * Mismo enlace, misma app, mismo login — en pantallas ≥1024px (12" en
@@ -19,8 +20,8 @@ import { useModulosActivos } from '../hooks/useModulosActivos';
  * servicio cambia, solo la navegación que las envuelve.
  */
 export function PwaLayout() {
-  const { empleado, cargando } = usePwaAuth();
-  const { appHabilitada } = useModulosActivos();
+  const { empleado, cargando, cerrarSesion } = usePwaAuth();
+  const { appHabilitada, bloqueoLicencia, nombreNegocio } = useModulosActivos();
   const esEscritorio = useIsDesktop();
   const [navInferiorVisible, setNavInferiorVisible] = useState(true);
   const navigate = useNavigate();
@@ -63,6 +64,19 @@ export function PwaLayout() {
 
   if (!empleado) {
     return <Navigate to="/login" replace />;
+  }
+
+  // 🔒 Negocio suspendido o con la licencia vencida: no se puede usar la app.
+  // El staff de Codec Studio no se bloquea, para poder seguir administrando.
+  if (bloqueoLicencia && !empleado.es_staff_codec) {
+    return (
+      <PantallaBloqueoLicencia
+        motivo={bloqueoLicencia}
+        nombreNegocio={nombreNegocio}
+        onVerificar={() => { window.dispatchEvent(new Event('codecpos:revisar-licencia')); }}
+        onCerrarSesion={cerrarSesion}
+      />
+    );
   }
 
   // 📱 Gate de pago: el negocio del empleado no tiene la app móvil activada.

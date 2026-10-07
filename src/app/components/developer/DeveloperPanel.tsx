@@ -38,6 +38,7 @@ import {
   ShieldCheck,
   Smartphone,
   Store,
+  Gift,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
@@ -54,13 +55,14 @@ import { PersonalAdminSection } from './PersonalAdminSection';
 import { SistemaBlindajePanel } from './SistemaBlindajePanel';
 import { MultiTiendaAdminPanel } from './MultiTiendaAdminPanel';
 import { AnimatePresence } from 'motion/react';
-import { MODULOS_CATALOGO, ModuloPOS } from '../../lib/permissions';
+import { MODULOS_CATALOGO, MODULOS_VENTA_APARTE, ModuloPOS, modulosDeLicencia } from '../../lib/permissions';
 import {
   listarClientesAdmin,
   crearClienteAdmin,
   actualizarClienteAdmin,
   eliminarClienteAdmin,
-  cambiarEstadoClienteAdmin,
+  suspenderClienteAdmin,
+  darDiasCortesiaAdmin,
   actualizarModulosClienteAdmin,
   actualizarAppMovilClienteAdmin,
   activarPruebaGratisAdmin,
@@ -127,6 +129,8 @@ export function DeveloperPanel() {
   const [showModal, setShowModal] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
   const [clienteModulos, setClienteModulos] = useState<Cliente | null>(null);
+  const [clienteDias, setClienteDias] = useState<Cliente | null>(null);
+  const [diasInput, setDiasInput] = useState('14');
 
   const [formData, setFormData] = useState({
     nombreNegocio: '',
@@ -158,6 +162,7 @@ export function DeveloperPanel() {
 
   const construirModulosPorPlan = (plan: 'BASICO' | 'PREMIUM') =>
     modulosClienteDisponibles
+      .filter(m => !MODULOS_VENTA_APARTE.includes(m.id))
       .filter(m => (plan === 'PREMIUM' ? true : m.planRequerido === 'basico'))
       .map(m => m.id);
 
@@ -196,13 +201,12 @@ export function DeveloperPanel() {
   const handleRenovar = async (id: string) => {
     const c = clientes.find(x => x.id === id);
     if (!c) return;
-    const base = c.fechaExpiracion && new Date(c.fechaExpiracion).getTime() > Date.now()
-      ? new Date(c.fechaExpiracion).getTime()
-      : Date.now();
-    const nuevaFecha = calcularNuevaExpiracion(base, c.duracion);
+    // Suma un periodo más a la licencia (migración 0115). Antes escribía solo
+    // clientes_pos y el siguiente cambio de la licencia lo deshacía.
+    const dias = c.duracion === '1_MES' ? 30 : c.duracion === '3_MESES' ? 90 : 365;
     try {
-      await cambiarEstadoClienteAdmin(id, 'ACTIVA', undefined, nuevaFecha);
-      setClientes(prev => prev.map(x => x.id === id ? { ...x, estado: 'ACTIVA', fechaExpiracion: nuevaFecha } : x));
+      const nuevaFecha = await darDiasCortesiaAdmin(id, dias);
+      await cargarClientes();
       toast.success('Licencia renovada', {
         description: nuevaFecha
           ? `Nueva expiración: ${new Date(nuevaFecha).toLocaleDateString('es-CO')}`
@@ -223,12 +227,25 @@ export function DeveloperPanel() {
       return;
     }
 
-    const fechaActivacion = new Date().toISOString();
+    let fechaActivacion = new Date().toISOString();
     let fechaExpiracion: string | undefined;
     let enPrueba = false;
     let diasPruebaRestantes = 0;
 
-    if (formData.activarPrueba) {
+    // Editar datos del cliente (nombre, teléfono, contraseña...) no debe
+    // mover su vencimiento: antes cada guardado con el lápiz recalculaba la
+    // fecha desde hoy. Solo cambia si se cambió la duración o la prueba.
+    const sinCambioDeLicencia = !!editingCliente
+      && formData.duracion === editingCliente.duracion
+      && formData.activarPrueba === editingCliente.enPrueba
+      && (!formData.activarPrueba || formData.diasPrueba === editingCliente.diasPruebaRestantes);
+
+    if (sinCambioDeLicencia && editingCliente) {
+      fechaActivacion = editingCliente.fechaActivacion;
+      fechaExpiracion = editingCliente.fechaExpiracion;
+      enPrueba = editingCliente.enPrueba;
+      diasPruebaRestantes = editingCliente.diasPruebaRestantes;
+    } else if (formData.activarPrueba) {
       fechaExpiracion = new Date(Date.now() + formData.diasPrueba * 86_400_000).toISOString();
       enPrueba = true;
       diasPruebaRestantes = formData.diasPrueba;
@@ -258,7 +275,7 @@ export function DeveloperPanel() {
         // detección de "ya está en prueba" desactualizada terminaba
         // rechazando el ajuste). Best-effort: el cliente ya quedó guardado
         // aunque esto falle.
-        if (enPrueba) {
+        if (enPrueba && !sinCambioDeLicencia) {
           activarPruebaGratisAdmin(editingCliente.id, formData.diasPrueba).catch((e) =>
             console.error('[DeveloperPanel] No se pudo sincronizar la licencia de prueba:', e)
           );
@@ -296,7 +313,7 @@ export function DeveloperPanel() {
       activarPrueba: cliente.enPrueba || false, diasPrueba: cliente.diasPruebaRestantes || 14,
     });
     setModulosSeleccionados(
-      cliente.modulosActivos ? new Set(cliente.modulosActivos as ModuloPOS[]) : new Set(construirModulosPorPlan(cliente.plan))
+      new Set(modulosDeLicencia(cliente.modulosActivos, cliente.plan))
     );
     setShowModal(true);
   };
@@ -317,23 +334,49 @@ export function DeveloperPanel() {
     }
   };
 
+  // Suspender bloquea Electron, la web y la app del cliente. Reactivar lo
+  // devuelve al estado que tenía (prueba o activa) sin regalar tiempo: antes
+  // reactivar le daba un periodo completo nuevo y a un cliente vencido le
+  // salía "Activar" en vez de "Suspender".
   const toggleEstado = async (id: string) => {
     const c = clientes.find(x => x.id === id);
     if (!c) return;
     try {
-      if (c.estado === 'ACTIVA') {
-        await cambiarEstadoClienteAdmin(id, 'SUSPENDIDA');
-        setClientes(prev => prev.map(x => x.id === id ? { ...x, estado: 'SUSPENDIDA' } : x));
-        toast.info('Licencia suspendida');
+      if (c.estado !== 'SUSPENDIDA') {
+        await suspenderClienteAdmin(id, true);
+        toast.info('Licencia suspendida', { description: 'El cliente ya no puede usar Electron, la web ni la app.' });
       } else {
-        const nuevaFecha = calcularNuevaExpiracion(Date.now(), c.duracion);
-        const nuevaActivacion = new Date().toISOString();
-        await cambiarEstadoClienteAdmin(id, 'ACTIVA', nuevaActivacion, nuevaFecha);
-        setClientes(prev => prev.map(x => x.id === id ? { ...x, estado: 'ACTIVA', fechaActivacion: nuevaActivacion, fechaExpiracion: nuevaFecha } : x));
-        toast.success('Licencia reactivada');
+        const estado = await suspenderClienteAdmin(id, false);
+        if (estado === 'EXPIRADA' || estado === 'VENCIDA') {
+          toast.warning('Reactivado, pero la licencia está vencida', { description: 'Dale días de cortesía o de prueba para que pueda entrar.' });
+        } else {
+          toast.success('Licencia reactivada');
+        }
       }
+      await cargarClientes();
     } catch (error) {
       toast.error('No se pudo cambiar el estado', { description: error instanceof Error ? error.message : undefined });
+    }
+  };
+
+  const darDias = async (tipo: 'cortesia' | 'prueba') => {
+    if (!clienteDias) return;
+    const dias = Number(diasInput);
+    if (!Number.isFinite(dias) || dias <= 0) { toast.error('Ingresa una cantidad de días válida'); return; }
+    try {
+      if (tipo === 'cortesia') {
+        const vence = await darDiasCortesiaAdmin(clienteDias.id, dias);
+        toast.success(`${dias} días de cortesía para ${clienteDias.nombreNegocio}`, {
+          description: `Ahora vence el ${new Date(vence).toLocaleDateString('es-CO')}. El plan no cambia.`,
+        });
+      } else {
+        await activarPruebaGratisAdmin(clienteDias.id, dias);
+        toast.success(`Prueba gratis de ${dias} días para ${clienteDias.nombreNegocio}`);
+      }
+      setClienteDias(null);
+      await cargarClientes();
+    } catch (error) {
+      toast.error('No se pudieron dar los días', { description: error instanceof Error ? error.message : undefined });
     }
   };
 
@@ -695,13 +738,13 @@ export function DeveloperPanel() {
                               </h3>
 
                               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                                cliente.estado === 'ACTIVA'
+                                cliente.estado === 'ACTIVA' || (cliente.estado as string) === 'PRUEBA'
                                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                                   : cliente.estado === 'SUSPENDIDA'
                                   ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
                                   : 'bg-red-500/20 text-red-400 border border-red-500/30'
                               }`}>
-                                {cliente.estado === 'ACTIVA' ? '✓ ACTIVA' : cliente.estado === 'SUSPENDIDA' ? '⏸ SUSPENDIDA' : '✗ VENCIDA'}
+                                {cliente.estado === 'ACTIVA' ? (cliente.enPrueba ? '✓ PRUEBA' : '✓ ACTIVA') : cliente.estado === 'SUSPENDIDA' ? '⏸ SUSPENDIDA' : (cliente.estado as string) === 'PRUEBA' ? '✓ PRUEBA' : (cliente.estado as string) === 'CANCELADA' ? '✗ CANCELADA' : '✗ VENCIDA'}
                               </span>
 
                               {cliente.duracion === 'VITALICIA' && (
@@ -805,8 +848,11 @@ export function DeveloperPanel() {
                               >
                                 <Smartphone className={`w-3.5 h-3.5 ${cliente.appMovilHabilitada ? 'text-emerald-500' : 'text-slate-400'}`} />
                               </Button>
-                              <Button onClick={() => toggleEstado(cliente.id)} variant="outline" size="sm" className={darkMode ? 'border-slate-600 hover:bg-slate-700 h-8 w-8 p-0' : 'h-8 w-8 p-0'} title={cliente.estado === 'ACTIVA' ? 'Suspender' : 'Activar'}>
-                                {cliente.estado === 'ACTIVA'
+                              <Button onClick={() => { setDiasInput('14'); setClienteDias(cliente); }} variant="outline" size="sm" className={`h-8 w-8 p-0 border-sky-500 ${darkMode ? 'hover:bg-slate-700' : ''}`} title="Dar días de cortesía o de prueba">
+                                <Gift className="w-3.5 h-3.5 text-sky-500" />
+                              </Button>
+                              <Button onClick={() => toggleEstado(cliente.id)} variant="outline" size="sm" className={darkMode ? 'border-slate-600 hover:bg-slate-700 h-8 w-8 p-0' : 'h-8 w-8 p-0'} title={cliente.estado !== 'SUSPENDIDA' ? 'Suspender' : 'Reactivar'}>
+                                {cliente.estado !== 'SUSPENDIDA'
                                   ? <Lock className="w-3.5 h-3.5 text-orange-500" />
                                   : <Unlock className="w-3.5 h-3.5 text-emerald-500" />}
                               </Button>
@@ -1150,6 +1196,30 @@ export function DeveloperPanel() {
               </CardContent>
             </Card>
           </motion.div>
+        </div>
+      )}
+
+      {/* ══ Dar días de cortesía o de prueba ══ */}
+      {clienteDias && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={(e) => e.target === e.currentTarget && setClienteDias(null)}>
+          <div className={`w-full max-w-md rounded-lg p-6 shadow-xl ${darkMode ? 'bg-slate-900 border border-slate-700 text-white' : 'bg-white border border-gray-200 text-gray-900'}`}>
+            <h3 className="text-lg font-bold">Dar días a {clienteDias.nombreNegocio}</h3>
+            <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              {clienteDias.duracion === 'VITALICIA' || !clienteDias.fechaExpiracion
+                ? 'Licencia sin vencimiento.'
+                : `Hoy vence el ${new Date(clienteDias.fechaExpiracion).toLocaleDateString('es-CO')}.`}
+            </p>
+            <Label className="mt-4 block">Días</Label>
+            <Input type="number" min={1} value={diasInput} onChange={(e) => setDiasInput(e.target.value)} className="mt-1" />
+            <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Cortesía: suma los días a su plan actual, sin cambiarlo. Prueba gratis: plan Premium de prueba por esos días, contados desde hoy.
+            </p>
+            <div className="flex gap-2 mt-5">
+              <Button variant="outline" onClick={() => setClienteDias(null)} className="flex-1">Cancelar</Button>
+              <Button onClick={() => darDias('cortesia')} disabled={clienteDias.duracion === 'VITALICIA'} className="flex-1 bg-sky-600 hover:bg-sky-700">Cortesía</Button>
+              <Button onClick={() => darDias('prueba')} className="flex-1 bg-emerald-600 hover:bg-emerald-700">Prueba gratis</Button>
+            </div>
+          </div>
         </div>
       )}
 

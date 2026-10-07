@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X, KeyRound } from 'lucide-react';
-import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, actualizarModulosCliente } from '../lib/adminApi';
+import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X, KeyRound, ReceiptText, Power } from 'lucide-react';
+import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, actualizarModulosCliente, suspenderCliente, darDiasCortesia } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import {
   PageHeader, SectionCard, LoadingState, ErrorState, EstadoBadge, PlanBadge,
@@ -9,7 +9,17 @@ import {
 } from '../components/ui';
 import { GestionEmpleadosCliente } from '../components/GestionEmpleadosCliente';
 import { CredencialesLicenciaModal } from '../components/CredencialesLicenciaModal';
-import { MODULOS_CATALOGO } from '../../app/lib/permissions';
+import { MODULOS_CATALOGO, MODULOS_VENTA_APARTE, modulosDeLicencia } from '../../app/lib/permissions';
+
+const CATEGORIAS: Record<string, string> = {
+  ventas: 'Ventas',
+  inventario: 'Inventario',
+  clientes: 'Clientes',
+  gestion: 'Gestión',
+  reportes: 'Reportes',
+  configuracion: 'Configuración',
+  premium: 'Premium e integraciones',
+};
 
 const MODALIDADES = ['MENSUAL', 'TRIMESTRAL', 'ANUAL', 'VITALICIA'];
 
@@ -29,6 +39,8 @@ const EVENTO_LABEL: Record<string, string> = {
   SUSPENSION: 'Suspensión',
   ADDON_AGREGADO: 'Add-on agregado',
   ADDON_CANCELADO: 'Add-on cancelado',
+  PRUEBA_VENCIDA: 'Prueba vencida',
+  DIAS_CORTESIA: 'Días de cortesía',
   MIGRACION_LEGACY: 'Migración inicial',
 };
 
@@ -53,7 +65,7 @@ export function ClienteDetallePage() {
   const cargar = () => {
     if (id) obtenerDetalleCliente(id).then((data) => {
       setDetalle(data);
-      setModulos((data.cliente.modulos_activos as string[] | null) ?? []);
+      setModulos(modulosDeLicencia(data.cliente.modulos_activos, data.cliente.plan));
     }).catch((e) => setError(e.message));
   };
 
@@ -119,6 +131,41 @@ export function ClienteDetallePage() {
     }
   };
 
+  const handleSuspender = async () => {
+    if (!id || !detalle) return;
+    const suspender = detalle.cliente.estado !== 'SUSPENDIDA';
+    if (suspender && !window.confirm(`¿Suspender a ${detalle.cliente.nombre_negocio}? No podrá usar Electron, la web ni la app hasta que lo reactives.`)) return;
+    setProcesando(true);
+    try {
+      const estado = await suspenderCliente(id, suspender);
+      await registrarAuditoria(suspender ? 'SUSPENDER_CLIENTE' : 'REACTIVAR_CLIENTE', id, 'EXITO', { estado });
+      if (!suspender && (estado === 'EXPIRADA' || estado === 'VENCIDA')) {
+        alert('Reactivado, pero su licencia está vencida. Dale días de cortesía o de prueba para que pueda entrar.');
+      }
+      cargar();
+    } catch (e: any) {
+      alert('No se pudo cambiar el estado: ' + e.message);
+    } finally { setProcesando(false); }
+  };
+
+  const handleCortesia = async () => {
+    if (!id) return;
+    const dias = Number(diasPrueba);
+    if (!Number.isFinite(dias) || dias <= 0) {
+      alert('Ingresa una cantidad de días válida');
+      return;
+    }
+    setProcesando(true);
+    try {
+      const vence = await darDiasCortesia(id, dias);
+      await registrarAuditoria('DIAS_CORTESIA', id, 'EXITO', { dias, vence });
+      setMostrarPrueba(false);
+      cargar();
+    } catch (e: any) {
+      alert('No se pudieron dar los días: ' + e.message);
+    } finally { setProcesando(false); }
+  };
+
   const handlePruebaGratis = async () => {
     if (!id) return;
     const dias = Number(diasPrueba);
@@ -159,6 +206,21 @@ export function ClienteDetallePage() {
     } finally { setProcesando(false); }
   };
 
+  /** Interruptor directo de un módulo que se vende aparte: guarda al instante. */
+  const cambiarModuloAparte = async (moduloId: string, activar: boolean) => {
+    if (!id || !detalle) return;
+    const guardados = modulosDeLicencia(detalle.cliente.modulos_activos, detalle.cliente.plan) as string[];
+    const nuevos = activar ? Array.from(new Set([...guardados, moduloId])) : guardados.filter((m) => m !== moduloId);
+    setProcesando(true);
+    try {
+      await actualizarModulosCliente(id, nuevos);
+      await registrarAuditoria(activar ? 'ACTIVAR_MODULO' : 'DESACTIVAR_MODULO', id, 'EXITO', { modulo: moduloId });
+      cargar();
+    } catch (e: any) {
+      alert('No se pudo cambiar el módulo: ' + e.message);
+    } finally { setProcesando(false); }
+  };
+
   if (error) return <><PageHeader title="Cliente" /><ErrorState mensaje={error} /></>;
   if (!detalle) return <><PageHeader title="Cliente" /><LoadingState /></>;
 
@@ -184,7 +246,14 @@ export function ClienteDetallePage() {
                 <RefreshCw className="w-4 h-4" /> {lic ? 'Cambiar plan' : 'Activar licencia'}
               </button>
               <button onClick={() => setMostrarPrueba((v) => !v)} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg px-3 py-2 disabled:opacity-50">
-                <Gift className="w-4 h-4" /> Días de prueba
+                <Gift className="w-4 h-4" /> Dar días
+              </button>
+              <button
+                onClick={handleSuspender}
+                disabled={procesando}
+                className={`flex items-center gap-1.5 text-sm rounded-lg px-3 py-2 border disabled:opacity-50 ${detalle.cliente.estado === 'SUSPENDIDA' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25' : 'bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25'}`}
+              >
+                <Power className="w-4 h-4" /> {detalle.cliente.estado === 'SUSPENDIDA' ? 'Reactivar' : 'Suspender'}
               </button>
               <button onClick={() => setMostrarModulos((value) => !value)} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2 disabled:opacity-50">
                 <Check className="w-4 h-4" /> Activar / desactivar módulos
@@ -257,7 +326,7 @@ export function ClienteDetallePage() {
         <SectionCard className="mb-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             <div className="flex-1">
-              <p className="text-slate-300 text-xs mb-1">Días de prueba</p>
+              <p className="text-slate-300 text-xs mb-1">Días</p>
               <input
                 type="number"
                 min={1}
@@ -267,27 +336,71 @@ export function ClienteDetallePage() {
               />
             </div>
             <button
+              onClick={handleCortesia}
+              disabled={procesando || esVitalicio}
+              className="bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-slate-950 font-semibold rounded-lg px-4 py-2 text-sm"
+            >
+              Días de cortesía
+            </button>
+            <button
               onClick={handlePruebaGratis}
               disabled={procesando}
               className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-semibold rounded-lg px-4 py-2 text-sm"
             >
-              Días de prueba
+              Prueba gratis
             </button>
           </div>
           {Number(diasPrueba) > 0 && (
             <p className="text-xs text-slate-400 mt-2">
-              Vence el {new Date(Date.now() + Number(diasPrueba) * 86_400_000).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
+              Cortesía: suma {diasPrueba} días a su plan actual, sin cambiarlo. Prueba gratis: plan Premium de prueba hasta el {new Date(Date.now() + Number(diasPrueba) * 86_400_000).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}.
             </p>
           )}
         </SectionCard>
       )}
 
+      {MODULOS_CATALOGO.filter((m) => MODULOS_VENTA_APARTE.includes(m.id)).map((modulo) => {
+        const activo = (modulosDeLicencia(detalle.cliente.modulos_activos, detalle.cliente.plan) as string[]).includes(modulo.id);
+        return (
+          <div key={modulo.id} className={`flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border px-5 py-4 mb-6 ${activo ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-slate-700 bg-slate-800/70'}`}>
+            <ReceiptText className={`w-6 h-6 shrink-0 ${activo ? 'text-emerald-300' : 'text-slate-400'}`} />
+            <div className="flex-1">
+              <p className="font-semibold text-sm text-slate-100">{modulo.nombre} <span className="ml-1 text-[11px] font-normal text-amber-300">se vende aparte</span></p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {activo
+                  ? 'Activo. El cliente lo ve en la web, el celular y Electron (Electron lo toma en menos de 5 minutos).'
+                  : 'Inactivo. El cliente no ve el módulo de Facturación en ninguna parte.'}
+              </p>
+            </div>
+            {!soloLectura && (
+              <button
+                onClick={() => cambiarModuloAparte(modulo.id, !activo)}
+                disabled={procesando}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 ${activo ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'}`}
+              >
+                {activo ? 'Desactivar' : 'Activar'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+
       {mostrarModulos && (
-        <SectionCard title="Módulos del cliente" className="mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {MODULOS_CATALOGO.filter((modulo) => modulo.categoria !== 'desarrollador').map((modulo) => {
-              const activo = modulos.includes(modulo.id);
-              return <button key={modulo.id} type="button" onClick={() => setModulos((actuales) => activo ? actuales.filter((id) => id !== modulo.id) : [...actuales, modulo.id])} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${activo ? 'border-slate-500 bg-slate-700 text-white' : 'border-slate-700 bg-slate-900 text-slate-300'}`}><span>{activo ? <Check className="w-4 h-4 text-emerald-300" /> : <X className="w-4 h-4 text-slate-500" />}</span><span>{modulo.nombre}</span></button>;
+        <SectionCard title={`Módulos del cliente (${modulos.length} activos)`} className="mb-6">
+          <div className="space-y-4">
+            {Object.entries(CATEGORIAS).map(([categoria, nombre]) => {
+              const delGrupo = MODULOS_CATALOGO.filter((m) => m.categoria === categoria && !MODULOS_VENTA_APARTE.includes(m.id));
+              if (delGrupo.length === 0) return null;
+              return (
+                <div key={categoria}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">{nombre}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {delGrupo.map((modulo) => {
+                      const activo = modulos.includes(modulo.id);
+                      return <button key={modulo.id} type="button" onClick={() => setModulos((actuales) => activo ? actuales.filter((id) => id !== modulo.id) : [...actuales, modulo.id])} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${activo ? 'border-slate-500 bg-slate-700 text-white' : 'border-slate-700 bg-slate-900 text-slate-300'}`}><span>{activo ? <Check className="w-4 h-4 text-emerald-300" /> : <X className="w-4 h-4 text-slate-500" />}</span><span>{modulo.nombre}</span></button>;
+                    })}
+                  </div>
+                </div>
+              );
             })}
           </div>
           <button onClick={guardarModulos} disabled={procesando} className="mt-4 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50">Guardar módulos</button>

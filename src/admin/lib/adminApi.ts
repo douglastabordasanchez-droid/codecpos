@@ -240,6 +240,20 @@ export async function activarPruebaAdmin(clienteId: string, dias: number) {
   if (error) throw new Error(error.message);
 }
 
+/** Suspende o reactiva la licencia del cliente (migración 0115). */
+export async function suspenderCliente(clienteId: string, suspender: boolean) {
+  const { data, error } = await cliente().rpc('suspender_cliente_admin', { p_cliente_id: clienteId, p_suspender: suspender });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+/** Suma días de cortesía a la licencia actual sin cambiar el plan (migración 0115). */
+export async function darDiasCortesia(clienteId: string, dias: number) {
+  const { data, error } = await cliente().rpc('dar_dias_cortesia_admin', { p_cliente_id: clienteId, p_dias: dias });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
 export async function actualizarModulosCliente(clienteId: string, modulos: string[]) {
   const { error } = await cliente().from('clientes_pos').update({ modulos_activos: modulos }).eq('id', clienteId);
   if (error) throw new Error(error.message);

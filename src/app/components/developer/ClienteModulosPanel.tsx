@@ -9,13 +9,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Crown, Zap, ChevronDown, RefreshCw, CheckCircle2, XCircle,
   Layers, Shield, ToggleLeft, ToggleRight, Save, Star, Lock, Unlock,
-  Users, Info, Smartphone,
+  Users, Info, Smartphone, ReceiptText,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { usePOS } from '../../contexts/POSContext';
-import { MODULOS_CATALOGO, ModuloInfo, ModuloPOS } from '../../lib/permissions';
+import { MODULOS_CATALOGO, MODULOS_VENTA_APARTE, ModuloInfo, ModuloPOS, modulosDeLicencia } from '../../lib/permissions';
 import { obtenerModulosClienteAdmin, actualizarModulosClienteAdmin, obtenerMenuInferiorClienteAdmin, actualizarMenuInferiorClienteAdmin } from '../../lib/supabase/clientesAdminService';
 import { MENU_INFERIOR_CATALOGO, MENU_INFERIOR_IDS, MENU_INFERIOR_DEFAULT, type MenuInferiorItemId, type MenuInferiorConfig } from '../../lib/menuInferiorCatalogo';
 
@@ -54,7 +54,7 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
   const modulosVisibles = MODULOS_CATALOGO.filter(m => m.categoria !== 'desarrollador');
 
   // Agrupar por categoría
-  const modulosPorCategoria = modulosVisibles.reduce((acc, m) => {
+  const modulosPorCategoria = modulosVisibles.filter(m => !MODULOS_VENTA_APARTE.includes(m.id)).reduce((acc, m) => {
     if (!acc[m.categoria]) acc[m.categoria] = [];
     acc[m.categoria].push(m);
     return acc;
@@ -75,14 +75,7 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
       obtenerMenuInferiorClienteAdmin(cliente.id),
     ])
       .then(([modulosGuardados, menuGuardado]) => {
-        if (modulosGuardados) {
-          setModulosActivos(new Set(modulosGuardados as ModuloPOS[]));
-        } else {
-          const porDefecto = modulosVisibles.filter((m) =>
-            cliente.plan === 'PREMIUM' ? m.habilitadoPorDefecto : m.planRequerido === 'basico' && m.habilitadoPorDefecto
-          );
-          setModulosActivos(new Set(porDefecto.map((m) => m.id)));
-        }
+        setModulosActivos(new Set(modulosDeLicencia(modulosGuardados, cliente.plan)));
         setMenuInferiorState(menuGuardado);
       })
       .catch((error) => toast.error('No se pudieron cargar los módulos', { description: error.message }))
@@ -133,8 +126,23 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
     });
   };
 
+  // "Activar todos" y "Restaurar plan" no tocan los módulos que se venden
+  // aparte (Facturación): esos solo cambian con su propio interruptor.
+  const conservarVentaAparte = (base: Set<ModuloPOS>) => {
+    for (const id of MODULOS_VENTA_APARTE) {
+      if (modulosActivos.has(id)) base.add(id); else base.delete(id);
+    }
+    return base;
+  };
+
+  const handleToggleVentaAparte = (modulo: ModuloInfo) => {
+    const activar = !modulosActivos.has(modulo.id);
+    handleToggle(modulo.id);
+    toast.success(`${modulo.nombre} ${activar ? 'activado' : 'desactivado'} para ${cliente.nombreNegocio}`);
+  };
+
   const handleActivarTodos = () => {
-    const todos = new Set(modulosVisibles.map(m => m.id) as ModuloPOS[]);
+    const todos = conservarVentaAparte(new Set(modulosVisibles.map(m => m.id) as ModuloPOS[]));
     setModulosActivos(todos);
     guardarSet(todos);
     toast.success('Todos los módulos activados y guardados');
@@ -145,7 +153,7 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
       if (cliente.plan === 'PREMIUM') return m.habilitadoPorDefecto;
       return m.planRequerido === 'basico' && m.habilitadoPorDefecto;
     });
-    const planSet = new Set(modulosPlan.map(m => m.id) as ModuloPOS[]);
+    const planSet = conservarVentaAparte(new Set(modulosPlan.map(m => m.id) as ModuloPOS[]));
     setModulosActivos(planSet);
     guardarSet(planSet);
     toast.info(`Módulos restaurados al plan ${cliente.plan}`);
@@ -281,6 +289,37 @@ export function ClienteModulosPanel({ cliente, onClose }: ClienteModulosPanelPro
             </p>
           </div>
         )}
+
+        {/* ── MÓDULOS QUE SE VENDEN APARTE ── */}
+        {!cargando && modulosVisibles.filter(m => MODULOS_VENTA_APARTE.includes(m.id)).map((modulo) => {
+          const activo = modulosActivos.has(modulo.id);
+          return (
+            <div key={modulo.id} className={`mx-6 mt-4 p-4 rounded-md flex items-center gap-3 border ${
+              activo
+                ? (darkMode ? 'bg-emerald-900/20 border-emerald-700/40' : 'bg-emerald-50 border-emerald-200')
+                : (darkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-200')
+            }`}>
+              <ReceiptText className={`w-6 h-6 flex-shrink-0 ${activo ? 'text-emerald-500' : (darkMode ? 'text-gray-400' : 'text-gray-500')}`} />
+              <div className="flex-1">
+                <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {modulo.nombre} <span className="ml-1 text-xs font-normal text-amber-500">se vende aparte</span>
+                </p>
+                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {activo
+                    ? 'Activo. El cliente lo ve en la web, el celular y Electron (Electron lo toma en menos de 5 minutos).'
+                    : 'Inactivo. El cliente no ve el módulo de Facturación en ninguna parte.'}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => handleToggleVentaAparte(modulo)}
+                className={activo ? 'bg-slate-600 hover:bg-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 font-semibold'}
+              >
+                {activo ? 'Desactivar' : 'Activar'}
+              </Button>
+            </div>
+          );
+        })}
 
         {/* ── MENÚ INFERIOR DE LA PWA ── */}
         <div className="px-6 pt-4">

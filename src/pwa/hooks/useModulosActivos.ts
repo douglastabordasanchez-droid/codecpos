@@ -16,9 +16,10 @@
  */
 import { useEffect, useState } from 'react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
-import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
+import { ModuloPOS, modulosDeLicencia } from '../../app/lib/permissions';
 import { MenuInferiorConfig, MENU_INFERIOR_DEFAULT, normalizarMenuInferior } from '../../app/lib/menuInferiorCatalogo';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { MotivoBloqueoLicencia, motivoBloqueoLicencia } from '../../app/lib/bloqueoLicencia';
 
 const REFRESH_MS = 60000;
 
@@ -34,6 +35,9 @@ export function useModulosActivos() {
   // migración 0027). Empieza en el default para no mostrar un menú vacío
   // mientras carga.
   const [menuInferior, setMenuInferior] = useState<MenuInferiorConfig>(MENU_INFERIOR_DEFAULT);
+  // 🔒 Suspendido o vencido desde el panel de Codec Studio (ver bloqueoLicencia.ts).
+  const [bloqueoLicencia, setBloqueoLicencia] = useState<MotivoBloqueoLicencia | null>(null);
+  const [nombreNegocio, setNombreNegocio] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!empleado) return;
@@ -48,13 +52,17 @@ export function useModulosActivos() {
 
       const { data } = await client
         .from('clientes_pos')
-        .select('plan, modulos_activos, modulos_web, modulos_ocultos, app_movil_habilitada, menu_inferior')
+        .select('nombre_negocio, plan, estado, duracion, fecha_expiracion, modulos_activos, modulos_web, modulos_ocultos, app_movil_habilitada, menu_inferior')
         .eq('id', empleado.cliente_id)
         .maybeSingle();
 
       if (cancelado) return;
 
       const row = data as {
+        nombre_negocio: string | null;
+        estado: string | null;
+        duracion: string | null;
+        fecha_expiracion: string | null;
         plan: string | null;
         modulos_activos: string[] | null;
         modulos_web: string[] | null;
@@ -64,17 +72,11 @@ export function useModulosActivos() {
       } | null;
 
       setAppHabilitada(row?.app_movil_habilitada !== false);
+      setBloqueoLicencia(motivoBloqueoLicencia(row));
+      setNombreNegocio(row?.nombre_negocio ?? undefined);
       if (row?.menu_inferior) setMenuInferior(normalizarMenuInferior(row.menu_inferior));
 
-      let modulosNegocio: ModuloPOS[];
-      if (row?.modulos_activos) {
-        modulosNegocio = row.modulos_activos as ModuloPOS[];
-      } else {
-        const esPremium = row?.plan === 'PREMIUM';
-        modulosNegocio = MODULOS_CATALOGO.filter((m) =>
-          esPremium ? m.habilitadoPorDefecto : m.planRequerido === 'basico' && m.habilitadoPorDefecto
-        ).map((m) => m.id);
-      }
+      let modulosNegocio = modulosDeLicencia(row?.modulos_activos, row?.plan);
 
       // 📱 Selección del dueño desde Electron (Configuración → Módulos en la
       // App Web / Celular, columna `modulos_web`, migración 0024). Es un
@@ -110,7 +112,9 @@ export function useModulosActivos() {
     // Al guardar "Configurar mi negocio" (módulos ocultos) se refresca de inmediato.
     const alCambiarNegocio = () => { cargar(); };
     window.addEventListener('codecpos:mi-negocio', alCambiarNegocio);
+    window.addEventListener('codecpos:revisar-licencia', alCambiarNegocio);
     return () => {
+      window.removeEventListener('codecpos:revisar-licencia', alCambiarNegocio);
       cancelado = true;
       window.clearInterval(interval);
       window.removeEventListener('codecpos:mi-negocio', alCambiarNegocio);
@@ -128,5 +132,5 @@ export function useModulosActivos() {
    */
   const tieneModuloDePago = (modulo: ModuloPOS): boolean => modulos !== null && modulos.has(modulo);
 
-  return { tieneModulo, tieneModuloDePago, cargando, appHabilitada, menuInferior };
+  return { tieneModulo, tieneModuloDePago, cargando, appHabilitada, menuInferior, bloqueoLicencia, nombreNegocio };
 }

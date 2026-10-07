@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { toast } from 'sonner';
-import { Search, X, Gift, Power, Loader2, ShieldAlert, Crown, Zap, Smartphone, Plus } from 'lucide-react';
+import { Search, X, Gift, Power, Loader2, ShieldAlert, Crown, Zap, Smartphone, Plus, ReceiptText } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
@@ -13,13 +13,14 @@ import {
   actualizarClienteAdmin,
   actualizarModulosClienteAdmin,
   activarPruebaGratisAdmin,
-  cambiarEstadoClienteAdmin,
+  suspenderClienteAdmin,
+  darDiasCortesiaAdmin,
   crearAccesoMovilDueno,
   ClienteAdmin,
   PlanCliente,
   DuracionCliente,
 } from '../../app/lib/supabase/clientesAdminService';
-import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
+import { MODULOS_CATALOGO, MODULOS_VENTA_APARTE, ModuloPOS, modulosDeLicencia } from '../../app/lib/permissions';
 
 // 🛡️ FIX: antes se filtraba contra MODULOS_CLIENTE_OFICIALES, una lista
 // separada que se quedó desactualizada y le faltaban 8 módulos reales que sí
@@ -30,6 +31,7 @@ import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
 // usa el mismo filtro que ya funciona en Configuración (Electron): todo el
 // catálogo excepto lo exclusivo de desarrollador.
 const MODULOS_DISPONIBLES = MODULOS_CATALOGO.filter((m) => m.categoria !== 'desarrollador');
+const MODULOS_APARTE = MODULOS_DISPONIBLES.filter((m) => MODULOS_VENTA_APARTE.includes(m.id));
 
 const DURACIONES: { id: DuracionCliente; label: string }[] = [
   { id: '1_MES', label: '1 mes' },
@@ -45,6 +47,7 @@ const FORM_VACIO = {
 
 function modulosPorPlan(plan: PlanCliente): ModuloPOS[] {
   return MODULOS_DISPONIBLES
+    .filter((m) => !MODULOS_VENTA_APARTE.includes(m.id))
     .filter((m) => (plan === 'PREMIUM' ? true : m.planRequerido === 'basico'))
     .map((m) => m.id);
 }
@@ -111,7 +114,7 @@ export default function PanelDesarrolladorPage() {
 
   const abrirDetalle = (c: ClienteAdmin) => {
     setSeleccionado(c);
-    setModulosSel(new Set((c.modulosActivos as ModuloPOS[] | null) || []));
+    setModulosSel(new Set(modulosDeLicencia(c.modulosActivos, c.plan)));
     setDiasPruebaSel(String(c.diasPruebaRestantes || 14));
   };
 
@@ -160,13 +163,19 @@ export default function PanelDesarrolladorPage() {
   const toggleEstado = async (c: ClienteAdmin) => {
     setGuardando(true);
     try {
-      if (c.estado === 'ACTIVA') {
-        await cambiarEstadoClienteAdmin(c.id, 'SUSPENDIDA');
-        toast.info(`${c.nombreNegocio} suspendido`);
+      // Antes: un cliente en prueba (estado PRUEBA) veía "Reactivar" en vez
+      // de "Suspender", y reactivar le regalaba un año. Ahora solo se
+      // reactiva lo suspendido, y vuelve al estado que tenía (migración 0115).
+      if (c.estado !== 'SUSPENDIDA') {
+        await suspenderClienteAdmin(c.id, true);
+        toast.info(`${c.nombreNegocio} suspendido`, { description: 'Ya no puede usar Electron, la web ni la app.' });
       } else {
-        const nuevaFecha = c.duracion === 'VITALICIA' ? undefined : new Date(Date.now() + 365 * 86_400_000).toISOString();
-        await cambiarEstadoClienteAdmin(c.id, 'ACTIVA', new Date().toISOString(), nuevaFecha);
-        toast.success(`${c.nombreNegocio} reactivado`);
+        const estado = await suspenderClienteAdmin(c.id, false);
+        if (estado === 'EXPIRADA' || estado === 'VENCIDA') {
+          toast.warning(`${c.nombreNegocio} reactivado, pero su licencia está vencida`, { description: 'Dale días de cortesía o de prueba para que pueda entrar.' });
+        } else {
+          toast.success(`${c.nombreNegocio} reactivado`);
+        }
       }
       setSeleccionado(null);
       cargar();
@@ -203,6 +212,27 @@ export default function PanelDesarrolladorPage() {
     }
   };
 
+  const darCortesia = async (c: ClienteAdmin) => {
+    const dias = Number(diasPruebaSel);
+    if (!Number.isFinite(dias) || dias <= 0) {
+      toast.error('Ingresa una cantidad de días válida');
+      return;
+    }
+    setGuardando(true);
+    try {
+      const vence = await darDiasCortesiaAdmin(c.id, dias);
+      toast.success(`${dias} días de cortesía para ${c.nombreNegocio}`, {
+        description: `Ahora vence el ${new Date(vence).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}. El plan no cambia.`,
+      });
+      setSeleccionado(null);
+      cargar();
+    } catch (e) {
+      toast.error('No se pudieron dar los días', { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   const generarAccesoMovil = async (c: ClienteAdmin) => {
     setGuardando(true);
     try {
@@ -227,6 +257,29 @@ export default function PanelDesarrolladorPage() {
       cargar();
     } catch (e) {
       toast.error('No se pudieron guardar los módulos', { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  /** Interruptor directo de un módulo que se vende aparte: guarda al instante. */
+  const cambiarModuloAparte = async (modulo: ModuloPOS, activar: boolean) => {
+    if (!seleccionado) return;
+    const guardados = modulosDeLicencia(seleccionado.modulosActivos, seleccionado.plan);
+    const nuevos = activar ? Array.from(new Set([...guardados, modulo])) : guardados.filter((m) => m !== modulo);
+    setGuardando(true);
+    try {
+      await actualizarModulosClienteAdmin(seleccionado.id, nuevos);
+      setSeleccionado({ ...seleccionado, modulosActivos: nuevos });
+      setModulosSel((prev) => {
+        const next = new Set(prev);
+        if (activar) next.add(modulo); else next.delete(modulo);
+        return next;
+      });
+      toast.success(activar ? 'Módulo activado' : 'Módulo desactivado');
+      cargar();
+    } catch (e) {
+      toast.error('No se pudo cambiar el módulo', { description: e instanceof Error ? e.message : undefined });
     } finally {
       setGuardando(false);
     }
@@ -317,16 +370,28 @@ export default function PanelDesarrolladorPage() {
             </div>
 
             <div className="px-5 space-y-4 pb-8">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-semibold">Estado: {seleccionado.estado}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {seleccionado.duracion === 'VITALICIA' || !seleccionado.fechaExpiracion
+                      ? 'No vence'
+                      : `Vence el ${new Date(seleccionado.fechaExpiracion).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                  </p>
+                </div>
                 <Button
                   onClick={() => toggleEstado(seleccionado)}
                   disabled={guardando}
                   variant="outline"
-                  className={`h-12 ${seleccionado.estado === 'ACTIVA' ? 'border-red-800 text-red-400' : 'border-emerald-800 text-emerald-400'} bg-slate-900/50`}
+                  className={`h-10 px-3 ${seleccionado.estado !== 'SUSPENDIDA' ? 'border-red-800 text-red-400' : 'border-emerald-800 text-emerald-400'} bg-slate-900/50`}
                 >
-                  <Power className="w-4 h-4 mr-2" />
-                  {seleccionado.estado === 'ACTIVA' ? 'Suspender' : 'Reactivar'}
+                  <Power className="w-4 h-4 mr-1.5" />
+                  {seleccionado.estado !== 'SUSPENDIDA' ? 'Suspender' : 'Reactivar'}
                 </Button>
+              </div>
+
+              <div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-2">Dar días</p>
                 <div className="flex gap-1.5">
                   <Input
                     type="number"
@@ -336,20 +401,28 @@ export default function PanelDesarrolladorPage() {
                     className="h-12 w-16 px-2 bg-slate-900/50 border-slate-700 text-white text-center"
                   />
                   <Button
+                    onClick={() => darCortesia(seleccionado)}
+                    disabled={guardando || seleccionado.duracion === 'VITALICIA'}
+                    className="h-12 flex-1 bg-gradient-to-r from-sky-500 to-blue-600 px-2"
+                  >
+                    {guardando ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Plus className="w-4 h-4 mr-1.5" />}
+                    Cortesía
+                  </Button>
+                  <Button
                     onClick={() => activarPruebaGratis(seleccionado)}
                     disabled={guardando}
                     className="h-12 flex-1 bg-gradient-to-r from-emerald-500 to-green-600 px-2"
                   >
                     {guardando ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Gift className="w-4 h-4 mr-1.5" />}
-                    Días de prueba
+                    Prueba gratis
                   </Button>
                 </div>
+                {Number(diasPruebaSel) > 0 && (
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    Cortesía: suma {diasPruebaSel} días a su plan actual. Prueba gratis: plan Premium de prueba hasta el {new Date(Date.now() + Number(diasPruebaSel) * 86_400_000).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}.
+                  </p>
+                )}
               </div>
-              {Number(diasPruebaSel) > 0 && (
-                <p className="text-[11px] text-slate-400 -mt-2">
-                  Vence el {new Date(Date.now() + Number(diasPruebaSel) * 86_400_000).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </p>
-              )}
 
               <Button
                 onClick={() => generarAccesoMovil(seleccionado)}
@@ -361,10 +434,30 @@ export default function PanelDesarrolladorPage() {
                 Generar acceso móvil para el dueño
               </Button>
 
+              {MODULOS_APARTE.map((m) => {
+                const activo = modulosDeLicencia(seleccionado.modulosActivos, seleccionado.plan).includes(m.id);
+                return (
+                  <div key={m.id} className={`rounded-xl border p-3 flex items-center gap-3 ${activo ? 'border-emerald-700 bg-emerald-900/20' : 'border-slate-700 bg-slate-900/50'}`}>
+                    <ReceiptText className={`w-5 h-5 shrink-0 ${activo ? 'text-emerald-300' : 'text-slate-400'}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-semibold">{m.nombre}</p>
+                      <p className="text-[11px] text-slate-400">{activo ? 'Activo para este cliente' : 'Se vende aparte. Inactivo'}</p>
+                    </div>
+                    <Button
+                      onClick={() => cambiarModuloAparte(m.id, !activo)}
+                      disabled={guardando}
+                      className={`h-9 px-3 text-xs ${activo ? 'bg-slate-700' : 'bg-gradient-to-r from-emerald-500 to-green-600'}`}
+                    >
+                      {activo ? 'Desactivar' : 'Activar'}
+                    </Button>
+                  </div>
+                );
+              })}
+
               <div>
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-2">Módulos activos</p>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {MODULOS_DISPONIBLES.map((m) => {
+                  {MODULOS_DISPONIBLES.filter((m) => !MODULOS_VENTA_APARTE.includes(m.id)).map((m) => {
                     const activo = modulosSel.has(m.id);
                     return (
                       <button

@@ -1224,6 +1224,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // usuarios (no solo el de la sesión activa) justo antes de enviarlos, y se
   // reenvían también cada vez que cambian permisos de cualquiera — no solo
   // cuando cambia la lista de usuarios.
+  // 🧩 Módulos vendidos desde el panel de admin (p. ej. Facturación
+  // electrónica): antes solo se leían de la nube al iniciar sesión, así que el
+  // cliente tenía que cerrar sesión para ver un módulo recién activado. Ahora
+  // se revisa cada 5 minutos y al volver a la ventana. Solo se aplica cuando
+  // la licencia cambió desde la última vez, para no pisar en cada vuelta lo
+  // que el dueño ocultó en "Personalización del Espacio de Trabajo".
+  const usuarioActualId = usuarioActual?.id;
+  useEffect(() => {
+    if (!estaAutenticado || !isLinked()) return;
+    const CLAVE_ULTIMA_LICENCIA = 'codecpos_modulos_licencia_vistos';
+    let enCurso = false;
+
+    const revisar = async () => {
+      const clienteId = getLinkedClienteId();
+      const client = getSupabaseClient();
+      if (enCurso || !navigator.onLine || !clienteId || !client) return;
+      enCurso = true;
+      try {
+        const { data } = await client
+          .from('clientes_pos')
+          .select('modulos_activos, estado')
+          .eq('id', clienteId)
+          .maybeSingle();
+        const frescos = (data?.modulos_activos as ModuloPOS[] | null) || [];
+        if (!data || data.estado === 'SUSPENDIDA' || frescos.length === 0) return;
+
+        const firma = [...frescos].sort().join(',');
+        let anterior: string | null = null;
+        try { anterior = localStorage.getItem(CLAVE_ULTIMA_LICENCIA); } catch { /* ignorar */ }
+        if (anterior === firma) return;
+
+        const globales = obtenerModulosGlobales();
+        guardarModulosGlobales({
+          modulosActivos: frescos,
+          forceGlobalModules: globales.forceGlobalModules,
+          ultimaActualizacion: new Date().toISOString(),
+        });
+        if (usuarioActualId?.startsWith('lic_')) {
+          await guardarPermisosUsuarioPersistente({ userId: usuarioActualId, modulosHabilitados: frescos });
+        }
+        try { localStorage.setItem(CLAVE_ULTIMA_LICENCIA, firma); } catch { /* ignorar */ }
+      } catch { /* offline o error de red: se reintenta en la próxima vuelta */ } finally {
+        enCurso = false;
+      }
+    };
+
+    revisar();
+    const intervalo = window.setInterval(revisar, 5 * 60_000);
+    window.addEventListener('focus', revisar);
+    return () => {
+      window.clearInterval(intervalo);
+      window.removeEventListener('focus', revisar);
+    };
+  }, [estaAutenticado, usuarioActualId]);
+
   useEffect(() => {
     if (!estaAutenticado || !esSuperUsuario) return;
     const el = (window as any).electron;

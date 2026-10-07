@@ -422,6 +422,32 @@ export const MODULOS_CATALOGO: ModuloInfo[] = [
   },
 ];
 
+/**
+ * Módulos que se cobran aparte del plan. Ningún plan los trae por defecto y
+ * los paneles de admin los muestran destacados, con su propio interruptor.
+ */
+export const MODULOS_VENTA_APARTE: ModuloPOS[] = [ModuloPOS.FACTURACION_DIAN];
+
+/** Lo que trae un plan cuando la licencia aún no tiene lista propia. */
+export function modulosPorDefectoDelPlan(plan: string | null | undefined): ModuloPOS[] {
+  const esPremium = plan === 'PREMIUM';
+  return MODULOS_CATALOGO.filter((m) =>
+    m.categoria !== 'desarrollador' &&
+    m.habilitadoPorDefecto &&
+    (esPremium || m.planRequerido === 'basico')
+  ).map((m) => m.id);
+}
+
+/**
+ * Módulos que el cliente tiene de verdad: `clientes_pos.modulos_activos` y,
+ * si está en null (nunca se editó), los del plan. Es la misma regla que usa
+ * la app del cliente, así el panel de admin muestra exactamente lo que el
+ * cliente ve y guardar no le quita nada sin querer.
+ */
+export function modulosDeLicencia(modulosActivos: string[] | null | undefined, plan: string | null | undefined): ModuloPOS[] {
+  return modulosActivos ? (modulosActivos as ModuloPOS[]) : modulosPorDefectoDelPlan(plan);
+}
+
 // 🎯 Lista oficial para licenciamiento de clientes (24 módulos operativos)
 export const MODULOS_CLIENTE_OFICIALES: ModuloPOS[] = [
   ModuloPOS.PUNTO_DE_VENTA,
