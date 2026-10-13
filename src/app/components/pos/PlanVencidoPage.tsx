@@ -10,10 +10,10 @@
  *  2) El botón "Pagar ahora" del aviso de vencimiento (useAvisoLicencia,
  *     un día antes) trae aquí a alguien cuya licencia AÚN no se ha vencido.
  *
- * El pago reutiliza la misma Mercado Pago Checkout Pro que ya usa la PWA
- * (licenciaPagoService.ts) -- se abre en el navegador del sistema porque
- * Electron no puede incrustar el checkout, y esta pantalla hace polling del
- * resultado real (que solo escribe el webhook, nunca el regreso del
+ * El pago reutiliza el mismo checkout de Wompi o Mercado Pago que ya usa la
+ * PWA (licenciaPagoService.ts) -- se abre en el navegador del sistema porque
+ * Electron no puede incrustar el checkout, y esta pantalla consulta el
+ * resultado real (que solo escribe el servidor, nunca el regreso del
  * navegador) hasta ver la licencia activada.
  */
 import { useEffect, useRef, useState } from 'react';
@@ -22,10 +22,12 @@ import { motion } from 'motion/react';
 import { AlertTriangle, CheckCircle2, Clock, XCircle, Loader2, CreditCard, ArrowLeft } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { usePlanRestrictions } from '../../hooks/usePlanRestrictions';
-import { iniciarPagoLicencia, consultarEstadoPagoLicencia, EstadoPagoLicencia } from '../../lib/licenciaPagoService';
+import { iniciarPagoLicencia, consultarEstadoPagoLicencia, EstadoPagoLicencia, ProveedorPagoLicencia } from '../../lib/licenciaPagoService';
 import { Button } from '../ui/button';
 
 type Fase = 'INICIAL' | 'ABRIENDO' | 'VERIFICANDO' | EstadoPagoLicencia;
+
+const PASARELA_LABEL: Record<ProveedorPagoLicencia, string> = { WOMPI: 'Wompi', MERCADOPAGO: 'Mercado Pago' };
 
 const MODALIDAD_LABEL: Record<string, string> = {
   MENSUAL: 'Mensual',
@@ -42,6 +44,8 @@ export default function PlanVencidoPage() {
   const [fase, setFase] = useState<Fase>('INICIAL');
   const [error, setError] = useState<string | null>(null);
   const externalRefRef = useRef<string | null>(null);
+  const [proveedor, setProveedor] = useState<ProveedorPagoLicencia>('WOMPI');
+  const pasarela = PASARELA_LABEL[proveedor];
   const intentos = useRef(0);
 
   const licenciaVencida = planInfo.estado === 'EXPIRADA' || planInfo.estado === 'VENCIDA';
@@ -49,7 +53,7 @@ export default function PlanVencidoPage() {
   useEffect(() => {
     if (fase !== 'VERIFICANDO' || !externalRefRef.current) return;
     let cancelado = false;
-    const MAX_INTENTOS = 40; // ~80s -- el webhook de Mercado Pago suele llegar en segundos
+    const MAX_INTENTOS = 40; // ~80s -- la confirmación suele llegar en segundos
 
     const consultar = async () => {
       const estado = await consultarEstadoPagoLicencia(externalRefRef.current!);
@@ -71,13 +75,14 @@ export default function PlanVencidoPage() {
     return () => { cancelado = true; };
   }, [fase]);
 
-  const handlePagar = async () => {
+  const handlePagar = async (elegido: ProveedorPagoLicencia) => {
     setError(null);
+    setProveedor(elegido);
     setFase('ABRIENDO');
     const planCodigo = planInfo.plan || 'PREMIUM';
     const modalidad = planInfo.modalidad || 'MENSUAL';
 
-    const resultado = await iniciarPagoLicencia(planCodigo, modalidad);
+    const resultado = await iniciarPagoLicencia(planCodigo, modalidad, elegido);
     if (!resultado.ok || !resultado.externalReference) {
       setError(resultado.error || 'No se pudo iniciar el pago');
       setFase('INICIAL');
@@ -156,17 +161,28 @@ export default function PlanVencidoPage() {
             )}
 
             <Button
-              onClick={handlePagar}
+              onClick={() => handlePagar('WOMPI')}
               disabled={fase === 'ABRIENDO'}
-              className="w-full h-12 rounded-xl font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg"
+              className="w-full h-auto py-3 flex-col gap-0.5 rounded-xl font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg"
             >
-              {fase === 'ABRIENDO' ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Abriendo Mercado Pago...</>
-              ) : (
-                <><CreditCard className="w-4 h-4 mr-2" /> Pagar ahora</>
-              )}
+              <span className="flex items-center">
+                {fase === 'ABRIENDO' && proveedor === 'WOMPI'
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Abriendo Wompi...</>
+                  : <><CreditCard className="w-4 h-4 mr-2" /> Pagar con Wompi</>}
+              </span>
+              <span className="text-xs font-normal text-white/80">Nequi, PSE, tarjeta o Bancolombia</span>
             </Button>
-            <p className={`text-xs text-center mt-2 ${sub}`}>Se abrirá Mercado Pago en tu navegador. El sistema se activa automáticamente al aprobarse el pago.</p>
+            <Button
+              onClick={() => handlePagar('MERCADOPAGO')}
+              disabled={fase === 'ABRIENDO'}
+              variant="outline"
+              className="w-full h-11 mt-2.5 rounded-xl font-bold"
+            >
+              {fase === 'ABRIENDO' && proveedor === 'MERCADOPAGO'
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Abriendo Mercado Pago...</>
+                : 'Pagar con Mercado Pago'}
+            </Button>
+            <p className={`text-xs text-center mt-2 ${sub}`}>El pago se abre en tu navegador. El sistema se activa automáticamente al aprobarse.</p>
 
             {!licenciaVencida && (
               <button
@@ -183,7 +199,7 @@ export default function PlanVencidoPage() {
           <div className="text-center py-4">
             <Loader2 className="w-10 h-10 text-amber-500 animate-spin mx-auto mb-4" />
             <h2 className={`text-lg font-black mb-1 ${txt}`}>Verificando tu pago...</h2>
-            <p className={`text-sm ${sub}`}>Estamos confirmando el resultado directamente con Mercado Pago. No cierres esta ventana.</p>
+            <p className={`text-sm ${sub}`}>Estamos confirmando el resultado directamente con {pasarela}. No cierres esta ventana.</p>
           </div>
         )}
 
@@ -205,7 +221,7 @@ export default function PlanVencidoPage() {
           <div className="text-center py-4">
             <Clock className="w-12 h-12 text-amber-500 mx-auto mb-4" />
             <h2 className={`text-lg font-black mb-1 ${txt}`}>Tu pago está en proceso</h2>
-            <p className={`text-sm mb-5 ${sub}`}>Mercado Pago todavía está confirmando este pago (algunos medios tardan un poco más). Se activará solo apenas se confirme.</p>
+            <p className={`text-sm mb-5 ${sub}`}>{pasarela} todavía está confirmando este pago (algunos medios tardan un poco más). Toca "Revisar de nuevo" en unos minutos.</p>
             <Button onClick={reintentarVerificacion} variant="outline" className="w-full h-11 rounded-xl font-bold">
               Revisar de nuevo
             </Button>

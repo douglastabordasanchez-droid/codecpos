@@ -1,5 +1,5 @@
-// Edge Function: crea una preferencia de pago de Mercado Pago (Checkout Pro)
-// para activar/renovar la licencia de un cliente. El Access Token de
+// Edge Function: crea el pago para activar/renovar la licencia de un cliente,
+// con Mercado Pago (Checkout Pro) o con Wompi (Web Checkout firmado). El Access Token de
 // Mercado Pago vive ÚNICAMENTE aquí, como secreto de servidor
 // (`supabase secrets set MERCADOPAGO_ACCESS_TOKEN=...`). Nunca debe
 // copiarse a código de la app Android/PWA/Electron.
@@ -17,6 +17,11 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const MERCADOPAGO_ACCESS_TOKEN = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') ?? '';
 const PUBLIC_APP_URL = Deno.env.get('PUBLIC_APP_URL') ?? 'https://pos.codecstudio.online';
+// Wompi: la llave pública va en la URL del checkout; el secreto de integridad
+// firma referencia + monto + moneda para que nadie pueda cambiar el valor.
+const WOMPI_PUBLIC_KEY = Deno.env.get('WOMPI_PUBLIC_KEY') ?? '';
+const WOMPI_INTEGRITY_SECRET = Deno.env.get('WOMPI_INTEGRITY_SECRET') ?? '';
+const PROVEEDORES_VALIDOS = ['MERCADOPAGO', 'WOMPI'];
 
 // Al público solo se venden mensual y anual (anual = 12 meses por el precio de 11,
 // migración 0104). Trimestral y vitalicio quedan para licencias hechas a mano en el Admin.
@@ -31,16 +36,13 @@ interface Body {
   planCodigo?: string;
   modalidad?: string;
   codigoDescuento?: string;
+  proveedor?: string;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    if (!MERCADOPAGO_ACCESS_TOKEN) {
-      return json({ ok: false, error: 'MERCADOPAGO_ACCESS_TOKEN no está configurado en el servidor' }, 500);
-    }
-
     // 1) Autenticar al que llama (JWT del usuario, no un secreto) -----------
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -73,6 +75,17 @@ Deno.serve(async (req: Request) => {
 
     if (!planCodigo || !MODALIDADES_VALIDAS.includes(modalidad)) {
       return json({ ok: false, error: 'planCodigo o modalidad inválidos' }, 400);
+    }
+
+    const proveedor = (body.proveedor || 'MERCADOPAGO').trim().toUpperCase();
+    if (!PROVEEDORES_VALIDOS.includes(proveedor)) {
+      return json({ ok: false, error: 'Medio de pago inválido' }, 400);
+    }
+    if (proveedor === 'MERCADOPAGO' && !MERCADOPAGO_ACCESS_TOKEN) {
+      return json({ ok: false, error: 'MERCADOPAGO_ACCESS_TOKEN no está configurado en el servidor' }, 500);
+    }
+    if (proveedor === 'WOMPI' && (!WOMPI_PUBLIC_KEY || !WOMPI_INTEGRITY_SECRET)) {
+      return json({ ok: false, error: 'Wompi no está configurado en el servidor' }, 500);
     }
 
     // 3) Precio real, calculado en el servidor -- ver migración 0047/0063.
@@ -116,7 +129,7 @@ Deno.serve(async (req: Request) => {
       .eq('id', empleado.cliente_id)
       .maybeSingle();
 
-    // 5) Registrar el intento ANTES de llamar a Mercado Pago -----------------
+    // 5) Registrar el intento ANTES de llamar a la pasarela -------------------
     const { data: pago, error: insertError } = await admin
       .from('pagos_licencia')
       .insert({
@@ -129,6 +142,7 @@ Deno.serve(async (req: Request) => {
         codigo_descuento_id: codigoId,
         descuento_porcentaje: descuentoPorcentaje,
         estado: 'PENDIENTE',
+        proveedor,
         creado_por: userData.user.id,
       })
       .select('id, external_reference')
@@ -138,7 +152,29 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: insertError?.message || 'No se pudo registrar el intento de pago' }, 500);
     }
 
-    // 6) Crear la preferencia (Checkout Pro) ---------------------------------
+    // 6a) Wompi: Web Checkout con firma de integridad. Wompi agrega ?id=<transacción>
+    //     a la URL de regreso; verificar-pago-wompi confirma el pago con la llave privada.
+    if (proveedor === 'WOMPI') {
+      const referencia = `cpos_${pago.external_reference}`;
+      const montoCentavos = Math.round(monto * 100);
+      const firma = await sha256Hex(`${referencia}${montoCentavos}COP${WOMPI_INTEGRITY_SECRET}`);
+      const params = new URLSearchParams({
+        'public-key': WOMPI_PUBLIC_KEY,
+        currency: 'COP',
+        'amount-in-cents': String(montoCentavos),
+        reference: referencia,
+        'signature:integrity': firma,
+        'redirect-url': `${PUBLIC_APP_URL}/app/pago/wompi?ref=${pago.external_reference}`,
+      });
+      return json({
+        ok: true,
+        initPoint: `https://checkout.wompi.co/p/?${params.toString()}`,
+        externalReference: pago.external_reference,
+        proveedor,
+      });
+    }
+
+    // 6b) Mercado Pago: crear la preferencia (Checkout Pro) -------------------
     const modalidadEtiqueta: Record<string, string> = {
       MENSUAL: 'Mensual', TRIMESTRAL: 'Trimestral', ANUAL: 'Anual', VITALICIA: 'Vitalicio',
     };
@@ -178,11 +214,16 @@ Deno.serve(async (req: Request) => {
 
     await admin.from('pagos_licencia').update({ mp_preference_id: prefData.id }).eq('id', pago.id);
 
-    return json({ ok: true, initPoint: prefData.init_point, externalReference: pago.external_reference });
+    return json({ ok: true, initPoint: prefData.init_point, externalReference: pago.external_reference, proveedor });
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : 'Error inesperado' }, 500);
   }
 });
+
+async function sha256Hex(texto: string): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

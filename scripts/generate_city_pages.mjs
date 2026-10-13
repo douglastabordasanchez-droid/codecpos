@@ -214,6 +214,7 @@ writeFileSync(path.join(ciudadesDir, 'index.html'), hubHtml, 'utf8');
 const urls = [
   `${BASE_URL}/`,
   `${BASE_URL}/ciudades/`,
+  `${BASE_URL}/descargar/`,
   ...generated.map((c) => c.url),
 ];
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>

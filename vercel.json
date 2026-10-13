@@ -7,6 +7,9 @@
     { "source": "/admin/((?!assets/).*)", "destination": "/admin/index.html" },
     { "source": "/download", "destination": "/descargas/codec-pos-verify.apk" }
   ],
+  "redirects": [
+    { "source": "/descargar/windows", "destination": "https://drive.usercontent.google.com/download?id=1SSRuQuDmCG0LxRV-ijLcuE8JFdk4sEQT&export=download&confirm=t", "permanent": false }
+  ],
   "headers": [
     {
       "source": "/app/(index.html|index.pwa.html|sw.js|registerSW.js|workbox-.*\\.js|manifest.webmanifest)",

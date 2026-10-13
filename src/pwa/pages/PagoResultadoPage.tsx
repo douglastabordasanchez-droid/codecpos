@@ -2,21 +2,23 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { CheckCircle2, Clock, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
-import { getSupabaseClient } from '../../app/lib/supabase/config';
-
-type EstadoPago = 'PENDIENTE' | 'EN_PROCESO' | 'APROBADO' | 'RECHAZADO' | 'CANCELADO' | 'REEMBOLSADO';
+import { consultarEstadoPagoLicencia, type EstadoPagoLicencia as EstadoPago } from '../../app/lib/licenciaPagoService';
 
 /**
- * Página de retorno del Checkout Pro de Mercado Pago (success/pending/failure
- * en back_urls, ver crear-pago-licencia). A propósito NUNCA confía en que el
- * usuario haya vuelto aquí como señal de "pagó" -- el estado real solo lo
- * escribe el webhook (webhook-mercadopago) sobre `pagos_licencia`. Esta
- * página solo hace polling de esa fila hasta ver un estado final.
+ * Página de retorno de Mercado Pago (success/pending/failure en back_urls) y
+ * de Wompi (/pago/wompi?ref=<external_reference>&id=<transacción>), ver
+ * crear-pago-licencia. A propósito NUNCA confía en que el usuario haya vuelto
+ * aquí como señal de "pagó" -- el estado real solo lo escribe el servidor
+ * (webhook-mercadopago o verificar-pago-wompi) sobre `pagos_licencia`. Esta
+ * página solo consulta hasta ver un estado final.
  */
 export default function PagoResultadoPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const externalReference = params.get('external_reference');
+  const esWompi = params.has('ref');
+  const externalReference = params.get('external_reference') || params.get('ref');
+  const wompiTransactionId = esWompi ? params.get('id') : null;
+  const pasarela = esWompi ? 'Wompi' : 'Mercado Pago';
 
   const [estado, setEstado] = useState<EstadoPago | 'BUSCANDO' | 'NO_ENCONTRADO'>('BUSCANDO');
   const intentos = useRef(0);
@@ -26,25 +28,14 @@ export default function PagoResultadoPage() {
       setEstado('NO_ENCONTRADO');
       return;
     }
-    const client = getSupabaseClient();
-    if (!client) {
-      setEstado('NO_ENCONTRADO');
-      return;
-    }
-
     let cancelado = false;
     const MAX_INTENTOS = 20; // ~40s de espera (webhook suele llegar en segundos)
 
     const consultar = async () => {
-      const { data } = await client
-        .from('pagos_licencia')
-        .select('estado')
-        .eq('external_reference', externalReference)
-        .maybeSingle();
+      const est = (await consultarEstadoPagoLicencia(externalReference, wompiTransactionId)) ?? undefined;
 
       if (cancelado) return;
 
-      const est = data?.estado as EstadoPago | undefined;
       if (est && est !== 'PENDIENTE' && est !== 'EN_PROCESO') {
         setEstado(est);
         return;
@@ -60,7 +51,7 @@ export default function PagoResultadoPage() {
 
     consultar();
     return () => { cancelado = true; };
-  }, [externalReference]);
+  }, [externalReference, wompiTransactionId]);
 
   const contenido = () => {
     switch (estado) {
@@ -68,7 +59,7 @@ export default function PagoResultadoPage() {
         return {
           icon: <Loader2 className="w-10 h-10 text-amber-400 animate-spin" />,
           titulo: 'Verificando tu pago…',
-          texto: 'Estamos confirmando el resultado directamente con Mercado Pago. No cierres esta pantalla.',
+          texto: `Estamos confirmando el resultado directamente con ${pasarela}. No cierres esta pantalla.`,
         };
       case 'APROBADO':
         return {
@@ -81,13 +72,13 @@ export default function PagoResultadoPage() {
         return {
           icon: <Clock className="w-10 h-10 text-amber-400" />,
           titulo: 'Tu pago está en proceso',
-          texto: 'Mercado Pago todavía está confirmando este pago (algunos medios tardan un poco más). Te avisaremos apenas se confirme -- puedes revisar el estado más tarde en Planes.',
+          texto: `${pasarela} todavía está confirmando este pago (algunos medios tardan un poco más). Puedes revisar el estado más tarde en Planes.`,
         };
       case 'RECHAZADO':
         return {
           icon: <XCircle className="w-10 h-10 text-red-400" />,
           titulo: 'El pago no fue aprobado',
-          texto: 'Mercado Pago rechazó este pago. Puedes intentar de nuevo con otro medio de pago.',
+          texto: `${pasarela} rechazó este pago. Puedes intentar de nuevo con otro medio de pago.`,
         };
       case 'CANCELADO':
         return {

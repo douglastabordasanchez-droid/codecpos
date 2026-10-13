@@ -86,6 +86,7 @@ export const router = createBrowserRouter([
   { path: '/pago/exitoso', element: <PagoResultadoPage /> },
   { path: '/pago/pendiente', element: <PagoResultadoPage /> },
   { path: '/pago/fallido', element: <PagoResultadoPage /> },
+  { path: '/pago/wompi', element: <PagoResultadoPage /> },
   {
     path: '/',
     element: <PwaLayout />,

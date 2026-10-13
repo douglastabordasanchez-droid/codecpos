@@ -9,7 +9,7 @@ import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { TIPOS_NEGOCIO } from '../../data/tipos-negocio';
 
 const OPCIONES_TIPO_NEGOCIO = Object.values(TIPOS_NEGOCIO).map((t) => t.nombre);
-const URL_DESCARGA_WINDOWS = 'https://github.com/douglastabordasanchez-droid/codecpos/releases/latest';
+const URL_DESCARGA_WINDOWS = 'https://pos.codecstudio.online/descargar/';
 
 type Plataforma = 'android' | 'ios' | 'desktop';
 

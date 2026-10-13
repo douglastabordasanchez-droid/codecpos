@@ -17,6 +17,8 @@ interface PlanCatalogo {
   precio_promocional_mensual: number | null;
 }
 
+type ProveedorPago = 'WOMPI' | 'MERCADOPAGO';
+
 // Igual que la página: mensual o anual (12 meses por el precio de 11).
 const MODALIDADES: { valor: Modalidad; etiqueta: string }[] = [
   { valor: 'MENSUAL', etiqueta: 'Mensual' },
@@ -27,11 +29,11 @@ const formatoMoneda = (valor: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(valor);
 
 /**
- * Elegir plan -> modalidad -> resumen -> pagar con Mercado Pago (Checkout
- * Pro). El botón solo crea la preferencia y redirige -- el precio real lo
- * calcula el servidor (crear-pago-licencia, nunca confía en lo que se
- * muestra acá) y la licencia solo se activa cuando el webhook confirma el
- * pago contra la API de Mercado Pago (ver webhook-mercadopago). Los precios
+ * Elegir plan -> modalidad -> resumen -> pagar con Wompi o Mercado Pago. El
+ * botón solo crea el pago y redirige -- el precio real lo calcula el servidor
+ * (crear-pago-licencia, nunca confía en lo que se muestra acá) y la licencia
+ * solo se activa cuando el servidor confirma el pago contra la pasarela
+ * (webhook-mercadopago o verificar-pago-wompi). Los precios
  * vienen siempre de plan_catalogo_publico() (motor comercial real, mismo
  * cálculo que usan la landing y el Admin Web), nunca hardcodeados aquí.
  */
@@ -41,7 +43,7 @@ export default function PlanesPage() {
   const [error, setError] = useState<string | null>(null);
   const [planSeleccionado, setPlanSeleccionado] = useState<string | null>(null);
   const [modalidad, setModalidad] = useState<Modalidad>('MENSUAL');
-  const [procesandoPago, setProcesandoPago] = useState(false);
+  const [procesandoPago, setProcesandoPago] = useState<ProveedorPago | null>(null);
   const [codigoInput, setCodigoInput] = useState('');
   const [codigoAplicado, setCodigoAplicado] = useState<{ codigo: string; porcentaje: number } | null>(null);
   const [validandoCodigo, setValidandoCodigo] = useState(false);
@@ -102,26 +104,26 @@ export default function PlanesPage() {
     window.open(`https://wa.me/573238646844?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener,noreferrer');
   };
 
-  const handlePagar = async () => {
+  const handlePagar = async (proveedor: ProveedorPago) => {
     if (!plan) return;
     const precio = precioPorModalidad(plan, modalidad);
     if (precio == null) return;
 
-    setProcesandoPago(true);
+    setProcesandoPago(proveedor);
     setError(null);
     const client = getSupabaseClient();
     if (!client) {
-      setProcesandoPago(false);
+      setProcesandoPago(null);
       setError('nuestra base de datos no está configurada');
       return;
     }
 
     const { data, error: fnError } = await client.functions.invoke('crear-pago-licencia', {
-      body: { planCodigo: plan.plan_codigo, modalidad, codigoDescuento: codigoAplicado?.codigo },
+      body: { planCodigo: plan.plan_codigo, modalidad, codigoDescuento: codigoAplicado?.codigo, proveedor },
     });
 
     if (fnError || !data?.ok) {
-      setProcesandoPago(false);
+      setProcesandoPago(null);
       setError(data?.error || fnError?.message || 'No se pudo iniciar el pago. Intenta de nuevo.');
       return;
     }
@@ -239,16 +241,34 @@ export default function PlanesPage() {
               {error && (
                 <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 mb-3">{error}</p>
               )}
-              <Button
-                onClick={handlePagar}
-                disabled={procesandoPago || precioPorModalidad(plan, modalidad) == null}
-                className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50"
-              >
-                {procesandoPago ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                {precioPorModalidad(plan, modalidad) == null ? 'No disponible todavía' : 'Pagar con Mercado Pago'}
-              </Button>
+              {precioPorModalidad(plan, modalidad) == null ? (
+                <Button disabled className="w-full h-12 disabled:opacity-50">No disponible todavía</Button>
+              ) : (
+                <div className="space-y-2.5">
+                  <Button
+                    onClick={() => handlePagar('WOMPI')}
+                    disabled={procesandoPago !== null}
+                    className="w-full h-auto py-3 flex-col gap-0.5 bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50"
+                  >
+                    <span className="flex items-center font-semibold">
+                      {procesandoPago === 'WOMPI' && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                      Pagar con Wompi
+                    </span>
+                    <span className="text-xs font-normal text-white/80">Nequi, PSE, tarjeta o Bancolombia</span>
+                  </Button>
+                  <Button
+                    onClick={() => handlePagar('MERCADOPAGO')}
+                    disabled={procesandoPago !== null}
+                    variant="outline"
+                    className="w-full h-12 border-slate-700 bg-slate-900/60 text-white hover:bg-slate-800 hover:text-white disabled:opacity-50"
+                  >
+                    {procesandoPago === 'MERCADOPAGO' && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                    Pagar con Mercado Pago
+                  </Button>
+                </div>
+              )}
               <p className="text-center text-xs text-slate-500 mt-3">
-                Serás redirigido a Mercado Pago para completar el pago de forma segura.
+                Serás redirigido a la pasarela que elijas para completar el pago de forma segura.
               </p>
               <div className="mt-5 rounded-xl border border-slate-700 bg-slate-900/80 p-4">
                 <div className="flex items-center gap-2 text-white font-semibold text-sm"><Smartphone className="w-4 h-4 text-fuchsia-400" /> Pago directo</div>
