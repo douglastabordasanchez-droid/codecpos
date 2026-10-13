@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const LANDING_DIR = path.join(ROOT, 'landing');
-const BASE_URL = 'https://codecpos.vercel.app'; // Dominio de Vercel (temporal). Cambiar aquí cuando se compre el dominio propio.
+const BASE_URL = 'https://pos.codecstudio.online'; // Subdominio de codecstudio.online (temporal). Cambiar aquí cuando se compre el dominio propio.
 
 const CITIES = [
   { slug: 'bogota', name: 'Bogotá', hero: 'a 2.600 metros de altura, donde el ritmo no para' },
@@ -57,10 +57,10 @@ function assertOnce(html, needle, label) {
 // Fragmentos exactos del template base que se reemplazan por ciudad.
 const T_TITLE = '<title>Codec POS | El sistema que pone todo tu negocio bajo control</title>';
 const T_DESC = '<meta name="description" content="Codec POS es el ecosistema completo para administrar tu negocio: ventas, inventario, caja, reportes, facturación electrónica DIAN, Codec Verify y app móvil. Funciona online y offline. Prueba 14 días gratis.">';
-const T_CANON = '<link rel="canonical" href="https://codecpos.vercel.app/">';
+const T_CANON = '<link rel="canonical" href="https://pos.codecstudio.online/">';
 const T_OG_TITLE = '<meta property="og:title" content="Codec POS | El sistema que pone todo tu negocio bajo control">';
 const T_OG_DESC = '<meta property="og:description" content="Ventas, inventario, caja, reportes, facturación electrónica DIAN y confirmación automática de pagos, en un solo sistema que funciona online y offline. 14 días gratis.">';
-const T_OG_URL = '<meta property="og:url" content="https://codecpos.vercel.app/">';
+const T_OG_URL = '<meta property="og:url" content="https://pos.codecstudio.online/">';
 const T_TW_TITLE = '<meta name="twitter:title" content="Codec POS | El sistema que pone todo tu negocio bajo control">';
 const T_TW_DESC = '<meta name="twitter:description" content="Ventas, inventario, caja, reportes, DIAN y Codec Verify, todo en un solo sistema, online y offline. 14 días gratis.">';
 const T_SCHEMA_DESC = '"description": "Sistema de punto de venta con inventario, contabilidad, facturación electrónica DIAN, confirmación automática de pagos (Codec Verify) y funcionamiento online/offline.",';

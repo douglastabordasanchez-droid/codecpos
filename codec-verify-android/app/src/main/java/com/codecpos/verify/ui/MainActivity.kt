@@ -57,7 +57,7 @@ import com.codecpos.verify.ui.screens.StatusScreen
 import com.codecpos.verify.ui.theme.CodecVerifyTheme
 
 /** Misma URL que ya usa el POS/PWA para invitar al celular (ver PWA_URL en CodecVerifyConexionPage.tsx). */
-private const val PWA_APP_URL = "https://codecpos.vercel.app/app/"
+private const val PWA_APP_URL = "https://pos.codecstudio.online/app/"
 
 /** Mismo azul-marino oscuro que theme_color/background_color del manifest de la PWA (vite.config.pwa.ts). */
 private val FondoApp = Color(0xFF0F172A)

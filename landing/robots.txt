@@ -3,4 +3,4 @@ Allow: /
 Disallow: /app/
 Disallow: /admin/
 
-Sitemap: https://codecpos.vercel.app/sitemap.xml
+Sitemap: https://pos.codecstudio.online/sitemap.xml

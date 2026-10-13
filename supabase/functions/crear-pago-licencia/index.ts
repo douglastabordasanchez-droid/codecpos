@@ -16,7 +16,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const MERCADOPAGO_ACCESS_TOKEN = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN') ?? '';
-const PUBLIC_APP_URL = Deno.env.get('PUBLIC_APP_URL') ?? 'https://codecpos.vercel.app';
+const PUBLIC_APP_URL = Deno.env.get('PUBLIC_APP_URL') ?? 'https://pos.codecstudio.online';
 
 // Al público solo se venden mensual y anual (anual = 12 meses por el precio de 11,
 // migración 0104). Trimestral y vitalicio quedan para licencias hechas a mano en el Admin.

@@ -21,7 +21,7 @@ const GOOGLE_SCRIPT_URL = 'https://script.google.com';
 // URL pública de la PWA — escanear el QR abre esta página en el celular. El
 // login del empleado (ya ligado a un cliente_id) es lo que realmente "une"
 // el celular con este negocio; el QR solo evita tener que escribir la URL.
-const PWA_URL = 'https://codecpos.vercel.app';
+const PWA_URL = 'https://pos.codecstudio.online';
 
 export default function CodecVerifyConexionPage() {
   const { darkMode } = usePOS();

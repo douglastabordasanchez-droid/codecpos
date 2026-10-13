@@ -451,7 +451,7 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(5.8);
     doc.setTextColor(150, 155, 162);
-    doc.text('Generado con Codec POS · Software de punto de venta · codecpos.vercel.app', W - 5.5, H / 2 + 40, { angle: 90 });
+    doc.text('Generado con Codec POS · Software de punto de venta · pos.codecstudio.online', W - 5.5, H / 2 + 40, { angle: 90 });
     doc.setFontSize(7);
     doc.text(`Página ${p} de ${paginas}`, DER, H - 11.5, { align: 'right' });
     if (p > 1) {
