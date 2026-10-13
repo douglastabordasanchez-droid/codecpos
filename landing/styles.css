@@ -589,3 +589,70 @@ p { color: var(--ink-soft); }
   .wa-float-tip { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .wa-float::before { animation: none; } }
+
+/* ── Dónde se usa (hero) ── */
+.hero-platforms { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: -34px 0 44px; }
+.hero-platforms-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
+.hero-platforms a {
+  font-size: 13px; font-weight: 600; color: var(--ink-soft); text-decoration: none;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: #fff;
+  transition: border-color .15s, color .15s;
+}
+.hero-platforms a:hover { border-color: var(--brand); color: var(--brand-hover); }
+
+/* ── Codec Verify en el celular (capturas reales) ── */
+.phone-flow { margin-top: 64px; }
+.phone-flow-title { text-align: center; font-family: var(--font-display); font-weight: 800; font-size: 20px; color: var(--ink); margin-bottom: 28px; }
+.phone-flow-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; max-width: 900px; margin: 0 auto; }
+.phone-step { margin: 0; text-align: center; }
+.verify-phone {
+  max-width: 250px; margin: 0 auto 16px; padding: 8px; border-radius: 34px; background: #0F172A;
+  box-shadow: 0 30px 60px -30px rgba(15,23,42,.55);
+}
+.verify-phone img { display: block; width: 100%; height: auto; border-radius: 26px; }
+.phone-step figcaption { font-size: 14px; color: var(--ink-soft); max-width: 260px; margin: 0 auto; line-height: 1.5; }
+.phone-step figcaption b { display: block; color: var(--ink); font-size: 15px; margin-bottom: 2px; }
+
+/* ── Codec POS Web ── */
+.web-showcase { max-width: 1080px; margin: 0 auto; }
+.web-main { border-radius: 20px; overflow: hidden; background: var(--navy); box-shadow: var(--shadow-lg); border: 1px solid rgba(15,23,42,.08); }
+.web-main img { display: block; width: 100%; height: auto; }
+.web-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 22px; }
+.web-step { margin: 0; background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; transition: transform .18s, box-shadow .18s; }
+.web-step:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+.web-step img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: center top; border-bottom: 1px solid var(--border); }
+.web-step figcaption { padding: 14px 16px 16px; font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+.web-step figcaption b { display: block; color: var(--ink); font-size: 14.5px; margin-bottom: 3px; }
+.web-ctas { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 36px; }
+
+/* ── Medios de pago del plan ── */
+.pay-methods { max-width: 760px; margin: 28px auto 0; text-align: center; }
+.pay-methods-label { display: block; font-size: 14px; font-weight: 600; color: var(--ink-soft); margin-bottom: 12px; }
+.pay-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.pay-chip { font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: 999px; background: #fff; border: 1px solid var(--border); color: var(--ink); }
+.pay-methods-note { display: block; font-size: 12.5px; color: var(--muted); margin-top: 12px; }
+
+@media (max-width: 960px) {
+  .web-steps { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 760px) {
+  .hero-platforms { margin: -30px 0 36px; }
+  .phone-flow-grid {
+    grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 72%;
+    gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 14% 12px; margin: 0 -20px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .phone-flow-grid::-webkit-scrollbar { display: none; }
+  .phone-step { scroll-snap-align: center; }
+  .verify-phone { max-width: 220px; }
+  .web-steps { grid-template-columns: 1fr; }
+  .web-ctas .btn { width: 100%; justify-content: center; }
+}
+
+/* Menú: sin cortes de línea en pantallas medianas (se agregó "Descargar") */
+.nav-links a, .nav-cta a.nav-login { white-space: nowrap; }
+@media (max-width: 1240px) and (min-width: 761px) {
+  .nav-links { gap: 16px; margin-left: 16px; }
+  .nav-links a, .nav-cta a.nav-login { font-size: 13px; }
+  .nav-links a[href="#offline"], .nav-links a[href="#faq"] { display: none; }
+}

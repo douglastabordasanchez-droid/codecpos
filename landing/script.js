@@ -256,7 +256,7 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 const ES_ENTORNO_LOCAL = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
   || window.location.protocol === 'file:';
 const PWA_URL = ES_ENTORNO_LOCAL ? 'http://localhost:5174' : '';
-['trialCta', 'trialCtaFinal'].forEach((id) => {
+['trialCta', 'trialCtaFinal', 'trialCtaHero', 'trialCtaNav', 'trialCtaWeb'].forEach((id) => {
   document.getElementById(id)?.addEventListener('click', (e) => {
     e.preventDefault();
     trackEvent('click_registro');

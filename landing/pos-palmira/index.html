@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600;700&display=swap">
 
-<link rel="stylesheet" href="/styles.css?v=20261002">
+<link rel="stylesheet" href="/styles.css?v=20261013">
 
 <!-- Schema.org -->
 <script type="application/ld+json">
@@ -60,14 +60,15 @@
     { "@type": "Question", "name": "¿Qué es Codec POS?", "acceptedAnswer": { "@type": "Answer", "text": "Es un sistema de punto de venta que además incluye inventario, contabilidad, facturación electrónica DIAN y confirmación automática de pagos, todo integrado, para que no necesites contratar varios sistemas separados." } },
     { "@type": "Question", "name": "¿Funciona sin internet?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. Puedes seguir vendiendo aunque se corte la conexión. Cuando vuelve el internet, todo se sincroniza con respaldo en la nube." } },
     { "@type": "Question", "name": "¿Cuánto dura la prueba gratuita?", "acceptedAnswer": { "@type": "Answer", "text": "14 días completos, sin necesidad de ingresar tarjeta de crédito." } },
-    { "@type": "Question", "name": "¿Necesito instalar algo?", "acceptedAnswer": { "@type": "Answer", "text": "Para tu punto de venta principal, sí: es una aplicación de escritorio pensada para funcionar de forma estable incluso sin internet. La app móvil no requiere instalación." } },
+    { "@type": "Question", "name": "¿Necesito instalar algo?", "acceptedAnswer": { "@type": "Answer", "text": "No es obligatorio. Puedes usar Codec POS desde el navegador sin instalar nada, instalarlo en Windows para seguir vendiendo sin internet, o usar la app para Android. Todo se sincroniza entre sí." } },
     { "@type": "Question", "name": "¿Puedo usarlo desde el celular?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, con la app móvil de Codec POS (plan Premium) puedes operar tu negocio, no solo consultarlo." } },
     { "@type": "Question", "name": "¿Puedo administrar varias tiendas?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, desde un solo login puedes ver las métricas de todas tus tiendas vinculadas, disponible en el plan Premium." } },
     { "@type": "Question", "name": "¿Qué diferencia hay entre Básico y Premium?", "acceptedAnswer": { "@type": "Answer", "text": "Básico cubre la operación esencial de un solo negocio con un módulo especializado. Premium suma usuarios ilimitados, varias sucursales, app móvil completa, Codec Verify, facturación electrónica DIAN y más de un módulo especializado." } },
     { "@type": "Question", "name": "¿Puedo cancelar?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, sin permanencia forzada." } },
-    { "@type": "Question", "name": "¿Qué ocurre después de los 14 días?", "acceptedAnswer": { "@type": "Answer", "text": "Eliges el plan que mejor se ajuste a tu negocio para seguir usando Codec POS sin interrupciones." } },
+    { "@type": "Question", "name": "¿Qué ocurre después de los 14 días?", "acceptedAnswer": { "@type": "Answer", "text": "El sistema te pide elegir tu plan. Lo pagas desde el mismo Codec POS con Wompi (Nequi, PSE, tarjeta o Bancolombia) o con Mercado Pago, y se activa en cuanto se aprueba el pago. Tus productos, ventas y clientes se conservan." } },
     { "@type": "Question", "name": "¿Puedo pasar de Básico a Premium?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, en cualquier momento que tu negocio lo necesite." } },
-    { "@type": "Question", "name": "¿Codec POS funciona con la DIAN?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, la facturación electrónica está preparada para trabajar con la DIAN. Activarla solo requiere configurar la firma digital de tu negocio." } }
+    { "@type": "Question", "name": "¿Cómo pago mi plan?", "acceptedAnswer": { "@type": "Answer", "text": "Desde el mismo Codec POS, con Wompi (Nequi, PSE, tarjeta o Bancolombia) o con Mercado Pago. El plan se activa en cuanto se aprueba el pago." } },
+    { "@type": "Question", "name": "¿Codec POS funciona con la DIAN?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, la facturación electrónica está preparada para trabajar con la DIAN. Para activarla escríbenos por WhatsApp y te ayudamos a configurar la firma digital de tu negocio." } }
   ]
 }
 </script>
@@ -96,8 +97,8 @@
         <a href="/descargar/" data-event="click_descargar" data-event-loc="nav">Descargar</a>
       </nav>
       <div class="nav-cta">
-        <a href="#" class="nav-login" data-event="click_login">Iniciar sesión</a>
-        <a href="#trial" class="btn btn-brand btn-md" data-event="click_prueba_gratis" data-event-loc="nav">Probar gratis</a>
+        <a href="/app/login" class="nav-login" data-event="click_login">Iniciar sesión</a>
+        <a href="/app/prueba-gratis" class="btn btn-brand btn-md" id="trialCtaNav" data-event="click_prueba_gratis" data-event-loc="nav">Probar gratis</a>
       </div>
     </div>
     <button class="nav-burger" id="navBurger" aria-label="Abrir menú" aria-expanded="false">
@@ -132,7 +133,7 @@
       </div>
 
       <div class="hero-ctas reveal in">
-        <a href="#trial" class="btn btn-brand btn-lg" data-event="click_prueba_gratis" data-event-loc="hero">
+        <a href="/app/prueba-gratis" class="btn btn-brand btn-lg" id="trialCtaHero" data-event="click_prueba_gratis" data-event-loc="hero">
           Probar 14 días gratis →
         </a>
         <a href="#verify" class="btn btn-outline btn-lg" data-event="click_demo">
@@ -144,6 +145,13 @@
         <span>✓ Sin tarjeta de crédito</span>
         <span>✓ Sin permanencia</span>
         <span>✓ Soporte en español</span>
+      </div>
+
+      <div class="hero-platforms reveal in">
+        <span class="hero-platforms-label">Úsalo en</span>
+        <a href="/app/" data-event="click_plataforma" data-event-loc="web">Navegador</a>
+        <a href="/descargar/" data-event="click_descargar" data-event-loc="hero">Windows</a>
+        <a href="/download" data-event="click_descargar_apk" data-event-loc="hero">Android</a>
       </div>
 
       <div class="hero-visual reveal in">
@@ -268,6 +276,24 @@
         </div>
       </div>
 
+      <div class="phone-flow reveal">
+        <p class="phone-flow-title">Así se ve en el celular del negocio</p>
+        <div class="phone-flow-grid">
+          <figure class="phone-step">
+            <div class="verify-phone"><img src="/assets/celular-cobrar.webp" alt="Codec POS en el celular: el cajero elige Nequi y cobra $12.345" loading="lazy" width="560" height="1090"></div>
+            <figcaption><b>1. Cobras</b> Eliges Nequi, Daviplata, Bre-B o transferencia y tocas cobrar.</figcaption>
+          </figure>
+          <figure class="phone-step">
+            <div class="verify-phone"><img src="/assets/celular-esperando.webp" alt="Codec POS esperando el pago de Nequi" loading="lazy" width="560" height="1090"></div>
+            <figcaption><b>2. Esperas tranquilo</b> El cliente transfiere y Codec POS queda atento al pago.</figcaption>
+          </figure>
+          <figure class="phone-step">
+            <div class="verify-phone"><img src="/assets/celular-recibido.webp" alt="Codec Verify confirma el pago recibido por Nequi" loading="lazy" width="560" height="1090"></div>
+            <figcaption><b>3. Pago confirmado</b> Llega el aviso, suena la confirmación y la venta se cierra sola.</figcaption>
+          </figure>
+        </div>
+      </div>
+
       <div class="card-grid cols-3 reveal" style="margin-top:64px">
         <div class="feature-card">
           <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M11 2L4 5.5V10.5C4 14.5 7 18.1 11 19.5C15 18.1 18 14.5 18 10.5V5.5L11 2Z" stroke="currentColor" stroke-width="1.7"/></svg></div>
@@ -294,7 +320,7 @@
       <div class="section-head reveal">
         <span class="kicker">Por dentro</span>
         <h2>Vender nunca fue más fácil</h2>
-        <p class="lede" style="margin:0 auto">Capturas reales de Codec POS -- la misma pantalla que vas a usar en tu negocio.</p>
+        <p class="lede" style="margin:0 auto">Capturas reales de Codec POS: la misma pantalla que vas a usar en tu negocio.</p>
       </div>
 
       <div class="screens-carousel reveal" id="screensCarousel">
@@ -317,6 +343,47 @@
       </div>
 
       <div class="screens-dots" id="screensDots"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ VERSIÓN WEB ═══════════════ -->
+  <section class="section section-warm" id="web">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="kicker on-brand">Nuevo · Codec POS Web</span>
+        <h2>Abre tu caja desde<br>cualquier computador</h2>
+        <p class="lede" style="margin:0 auto">Sin instalar nada: entra desde el navegador, vende, cobra e imprime la factura. Todo queda sincronizado con tu celular y tus otras cajas.</p>
+      </div>
+
+      <div class="web-showcase reveal">
+        <div class="web-main">
+          <div class="screens-topbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="screens-topbar-label">pos.codecstudio.online</span></div>
+          <img src="/assets/web-vender.webp" alt="Pantalla Vender de Codec POS en el navegador" loading="lazy" width="1600" height="691">
+        </div>
+        <div class="web-steps">
+          <figure class="web-step">
+            <img src="/assets/web-cobrar.webp" alt="Confirmar venta con efectivo, Nequi, Daviplata, Bre-B, tarjeta o crédito" loading="lazy" width="1600" height="696">
+            <figcaption><b>Cobra con cualquier medio</b> Efectivo con cambio rápido, Nequi, Daviplata, Bre-B, tarjeta, Rappi, mixto o crédito.</figcaption>
+          </figure>
+          <figure class="web-step">
+            <img src="/assets/web-venta-registrada.webp" alt="Venta registrada con opciones de imprimir ticket, ver factura y compartir" loading="lazy" width="1600" height="693">
+            <figcaption><b>Venta lista en un toque</b> Imprime el ticket, comparte la factura por WhatsApp o empieza la siguiente venta.</figcaption>
+          </figure>
+          <figure class="web-step">
+            <img src="/assets/web-factura.webp" alt="Factura de venta de Codec POS con código QR" loading="lazy" width="1600" height="696">
+            <figcaption><b>Factura profesional</b> Con los datos de tu negocio y código QR. Imprímela, descárgala o compártela.</figcaption>
+          </figure>
+          <figure class="web-step">
+            <img src="/assets/web-dashboard.webp" alt="Dashboard con ventas, utilidad, ticket promedio y gastos" loading="lazy" width="1600" height="695">
+            <figcaption><b>Sabes cuánto ganas</b> Ventas, utilidad, ticket promedio y gastos de hoy, 7 o 30 días.</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="web-ctas reveal">
+        <a href="/app/prueba-gratis" class="btn btn-brand btn-lg" id="trialCtaWeb" data-event="click_prueba_gratis" data-event-loc="web">Probar 14 días gratis →</a>
+        <a href="/descargar/" class="btn btn-outline btn-lg" data-event="click_descargar" data-event-loc="web">Descargar para Windows</a>
+      </div>
     </div>
   </section>
 
@@ -615,6 +682,12 @@
         <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20plan%20personalizado%20de%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-light" data-event="click_precios" data-event-loc="personalizado">Escríbenos por WhatsApp</a>
       </div>
 
+      <div class="pay-methods reveal">
+        <span class="pay-methods-label">Al terminar la prueba pagas desde el mismo sistema con</span>
+        <div class="pay-chips"><span class="pay-chip">Nequi</span><span class="pay-chip">PSE</span><span class="pay-chip">Tarjeta</span><span class="pay-chip">Bancolombia</span><span class="pay-chip">Daviplata</span><span class="pay-chip">Mercado Pago</span></div>
+        <span class="pay-methods-note">Pagos seguros con Wompi y Mercado Pago. Tu plan se activa en cuanto se aprueba el pago.</span>
+      </div>
+
       <p class="price-footnote">Precios en pesos colombianos (COP). Prueba gratis de 14 días en cualquiera de los dos planes.</p>
     </div>
   </section>
@@ -643,15 +716,16 @@
         <div class="faq-item"><button class="faq-q">¿Qué es Codec POS?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Es un sistema de punto de venta que además incluye inventario, contabilidad, facturación electrónica DIAN y confirmación automática de pagos, todo integrado, para que no necesites contratar varios sistemas separados.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Funciona sin internet?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí. Puedes seguir vendiendo aunque se corte la conexión. Cuando vuelve el internet, todo se sincroniza con respaldo en la nube.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Cuánto dura la prueba gratuita?<span class="faq-caret">＋</span></button><div class="faq-a"><p>14 días completos, sin necesidad de ingresar tarjeta de crédito.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Necesito instalar algo?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Para tu punto de venta principal, sí: es una aplicación de escritorio pensada para funcionar de forma estable incluso sin internet. La app móvil no requiere instalación.</p></div></div>
+        <div class="faq-item"><button class="faq-q">¿Necesito instalar algo?<span class="faq-caret">＋</span></button><div class="faq-a"><p>No es obligatorio. Puedes usar Codec POS desde el navegador sin instalar nada, instalarlo en Windows para seguir vendiendo sin internet, o usar la app para Android. Todo se sincroniza entre sí.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Puedo usarlo desde el celular?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, con la app móvil de Codec POS (plan Premium) puedes operar tu negocio, no solo consultarlo.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Puedo administrar varias tiendas?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, desde un solo login puedes ver las métricas de todas tus tiendas vinculadas, disponible en el plan Premium.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Qué diferencia hay entre Básico y Premium?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Básico cubre la operación esencial de un solo negocio con un módulo especializado. Premium suma usuarios ilimitados, varias sucursales, app móvil completa, Codec Verify, facturación electrónica DIAN y más de un módulo especializado.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Puedo cancelar?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, sin permanencia forzada.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Qué ocurre después de los 14 días?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Eliges el plan que mejor se ajuste a tu negocio para seguir usando Codec POS sin interrupciones.</p></div></div>
+        <div class="faq-item"><button class="faq-q">¿Qué ocurre después de los 14 días?<span class="faq-caret">＋</span></button><div class="faq-a"><p>El sistema te pide elegir tu plan. Lo pagas desde el mismo Codec POS con Wompi (Nequi, PSE, tarjeta o Bancolombia) o con Mercado Pago, y se activa en cuanto se aprueba el pago. Tus productos, ventas y clientes se conservan.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Cuánto cuestan los planes?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Básico $49.990 al mes y Premium $79.990 al mes. Si pagas el año completo te regalamos un mes: pagas 11 y usas 12. La instalación o el soporte técnico, si lo necesitas, tiene un valor de $50.000 por servicio. Si necesitas facturación electrónica, estás en otro país o quieres un plan personalizado, escríbenos por WhatsApp al +57 323 864 6844.</p></div></div>
         <div class="faq-item"><button class="faq-q">¿Puedo pasar de Básico a Premium?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, en cualquier momento que tu negocio lo necesite.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Codec POS funciona con la DIAN?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, la facturación electrónica está preparada para trabajar con la DIAN. Activarla solo requiere configurar la firma digital de tu negocio.</p></div></div>
+        <div class="faq-item"><button class="faq-q">¿Cómo pago mi plan?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Desde el mismo Codec POS, con Wompi (Nequi, PSE, tarjeta o Bancolombia) o con Mercado Pago. El plan se activa en cuanto se aprueba el pago. Si prefieres, también puedes pagar por Nequi directo y enviarnos el comprobante por WhatsApp.</p></div></div>
+        <div class="faq-item"><button class="faq-q">¿Codec POS funciona con la DIAN?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, la facturación electrónica está preparada para trabajar con la DIAN. Para activarla escríbenos por WhatsApp y te ayudamos a configurar la firma digital de tu negocio.</p></div></div>
       </div>
     </div>
   </section>
@@ -661,7 +735,7 @@
     <div class="wrap">
       <span class="kicker on-brand">Empieza hoy</span>
       <h2 style="margin-top:14px">Empieza a controlar<br>tu negocio hoy</h2>
-      <p style="margin-bottom:26px">Prueba Codec POS gratis durante 14 días.</p>
+      <p style="margin-bottom:26px">Prueba Codec POS gratis durante 14 días. Sin tarjeta y sin permanencia.</p>
       <a href="#" class="btn btn-brand btn-lg" id="trialCtaFinal" data-event="click_registro" data-event-loc="final">Probar gratis →</a>
     </div>
   </section>
