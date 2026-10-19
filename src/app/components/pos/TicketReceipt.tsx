@@ -88,6 +88,8 @@ const REGIMEN_FISCAL_LABEL: Record<string, string> = {
   gran_contribuyente: 'Gran Contribuyente',
 };
 
+const TIMEOUT_IMPRESION = 'timeout-impresion';
+
 function TicketReceiptComponent({ venta }: TicketReceiptProps) {
   const { darkMode } = usePOS();
   const { usuarioActual } = useAuth();
@@ -144,7 +146,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
 
   if (!venta) return null;
 
-  const anchoTicket: 58 | 80 = Number(config?.anchoPapel || config?.anchoImpresora || config?.ticketWidth || config?.printerWidth) === 58 ? 58 : 80;
+  const anchoTicket: 58 | 80 = getConfiguredTicketWidthMm();
 
   // Cajero: usa el campo del objeto venta primero; cae al usuario autenticado como respaldo
   const cajeroDisplay = venta.cajero
@@ -182,7 +184,11 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       </style>
     </head><body><div class="ticket" style="font-family:'Courier New',monospace;font-size:14px;line-height:20px;">${innerHtmlParaImpresion(ticket)}</div></body></html>`;
 
-    const res = await el.print.printHtml({ html, silent: true, printerName, widthMm, raster: true });
+    // Tope por si Electron no contesta: el botón no puede quedar girando.
+    const res = await Promise.race([
+      el.print.printHtml({ html, silent: true, printerName, widthMm, raster: true }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(TIMEOUT_IMPRESION)), 90000)),
+    ]);
     return !!res?.ok;
   };
 
@@ -199,6 +205,12 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
         return;
       }
     } catch (error) {
+      if ((error as Error)?.message === TIMEOUT_IMPRESION) {
+        // No se manda el ticket de texto: el primero aún podría salir y quedaría doble.
+        toast.error('La impresora no respondió. Revisa que esté encendida y conectada, y vuelve a intentar.');
+        setImprimiendo(false);
+        return;
+      }
       console.warn('Impresión de la vista previa falló, usando ticket de texto:', error);
     }
     printSaleReceipt({

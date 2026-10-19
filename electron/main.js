@@ -555,6 +555,16 @@ let printerWorkerScriptPath = null;
 let printerWorkerStdoutBuffer = '';
 const printerWorkerPending = new Map();
 const PRINTER_WORKER_TIMEOUT_MS = 10000;
+// 🖨️ FIX "se queda cargando al imprimir": el worker esperaba su señal de
+// listo sin límite. Si PowerShell no arrancaba o el antivirus frenaba la
+// compilación del helper (Add-Type), la impresión quedaba colgada para
+// siempre y todas las siguientes también, hasta cerrar la app. Ahora hay un
+// tope y, si falla, se deja de intentar un rato para que la impresión HTML
+// de respaldo salga rápido en vez de esperar de nuevo en cada tirilla.
+const PRINTER_WORKER_READY_TIMEOUT_MS = 25000;
+const PRINTER_WORKER_REINTENTO_MS = 2 * 60 * 1000;
+let printerWorkerFalloEn = 0;
+let printerWorkerUltimoError = '';
 
 function buildPrinterWorkerScript(dllPath) {
   const escapedDllPath = dllPath.replace(/'/g, "''");
@@ -681,6 +691,9 @@ async function ensurePrinterWorker() {
   if (printerWorkerProcess && printerWorkerReadyPromise) {
     return printerWorkerReadyPromise;
   }
+  if (printerWorkerFalloEn && Date.now() - printerWorkerFalloEn < PRINTER_WORKER_REINTENTO_MS) {
+    throw new Error(`Impresión directa no disponible: ${printerWorkerUltimoError || 'el proceso de impresión no inició'}`);
+  }
 
   if (!printerWorkerScriptPath) {
     printerWorkerScriptPath = path.join(app.getPath('userData'), 'printer-worker.ps1');
@@ -695,8 +708,22 @@ async function ensurePrinterWorker() {
   );
   printerWorkerProcess = proc;
 
+  // Vaciar stderr: si nadie lo lee y PowerShell escribe errores, el pipe se
+  // llena y el proceso se bloquea sin responder.
+  proc.stderr.setEncoding('utf8');
+  proc.stderr.on('data', (chunk) => {
+    const texto = String(chunk || '').trim();
+    if (texto) fileLogger.writeLog('WARN', 'Worker de impresión (stderr)', { texto: texto.slice(0, 500) });
+  });
+
   const readyPromise = new Promise((resolve, reject) => {
     let resuelto = false;
+    const guardListo = setTimeout(() => {
+      if (resuelto) return;
+      resuelto = true;
+      reject(new Error('El proceso de impresión no respondió al iniciar'));
+      derribarPrinterWorker('El proceso de impresión no respondió al iniciar');
+    }, PRINTER_WORKER_READY_TIMEOUT_MS);
 
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (chunk) => {
@@ -711,6 +738,7 @@ async function ensurePrinterWorker() {
         try { msg = JSON.parse(linea); } catch { continue; }
 
         if (msg.id === '__ready__') {
+          clearTimeout(guardListo);
           resuelto = true;
           if (msg.success) resolve(proc);
           else reject(new Error(msg.error || 'No se pudo inicializar el worker de impresión'));
@@ -728,17 +756,27 @@ async function ensurePrinterWorker() {
     });
 
     proc.on('error', (error) => {
+      clearTimeout(guardListo);
       if (!resuelto) { resuelto = true; reject(error); }
       derribarPrinterWorker(`Proceso de impresión falló: ${error.message}`);
     });
 
     proc.on('exit', () => {
+      clearTimeout(guardListo);
       if (!resuelto) { resuelto = true; reject(new Error('El proceso de impresión terminó antes de inicializar')); }
       derribarPrinterWorker('El proceso de impresión terminó');
     });
   });
 
   printerWorkerReadyPromise = readyPromise;
+  readyPromise.then(
+    () => { printerWorkerFalloEn = 0; printerWorkerUltimoError = ''; },
+    (error) => {
+      printerWorkerFalloEn = Date.now();
+      printerWorkerUltimoError = error?.message || '';
+      fileLogger.writeLog('ERROR', 'No inició el worker de impresión', { error: printerWorkerUltimoError });
+    }
+  );
   return readyPromise;
 }
 
@@ -755,6 +793,9 @@ async function sendRawEscPosToWindowsSpool(printerName, rawBuffer) {
       const timeoutHandle = setTimeout(() => {
         printerWorkerPending.delete(id);
         reject(new Error('La impresora no respondió a tiempo'));
+        // El worker sigue trabado en ese trabajo (spooler colgado): si no se
+        // reinicia, cada tirilla siguiente espera detrás de él.
+        derribarPrinterWorker('Trabajo de impresión sin respuesta');
       }, PRINTER_WORKER_TIMEOUT_MS);
 
       printerWorkerPending.set(id, { resolve, reject, timeoutHandle });
@@ -783,14 +824,35 @@ function esPuertoSerialImpresora(nombre) {
   return /^COM\d+$/i.test(String(nombre || '').trim());
 }
 
+function conTiempoLimite(promesa, ms, mensaje) {
+  let guard;
+  return Promise.race([
+    promesa,
+    new Promise((_, reject) => { guard = setTimeout(() => reject(new Error(mensaje)), ms); }),
+  ]).finally(() => clearTimeout(guard));
+}
+
 async function sendRawToSerialPort(portPath, rawBuffer, baudRate = 9600) {
   const port = new SerialPort({ path: String(portPath).trim().toUpperCase(), baudRate, autoOpen: false });
-  await new Promise((resolve, reject) => port.open((err) => (err ? reject(err) : resolve())));
+  // Un puerto Bluetooth sin la impresora encendida puede no contestar nunca.
+  await conTiempoLimite(
+    new Promise((resolve, reject) => port.open((err) => (err ? reject(err) : resolve()))),
+    10000,
+    'La impresora no respondió (puerto COM)'
+  );
   try {
-    await new Promise((resolve, reject) => port.write(rawBuffer, (err) => (err ? reject(err) : resolve())));
-    await new Promise((resolve, reject) => port.drain((err) => (err ? reject(err) : resolve())));
+    await conTiempoLimite(
+      new Promise((resolve, reject) => port.write(rawBuffer, (err) => (err ? reject(err) : resolve()))),
+      15000,
+      'La impresora no respondió (puerto COM)'
+    );
+    await conTiempoLimite(
+      new Promise((resolve, reject) => port.drain((err) => (err ? reject(err) : resolve()))),
+      15000,
+      'La impresora no respondió (puerto COM)'
+    );
   } finally {
-    await new Promise((resolve) => port.close(() => resolve()));
+    await conTiempoLimite(new Promise((resolve) => port.close(() => resolve())), 3000, 'cierre COM').catch(() => {});
   }
 }
 
@@ -2588,59 +2650,65 @@ async function renderHtmlToEscPosRaster(htmlPath, widthMm) {
   });
 
   try {
-    await new Promise((resolve, reject) => {
-      const guard = setTimeout(() => reject(new Error('timeout cargando tirilla')), 15000);
-      win.webContents.once('did-finish-load', () => { clearTimeout(guard); resolve(); });
-      win.webContents.once('did-fail-load', (_e, _code, desc) => { clearTimeout(guard); reject(new Error(desc || 'did-fail-load')); });
-      win.loadFile(htmlPath);
-    });
-
-    win.webContents.setZoomFactor(zoom);
-    // Sin barra de scroll (le robaría ancho al layout) y fondo blanco = papel.
-    await win.webContents.insertCSS(
-      'html,body{background:#fff !important;overflow-x:hidden !important;}' +
-      '::-webkit-scrollbar{width:0 !important;height:0 !important;display:none !important;}'
-    );
-    // Esperar imágenes (logo) y fuentes antes de medir/capturar.
-    await win.webContents.executeJavaScript(`
-      (async () => {
-        await Promise.all(Array.from(document.images).map((img) => img.complete ? null : new Promise((r) => { img.onload = img.onerror = r; })));
-        if (document.fonts && document.fonts.ready) await document.fonts.ready;
-        return true;
-      })()
-    `);
-    await new Promise((r) => setTimeout(r, 150));
-
-    const altoCss = await win.webContents.executeJavaScript(
-      'Math.ceil(Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))'
-    );
-    const altoTotalDip = Math.max(1, Math.ceil(Number(altoCss || 0) * zoom));
-    const [, altoViewportDip] = win.getContentSize();
-
-    // Se captura por tramos (scroll + capturePage): una ventana no puede ser
-    // más alta que la pantalla en Windows, y un ticket largo sí lo es.
-    const partes = [];
-    for (let yDip = 0; yDip < altoTotalDip; yDip += altoViewportDip) {
-      const scrollYCss = await win.webContents.executeJavaScript(
-        `window.scrollTo(0, ${yDip / zoom}); new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(window.scrollY))))`
-      );
-      const offsetReal = Math.round(Number(scrollYCss || 0) * zoom);
-      const recorteY = Math.max(0, yDip - offsetReal);
-      const alto = Math.min(altoViewportDip - recorteY, altoTotalDip - yDip);
-      if (alto <= 0) break;
-      const captura = await win.webContents.capturePage({ x: 0, y: recorteY, width: anchoDots, height: alto });
-      if (captura.isEmpty()) throw new Error('captura vacía');
-      partes.push(nativeImageToEscPosRaster(captura, anchoDots));
-    }
-
-    // Si la captura salió en blanco (GPU/ventana oculta sin pintar), no se
-    // imprime un rollo vacío: el llamador cae a la impresión HTML.
-    if (!partes.some((p) => p.puntosNegros > 0)) throw new Error('captura sin contenido');
-
-    return Buffer.concat(partes.map((p) => p.buffer));
+    // Tope total: capturePage o executeJavaScript pueden no resolver nunca en
+    // equipos con la GPU en modo software; así se cae a la impresión HTML.
+    return await conTiempoLimite(capturarTirillaRaster(win, htmlPath, anchoDots, zoom), 20000, 'timeout capturando tirilla');
   } finally {
     try { if (!win.isDestroyed()) win.destroy(); } catch { /* no-op */ }
   }
+}
+
+async function capturarTirillaRaster(win, htmlPath, anchoDots, zoom) {
+  await new Promise((resolve, reject) => {
+    const guard = setTimeout(() => reject(new Error('timeout cargando tirilla')), 15000);
+    win.webContents.once('did-finish-load', () => { clearTimeout(guard); resolve(); });
+    win.webContents.once('did-fail-load', (_e, _code, desc) => { clearTimeout(guard); reject(new Error(desc || 'did-fail-load')); });
+    win.loadFile(htmlPath);
+  });
+
+  win.webContents.setZoomFactor(zoom);
+  // Sin barra de scroll (le robaría ancho al layout) y fondo blanco = papel.
+  await win.webContents.insertCSS(
+    'html,body{background:#fff !important;overflow-x:hidden !important;}' +
+    '::-webkit-scrollbar{width:0 !important;height:0 !important;display:none !important;}'
+  );
+  // Esperar imágenes (logo) y fuentes antes de medir/capturar.
+  await win.webContents.executeJavaScript(`
+    (async () => {
+      await Promise.all(Array.from(document.images).map((img) => img.complete ? null : new Promise((r) => { img.onload = img.onerror = r; })));
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      return true;
+    })()
+  `);
+  await new Promise((r) => setTimeout(r, 150));
+
+  const altoCss = await win.webContents.executeJavaScript(
+    'Math.ceil(Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))'
+  );
+  const altoTotalDip = Math.max(1, Math.ceil(Number(altoCss || 0) * zoom));
+  const [, altoViewportDip] = win.getContentSize();
+
+  // Se captura por tramos (scroll + capturePage): una ventana no puede ser
+  // más alta que la pantalla en Windows, y un ticket largo sí lo es.
+  const partes = [];
+  for (let yDip = 0; yDip < altoTotalDip; yDip += altoViewportDip) {
+    const scrollYCss = await win.webContents.executeJavaScript(
+      `window.scrollTo(0, ${yDip / zoom}); new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(window.scrollY))))`
+    );
+    const offsetReal = Math.round(Number(scrollYCss || 0) * zoom);
+    const recorteY = Math.max(0, yDip - offsetReal);
+    const alto = Math.min(altoViewportDip - recorteY, altoTotalDip - yDip);
+    if (alto <= 0) break;
+    const captura = await win.webContents.capturePage({ x: 0, y: recorteY, width: anchoDots, height: alto });
+    if (captura.isEmpty()) throw new Error('captura vacía');
+    partes.push(nativeImageToEscPosRaster(captura, anchoDots));
+  }
+
+  // Si la captura salió en blanco (GPU/ventana oculta sin pintar), no se
+  // imprime un rollo vacío: el llamador cae a la impresión HTML.
+  if (!partes.some((p) => p.puntosNegros > 0)) throw new Error('captura sin contenido');
+
+  return Buffer.concat(partes.map((p) => p.buffer));
 }
 
 async function printHtmlAsRaster(htmlPath, printerName, widthMm) {
