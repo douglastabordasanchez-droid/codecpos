@@ -117,6 +117,7 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
   const [pinConfigurado, setPinConfigurado] = useState(perfilExistente?.pinConfigurado ?? false);
   const [rangosDian, setRangosDian] = useState<RangoNumeracionDian[] | null>(null);
   const [consultandoRangos, setConsultandoRangos] = useState(false);
+  const [confirmarProduccion, setConfirmarProduccion] = useState(false);
 
   useEffect(() => {
     if (!perfil?.id) return;
@@ -290,17 +291,26 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
     pinConfigurado,
   });
 
+  // La numeración de pruebas solo vale en habilitación: en producción la DIAN
+  // rechazaría todo lo que se emita con ella.
+  const numeracionEsDePruebas = resolucionActiva?.prefijo === NUMERACION_PRUEBAS.prefijo
+    && resolucionActiva?.resolucionNumero === NUMERACION_PRUEBAS.resolucionNumero;
+
   async function pasarAPruebas() {
     if (!perfil?.id) return;
     setGuardando(true);
     try {
+      // También devuelve a habilitación un perfil que se pasó a producción
+      // antes de tiempo; si no, la prueba de habilitación queda oculta.
+      await actualizarPerfilFiscal(perfil.id, { ambiente: 'habilitacion' });
       await actualizarEstadoPerfilFiscal(perfil.id, 'TESTING');
       // 🛡️ FIX: el perfil solo quedaba activo al pasar a producción, pero el
       // emisor exige un perfil activo — así que era imposible emitir los
       // documentos del set de pruebas que la DIAN pide ANTES de producción.
       // En pruebas queda activo, en ambiente de habilitación.
       await activarPerfilFiscal(perfil.id);
-      setPerfil({ ...perfil, estado: 'TESTING', activo: true });
+      setPerfil({ ...perfil, ambiente: 'habilitacion', estado: 'TESTING', activo: true });
+      onGuardado();
       toast.success('Perfil marcado en pruebas (ambiente de habilitación)');
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo actualizar el estado');
@@ -310,8 +320,9 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
   }
 
   async function activarProduccion() {
-    if (!perfil?.id || !validacion.ready) return;
+    if (!perfil?.id || !validacion.ready || numeracionEsDePruebas) return;
     setGuardando(true);
+    setConfirmarProduccion(false);
     try {
       await actualizarPerfilFiscal(perfil.id, { ambiente: 'produccion' });
       await actualizarEstadoPerfilFiscal(perfil.id, 'ACTIVE');
@@ -610,9 +621,28 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
             {paso === 6 && (
               <>
                 <ChecklistValidacion validacion={validacion} darkMode={darkMode} />
-                {validacion.ready ? (
-                  <Button type="button" onClick={activarProduccion} disabled={guardando} className="bg-gradient-to-b from-emerald-500 to-emerald-700 w-full">
-                    {guardando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Rocket className="w-4 h-4 mr-2" />}
+                {validacion.ready && numeracionEsDePruebas ? (
+                  <p className={`text-sm ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                    La numeración registrada es la de pruebas (SETP). Para producción, cuando la DIAN acepte el set de pruebas, asocia la numeración real al software y tráela en el paso de Numeración.
+                  </p>
+                ) : validacion.ready && confirmarProduccion ? (
+                  <div className={`rounded-lg border p-3 space-y-3 ${darkMode ? 'border-amber-500/40 bg-amber-500/10' : 'border-amber-300 bg-amber-50'}`}>
+                    <p className={`text-sm ${darkMode ? 'text-amber-200' : 'text-amber-800'}`}>
+                      Desde ahora cada venta se envía a la DIAN como factura real. Hazlo solo si el portal de habilitación ya muestra el software como «Aceptado».
+                    </p>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="outline" onClick={() => setConfirmarProduccion(false)} disabled={guardando} className="flex-1">
+                        Cancelar
+                      </Button>
+                      <Button type="button" onClick={activarProduccion} disabled={guardando} className="bg-gradient-to-b from-emerald-500 to-emerald-700 flex-1">
+                        {guardando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Rocket className="w-4 h-4 mr-2" />}
+                        Sí, activar producción
+                      </Button>
+                    </div>
+                  </div>
+                ) : validacion.ready ? (
+                  <Button type="button" onClick={() => setConfirmarProduccion(true)} disabled={guardando} className="bg-gradient-to-b from-emerald-500 to-emerald-700 w-full">
+                    <Rocket className="w-4 h-4 mr-2" />
                     Activar facturación electrónica en producción
                   </Button>
                 ) : (
