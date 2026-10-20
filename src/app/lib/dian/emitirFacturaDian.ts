@@ -21,6 +21,7 @@
  */
 import type { AdquirenteDian, ItemFacturaDian, EmisorSnapshot, FacturaElectronicaDian, EstadoDocumentoDian } from './types';
 import { decidirTipoDocumentoDian } from './types';
+import { sinIvaParaNoResponsable } from './ivaIncluido';
 import { calcularCufe } from './cufeCalculator';
 import { calcularCudeDocumentoEquivalente } from './calcularCudeDocumentoEquivalente';
 import { calcularSoftwareSecurityCode, construirUrlQR } from './softwareSecurityCode';
@@ -124,6 +125,9 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
     // consumir el consecutivo: un número quemado no se recupera.
     ubicacionDelEmisor(emisor);
     if (datos.items.length === 0) return noEmitido(datos.ventaReferencia, 'La venta no tiene ítems.');
+    // Régimen simplificado = no responsable de IVA: no puede facturarlo
+    // aunque el producto haya quedado marcado con IVA.
+    const items = perfil.regimenFiscal === 'simplificado' ? sinIvaParaNoResponsable(datos.items) : datos.items;
 
     // La fecha de emisión debe ser la misma del día en que se firma (FAD09e).
     // Una venta hecha sin conexión que se emite al día siguiente lleva la
@@ -131,7 +135,7 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
     const ahora = new Date().toISOString();
     const fechaEmision = fechaColombia(datos.fecha) === fechaColombia(ahora) ? datos.fecha : ahora;
 
-    const fiscal = calcularDocumentoFiscal(datos.items);
+    const fiscal = calcularDocumentoFiscal(items);
     if (Math.abs(fiscal.total - datos.total) > 1) {
       console.warn(`[DIAN] ${datos.ventaReferencia}: el total fiscal (${fiscal.total}) difiere del cobrado (${datos.total}) — normal si la venta incluye propina, que no hace parte de la factura.`);
     }
@@ -168,7 +172,7 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
       contingencia: false,
       emisor,
       adquirente: datos.adquirente,
-      items: datos.items,
+      items,
       subtotal: fiscal.brutoLineas,
       totalImpuestos: fiscal.totalImpuestos,
       total: fiscal.total,

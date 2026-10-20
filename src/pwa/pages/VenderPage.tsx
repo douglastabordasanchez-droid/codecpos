@@ -32,6 +32,7 @@ import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactur
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
 import { buscarClienteFactura, recordarClienteFactura } from '../../app/lib/dian/clientesFactura';
+import { lineaConIvaIncluido } from '../../app/lib/dian/ivaIncluido';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
 import { EsperandoPagoModal, METODOS_TRANSFERENCIA } from '../components/EsperandoPagoModal';
 import type { NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyService';
@@ -55,6 +56,8 @@ interface ProductoFila {
   talla?: string | null;
   color?: string | null;
   tipo_producto?: string | null;
+  /** Tarifa de IVA del producto (19, 5 o 0); el precio de venta ya la incluye. */
+  iva?: number | null;
 }
 
 const esGranel = (p: ProductoFila) => p.tipo_producto === 'granel';
@@ -179,7 +182,7 @@ export default function VenderPage() {
     const client = getSupabaseClient();
     const { data } = await client!
       .from('productos')
-      .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto')
+      .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto, iva')
       .eq('cliente_id', empleado.cliente_id)
       .eq('activo', true)
       .order('nombre');
@@ -474,6 +477,12 @@ export default function VenderPage() {
       if (facturacionDisponible && emitirFE && docClienteFactura.trim()) {
         recordarClienteFactura({ documento: docClienteFactura, nombre: nombreClienteFactura });
       }
+      // El precio cobrado ya trae el IVA del producto: la factura lo separa.
+      const lineasFactura = items.map((it) => lineaConIvaIncluido(
+        { codigo: productos.find((p) => p.id === it.productoId)?.codigo_barras || undefined, descripcion: it.nombre, cantidad: it.cantidad },
+        it.precio,
+        Number(productos.find((p) => p.id === it.productoId)?.iva) || 0,
+      ));
       if (facturacionDisponible && emitirFE) emitirFacturaDianDirecto({
         clienteId: empleado.cliente_id,
         ventaReferencia: resultado.ventaId,
@@ -481,9 +490,9 @@ export default function VenderPage() {
         adquirente: docClienteFactura.trim()
           ? { tipoDocumento: '13', numeroDocumento: docClienteFactura.trim(), nombreORazonSocial: nombreClienteFactura.trim() || 'Consumidor final' }
           : { tipoDocumento: '13', numeroDocumento: NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, nombreORazonSocial: 'Consumidor final' },
-        items: items.map((it) => ({ descripcion: it.nombre, cantidad: it.cantidad, precioUnitario: it.precio, subtotal: it.cantidad * it.precio })),
-        subtotal: totalCarrito,
-        totalImpuestos: 0,
+        items: lineasFactura,
+        subtotal: lineasFactura.reduce((s, l) => s + l.subtotal, 0),
+        totalImpuestos: lineasFactura.reduce((s, l) => s + (l.impuestos || []).reduce((t, imp) => t + imp.valor, 0), 0),
         total: totalAPagar,
         pago: { metodo: metodoPago },
       }).catch(() => {});
