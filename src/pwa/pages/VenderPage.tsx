@@ -37,6 +37,8 @@ import type { NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyServ
 import { obtenerDispositivos, imprimirTicket, abrirCajon, tieneImpresoraDirecta } from '../lib/impresoraWeb';
 import { armarTicketVenta } from '../lib/ticketVentaWeb';
 import { useMiNegocio } from '../hooks/useMiNegocio';
+import { useModulosActivos } from '../hooks/useModulosActivos';
+import { ModuloPOS } from '../../app/lib/permissions';
 import { numeroVentaWeb } from '../../app/lib/numeracionCaja';
 import { ModalPesaje } from '../components/ModalPesaje';
 import { CLAVE_CARRITO_TRANSFERIDO, formatoCantidad } from '../lib/carritoTransferido';
@@ -136,6 +138,11 @@ export default function VenderPage() {
   const [imprimiendo, setImprimiendo] = useState(false);
   const [docClienteFactura, setDocClienteFactura] = useState('');
   const [nombreClienteFactura, setNombreClienteFactura] = useState('');
+  // Cada venta se pregunta: hay clientes que no quieren factura electrónica.
+  // Arranca en «No» y vuelve a «No» después de cobrar.
+  const [emitirFE, setEmitirFE] = useState(false);
+  const { tieneModuloDePago } = useModulosActivos();
+  const facturacionDisponible = tieneModuloDePago(ModuloPOS.FACTURACION_DIAN);
   const [esperando, setEsperando] = useState<{ clave: string } | null>(null);
   const [verifyActivo, setVerifyActivo] = useState(codecVerifyPwaActivo);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -453,8 +460,9 @@ export default function VenderPage() {
       setCarteraTelefono('');
       setCarteraDocumento('');
       setCarteraAbonoInicial('');
-      // DIAN directo — nunca bloquea la venta (ya se guardó arriba).
-      emitirFacturaDianDirecto({
+      // DIAN directo — nunca bloquea la venta (ya se guardó arriba). Solo si
+      // el cajero dijo «Sí» a la factura electrónica de esta venta.
+      if (facturacionDisponible && emitirFE) emitirFacturaDianDirecto({
         clienteId: empleado.cliente_id,
         ventaReferencia: resultado.ventaId,
         fecha: new Date().toISOString(),
@@ -469,6 +477,7 @@ export default function VenderPage() {
       }).catch(() => {});
       setDocClienteFactura('');
       setNombreClienteFactura('');
+      setEmitirFE(false);
       setCarrito({});
       setPropinaManual(null);
       setRecibido('');
@@ -819,14 +828,34 @@ export default function VenderPage() {
         </div>
       )}
 
-      <details className="group">
-        <summary className="cursor-pointer text-slate-400 text-xs font-bold uppercase tracking-wide">Identificar cliente (factura electrónica)</summary>
-        <p className="text-slate-500 text-[11px] my-2">Si el cliente da su NIT o cédula, la venta se factura a su nombre. Vacío: consumidor final.</p>
-        <div className="grid grid-cols-2 gap-2">
-          <input value={docClienteFactura} onChange={(e) => setDocClienteFactura(e.target.value)} placeholder="NIT / Cédula" className={campo} />
-          <input value={nombreClienteFactura} onChange={(e) => setNombreClienteFactura(e.target.value)} placeholder="Nombre" className={campo} />
+      {facturacionDisponible && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-slate-300 text-xs font-bold">¿Factura electrónica?</span>
+            <div className="flex gap-1.5">
+              {([[false, 'No'], [true, 'Sí']] as const).map(([valor, texto]) => (
+                <button
+                  key={texto}
+                  type="button"
+                  onClick={() => setEmitirFE(valor)}
+                  className={`h-8 px-3.5 rounded-lg text-xs font-bold border transition-colors ${emitirFE === valor ? 'bg-amber-500 border-amber-500 text-slate-950' : 'border-slate-700 text-slate-300'}`}
+                >
+                  {texto}
+                </button>
+              ))}
+            </div>
+          </div>
+          {emitirFE && (
+            <>
+              <p className="text-slate-500 text-[11px]">Si el cliente da su NIT o cédula, la factura sale a su nombre. Vacío: consumidor final.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input value={docClienteFactura} onChange={(e) => setDocClienteFactura(e.target.value)} placeholder="NIT / Cédula" className={campo} />
+                <input value={nombreClienteFactura} onChange={(e) => setNombreClienteFactura(e.target.value)} placeholder="Nombre" className={campo} />
+              </div>
+            </>
+          )}
         </div>
-      </details>
+      )}
 
       <div className="flex items-end justify-between pt-1">
         <div>

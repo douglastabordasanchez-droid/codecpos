@@ -380,6 +380,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     email: '',
     direccion: '',
   });
+  // Cada venta se pregunta: hay clientes que no quieren factura electrónica.
+  // Arranca en «No» y vuelve a «No» después de cobrar.
+  const [emitirFE, setEmitirFE] = useState(false);
   const [manualForm, setManualForm] = useState({
     nombre: '',
     precioVenta: '',
@@ -1622,7 +1625,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const getConfigFacturacion = () => {
     const config = leerConfigEmpresaCacheada();
     return {
-      feActiva: Boolean(config.facturacionElectronicaHabilitada && config.ecosistemaFacturacionActivo),
+      // «DIAN directo» no pasa por la prueba de conexión del proveedor externo
+      // (que es la que prende esas dos banderas): con él elegido ya está activa.
+      feActiva: config.modoFacturacionElectronica === 'dian_directo'
+        || Boolean(config.facturacionElectronicaHabilitada && config.ecosistemaFacturacionActivo),
       endpointApiUrl: String(config.endpointApiUrl || '').trim(),
       apiKey: String(config.apiKey || '').trim(),
       apiSecret: String(config.apiSecret || '').trim(),
@@ -1630,6 +1636,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   };
 
   const validarClienteFacturacion = () => {
+    // DIAN directo: sin documento sale a consumidor final; con documento, el
+    // nombre es lo único que la factura no puede llevar vacío.
+    if (leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo') {
+      if (clienteFE.nitCedula.trim() && !clienteFE.nombre.trim()) {
+        toast.error('Escribe el nombre del cliente para la factura electrónica.');
+        return false;
+      }
+      return true;
+    }
     if (!clienteFE.nitCedula.trim() || !clienteFE.email.trim() || !clienteFE.direccion.trim()) {
       toast.error('Para facturación electrónica debes registrar NIT/Cédula, correo y dirección del cliente.');
       return false;
@@ -1682,7 +1697,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }
 
     const total = calcularTotal();
-    const feConfig = getConfigFacturacion();
+    // feActiva = el negocio tiene la facturación prendida Y el cajero dijo
+    // «Sí» para esta venta.
+    const feNegocio = getConfigFacturacion();
+    const feConfig = { ...feNegocio, feActiva: feNegocio.feActiva && emitirFE };
 
     if (metodoPago === 'efectivo') {
       const recibido = parseFloat(efectivoRecibido) || 0;
@@ -1898,6 +1916,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setCarrito([]);
       try { guardarCarritoMesa(mesaActivaId, []); } catch { /* mesa no crítica */ }
       setEfectivoRecibido('');
+      // Los datos del cliente eran de esta venta: la siguiente no los hereda.
+      setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
+      setEmitirFE(false);
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
@@ -2247,6 +2268,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setCarrito([]);
       try { guardarCarritoMesa(mesaActivaId, []); } catch { /* mesa no crítica */ }
       setEfectivoRecibido('');
+      // Los datos del cliente eran de esta venta: la siguiente no los hereda.
+      setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
+      setEmitirFE(false);
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       setMostrarPago(false);
 
@@ -2483,6 +2507,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setCarrito([]);
       try { guardarCarritoMesa(mesaActivaId, []); } catch { /* mesa no crítica */ }
       setEfectivoRecibido('');
+      // Los datos del cliente eran de esta venta: la siguiente no los hereda.
+      setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
+      setEmitirFE(false);
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
@@ -3749,8 +3776,30 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               <div className="space-y-4 mb-6">
                 {getConfigFacturacion().feActiva && (
                   <div className={`p-4 rounded-2xl border-2 ${darkMode ? 'bg-slate-800 border-orange-500' : 'bg-orange-50 border-orange-300'}`}>
-                    <p className={`text-sm font-bold mb-3 ${darkMode ? 'text-orange-200' : 'text-orange-700'}`}>
-                      Datos obligatorios del cliente (Facturación Electrónica)
+                    <div className="flex items-center justify-between gap-3">
+                      <p className={`text-sm font-bold ${darkMode ? 'text-orange-200' : 'text-orange-700'}`}>
+                        ¿Factura electrónica para esta venta?
+                      </p>
+                      <div className="flex gap-2">
+                        {([[false, 'No'], [true, 'Sí']] as const).map(([valor, texto]) => (
+                          <button
+                            key={texto}
+                            type="button"
+                            onClick={() => setEmitirFE(valor)}
+                            className={`h-9 px-4 rounded-xl text-sm font-bold border-2 transition-colors ${emitirFE === valor
+                              ? 'bg-orange-500 border-orange-500 text-white'
+                              : darkMode ? 'border-slate-500 text-slate-300' : 'border-orange-300 text-orange-700'}`}
+                          >
+                            {texto}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {emitirFE && (<>
+                    <p className={`text-xs mt-3 mb-3 ${darkMode ? 'text-orange-200/80' : 'text-orange-700/80'}`}>
+                      {leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo'
+                        ? 'Sin NIT o cédula sale a nombre de consumidor final.'
+                        : 'Todos los datos del cliente son obligatorios.'}
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <Input
@@ -3762,22 +3811,23 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       <Input
                         value={clienteFE.nitCedula}
                         onChange={(e) => setClienteFE((p) => ({ ...p, nitCedula: e.target.value }))}
-                        placeholder="NIT / Cédula *"
+                        placeholder="NIT / Cédula"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
                       <Input
                         value={clienteFE.email}
                         onChange={(e) => setClienteFE((p) => ({ ...p, email: e.target.value }))}
-                        placeholder="Correo electrónico *"
+                        placeholder="Correo electrónico"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
                       <Input
                         value={clienteFE.direccion}
                         onChange={(e) => setClienteFE((p) => ({ ...p, direccion: e.target.value }))}
-                        placeholder="Dirección *"
+                        placeholder="Dirección"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
                     </div>
+                    </>)}
                   </div>
                 )}
 
