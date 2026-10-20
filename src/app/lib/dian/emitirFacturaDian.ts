@@ -94,13 +94,14 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
       return noEmitido(datos.ventaReferencia, 'Al perfil fiscal le falta el identificador del software o el PIN del software.');
     }
 
-    const tipoDocumento = decidirTipoDocumentoDian(datos.adquirente);
+    const resoluciones = await listarResolucionesPerfil(perfil.id);
+    const activas = resoluciones.filter((r) => r.estado === 'activa');
+    const tipoDocumento = decidirTipoDocumentoDian(datos.adquirente, activas.map((r) => r.tipoDocumento));
     if (tipoDocumento === 'factura' && !perfil.claveTecnica) {
       return noEmitido(datos.ventaReferencia, 'Al perfil fiscal le falta la clave técnica de la numeración.');
     }
 
-    const resoluciones = await listarResolucionesPerfil(perfil.id);
-    const resolucion = resoluciones.find((r) => r.estado === 'activa' && r.tipoDocumento === tipoDocumento);
+    const resolucion = activas.find((r) => r.tipoDocumento === tipoDocumento);
     if (!resolucion?.id) {
       return noEmitido(datos.ventaReferencia, `No hay una numeración activa para ${tipoDocumento === 'factura' ? 'factura electrónica' : 'documento equivalente POS'}.`);
     }

@@ -152,10 +152,22 @@ export const NUMERO_DOCUMENTO_CONSUMIDOR_FINAL = '222222222222';
  * Es la DIAN quien exige esta distinción, no una preferencia del sistema —
  * por eso vive aquí como una función pura, para que cualquier punto de
  * venta (Electron o PWA) tome la misma decisión sin duplicar la regla.
+ *
+ * Excepción: un negocio que solo habilitó la factura (sin numeración de
+ * documento equivalente POS) le factura también al consumidor final, con el
+ * 222222222222. La DIAN lo admite y así ninguna venta se queda sin emitir.
+ * Para eso se pasan los tipos que tienen numeración activa.
  */
-export function decidirTipoDocumentoDian(adquirente: Pick<AdquirenteDian, 'numeroDocumento'>): TipoDocumentoFactura {
+export function decidirTipoDocumentoDian(
+  adquirente: Pick<AdquirenteDian, 'numeroDocumento'>,
+  numeracionesActivas?: TipoDocumentoResolucion[],
+): TipoDocumentoFactura {
   const identificado = !!adquirente.numeroDocumento?.trim() && adquirente.numeroDocumento.trim() !== NUMERO_DOCUMENTO_CONSUMIDOR_FINAL;
-  return identificado ? 'factura' : 'documento_equivalente';
+  if (identificado) return 'factura';
+  if (numeracionesActivas && !numeracionesActivas.includes('documento_equivalente') && numeracionesActivas.includes('factura')) {
+    return 'factura';
+  }
+  return 'documento_equivalente';
 }
 
 /** Snapshot inmutable del emisor al momento de emitir — copia congelada del

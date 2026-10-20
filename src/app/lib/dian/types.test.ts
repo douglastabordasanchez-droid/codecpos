@@ -65,4 +65,12 @@ describe('decidirTipoDocumentoDian — Resolución 000165: factura si el comprad
   it('número de documento con solo espacios → documento equivalente', () => {
     expect(decidirTipoDocumentoDian({ numeroDocumento: '   ' })).toBe('documento_equivalente');
   });
+
+  it('consumidor final sin numeración POS pero con la de factura → factura', () => {
+    expect(decidirTipoDocumentoDian({ numeroDocumento: NUMERO_DOCUMENTO_CONSUMIDOR_FINAL }, ['factura'])).toBe('factura');
+  });
+
+  it('consumidor final con numeración POS activa → documento equivalente', () => {
+    expect(decidirTipoDocumentoDian({ numeroDocumento: NUMERO_DOCUMENTO_CONSUMIDOR_FINAL }, ['factura', 'documento_equivalente'])).toBe('documento_equivalente');
+  });
 });
