@@ -96,6 +96,7 @@ import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
 import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../lib/dian/types';
+import { buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
 
 interface Producto {
   id: string;
@@ -383,6 +384,20 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // Cada venta se pregunta: hay clientes que no quieren factura electrónica.
   // Arranca en «No» y vuelve a «No» después de cobrar.
   const [emitirFE, setEmitirFE] = useState(false);
+  const [clienteFERecordado, setClienteFERecordado] = useState(false);
+
+  /** Cliente que ya compró con factura: llena solo lo que el cajero no escribió. */
+  const autocompletarClienteFE = async (documento: string) => {
+    const encontrado = await buscarClienteFactura(getLinkedClienteId(), documento);
+    setClienteFERecordado(!!encontrado);
+    if (!encontrado) return;
+    setClienteFE((p) => ({
+      ...p,
+      nombre: p.nombre.trim() || encontrado.nombre,
+      email: p.email.trim() || encontrado.email || '',
+      direccion: p.direccion.trim() || encontrado.direccion || '',
+    }));
+  };
   const [manualForm, setManualForm] = useState({
     nombre: '',
     precioVenta: '',
@@ -1919,6 +1934,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       // Los datos del cliente eran de esta venta: la siguiente no los hereda.
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
+      setClienteFERecordado(false);
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
@@ -2021,6 +2037,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           // ya se maneja arriba de forma síncrona.
           if (feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo') {
             const clienteIdVinculado = getLinkedClienteId();
+            if (clienteFE.nitCedula.trim()) {
+              recordarClienteFactura({ documento: clienteFE.nitCedula, nombre: clienteFE.nombre, email: clienteFE.email, direccion: clienteFE.direccion });
+            }
             if (clienteIdVinculado) {
               emitirFacturaDianDirecto({
                 clienteId: clienteIdVinculado,
@@ -2271,6 +2290,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       // Los datos del cliente eran de esta venta: la siguiente no los hereda.
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
+      setClienteFERecordado(false);
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       setMostrarPago(false);
 
@@ -2510,6 +2530,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       // Los datos del cliente eran de esta venta: la siguiente no los hereda.
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
+      setClienteFERecordado(false);
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
@@ -3810,7 +3831,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       />
                       <Input
                         value={clienteFE.nitCedula}
-                        onChange={(e) => setClienteFE((p) => ({ ...p, nitCedula: e.target.value }))}
+                        onChange={(e) => { setClienteFERecordado(false); setClienteFE((p) => ({ ...p, nitCedula: e.target.value })); }}
+                        onBlur={(e) => { void autocompletarClienteFE(e.target.value); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void autocompletarClienteFE((e.target as HTMLInputElement).value); }}
                         placeholder="NIT / Cédula"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
@@ -3827,6 +3850,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
                     </div>
+                    {clienteFERecordado && (
+                      <p className={`text-xs mt-2 font-semibold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                        Cliente conocido: sus datos se llenaron solos. Revísalos antes de cobrar.
+                      </p>
+                    )}
                     </>)}
                   </div>
                 )}

@@ -31,6 +31,7 @@ import { compartirRecibo, obtenerDatosFactura } from '../lib/compartirFactura';
 import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactura';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
+import { buscarClienteFactura, recordarClienteFactura } from '../../app/lib/dian/clientesFactura';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
 import { EsperandoPagoModal, METODOS_TRANSFERENCIA } from '../components/EsperandoPagoModal';
 import type { NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyService';
@@ -143,6 +144,14 @@ export default function VenderPage() {
   const [emitirFE, setEmitirFE] = useState(false);
   const { tieneModuloDePago } = useModulosActivos();
   const facturacionDisponible = tieneModuloDePago(ModuloPOS.FACTURACION_DIAN);
+  const [clienteFERecordado, setClienteFERecordado] = useState(false);
+
+  /** Cliente que ya compró con factura: llena el nombre si el cajero no lo escribió. */
+  const autocompletarClienteFE = async (documento: string) => {
+    const encontrado = await buscarClienteFactura(empleado?.cliente_id, documento);
+    setClienteFERecordado(!!encontrado);
+    if (encontrado) setNombreClienteFactura((n) => n.trim() || encontrado.nombre);
+  };
   const [esperando, setEsperando] = useState<{ clave: string } | null>(null);
   const [verifyActivo, setVerifyActivo] = useState(codecVerifyPwaActivo);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -462,6 +471,9 @@ export default function VenderPage() {
       setCarteraAbonoInicial('');
       // DIAN directo — nunca bloquea la venta (ya se guardó arriba). Solo si
       // el cajero dijo «Sí» a la factura electrónica de esta venta.
+      if (facturacionDisponible && emitirFE && docClienteFactura.trim()) {
+        recordarClienteFactura({ documento: docClienteFactura, nombre: nombreClienteFactura });
+      }
       if (facturacionDisponible && emitirFE) emitirFacturaDianDirecto({
         clienteId: empleado.cliente_id,
         ventaReferencia: resultado.ventaId,
@@ -478,6 +490,7 @@ export default function VenderPage() {
       setDocClienteFactura('');
       setNombreClienteFactura('');
       setEmitirFE(false);
+      setClienteFERecordado(false);
       setCarrito({});
       setPropinaManual(null);
       setRecibido('');
@@ -849,9 +862,18 @@ export default function VenderPage() {
             <>
               <p className="text-slate-500 text-[11px]">Si el cliente da su NIT o cédula, la factura sale a su nombre. Vacío: consumidor final.</p>
               <div className="grid grid-cols-2 gap-2">
-                <input value={docClienteFactura} onChange={(e) => setDocClienteFactura(e.target.value)} placeholder="NIT / Cédula" className={campo} />
+                <input
+                  value={docClienteFactura}
+                  onChange={(e) => { setClienteFERecordado(false); setDocClienteFactura(e.target.value); }}
+                  onBlur={(e) => { void autocompletarClienteFE(e.target.value); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void autocompletarClienteFE((e.target as HTMLInputElement).value); }}
+                  placeholder="NIT / Cédula"
+                  inputMode="numeric"
+                  className={campo}
+                />
                 <input value={nombreClienteFactura} onChange={(e) => setNombreClienteFactura(e.target.value)} placeholder="Nombre" className={campo} />
               </div>
+              {clienteFERecordado && <p className="text-emerald-400 text-[11px] font-semibold">Cliente conocido: su nombre se llenó solo.</p>}
             </>
           )}
         </div>
