@@ -1,0 +1,8 @@
+{
+  "name": "codecpos-legacy-win8-build",
+  "private": true,
+  "description": "Herramientas para armar el instalador de Windows 7/8 de 32 bits (ver build.mjs)",
+  "devDependencies": {
+    "core-js-bundle": "^3.45.1"
+  }
+}

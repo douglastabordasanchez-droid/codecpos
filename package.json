@@ -25,6 +25,8 @@
     "electron:build": "npm run electron:build:win",
     "electron:build:win": "npm run clean && npm run voz:descargar && npm run check:syntax && npm run verify && npm run precheck && npx vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64 --config electron/builder-config.js",
     "electron:build:win:publish": "npm run clean && npm run voz:descargar && npm run check:syntax && npm run verify && npm run precheck && npx vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64 --publish always --config electron/builder-config.js",
+    "electron:build:win32": "npm run check:syntax && npm run verify && npm run precheck && npx vite build && cross-env CODEC_ARCH=ia32 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --ia32 --config electron/builder-config.js",
+    "electron:build:win8": "npm run check:syntax && npx vite build && npm install --prefix legacy-win8 --no-audit --no-fund && node legacy-win8/build.mjs",
     "electron:build:all": "npm run clean && npm run voz:descargar && npm run check:syntax && npm run verify && npm run precheck && npx vite build && electron-builder -mwl --config electron/builder-config.js",
     "pack": "npm run clean && npm run voz:descargar && npx vite build && electron-builder --dir --config electron/builder-config.js",
     "dist": "npm run clean && npm run voz:descargar && npm run build && electron-builder --config electron/builder-config.js",

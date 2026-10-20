@@ -49,13 +49,21 @@ const winIconPath = fs.existsSync(iconIcoPath)
   : (fs.existsSync(logoPngPath) ? logoPngPath : iconPath);
 
 // ── Configuración base ──────────────────────────────────────────────────────
+// Instalador de 32 bits para PCs con Windows 10 de 32 bits:
+// `npm run electron:build:win32` (CODEC_ARCH=ia32). Sale en su propia
+// carpeta y con su propio canal de actualización ('ia32.yml'), para que una
+// caja de 32 bits nunca descargue el instalador de 64 ni al revés. Va sin la
+// voz Piper, que solo existe para 64 bits.
+const ES_32_BITS = process.env.CODEC_ARCH === 'ia32';
+const ARCH = ES_32_BITS ? 'ia32' : 'x64';
+
 const config = {
   appId:        'com.codecstudio.codecpos',
   productName:  'CODECPOS',
   copyright:    'Copyright © 2026 Codec Studio',
 
   directories: {
-    output:         'dist-electron',
+    output:         ES_32_BITS ? 'dist-electron-32' : 'dist-electron',
     buildResources: 'electron/assets',
   },
 
@@ -112,8 +120,8 @@ const config = {
   // ── WINDOWS ────────────────────────────────────────────────────────────
   win: {
     target: [
-      { target: 'nsis',     arch: ['x64'] },
-      { target: 'portable', arch: ['x64'] },
+      { target: 'nsis',     arch: [ARCH] },
+      { target: 'portable', arch: [ARCH] },
     ],
     icon: winIconPath,
   },
@@ -144,8 +152,10 @@ const config = {
     installerLanguages: ['es'],
     
     // Nombre del archivo de salida
-    artifactName: 'CODECPOS-Setup-${version}.${ext}',
+    artifactName: ES_32_BITS ? 'CODECPOS-Setup-${version}-32bits.${ext}' : 'CODECPOS-Setup-${version}.${ext}',
   },
+
+  portable: ES_32_BITS ? { artifactName: 'CODECPOS ${version} 32bits.${ext}' } : undefined,
 
   // ── Optimización de build ───────────────────────────────────────────────
   compression: 'normal',
@@ -165,8 +175,14 @@ const config = {
     provider: 'github',
     owner: 'douglastabordasanchez-droid',
     repo: 'codecpos',
+    ...(ES_32_BITS ? { channel: 'ia32' } : {}),
   },
 };
+
+if (ES_32_BITS) {
+  config.extraResources = (config.extraResources || []).filter((r) => r?.to !== 'piper');
+  console.log('ℹ️  Compilación de 32 bits: sin voz Piper, salida en dist-electron-32');
+}
 
 // Forzar coherencia de branding final para Windows/NSIS
 if (winIconPath) {

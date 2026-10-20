@@ -43,3 +43,9 @@ docs/electronic-invoicing/dian-sources/
 # (hook "predownload:voz" antes de electron-builder). El resto del motor
 # Piper (binarios + espeak-ng-data recortado, ~11MB) sí va en el repo.
 electron/resources/piper/voices/*.onnx
+
+# Instalador Windows 7/8 de 32 bits (legacy-win8/build.mjs)
+legacy-win8/app/
+legacy-win8/node_modules/
+dist-electron-32/
+dist-electron-win8/

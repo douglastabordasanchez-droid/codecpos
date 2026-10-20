@@ -1698,6 +1698,8 @@ function resolverRutaPiper() {
 }
 
 function piperDisponible() {
+  // piper.exe solo existe para 64 bits; en 32 bits se usa la voz de Windows.
+  if (process.arch === 'ia32') return false;
   const { exe, modelo } = resolverRutaPiper();
   return fs.existsSync(exe) && fs.existsSync(modelo);
 }

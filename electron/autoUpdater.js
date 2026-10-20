@@ -22,6 +22,10 @@ const { autoUpdater } = require('electron-updater');
 
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
+// Las cajas de 32 bits leen su propio feed (ia32.yml, ver builder-config.js),
+// y las de Windows 7/8 con Electron 22 el suyo (win8.yml, ver legacy-win8/).
+if (Number(process.versions.electron.split('.')[0]) < 23) autoUpdater.channel = 'win8';
+else if (process.arch === 'ia32') autoUpdater.channel = 'ia32';
 
 let ventanaPrincipal = null;
 
