@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Outlet } from 'react-router';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import {
-  ShoppingCart, Package, Receipt, RotateCcw, BarChart3, Calculator,
+  ShoppingCart, Package, Receipt, BarChart3, Calculator,
   FileText, Wallet, Settings, Monitor, Users, User, Bell, Gift,
   TrendingUp, Tag, Building2, Barcode, Zap, Shield, ChevronLeft, ChevronRight,
   ChevronDown, Sun, Moon, LogOut, Crown, Lock, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff, Palette, PartyPopper, PawPrint, ReceiptText,
@@ -263,14 +263,8 @@ export default function POSLayoutSidebar() {
       moduloId: ModuloPOS.PANADERIA_ONCES,
       requiredPermission: 'panaderiaOnces',
     },
-    { 
-      path: '/devoluciones', 
-      icon: RotateCcw, 
-      label: 'Devoluciones', 
-      color: 'orange', 
-      moduloId: ModuloPOS.DEVOLUCIONES,
-      requiredPermission: 'devoluciones',
-    },
+    // Devoluciones ya no tiene sección propia: se hacen desde Ventas (botón
+    // de devolución en cada factura) y su historial se abre desde allí.
     // 🛡️ FIX: los 14 ítems de abajo tenían `adminOnly: true` ADEMÁS de su
     // `moduloId` — un resabio del sistema de permisos anterior al de módulos
     // por usuario. `canAccessItem` evalúa `adminOnly` DESPUÉS del permiso

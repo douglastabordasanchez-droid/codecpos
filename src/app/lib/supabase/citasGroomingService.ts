@@ -68,9 +68,10 @@ function mapRow(r: CitaRow): CitaGrooming {
 }
 
 /** Trae las citas del día (o de hoy en adelante si `soloFuturas`) para el negocio vinculado. */
-export async function listarCitasGrooming(desde: Date, hasta: Date): Promise<CitaGrooming[]> {
+export async function listarCitasGrooming(desde: Date, hasta: Date, negocioId?: string): Promise<CitaGrooming[]> {
   const client = getSupabaseClient();
-  const clienteId = getLinkedClienteId();
+  // En la web y el celular el negocio sale de la sesión, no de una instalación vinculada.
+  const clienteId = negocioId || getLinkedClienteId();
   if (!client || !clienteId) return [];
   const { data, error } = await client
     .from('citas_grooming')
@@ -87,9 +88,9 @@ export async function crearCitaGrooming(datos: {
   tipo?: TipoCita; mascotaId?: string;
   tutorNombre: string; tutorTelefono?: string; mascotaNombre: string; especie?: string;
   raza?: string; tipoPelo?: string; observaciones?: string; servicio: string; precio: number; fechaHora: string;
-}): Promise<void> {
+}, negocioId?: string): Promise<void> {
   const client = getSupabaseClient();
-  const clienteId = getLinkedClienteId();
+  const clienteId = negocioId || getLinkedClienteId();
   if (!client || !clienteId) throw new Error('No hay un negocio vinculado a esta sesión');
   const { error } = await client.from('citas_grooming').insert({
     cliente_id: clienteId,

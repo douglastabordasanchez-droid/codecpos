@@ -92,6 +92,12 @@ export async function emitirNotaAjuste(datos: DatosNotaAjuste): Promise<NotaAjus
   if (factura.estado !== 'accepted') {
     throw new Error(`Solo se pueden emitir notas de ajuste sobre facturas aceptadas por la DIAN (estado actual: "${factura.estado}")`);
   }
+  if (factura.tipoDocumento === 'documento_equivalente') {
+    // El tiquete POS se corrige con la «nota de ajuste del documento
+    // equivalente», que tiene su propio formato en el anexo del POS. Una nota
+    // crédito de factura sobre un CUDE de POS la rechazaría la DIAN.
+    throw new Error('Las notas sobre tiquetes POS electrónicos todavía no están disponibles: este documento solo admite nota de ajuste del documento equivalente.');
+  }
 
   const resoluciones = await listarResolucionesPerfil(datos.perfilFiscalId);
   const resolucion = resoluciones.find((r) => r.id === datos.resolucionId);

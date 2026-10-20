@@ -6,7 +6,7 @@
  * ✅ 15 categorías específicas + 6 métodos de pago
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -147,7 +147,7 @@ const CATEGORIAS_CONFIG = {
   impuestos: { label: 'Impuestos', icon: Receipt, color: '#ef4444' },
   marketing: { label: 'Marketing', icon: TrendingUp, color: '#ec4899' },
   papeleria: { label: 'Papelería y Utensilios de Oficina', icon: FileText, color: '#64748b' },
-  otros: { label: 'Otro (Especificar)', icon: Coffee, color: '#78716c' },
+  otros: { label: 'Personalizado', icon: Coffee, color: '#78716c' },
 };
 
 // Fallback visual para categorías que no están en el set fijo de arriba —
@@ -157,16 +157,25 @@ const CATEGORIA_FALLBACK = { label: 'Otra Categoría', icon: Coffee, color: '#78
 const configCategoria = (categoria: string) =>
   (CATEGORIAS_CONFIG as Record<string, { label: string; icon: any; color: string }>)[categoria] || CATEGORIA_FALLBACK;
 
-const CATEGORIAS_MODAL_KEYS: CategoriaGasto[] = [
-  'servicios_publicos',
-  'implementos',
-  'inventario',
-  'arriendo',
-  'nomina',
-  'mantenimiento',
-  'papeleria',
-  'otros',
-];
+// Todas las categorías fijas en el formulario (antes solo se mostraban 8);
+// «Personalizado» ('otros') va aparte, de primera, para escribir el gasto.
+const CATEGORIAS_MODAL_KEYS = (Object.keys(CATEGORIAS_CONFIG) as CategoriaGasto[])
+  .filter((k) => k !== 'otros')
+  .sort((a, b) => CATEGORIAS_CONFIG[a].label.localeCompare(CATEGORIAS_CONFIG[b].label, 'es'));
+
+// Gastos personalizados que ya escribió este negocio: se ofrecen de nuevo
+// para no tener que escribirlos cada vez (se guardan como categoría 'otros').
+const CLAVE_PERSONALIZADOS = 'codecpos_gastos_personalizados';
+const PREFIJO_PERSONALIZADO = 'personalizado:';
+const leerPersonalizados = (): string[] => {
+  try { return JSON.parse(localStorage.getItem(CLAVE_PERSONALIZADOS) || '[]'); } catch { return []; }
+};
+const recordarPersonalizado = (concepto: string) => {
+  try {
+    const lista = [concepto, ...leerPersonalizados().filter((c) => c.toLowerCase() !== concepto.toLowerCase())].slice(0, 30);
+    localStorage.setItem(CLAVE_PERSONALIZADOS, JSON.stringify(lista));
+  } catch { /* sin almacenamiento solo se pierde la sugerencia */ }
+};
 
 const METODOS_PAGO_CONFIG = {
   efectivo: { label: 'EFECTIVO', emoji: '💵', color: '#10b981' },
@@ -197,6 +206,8 @@ export default function GastosPage() {
   const [gastos, setGastos] = useState<Gasto[]>([]);
   const [gastosFiltrados, setGastosFiltrados] = useState<Gasto[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Se relee al abrir el formulario para traer los que se acaban de guardar.
+  const personalizadosGuardados = useMemo(() => (isModalOpen ? leerPersonalizados() : []), [isModalOpen]);
   const [gastoEditando, setGastoEditando] = useState<Gasto | null>(null);
   const [busqueda, setBusqueda] = useState('');
   // 🚀 FIX rendimiento: el input sigue controlado por busqueda; el filtro
@@ -294,13 +305,14 @@ export default function GastosPage() {
     }
 
     if (requiereConceptoOtro && !conceptoOtroLimpio) {
-      toast.error('Debes especificar el concepto del gasto para la categoría "Otro"');
+      toast.error('Escribe el gasto personalizado');
       return;
     }
 
     const nombreCajero = usuarioActual?.nombreCompleto || usuarioActual?.username || 'Desconocido';
     const categoriaConcepto = CATEGORIAS_CONFIG[formData.categoria as CategoriaGasto]?.label || formData.categoria;
     const concepto = requiereConceptoOtro ? conceptoOtroLimpio : categoriaConcepto;
+    if (requiereConceptoOtro) recordarPersonalizado(conceptoOtroLimpio);
     const medioPago = normalizarMedioPagoEgreso(formData.metodoPago);
 
     const gasto: Gasto = {
@@ -1328,7 +1340,15 @@ export default function GastosPage() {
                 <select
                   id="categoria"
                   value={formData.categoria}
-                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value as CategoriaGasto })}
+                  onChange={(e) => {
+                    const valor = e.target.value;
+                    // Un personalizado guardado llena el concepto de una vez.
+                    if (valor.startsWith(PREFIJO_PERSONALIZADO)) {
+                      setFormData({ ...formData, categoria: 'otros', conceptoOtro: valor.slice(PREFIJO_PERSONALIZADO.length) });
+                    } else {
+                      setFormData({ ...formData, categoria: valor as CategoriaGasto });
+                    }
+                  }}
                   className={`flex h-10 w-full items-center rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                     darkMode
                       ? 'bg-slate-700 border-slate-600 text-white'
@@ -1337,11 +1357,21 @@ export default function GastosPage() {
                   required
                 >
                   <option value="">Seleccionar concepto del gasto</option>
-                  {CATEGORIAS_MODAL_KEYS.map((key) => (
-                    <option key={key} value={key}>
-                      {CATEGORIAS_CONFIG[key].label}
-                    </option>
-                  ))}
+                  <option value="otros">✏️ Personalizado (escribe tu gasto)</option>
+                  {personalizadosGuardados.length > 0 && (
+                    <optgroup label="Mis gastos personalizados">
+                      {personalizadosGuardados.map((c) => (
+                        <option key={c} value={`${PREFIJO_PERSONALIZADO}${c}`}>{c}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Categorías">
+                    {CATEGORIAS_MODAL_KEYS.map((key) => (
+                      <option key={key} value={key}>
+                        {CATEGORIAS_CONFIG[key].label}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
 
                 {formData.categoria === 'otros' && (
@@ -1349,14 +1379,15 @@ export default function GastosPage() {
                     <Label htmlFor="conceptoOtro" className={`text-sm font-semibold mb-2 block ${
                       darkMode ? 'text-slate-200' : 'text-gray-700'
                     }`}>
-                      Especifique el Concepto del Gasto *
+                      ¿En qué se gastó? *
                     </Label>
                     <Input
                       id="conceptoOtro"
                       type="text"
                       value={formData.conceptoOtro}
                       onChange={(e) => setFormData({ ...formData, conceptoOtro: e.target.value })}
-                      placeholder="Ej: Servicio técnico extraordinario"
+                      placeholder="Ej: Gas para la cocina, domicilio, bolsas"
+                      autoFocus
                       className={`${
                         darkMode
                           ? 'bg-slate-700 border-slate-600 text-white placeholder:text-slate-400'

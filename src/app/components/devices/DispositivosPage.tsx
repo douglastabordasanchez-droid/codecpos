@@ -31,6 +31,7 @@ import {
   Trash2,
   ChevronDown,
   FileText,
+  ReceiptText,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -49,6 +50,8 @@ import {
   getPrinterByScope,
   isGlobalPrinterEnabled,
   setGlobalPrinterEnabled,
+  isPapelAngosto,
+  setPapelAngosto,
   setPrinterByScope,
   setDefaultPrinterName as persistDefaultPrinterName,
 } from '../../lib/printerConfig';
@@ -144,6 +147,7 @@ export default function DispositivosPage() {
   const [sectionPrinters, setSectionPrinters] = useState<Partial<Record<PrintSection, string>>>(() => getAllSectionPrinters());
   const [globalPrinterName, setGlobalPrinterName] = useState('');
   const [useGlobalPrinterDraft, setUseGlobalPrinterDraft] = useState(false);
+  const [papelAngosto, setPapelAngostoState] = useState(isPapelAngosto);
   const [printerConfigDirty, setPrinterConfigDirty] = useState(false);
   const [showConfirmGlobalPrinter, setShowConfirmGlobalPrinter] = useState(false);
   const [sectionPrintersOpen, setSectionPrintersOpen] = useState(false);
@@ -720,6 +724,37 @@ export default function DispositivosPage() {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Rollo de 57/58 mm: la tirilla se arma a ese ancho y no se cortan los precios. */}
+              <div className={`p-5 rounded-2xl border-2 flex items-center justify-between gap-4 transition-all ${
+                papelAngosto
+                  ? darkMode ? 'border-amber-500/60 bg-amber-900/20' : 'border-amber-300 bg-amber-50'
+                  : darkMode ? 'border-slate-700 bg-slate-800/40' : 'border-gray-200 bg-gray-50'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${papelAngosto ? 'bg-amber-500' : darkMode ? 'bg-slate-700' : 'bg-gray-200'}`}>
+                    <ReceiptText className={`w-5 h-5 ${papelAngosto ? 'text-white' : darkMode ? 'text-gray-300' : 'text-gray-600'}`} />
+                  </div>
+                  <div>
+                    <p className={`text-base font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      Papel angosto (58 mm)
+                    </p>
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      Actívalo si tu impresora usa rollo pequeño de 57 o 58 mm. La tirilla se ajusta a ese ancho para que salgan completos los precios y el total.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={papelAngosto}
+                  onCheckedChange={(checked) => {
+                    setPapelAngosto(checked);
+                    setPapelAngostoState(checked);
+                    toast.success(checked ? 'Tirillas ajustadas a papel de 58 mm' : 'Tirillas en papel normal de 80 mm', {
+                      description: 'Se aplica desde la próxima impresión.',
+                    });
+                  }}
+                />
               </div>
 
               <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 ${useGlobalPrinterDraft ? 'opacity-50' : ''}`}>

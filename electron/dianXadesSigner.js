@@ -145,6 +145,11 @@ function canonicalizar(node) {
  */
 export function firmarXadesXml(xmlSinFirmar, p12Buffer, pin) {
   const { privateKeyPem, certForge, certDerBytes } = extraerCredencialesP12(p12Buffer, pin);
+  // Igual que en la nube: un documento firmado con certificado vencido lo
+  // rechaza la DIAN, así que se avisa aquí con un mensaje claro.
+  if (certForge.validity.notAfter.getTime() < Date.now()) {
+    throw new Error('El certificado digital está vencido. Carga el certificado renovado.');
+  }
 
   const doc = new DOMParser().parseFromString(xmlSinFirmar.toString('utf8'), 'text/xml');
   const root = doc.documentElement;

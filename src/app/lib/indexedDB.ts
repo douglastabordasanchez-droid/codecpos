@@ -147,6 +147,8 @@ export interface RecetaIngrediente {
 export interface Venta {
   id: string;
   numero: number;
+  /** Número visible (FEA000123, o W000123 si vino de la web). */
+  numeroFactura?: string;
   fecha: string;
   /** 🛡️ FIX: POSPageNew.tsx ya guarda estos campos desde hace tiempo — esta
       interfaz estaba desactualizada respecto a lo que realmente se persiste

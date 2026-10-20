@@ -94,6 +94,7 @@ import { buscarPorCodigoBarras } from '../../lib/promocionesService';
 import { suscribirCodigosEscaneados } from '../../lib/supabase/scanBroadcast';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
+import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../lib/dian/types';
 
 interface Producto {
@@ -1725,13 +1726,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       let ultimoNumeroDB = 0;
       try { ultimoNumeroDB = await electronStore.getUltimoNumeroVenta(); } catch { /* usar solo localStorage si falla */ }
       const numeroFactura = Math.max(ultimaFacturaLS, ultimoNumeroDB) + 1;
-      // 🛡️ Si el negocio nunca eligió un prefijo a mano (Configuración >
-      // Facturación Electrónica), se usa el que el servidor asignó
-      // automáticamente a esta caja al registrarse (único por instalación
-      // dentro del negocio — ver migración 0059) antes de caer al genérico
-      // 'FAC' que no distingue entre cajas.
-      const prefijoFactura = config.prefijoFactura || localStorage.getItem('codec_pos_prefijo_auto') || 'FAC';
-      const numeroFacturaCompleto = `${prefijoFactura}${numeroFactura.toString().padStart(6, '0')}`;
+      // Prefijo del negocio + letra de esta caja + consecutivo (FEA000123):
+      // corto y sin repetirse entre cajas, ver numeracionCaja.ts.
+      const numeroFacturaCompleto = armarNumeroFactura(numeroFactura, config.prefijoFactura);
 
       if (!sesionCajaActiva) {
         if (esAdmin) {
@@ -2156,13 +2153,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       let ultimoNumeroDB = 0;
       try { ultimoNumeroDB = await electronStore.getUltimoNumeroVenta(); } catch { /* usar solo localStorage si falla */ }
       const numeroFactura = Math.max(ultimaFacturaLS, ultimoNumeroDB) + 1;
-      // 🛡️ Si el negocio nunca eligió un prefijo a mano (Configuración >
-      // Facturación Electrónica), se usa el que el servidor asignó
-      // automáticamente a esta caja al registrarse (único por instalación
-      // dentro del negocio — ver migración 0059) antes de caer al genérico
-      // 'FAC' que no distingue entre cajas.
-      const prefijoFactura = config.prefijoFactura || localStorage.getItem('codec_pos_prefijo_auto') || 'FAC';
-      const numeroFacturaCompleto = `${prefijoFactura}${numeroFactura.toString().padStart(6, '0')}`;
+      // Prefijo del negocio + letra de esta caja + consecutivo (FEA000123):
+      // corto y sin repetirse entre cajas, ver numeracionCaja.ts.
+      const numeroFacturaCompleto = armarNumeroFactura(numeroFactura, config.prefijoFactura);
 
       if (!sesionCajaActiva) {
         if (esAdmin) {
@@ -2392,13 +2385,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       let ultimoNumeroDB = 0;
       try { ultimoNumeroDB = await electronStore.getUltimoNumeroVenta(); } catch { /* usar solo localStorage si falla */ }
       const numeroFactura = Math.max(ultimaFacturaLS, ultimoNumeroDB) + 1;
-      // 🛡️ Si el negocio nunca eligió un prefijo a mano (Configuración >
-      // Facturación Electrónica), se usa el que el servidor asignó
-      // automáticamente a esta caja al registrarse (único por instalación
-      // dentro del negocio — ver migración 0059) antes de caer al genérico
-      // 'FAC' que no distingue entre cajas.
-      const prefijoFactura = config.prefijoFactura || localStorage.getItem('codec_pos_prefijo_auto') || 'FAC';
-      const numeroFacturaCompleto = `${prefijoFactura}${numeroFactura.toString().padStart(6, '0')}`;
+      // Prefijo del negocio + letra de esta caja + consecutivo (FEA000123):
+      // corto y sin repetirse entre cajas, ver numeracionCaja.ts.
+      const numeroFacturaCompleto = armarNumeroFactura(numeroFactura, config.prefijoFactura);
 
       if (!sesionCajaActiva) {
         if (esAdmin) {

@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../lib/supabase/config';
 import { getRealMachineUUID } from '../utils/machineId';
 import { useAuth } from '../contexts/AuthContext';
 import { dbManager } from '../lib/indexedDB';
+import { guardarCodigoCaja } from '../lib/numeracionCaja';
 
 /**
  * Registra esta instalación de Electron contra la licencia del cliente
@@ -69,6 +70,8 @@ export function useRegistrarInstalacion() {
           if (fila?.prefijo) {
             try { localStorage.setItem('codec_pos_prefijo_auto', fila.prefijo); } catch { /* no crítico */ }
           }
+          // Número de caja → letra del número de venta (FEA000123), ver numeracionCaja.ts.
+          if (fila?.codigo_caja) guardarCodigoCaja(Number(fila.codigo_caja));
         });
     })();
 

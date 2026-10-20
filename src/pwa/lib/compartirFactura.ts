@@ -11,6 +11,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { construirUrlQR } from '../../app/lib/dian/softwareSecurityCode';
 import { generarFacturaPDF, nombreArchivoFactura, type ConfigEmpresa, type Venta as VentaFactura } from '../../app/lib/pdfGenerator';
 import { compartirPdf, descargarPdf } from '../../app/lib/archivoPdf';
+import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 
 interface VentaParaCompartir {
   id: string;
@@ -99,10 +100,9 @@ export async function obtenerDatosFactura(clienteId: string, venta: VentaParaCom
   const numero = venta.numero ?? v.numero;
 
   const facturaVenta: VentaFactura = {
-    // Mismo número que imprime Electron (FE003998): el local_id que sube cada venta;
-    // las ventas hechas en la web usan el mismo formato, prefijo y seis dígitos.
-    numeroFactura: (typeof v.local_id === 'string' && /^[A-Za-z]*\d+$/.test(v.local_id)) ? v.local_id
-      : numero ? `${config.prefijoFactura || ''}${String(numero).padStart(6, '0')}` : venta.id.slice(0, 8).toUpperCase(),
+    // Mismo número que imprimió la caja (FEA000123) o, si se vendió en la
+    // web o el celular, W y su consecutivo.
+    numeroFactura: numeroVisibleVenta({ local_id: v.local_id, numero, id: venta.id }),
     fecha: venta.created_at,
     items: (items || []).map((it: any) => ({
       nombre: it.nombre || 'Producto',

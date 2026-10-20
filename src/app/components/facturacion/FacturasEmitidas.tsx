@@ -7,12 +7,13 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Search, RefreshCw, Eye, Download, Send, Mail, FileMinus2, CheckCircle2, Clock, Copy, X } from 'lucide-react';
+import { Search, RefreshCw, Eye, Download, Send, Mail, FileMinus2, CheckCircle2, Clock, Copy, X, Package, Loader2 } from 'lucide-react';
 import { listarFacturasDian, marcarCorreoEnviado } from '../../lib/supabase/facturaElectronicaDianService';
 import { listarResolucionesPerfil } from '../../lib/supabase/fiscalProfileService';
 import { listarNotasDeFactura } from '../../lib/supabase/notaAjusteDianService';
 import { ManualDeliveryProvider } from '../../lib/dian/deliveryProvider';
 import { emitirNotaAjuste } from '../../lib/dian/emitirNotaAjuste';
+import { prepararPaqueteEntrega } from '../../lib/dian/paqueteEntrega';
 import {
   CONCEPTOS_NOTA_CREDITO, CONCEPTOS_NOTA_DEBITO,
   type FacturaElectronicaDian, type EstadoDocumentoDian, type ResolucionDian,
@@ -47,6 +48,7 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
   const [facturaVista, setFacturaVista] = useState<FacturaElectronicaDian | null>(null);
   const [facturaEnvio, setFacturaEnvio] = useState<FacturaElectronicaDian | null>(null);
   const [destino, setDestino] = useState('');
+  const [armandoPaquete, setArmandoPaquete] = useState(false);
 
   const [facturaNota, setFacturaNota] = useState<FacturaElectronicaDian | null>(null);
   const [resolucionesPerfil, setResolucionesPerfil] = useState<ResolucionDian[]>([]);
@@ -97,6 +99,26 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
   function abrirEnvio(f: FacturaElectronicaDian) {
     setFacturaEnvio(f);
     setDestino(f.correoDestino || f.adquirente.email || '');
+  }
+
+  /** ZIP con el AttachedDocument firmado y el PDF: lo que se le debe entregar al comprador. */
+  async function descargarPaquete() {
+    if (!facturaEnvio) return;
+    setArmandoPaquete(true);
+    try {
+      const { archivo, nombre } = await prepararPaqueteEntrega(facturaEnvio);
+      const url = URL.createObjectURL(archivo);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombre;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Paquete listo. Adjúntalo al correo del cliente.');
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo armar el paquete para el cliente');
+    } finally {
+      setArmandoPaquete(false);
+    }
   }
 
   async function enviar(canal: 'whatsapp' | 'email') {
@@ -281,9 +303,11 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
                           <Send className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          title={f.estado === 'accepted' ? 'Emitir nota de ajuste (crédito / débito)' : 'Solo se pueden emitir notas sobre facturas aprobadas por la DIAN'}
+                          title={f.tipoDocumento === 'documento_equivalente'
+                            ? 'Las notas sobre tiquetes POS todavía no están disponibles'
+                            : f.estado === 'accepted' ? 'Emitir nota de ajuste (crédito / débito)' : 'Solo se pueden emitir notas sobre facturas aprobadas por la DIAN'}
                           onClick={() => abrirNota(f)}
-                          disabled={f.estado !== 'accepted'}
+                          disabled={f.estado !== 'accepted' || f.tipoDocumento === 'documento_equivalente'}
                           className="h-8 w-8 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
                         >
                           <FileMinus2 className="w-3.5 h-3.5" />
@@ -315,8 +339,18 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
             </div>
             <p className="text-xs text-slate-400">
               Se abre tu correo o WhatsApp con el resumen y el {facturaEnvio.tipoDocumento === 'documento_equivalente' ? 'CUDE' : 'CUFE'} listos.
-              Adjunta el XML o el PDF de «Ver documento». Al enviar por correo, la factura queda marcada como enviada.
+              {facturaEnvio.tipoDocumento === 'factura'
+                ? 'Primero descarga el paquete (XML con la validación de la DIAN y PDF) y adjúntalo. Al enviar por correo, la factura queda marcada como enviada.'
+                : 'Adjunta el PDF de «Ver documento». Al enviar por correo, queda marcado como enviado.'}
             </p>
+            {facturaEnvio.tipoDocumento === 'factura' && (
+              <button onClick={descargarPaquete} disabled={armandoPaquete || facturaEnvio.estado !== 'accepted'}
+                title={facturaEnvio.estado === 'accepted' ? undefined : 'Solo para facturas aprobadas por la DIAN'}
+                className="w-full h-10 rounded-lg bg-orange-600/20 text-orange-400 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40">
+                {armandoPaquete ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+                Descargar paquete para el cliente (ZIP)
+              </button>
+            )}
             <input value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Correo o número de WhatsApp" className={`${campo} w-full`} />
             <div className="flex gap-2">
               <button onClick={() => enviar('email')} disabled={!destino.includes('@')} className="flex-1 h-10 rounded-lg bg-sky-600/20 text-sky-400 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40">

@@ -5,10 +5,12 @@ import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 
 interface VentaFila {
   id: string;
   numero: number | null;
+  local_id: string | null;
   total: number;
   metodo_pago: string | null;
   created_at: string;
@@ -80,12 +82,16 @@ export default function DevolucionesPage() {
     setVenta(null);
     setItems([]);
     const client = getSupabaseClient()!;
-    const { data: ventaData } = await client
+    // FEA000123 = venta de una caja de escritorio (su local_id);
+    // W000123 o solo el número = venta de la web o el celular.
+    const texto = busqueda.trim().toUpperCase();
+    let consulta = client
       .from('ventas')
-      .select('id, numero, total, metodo_pago, created_at')
-      .eq('cliente_id', empleado.cliente_id)
-      .eq('numero', Number(busqueda.trim()))
-      .maybeSingle();
+      .select('id, numero, local_id, total, metodo_pago, created_at')
+      .eq('cliente_id', empleado.cliente_id);
+    const web = texto.match(/^W?0*(\d+)$/);
+    consulta = web ? consulta.eq('terminal_id', 'PWA').eq('numero', Number(web[1])) : consulta.eq('local_id', texto);
+    const { data: ventaData } = await consulta.limit(1).maybeSingle();
 
     if (!ventaData) {
       setBuscando(false);
@@ -126,7 +132,7 @@ export default function DevolucionesPage() {
     const { error: rpcError } = await client.rpc('procesar_devolucion_movil', {
       p_cliente_id: empleado.cliente_id,
       p_venta_id: venta.id,
-      p_numero_factura: `FAC${String(venta.numero ?? 0).padStart(6, '0')}`,
+      p_numero_factura: numeroVisibleVenta(venta),
       p_metodo_pago: venta.metodo_pago,
       p_observaciones: null,
       p_procesado_por: empleado.id,
@@ -164,8 +170,8 @@ export default function DevolucionesPage() {
               <Input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                inputMode="numeric"
-                placeholder="Número de factura, ej: 42"
+                autoCapitalize="characters"
+                placeholder="Número de factura, ej: FEA000123 o W000042"
                 className="h-12 pl-9 bg-slate-900/70 border-slate-800 text-white"
               />
             </div>
@@ -219,7 +225,7 @@ export default function DevolucionesPage() {
           </button>
 
           <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4 mb-4">
-            <p className="text-white font-bold">FAC{String(venta.numero ?? 0).padStart(6, '0')}</p>
+            <p className="text-white font-bold">{numeroVisibleVenta(venta)}</p>
             <p className="text-slate-400 text-xs">
               ${Number(venta.total).toLocaleString('es-CO')} · {new Date(venta.created_at).toLocaleDateString('es-CO')}
             </p>

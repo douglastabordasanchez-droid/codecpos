@@ -1,6 +1,7 @@
 /**
- * CODEC POS - Sistema de Devoluciones
- * Gestión completa de devoluciones con actualización de inventario
+ * CODEC POS - Historial de devoluciones
+ * Las devoluciones se hacen desde Ventas (botón de devolución de cada
+ * factura, ver ModalDevolucionVenta.tsx); aquí se consultan y exportan.
  * Desarrollado por Codec Studio
  */
 
@@ -8,63 +9,27 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShoppingBag,
-  Search,
   Calendar,
   Package,
   DollarSign,
   FileText,
-  ArrowLeft,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
   User,
   Clock,
   TrendingDown,
   RotateCcw,
-  Trash2,
-  Plus,
-  Minus,
-  Receipt,
   Download,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { leerConfigEmpresaPDF, dibujarLogoPDF } from '../../services/exportarReportes';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
 import { usePOS } from '../../contexts/POSContext';
-import { useAuth } from '../../contexts/AuthContext';
-import { onDevolucionRegistrada } from '../../lib/integracionesService';
 import { toast } from 'sonner';
-import { electronStore } from '../../lib/electronStore';
-
-interface VentaItem {
-  id: string;
-  codigo?: string;
-  nombre: string;
-  cantidad: number;
-  precio: number;
-  subtotal: number;
-  costo?: number;
-  categoria?: string;
-}
-
-interface Venta {
-  id: string;
-  numero?: number;
-  numeroFactura?: string;
-  fecha: string;
-  items: VentaItem[];
-  total: number;
-  metodoPago: string;
-  cajero: string;
-  cajeroId?: string;
-}
 
 interface Devolucion {
   id: string;
@@ -86,31 +51,17 @@ interface Devolucion {
   estado: 'completada' | 'pendiente' | 'rechazada';
 }
 
-export default function DevolucionesPage() {
-  const { darkMode, triggerRefresh } = usePOS();
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'nueva' | 'historial'>('nueva');
-  const [searchFactura, setSearchFactura] = useState('');
-  const [ventaSeleccionada, setVentaSeleccionada] = useState<Venta | null>(null);
-  const [itemsDevolucion, setItemsDevolucion] = useState<{
-    [key: string]: {
-      cantidad: number;
-      motivo: string;
-    };
-  }>({});
-  const [observaciones, setObservaciones] = useState('');
+export default function DevolucionesPage({ onCerrar }: { onCerrar?: () => void } = {}) {
+  const { darkMode } = usePOS();
+  const activeTab = 'historial' as const;
   const [devoluciones, setDevoluciones] = useState<Devolucion[]>([]);
-  const [ventas, setVentas] = useState<Venta[]>([]);
   const [filtroFecha, setFiltroFecha] = useState('');
   // 🚀 FIX rendimiento: la lista se renderizaba completa sin paginar.
   const [paginaDevoluciones, setPaginaDevoluciones] = useState(1);
   const DEVOLUCIONES_POR_PAGINA = 50;
-  const [processing, setProcessing] = useState(false);
-  const [loadingVentas, setLoadingVentas] = useState(true);
 
   useEffect(() => {
     cargarDevoluciones();
-    cargarVentas();
 
     // ☁️ Una devolución registrada desde la PWA llega acá vía syncService.ts
     // (pullDevolucionesRemotas) — se refresca sin esperar a recargar.
@@ -127,245 +78,6 @@ export default function DevolucionesPage() {
     if (saved) {
       setDevoluciones(JSON.parse(saved));
     }
-  };
-
-  const cargarVentas = async () => {
-    setLoadingVentas(true);
-    try {
-      const ventasDB = await electronStore.obtenerTodasLasVentas();
-      const ventasMapeadas: Venta[] = ventasDB.map(venta => ({
-        id: venta.id,
-        numero: venta.numero,
-        numeroFactura: venta.id,
-        fecha: venta.fecha,
-        items: venta.items.map(item => ({
-          id: item.id,
-          codigo: item.codigo,
-          nombre: item.nombre,
-          cantidad: item.cantidad,
-          precio: item.precio || item.precioVenta || 0,
-          subtotal: item.subtotal || (item.precio || 0) * item.cantidad,
-          costo: item.costo || item.precioCompra || 0,
-          categoria: item.categoria,
-        })),
-        total: venta.total,
-        metodoPago: venta.metodoPago,
-        cajero: venta.cajero,
-        cajeroId: venta.cajeroId,
-      }));
-      setVentas(ventasMapeadas);
-    } catch (error) {
-      console.error('Error cargando ventas:', error);
-      toast.error('Error al cargar el historial de ventas');
-    } finally {
-      setLoadingVentas(false);
-    }
-  };
-
-  const buscarFactura = () => {
-    if (!searchFactura.trim()) {
-      toast.error('Ingresa un número de factura');
-      return;
-    }
-
-    const venta = ventas.find(
-      (v) => v.numeroFactura.toLowerCase() === searchFactura.toLowerCase()
-    );
-
-    if (!venta) {
-      toast.error('Factura no encontrada', {
-        description: `No se encontró la factura ${searchFactura}`,
-      });
-      return;
-    }
-
-    // Verificar si ya tiene devolución completa
-    const devolucionExistente = devoluciones.filter(d => d.ventaId === venta.id);
-    if (devolucionExistente.length > 0) {
-      toast.warning('Esta factura ya tiene devoluciones registradas', {
-        description: 'Puedes hacer devoluciones parciales adicionales',
-      });
-    }
-
-    setVentaSeleccionada(venta);
-    setItemsDevolucion({});
-    setObservaciones('');
-    toast.success('Factura encontrada', {
-      description: `Total: $${venta.total.toLocaleString('es-CO')}`,
-    });
-  };
-
-  const actualizarCantidadDevolucion = (itemId: string, cantidad: number) => {
-    const item = ventaSeleccionada?.items.find((i) => i.id === itemId);
-    if (!item) return;
-
-    if (cantidad < 0 || cantidad > item.cantidad) {
-      toast.error('Cantidad inválida', {
-        description: `Máximo ${item.cantidad} unidades disponibles`,
-      });
-      return;
-    }
-
-    if (cantidad === 0) {
-      const newItems = { ...itemsDevolucion };
-      delete newItems[itemId];
-      setItemsDevolucion(newItems);
-    } else {
-      setItemsDevolucion((prev) => ({
-        ...prev,
-        [itemId]: {
-          cantidad,
-          motivo: prev[itemId]?.motivo || '',
-        },
-      }));
-    }
-  };
-
-  const actualizarMotivo = (itemId: string, motivo: string) => {
-    if (!itemsDevolucion[itemId]) return;
-
-    setItemsDevolucion((prev) => ({
-      ...prev,
-      [itemId]: {
-        ...prev[itemId],
-        motivo,
-      },
-    }));
-  };
-
-  const calcularTotalDevolucion = () => {
-    if (!ventaSeleccionada) return 0;
-
-    return Object.entries(itemsDevolucion).reduce((total, [itemId, data]) => {
-      const item = ventaSeleccionada.items.find((i) => i.id === itemId);
-      if (!item) return total;
-      return total + item.precio * data.cantidad;
-    }, 0);
-  };
-
-  const procesarDevolucion = async () => {
-    if (!ventaSeleccionada) {
-      toast.error('No hay venta seleccionada');
-      return;
-    }
-
-    if (Object.keys(itemsDevolucion).length === 0) {
-      toast.error('Selecciona al menos un producto para devolver');
-      return;
-    }
-
-    // Validar que todos los items tengan motivo
-    for (const [itemId, data] of Object.entries(itemsDevolucion)) {
-      if (!data.motivo.trim()) {
-        const item = ventaSeleccionada.items.find((i) => i.id === itemId);
-        toast.error('Falta motivo de devolución', {
-          description: `Especifica el motivo para ${item?.nombre}`,
-        });
-        return;
-      }
-    }
-
-    setProcessing(true);
-
-    try {
-      // Crear registro de devolución
-      const nuevaDevolucion: Devolucion = {
-        id: `DEV${Date.now()}`,
-        ventaId: ventaSeleccionada.id,
-        numeroFactura: ventaSeleccionada.numeroFactura!,
-        fecha: new Date().toISOString(),
-        items: Object.entries(itemsDevolucion).map(([itemId, data]) => {
-          const item = ventaSeleccionada.items.find((i) => i.id === itemId)!;
-          return {
-            productoId: itemId,
-            nombre: item.nombre,
-            cantidadDevuelta: data.cantidad,
-            precioUnitario: item.precio,
-            subtotal: item.precio * data.cantidad,
-            motivo: data.motivo,
-          };
-        }),
-        totalDevolucion: calcularTotalDevolucion(),
-        metodoPago: ventaSeleccionada.metodoPago,
-        procesadoPor: user?.username || user?.nombreCompleto || 'Usuario Actual',
-        observaciones: observaciones,
-        estado: 'completada',
-      };
-
-      // Guardar devolución de forma atómica (devolución + inventario + estado venta)
-      const esDevolucionTotal =
-        ventaSeleccionada.items.length > 0 &&
-        ventaSeleccionada.items.every((item) => {
-          const itemDevuelto = itemsDevolucion[item.id];
-          return !!itemDevuelto && itemDevuelto.cantidad === item.cantidad;
-        });
-
-      await electronStore.registrarDevolucionAtomica({
-        devolucion: {
-          ...nuevaDevolucion,
-          items: nuevaDevolucion.items.map((i) => ({
-            productoId: i.productoId,
-            cantidadDevuelta: i.cantidadDevuelta,
-            precioUnitario: i.precioUnitario,
-            subtotal: i.subtotal,
-          })),
-        },
-        // ✅ Solo marcar la venta completa como devuelta cuando realmente
-        // se devolvieron todos los ítems en su totalidad.
-        marcarVentaComoDevuelta: esDevolucionTotal,
-      });
-
-      const nuevasDevoluciones = [...devoluciones, nuevaDevolucion];
-      // 💾 Persistir en localStorage para que sobrevivan recargas
-      localStorage.setItem('codecpos_devoluciones', JSON.stringify(nuevasDevoluciones));
-      setDevoluciones(nuevasDevoluciones);
-
-      // Actualizar estadísticas
-      const stats = JSON.parse(localStorage.getItem('codecpos_stats') || '{}');
-      stats.totalDevoluciones = (stats.totalDevoluciones || 0) + 1;
-      stats.montoDevoluciones = (stats.montoDevoluciones || 0) + nuevaDevolucion.totalDevolucion;
-      localStorage.setItem('codecpos_stats', JSON.stringify(stats));
-
-      // Limpiar formulario
-      setVentaSeleccionada(null);
-      setItemsDevolucion({});
-      setObservaciones('');
-      setSearchFactura('');
-
-      // Notificar éxito
-      toast.success('Devolución procesada exitosamente', {
-        description: `Total devuelto: $${nuevaDevolucion.totalDevolucion.toLocaleString('es-CO')}`,
-      });
-
-      // 🔔 Notificar integraciones
-      onDevolucionRegistrada({
-        monto: nuevaDevolucion.totalDevolucion,
-        motivo: nuevaDevolucion.items.map(i => i.motivo).filter(Boolean).join(', ') || 'No especificado',
-        factura: nuevaDevolucion.ventaId,
-        cajero: user?.nombreCompleto || user?.username || 'Cajero',
-        items: nuevaDevolucion.items?.length || 0,
-        timestamp: new Date().toISOString(),
-      }).catch(() => {});
-
-      // Trigger refresh para actualizar otros componentes
-      triggerRefresh();
-
-      // Cambiar a tab de historial
-      setActiveTab('historial');
-    } catch (error) {
-      console.error('Error procesando devolución:', error);
-      toast.error('Error al procesar la devolución');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const cancelarDevolucion = () => {
-    setVentaSeleccionada(null);
-    setItemsDevolucion({});
-    setObservaciones('');
-    setSearchFactura('');
-    toast.info('Devolución cancelada');
   };
 
   const exportarPDF = () => {
@@ -474,13 +186,14 @@ export default function DevolucionesPage() {
             </div>
             <div>
               <h1 className={`text-3xl font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                Sistema de Devoluciones
+                Historial de devoluciones
               </h1>
               <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Gestión y control de devoluciones de productos
+                Para devolver una venta, usa el botón de devolución en su fila
               </p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
           <button
             onClick={exportarPDF}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all ${
@@ -492,6 +205,18 @@ export default function DevolucionesPage() {
             <Download className="w-4 h-4" />
             PDF
           </button>
+          {onCerrar && (
+            <button
+              onClick={onCerrar}
+              aria-label="Cerrar"
+              className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                darkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'
+              }`}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+          </div>
         </motion.div>
 
         {/* Estadísticas */}
@@ -574,318 +299,8 @@ export default function DevolucionesPage() {
           </Card>
         </motion.div>
 
-        {/* Tabs */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <div className="flex gap-2 border-b border-gray-200 dark:border-slate-700">
-            <button
-              onClick={() => setActiveTab('nueva')}
-              className={`px-6 py-3 font-semibold transition-colors ${
-                activeTab === 'nueva'
-                  ? darkMode
-                    ? 'text-orange-400 border-b-2 border-orange-400'
-                    : 'text-orange-600 border-b-2 border-orange-600'
-                  : darkMode
-                  ? 'text-gray-400 hover:text-gray-300'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Nueva Devolución
-            </button>
-            <button
-              onClick={() => setActiveTab('historial')}
-              className={`px-6 py-3 font-semibold transition-colors flex items-center gap-2 ${
-                activeTab === 'historial'
-                  ? darkMode
-                    ? 'text-orange-400 border-b-2 border-orange-400'
-                    : 'text-orange-600 border-b-2 border-orange-600'
-                  : darkMode
-                  ? 'text-gray-400 hover:text-gray-300'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Historial
-              {devoluciones.length > 0 && (
-                <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                  {devoluciones.length}
-                </span>
-              )}
-            </button>
-          </div>
-        </motion.div>
-
         {/* Contenido de Tabs */}
         <AnimatePresence mode="wait">
-          {activeTab === 'nueva' && (
-            <motion.div
-              key="nueva"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-6"
-            >
-              {/* Buscar Factura */}
-              <Card className={darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white'}>
-                <CardHeader>
-                  <CardTitle className={darkMode ? 'text-white' : 'text-gray-900'}>
-                    Buscar Factura
-                  </CardTitle>
-                  <CardDescription className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
-                    Ingresa el número de factura para procesar la devolución
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {loadingVentas && (
-                    <div className={`flex items-center gap-2 text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-                      Cargando historial de ventas...
-                    </div>
-                  )}
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <Input
-                        placeholder="Ej: FAC001234"
-                        value={searchFactura}
-                        onChange={(e) => setSearchFactura(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && !loadingVentas && buscarFactura()}
-                        disabled={loadingVentas}
-                        className={darkMode ? 'bg-slate-700 border-slate-600 text-white' : ''}
-                      />
-                    </div>
-                    <Button
-                      onClick={buscarFactura}
-                      disabled={loadingVentas}
-                      className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 disabled:opacity-50"
-                    >
-                      <Search className="w-4 h-4 mr-2" />
-                      Buscar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Detalles de la Venta */}
-              {ventaSeleccionada && (
-                <Card className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white'} shadow-xl`}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className={darkMode ? 'text-white' : 'text-gray-900'}>
-                          Factura {ventaSeleccionada.numeroFactura}
-                        </CardTitle>
-                        <CardDescription className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
-                          {new Date(ventaSeleccionada.fecha).toLocaleDateString('es-CO', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                          })} · Cajero: {ventaSeleccionada.cajero}
-                        </CardDescription>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                          Total Original
-                        </p>
-                        <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                          ${ventaSeleccionada.total.toLocaleString('es-CO')}
-                        </p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Productos */}
-                    <div className="space-y-3">
-                      {ventaSeleccionada.items.map((item) => (
-                        <div
-                          key={item.id}
-                          className={`p-4 rounded-xl border-2 ${
-                            itemsDevolucion[item.id]
-                              ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
-                              : darkMode
-                              ? 'border-slate-600 bg-slate-700/50'
-                              : 'border-gray-200 bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex-1">
-                              <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                {item.nombre}
-                              </h4>
-                              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                Cantidad original: {item.cantidad} × ${item.precio.toLocaleString('es-CO')} = $
-                                {item.subtotal.toLocaleString('es-CO')}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Controles de devolución */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                              <Label className={darkMode ? 'text-gray-300' : ''}>
-                                Cantidad a devolver
-                              </Label>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    actualizarCantidadDevolucion(
-                                      item.id,
-                                      (itemsDevolucion[item.id]?.cantidad || 0) - 1
-                                    )
-                                  }
-                                  disabled={!itemsDevolucion[item.id] || itemsDevolucion[item.id].cantidad <= 0}
-                                >
-                                  <Minus className="w-4 h-4" />
-                                </Button>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max={item.cantidad}
-                                  value={itemsDevolucion[item.id]?.cantidad || 0}
-                                  onChange={(e) =>
-                                    actualizarCantidadDevolucion(item.id, parseInt(e.target.value) || 0)
-                                  }
-                                  className={`text-center ${
-                                    darkMode ? 'bg-slate-600 border-slate-500 text-white' : ''
-                                  }`}
-                                />
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    actualizarCantidadDevolucion(
-                                      item.id,
-                                      (itemsDevolucion[item.id]?.cantidad || 0) + 1
-                                    )
-                                  }
-                                  disabled={
-                                    itemsDevolucion[item.id]?.cantidad >= item.cantidad
-                                  }
-                                >
-                                  <Plus className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  onClick={() => actualizarCantidadDevolucion(item.id, item.cantidad)}
-                                  className="bg-orange-600 hover:bg-orange-700"
-                                >
-                                  Todo
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label className={darkMode ? 'text-gray-300' : ''}>
-                                Motivo de devolución *
-                              </Label>
-                              <select
-                                value={itemsDevolucion[item.id]?.motivo || ''}
-                                onChange={(e) => actualizarMotivo(item.id, e.target.value)}
-                                disabled={!itemsDevolucion[item.id]}
-                                className={`w-full px-3 py-2 rounded-md border ${
-                                  darkMode
-                                    ? 'bg-slate-600 border-slate-500 text-white'
-                                    : 'bg-white border-gray-300'
-                                } disabled:opacity-50`}
-                              >
-                                <option value="">Seleccionar motivo</option>
-                                <option value="producto_defectuoso">Producto defectuoso</option>
-                                <option value="equivocacion">Equivocación en la compra</option>
-                                <option value="producto_vencido">Producto vencido</option>
-                                <option value="no_satisface">No satisface expectativas</option>
-                                <option value="otro">Otro</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {itemsDevolucion[item.id] && (
-                            <div className="mt-3 pt-3 border-t border-gray-300 dark:border-slate-600">
-                              <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Subtotal devolución: $
-                                {(item.precio * itemsDevolucion[item.id].cantidad).toLocaleString('es-CO')}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Observaciones */}
-                    {Object.keys(itemsDevolucion).length > 0 && (
-                      <div className="space-y-2">
-                        <Label className={darkMode ? 'text-gray-300' : ''}>
-                          Observaciones adicionales (opcional)
-                        </Label>
-                        <Textarea
-                          value={observaciones}
-                          onChange={(e) => setObservaciones(e.target.value)}
-                          placeholder="Escribe cualquier observación adicional sobre la devolución..."
-                          rows={3}
-                          className={darkMode ? 'bg-slate-700 border-slate-600 text-white' : ''}
-                        />
-                      </div>
-                    )}
-
-                    {/* Total de devolución */}
-                    {Object.keys(itemsDevolucion).length > 0 && (
-                      <div
-                        className={`p-6 rounded-xl ${
-                          darkMode
-                            ? 'bg-gradient-to-br from-orange-900/30 to-red-900/30 border-2 border-orange-700/50'
-                            : 'bg-gradient-to-br from-orange-50 to-red-50 border-2 border-orange-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className={`text-sm ${darkMode ? 'text-orange-300' : 'text-orange-700'}`}>
-                              Total a devolver
-                            </p>
-                            <p className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                              ${calcularTotalDevolucion().toLocaleString('es-CO')}
-                            </p>
-                          </div>
-                          <Receipt className="w-12 h-12 text-orange-500" />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Botones de acción */}
-                    <div className="flex gap-3 pt-4">
-                      <Button
-                        onClick={cancelarDevolucion}
-                        variant="outline"
-                        className="flex-1"
-                      >
-                        <XCircle className="w-4 h-4 mr-2" />
-                        Cancelar
-                      </Button>
-                      <Button
-                        onClick={procesarDevolucion}
-                        disabled={Object.keys(itemsDevolucion).length === 0 || processing}
-                        className="flex-1 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700"
-                      >
-                        {processing ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                            Procesando...
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle className="w-4 h-4 mr-2" />
-                            Procesar Devolución
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </motion.div>
-          )}
-
           {activeTab === 'historial' && (
             <motion.div
               key="historial"

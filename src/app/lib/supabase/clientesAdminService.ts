@@ -127,6 +127,44 @@ interface DatosClienteForm {
   modulosActivos: string[];
 }
 
+const MODALIDAD_POR_DURACION: Record<DuracionCliente, string> = {
+  '1_MES': 'MENSUAL',
+  '3_MESES': 'TRIMESTRAL',
+  '1_ANO': 'ANUAL',
+  VITALICIA: 'VITALICIA',
+};
+
+/**
+ * El plan real lo decide `licencias` (mi_licencia_vigente / mis_entitlements),
+ * no la columna clientes_pos.plan. Un cliente pago creado o editado aquí sin
+ * licencia vigente queda como Básico en la app (Codec Verify, Dashboard y
+ * reportes bloqueados): pasó con Hojaldrados y con Boniexpress. Registra la
+ * licencia cuando falta o cuando el plan o la duración no coinciden.
+ */
+async function asegurarLicenciaVigente(clienteId: string, datos: DatosClienteForm): Promise<void> {
+  if (datos.enPrueba || datos.estado !== 'ACTIVA') return;
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  const modalidad = MODALIDAD_POR_DURACION[datos.duracion];
+  const { data: vigente } = await client
+    .from('licencias')
+    .select('modalidad, estado, planes(codigo)')
+    .eq('cliente_id', clienteId)
+    .eq('vigente', true)
+    .maybeSingle();
+  const planVigente = (vigente as { planes?: { codigo?: string } | null } | null)?.planes?.codigo;
+  if (vigente && vigente.estado === 'ACTIVA' && planVigente === datos.plan && vigente.modalidad === modalidad) return;
+
+  const { error } = await client.rpc('registrar_licencia', {
+    p_cliente_id: clienteId,
+    p_plan_codigo: datos.plan,
+    p_modalidad: modalidad,
+    p_motivo: 'Panel Desarrollador (Electron)',
+  });
+  if (error) throw new Error(`No se pudo registrar la licencia ${datos.plan}: ${error.message}`);
+}
+
 export async function crearClienteAdmin(datos: DatosClienteForm): Promise<ClienteAdmin> {
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
@@ -192,6 +230,12 @@ export async function crearClienteAdmin(datos: DatosClienteForm): Promise<Client
     }).then(({ error }) => {
       if (error) console.error('[clientesAdminService] No se pudo activar la licencia de prueba:', error.message);
     });
+  } else {
+    // El cliente ya quedó creado: si la licencia falla no se revierte, pero se
+    // avisa en consola y al editarlo y guardar se vuelve a intentar.
+    await asegurarLicenciaVigente(clienteRow.id, datos).catch((e) =>
+      console.error('[clientesAdminService]', e instanceof Error ? e.message : e)
+    );
   }
 
   return mapCliente(clienteRow as ClientePosRow, credRow as UsuarioClienteRow);
@@ -273,6 +317,8 @@ export async function actualizarClienteAdmin(id: string, datos: DatosClienteForm
   }).then(({ error }) => {
     if (error) console.error('[clientesAdminService] No se pudo sincronizar el acceso móvil del dueño:', error.message);
   });
+
+  await asegurarLicenciaVigente(id, datos);
 
   return mapCliente(clienteRow as ClientePosRow, credRow);
 }

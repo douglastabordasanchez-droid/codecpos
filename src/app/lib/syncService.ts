@@ -11,6 +11,7 @@
 
 import { dbManager, Producto, Venta } from './indexedDB';
 import { getSupabaseClient } from './supabase/config';
+import { numeroVentaWeb } from './numeracionCaja';
 import { getLinkedClienteId, restablecerSesionSync } from './supabase/tenantLink';
 import { listarTiendas, getStockResumenTienda, ejecutarTransferencia, reemplazarTiendasDesdeNube, getTiendaActivaId, aplicarStockSedeDesdeNube } from './multitiendaService';
 import { descargarTiendas } from './supabase/tiendasSyncService';
@@ -237,7 +238,8 @@ function construirEntradaLocalStorage(producto: Producto, existente: any | undef
     activo: producto.activo,
     imagenUrl: producto.imagenUrl,
     fotosUrls: producto.fotosUrls,
-    pesable: existente ? existente.pesable : false,
+    // `pesable` no existe en la nube: un bulto a granel creado en la web llega como granel y se vende por peso.
+    pesable: existente?.pesable || (producto as any).tipoProducto === 'granel',
     tipoInventario: producto.tipoInventario || (existente ? existente.tipoInventario : 'directo'),
     // 🎈 Papelería y Piñatería — ver migración 0035.
     esPapeleriaPinateria: producto.esPapeleriaPinateria,
@@ -831,6 +833,25 @@ class SyncService {
     await guardarMarcaServidor(clave, filas, 'actualizado_en', desde);
   }
 
+  /**
+   * Ventas de la web que bajaron antes de que llevaran número propio: se
+   * veían con el identificador interno de 36 caracteres. Se les pone su
+   * número corto (W000123) una sola vez.
+   */
+  private async numerarVentasWebAntiguas(client: NonNullable<ReturnType<typeof getSupabaseClient>>, ventasLocales: Venta[]): Promise<void> {
+    const sinNumero = ventasLocales.filter((v) => v.supabaseId && v.id === v.supabaseId && !v.numeroFactura);
+    if (sinNumero.length === 0) return;
+    for (let i = 0; i < sinNumero.length; i += 200) {
+      const lote = sinNumero.slice(i, i + 200);
+      const { data } = await client.from('ventas').select('id, numero').in('id', lote.map((v) => v.supabaseId as string));
+      const numeros = new Map((data || []).map((f: any) => [f.id, Number(f.numero)]));
+      for (const v of lote) {
+        const numero = numeros.get(v.supabaseId as string);
+        if (numero) await dbManager.updateVenta({ ...v, numeroFactura: numeroVentaWeb(numero) });
+      }
+    }
+  }
+
   private async pullVentasRemotas(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
     const lastPull = await dbManager.getConfig('lastPullVentas');
 
@@ -844,9 +865,11 @@ class SyncService {
 
     const { data: remotas, error } = await query;
     if (error) throw error;
-    if (!remotas || remotas.length === 0) return;
 
     const ventasLocales = await dbManager.getAllVentas();
+    await this.numerarVentasWebAntiguas(client, ventasLocales);
+    if (!remotas || remotas.length === 0) return;
+
     const yaExisten = new Set(ventasLocales.filter((v) => v.supabaseId).map((v) => v.supabaseId));
     const pendientesDePull = remotas.filter((r) => !yaExisten.has(r.id));
     if (pendientesDePull.length === 0) {
@@ -872,7 +895,10 @@ class SyncService {
 
       const ventaLocal: Venta = {
         id: r.id,
+        // `numero` es el consecutivo interno de esta caja (índice único);
+        // lo que se ve e imprime es el número corto de la web (W000123).
         numero: siguienteNumero,
+        numeroFactura: r.numero ? numeroVentaWeb(Number(r.numero)) : undefined,
         fecha: r.created_at,
         items: (itemsRemotos || []).map((it: any) => ({
           productoId: (it.producto_id && idMapInverso.get(it.producto_id)) || it.producto_id || '',

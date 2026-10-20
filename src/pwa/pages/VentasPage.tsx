@@ -10,10 +10,12 @@ import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactur
 import { precargarVisorPdf } from '../../app/lib/pdfVista';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
+import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 
 interface VentaFila {
   id: string;
   numero: number | null;
+  local_id: string | null;
   total: number;
   metodo_pago: string | null;
   cajero_nombre: string | null;
@@ -54,7 +56,7 @@ export default function VentasPage() {
     setErrorCarga(null);
     let query = client
       .from('ventas')
-      .select('id, numero, total, metodo_pago, cajero_nombre, created_at')
+      .select('id, numero, local_id, total, metodo_pago, cajero_nombre, created_at')
       .eq('cliente_id', empleado.cliente_id)
       .eq('estado', 'completada');
     if (tiendaEfectiva !== undefined) {
@@ -81,7 +83,7 @@ export default function VentasPage() {
   const filtradas = ventas.filter((v) => {
     if (!busqueda.trim()) return true;
     const q = busqueda.toLowerCase();
-    return String(v.numero ?? '').includes(q) || (v.cajero_nombre || '').toLowerCase().includes(q);
+    return numeroVisibleVenta(v).toLowerCase().includes(q) || (v.cajero_nombre || '').toLowerCase().includes(q);
   });
 
   const stats = useMemo(() => {
@@ -147,7 +149,7 @@ export default function VentasPage() {
             className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3"
           >
             <div className="flex items-center justify-between mb-1">
-              <p className="text-white font-bold text-sm">FAC{String(v.numero ?? 0).padStart(6, '0')}</p>
+              <p className="text-white font-bold text-sm">{numeroVisibleVenta(v)}</p>
               <span className="text-white font-black text-sm">${Number(v.total).toLocaleString('es-CO')}</span>
             </div>
             <p className="text-slate-500 text-xs mb-2">
@@ -196,7 +198,7 @@ export default function VentasPage() {
         <ModalVistaFactura
           abierta
           onCerrar={() => setViendo(null)}
-          titulo={`FAC${String(viendo.numero ?? 0).padStart(6, '0')}`}
+          titulo={numeroVisibleVenta(viendo)}
           obtenerDatos={() => obtenerDatosFactura(empleado.cliente_id, viendo)}
         />
       )}

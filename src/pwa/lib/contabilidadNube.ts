@@ -10,6 +10,7 @@
  *
  * Las funciones de cálculo son puras (sin red) para poder probarlas.
  */
+import { costoPorUnidadDeVenta } from '../../app/lib/costoGranel';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { traerTodo, aFechaLocal, inicioDelDia, finDelDia, fechaLocal } from './nubeConsultas';
 
@@ -217,7 +218,7 @@ export async function cargarRentabilidad(clienteId: string, desde: string, hasta
   const [ventas, productos] = await Promise.all([
     traerTodo<any>((i, j) => c.from('ventas').select('id')
       .eq('cliente_id', clienteId).eq('estado', 'completada').gte('created_at', inicioDelDia(desde)).lte('created_at', finDelDia(hasta)).order('created_at').range(i, j)),
-    traerTodo<any>((i, j) => c.from('productos').select('id, nombre, categoria, costo').eq('cliente_id', clienteId).order('id').range(i, j)),
+    traerTodo<any>((i, j) => c.from('productos').select('id, nombre, categoria, costo, tipo_producto, peso_bulto_kg').eq('cliente_id', clienteId).order('id').range(i, j)),
   ]);
   const productoPorId = new Map(productos.map((p) => [p.id, p]));
   const items: any[] = [];
@@ -232,7 +233,7 @@ export async function cargarRentabilidad(clienteId: string, desde: string, hasta
 
 export function calcularRentabilidad(
   items: Array<{ producto_id: string | null; nombre: string | null; cantidad: number; precio_unitario: number; subtotal: number | null }>,
-  productoPorId: Map<string, { nombre: string; categoria: string | null; costo: number | null }>,
+  productoPorId: Map<string, { nombre: string; categoria: string | null; costo: number | null; tipo_producto?: string | null; peso_bulto_kg?: number | null }>,
 ): { productos: Rentabilidad[]; categorias: Rentabilidad[]; sinCosto: number } {
   const porProducto = new Map<string, Rentabilidad>();
   const porCategoria = new Map<string, Rentabilidad>();
@@ -246,7 +247,8 @@ export function calcularRentabilidad(
     const cantidad = Number(it.cantidad) || 0;
     const venta = Number(it.subtotal ?? cantidad * Number(it.precio_unitario)) || 0;
     const producto = it.producto_id ? productoPorId.get(it.producto_id) : undefined;
-    const costoUnitario = Number(producto?.costo) || 0;
+    // A granel el costo guardado es el del bulto: se pasa a costo por kilo.
+    const costoUnitario = costoPorUnidadDeVenta(producto);
     if (!costoUnitario) sinCosto++;
     const costo = costoUnitario * cantidad;
     acumular(porProducto, producto?.nombre || it.nombre || 'Producto', venta, costo, cantidad);

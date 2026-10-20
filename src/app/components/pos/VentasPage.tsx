@@ -33,6 +33,7 @@ import {
   MessageCircle,
   Copy,
   Printer,
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -48,6 +49,10 @@ import ModalImprimirFactura from './ModalImprimirFactura';
 import { ModalVistaFactura, type DatosFactura } from '../factura/ModalVistaFactura';
 import { precargarVisorPdf } from '../../lib/pdfVista';
 import { getCached } from '../../lib/cachedLocalStorage';
+import { ModalDevolucionVenta } from './ModalDevolucionVenta';
+import DevolucionesPage from './DevolucionesPage';
+import { useAuth } from '../../contexts/AuthContext';
+import { ModuloPOS } from '../../lib/permissions';
 
 type FiltroFecha = 'hoy' | 'ayer' | 'semana' | 'mes' | 'todos' | 'personalizado';
 type OrdenVentas = 'fecha_desc' | 'fecha_asc' | 'total_desc';
@@ -56,6 +61,12 @@ const VENTAS_POR_PAGINA = 50;
 
 export default function VentasPage() {
   const { darkMode } = usePOS();
+  const { usuarioActual, esSuperUsuario, modoAdminTemporalActivo } = useAuth();
+  // Devolver es el mismo permiso que antes daba la sección Devoluciones.
+  const modulosUsuario = (usuarioActual?.modulosActivos || []) as ModuloPOS[];
+  const puedeDevolver = esSuperUsuario || modoAdminTemporalActivo || modulosUsuario.length === 0 || modulosUsuario.includes(ModuloPOS.DEVOLUCIONES);
+  const [ventaParaDevolver, setVentaParaDevolver] = useState<Venta | null>(null);
+  const [verHistorialDevoluciones, setVerHistorialDevoluciones] = useState(false);
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>('hoy');
@@ -497,6 +508,17 @@ export default function VentasPage() {
             Gestión y análisis de todas las transacciones
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        {puedeDevolver && (
+          <Button
+            onClick={() => setVerHistorialDevoluciones(true)}
+            variant="outline"
+            className="border-orange-500 text-orange-500 hover:bg-orange-500/10"
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Devoluciones
+          </Button>
+        )}
         <Button
           onClick={() => cargarVentas()}
           className={`${
@@ -508,6 +530,7 @@ export default function VentasPage() {
           <RefreshCw className="w-4 h-4 mr-2" />
           Actualizar
         </Button>
+        </div>
       </motion.div>
 
       {/* KPIs */}
@@ -916,7 +939,7 @@ export default function VentasPage() {
                   <th className={`px-6 py-4 text-left font-semibold text-sm ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>Método</th>
                   <th className={`px-6 py-4 text-right font-semibold text-sm ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>Total</th>
                   <th className={`px-6 py-4 text-center font-semibold text-sm ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>Estado</th>
-                  <th className={`px-6 py-4 text-center font-semibold text-sm min-w-[140px] ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>Acciones</th>
+                  <th className={`px-6 py-4 text-center font-semibold text-sm min-w-[180px] ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>Acciones</th>
                 </tr>
               </thead>
               <tbody className={`divide-y ${darkMode ? 'divide-slate-700' : 'divide-slate-100'}`}>
@@ -1003,7 +1026,7 @@ export default function VentasPage() {
                             <XCircle className={`w-5 h-5 mx-auto ${darkMode ? 'text-slate-500' : 'text-slate-300'}`} />
                           )}
                         </td>
-                        <td className="px-4 py-4 text-center min-w-[140px]">
+                        <td className="px-4 py-4 text-center min-w-[180px]">
                           <div className="flex gap-2 justify-center flex-nowrap">
                             <Button
                               onClick={() => setVentaSeleccionada(venta)}
@@ -1033,6 +1056,17 @@ export default function VentasPage() {
                             >
                               <Printer className="w-4 h-4" />
                             </Button>
+                            {puedeDevolver && (
+                              <Button
+                                onClick={() => setVentaParaDevolver(venta)}
+                                size="sm"
+                                variant="outline"
+                                className="border-orange-500 text-orange-500 hover:bg-orange-500/10"
+                                title="Hacer devolución"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </motion.tr>
@@ -1116,6 +1150,25 @@ export default function VentasPage() {
             setVentaParaImprimir(venta);
           }}
         />
+      )}
+
+      {ventaParaDevolver && (
+        <ModalDevolucionVenta
+          venta={ventaParaDevolver}
+          onClose={() => setVentaParaDevolver(null)}
+          onHecho={() => cargarVentas(0, true)}
+        />
+      )}
+
+      {verHistorialDevoluciones && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setVerHistorialDevoluciones(false)}>
+          <div
+            className={`w-full max-w-6xl h-[90vh] rounded-2xl overflow-hidden border ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-gray-50 border-gray-200'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DevolucionesPage onCerrar={() => setVerHistorialDevoluciones(false)} />
+          </div>
+        </div>
       )}
 
       {/* Modal de Impresión de Factura */}

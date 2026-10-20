@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { FacturaElectronicaDian, DianResponse } from './types';
+import type { FacturaElectronicaDian, DianResponse, NotaAjusteDian } from './types';
 
 // ── Dobles de la nube y del puente con el proceso principal ───────────────
 const nube = {
@@ -18,6 +18,16 @@ const dian = {
   certificadoEnNube: false,
 };
 const emisiones: string[] = [];
+const notas = {
+  pendientes: [] as NotaAjusteDian[],
+  estados: [] as Array<{ id: string; estado: string; extra: any }>,
+};
+
+vi.mock('../supabase/notaAjusteDianService', () => ({
+  listarNotasPendientesDeTransmision: vi.fn(async () => notas.pendientes.filter((n) => !notas.estados.some((e) => e.id === n.id && ['accepted', 'rejected'].includes(e.estado)))),
+  reclamarNotaParaTransmision: vi.fn(async () => true),
+  actualizarEstadoNota: vi.fn(async (_t: string, id: string, estado: string, extra: any = {}) => { notas.estados.push({ id, estado, extra }); }),
+}));
 
 vi.mock('../supabase/facturaElectronicaDianService', () => ({
   listarFacturasPendientesDeTransmision: vi.fn(async () => nube.pendientes.filter((f) => !nube.estados.some((e) => e.id === f.id && ['accepted', 'rejected'].includes(e.estado)))),
@@ -72,6 +82,7 @@ beforeEach(async () => {
   vi.resetModules(); // la cola guarda esperas en memoria: cada prueba arranca limpia
   vi.useFakeTimers({ now: new Date('2026-10-02T12:00:00Z') });
 
+  notas.pendientes = []; notas.estados = [];
   nube.pendientes = []; nube.porVenta.clear(); nube.estados = []; nube.reclamos = []; nube.reclamoGanado = true;
   dian.envios = []; dian.consultas = []; dian.firmas = 0; dian.certificadoEnNube = false;
   dian.respuestaEnvio = () => ({ ok: true, estado: 'accepted', mensajes: [] });
@@ -274,4 +285,17 @@ describe('cola de envíos DIAN', () => {
     expect(cola.listarEmisionesPendientes()).toMatchObject([{ intentos: 1 }]);
     expect(estado.pendientes).toBe(1);
   });
+
+  it('reenvía una nota crédito que quedó en contingencia y la deja aceptada', async () => {
+    notas.pendientes = [{
+      id: 'n1', clienteId: 'c1', perfilFiscalId: 'perfil-1', facturaId: 'f1', tipo: 'credito', numeroNota: 'NC1',
+      motivo: 'Devolución', estado: 'contingency', total: 119, fechaEmision: '2026-10-02T11:00:00Z', cude: 'cude-n1',
+      xml: '<Invoice><cbc:ProfileExecutionID>2</cbc:ProfileExecutionID></Invoice>', actualizadaEn: '2026-10-02T11:00:01Z',
+    }];
+    const estado = await procesarColaDian('c1');
+    expect([...notas.estados].reverse().find((e) => e.id === 'n1')?.estado).toBe('accepted');
+    expect(dian.envios.some((x) => x.includes('ProfileExecutionID'))).toBe(true);
+    expect(estado.pendientes).toBe(0);
+  });
 });
+

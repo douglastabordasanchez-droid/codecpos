@@ -604,7 +604,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Buscar primero solo por username (sin filtrar por `activo` todavía);
     // la contraseña se valida aparte para poder re-hashear en caliente
     // cuentas legadas que aún guardaban la contraseña en texto plano.
-    const candidatoPorUsername = usuarios.find(u => u.username === usernameNormalizado);
+    // Usuarios no distingue mayúsculas al crear ("Ese nombre de usuario ya
+    // existe" compara en minúsculas), así que el login tampoco: "kevin2" debe
+    // entrar como "Kevin2". Si hay coincidencia exacta, se prefiere esa.
+    const usernameMinusculas = usernameNormalizado.toLowerCase();
+    const candidatoPorUsername =
+      usuarios.find(u => u.username === usernameNormalizado) ||
+      usuarios.find(u => (u.username || '').trim().toLowerCase() === usernameMinusculas);
     const verificacion = candidatoPorUsername
       ? verificarPassword(passwordNormalizado, candidatoPorUsername.password)
       : { valido: false, requiereRehash: false };

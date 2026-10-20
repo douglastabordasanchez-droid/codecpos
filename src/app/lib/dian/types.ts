@@ -269,6 +269,8 @@ export interface NotaAjusteDian {
   totalImpuestos?: number;
   total: number;
   fechaEmision: string;
+  /** `updated_at` de la fila: candado optimista de la cola de envíos. */
+  actualizadaEn?: string;
 }
 
 /** Respuesta cruda del servicio web de la DIAN (forma exacta pendiente del

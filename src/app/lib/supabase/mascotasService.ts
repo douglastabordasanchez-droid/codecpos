@@ -7,6 +7,9 @@
  * dueño se guarda como texto (propietario_nombre/telefono) igual que
  * tutor_nombre/tutor_telefono en citas_grooming, más un vínculo suave y
  * opcional (propietarioLocalId) al cliente de fidelización si ya existe.
+ *
+ * `negocioId` es para la web y el celular: allá no hay instalación vinculada
+ * y el negocio sale de la sesión (empleado.cliente_id).
  */
 import { getSupabaseClient } from './config';
 import { getLinkedClienteId } from './tenantLink';
@@ -97,9 +100,9 @@ function mapEvento(r: any): EventoClinico {
 }
 
 /** Lista/busca mascotas del negocio vinculado (por nombre de mascota o de propietario). */
-export async function listarMascotas(busqueda = ''): Promise<Mascota[]> {
+export async function listarMascotas(busqueda = '', negocioId?: string): Promise<Mascota[]> {
   const client = getSupabaseClient();
-  const clienteId = getLinkedClienteId();
+  const clienteId = negocioId || getLinkedClienteId();
   if (!client || !clienteId) return [];
   let query = client.from('mascotas').select(SELECT_MASCOTA).eq('cliente_id', clienteId).eq('activo', true).order('nombre');
   if (busqueda.trim()) {
@@ -115,9 +118,9 @@ export async function crearMascota(datos: {
   propietarioNombre: string; propietarioTelefono?: string; propietarioLocalId?: string;
   nombre: string; especie?: EspecieMascota; raza?: string; sexo?: SexoMascota;
   fechaNacimiento?: string; color?: string; pesoActual?: number; alergias?: string; notas?: string;
-}): Promise<Mascota> {
+}, negocioId?: string): Promise<Mascota> {
   const client = getSupabaseClient();
-  const clienteId = getLinkedClienteId();
+  const clienteId = negocioId || getLinkedClienteId();
   if (!client || !clienteId) throw new Error('No hay un negocio vinculado a esta sesión');
   const { data, error } = await client.from('mascotas').insert({
     cliente_id: clienteId,
@@ -173,9 +176,9 @@ export async function listarPesoHistorico(mascotaId: string): Promise<RegistroPe
 }
 
 /** Registra un nuevo peso y actualiza `peso_actual` en la ficha de la mascota. */
-export async function registrarPeso(mascotaId: string, peso: number, fecha?: string): Promise<void> {
+export async function registrarPeso(mascotaId: string, peso: number, fecha?: string, negocioId?: string): Promise<void> {
   const client = getSupabaseClient();
-  const clienteId = getLinkedClienteId();
+  const clienteId = negocioId || getLinkedClienteId();
   if (!client || !clienteId) throw new Error('No hay un negocio vinculado a esta sesión');
   const { error } = await client.from('mascota_peso').insert({
     mascota_id: mascotaId, cliente_id: clienteId, peso, fecha: fecha || new Date().toISOString().slice(0, 10),
@@ -196,9 +199,9 @@ export async function listarEventos(mascotaId: string): Promise<EventoClinico[]>
 export async function crearEvento(datos: {
   mascotaId: string; tipo: TipoEventoClinico; descripcion: string; fecha?: string;
   proximaFecha?: string; veterinario?: string; notas?: string;
-}): Promise<EventoClinico> {
+}, negocioId?: string): Promise<EventoClinico> {
   const client = getSupabaseClient();
-  const clienteId = getLinkedClienteId();
+  const clienteId = negocioId || getLinkedClienteId();
   if (!client || !clienteId) throw new Error('No hay un negocio vinculado a esta sesión');
   const { data, error } = await client.from('mascota_eventos').insert({
     mascota_id: datos.mascotaId, cliente_id: clienteId, tipo: datos.tipo, descripcion: datos.descripcion,
@@ -220,9 +223,9 @@ export async function eliminarEvento(id: string): Promise<void> {
  * Eventos con próxima fecha (vacuna/desparasitación) dentro de `dias` días,
  * que todavía no dispararon un recordatorio. Base del sistema de alertas.
  */
-export async function eventosProximos(dias = 7): Promise<EventoProximo[]> {
+export async function eventosProximos(dias = 7, negocioId?: string): Promise<EventoProximo[]> {
   const client = getSupabaseClient();
-  const clienteId = getLinkedClienteId();
+  const clienteId = negocioId || getLinkedClienteId();
   if (!client || !clienteId) return [];
   const limite = new Date(Date.now() + dias * 86400000).toISOString().slice(0, 10);
   const { data, error } = await client.from('mascota_eventos')

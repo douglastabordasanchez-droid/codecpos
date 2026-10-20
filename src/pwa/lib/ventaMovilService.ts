@@ -19,7 +19,14 @@ export interface ItemCarritoMovil {
    *  calcular el descuento si "permitirModificarPrecio" está activo y `precio`
    *  termina siendo distinto (editado manualmente). Si no se edita, es igual a `precio`. */
   precioOriginal?: number;
+  /** 'kg' = producto a granel pesado: `cantidad` son kilos (con decimales). */
+  unidad?: 'kg';
 }
+
+/** Servicios (baño, consulta, honorarios) no son productos del inventario:
+ * llevan un id propio que no es un uuid y no descuentan stock. */
+const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const esProductoInventario = (productoId: string) => ES_UUID.test(productoId);
 
 /** Mismo shape que `PagoMixtoDetalle` de Electron (electronStore.ts) — así el historial se ve igual en las dos plataformas. */
 export interface MetodosMultiplesMovil {
@@ -55,14 +62,22 @@ export async function crearVentaMovil(
   const total = totalProductos + propinaValida;
   const descuento = items.reduce((acc, it) => acc + Math.max(0, (it.precioOriginal ?? it.precio) - it.precio) * it.cantidad, 0);
 
-  const { data: ultimaVenta } = await client
-    .from('ventas')
-    .select('numero')
-    .eq('cliente_id', clienteId)
-    .order('numero', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const numero = ((ultimaVenta as { numero: number | null } | null)?.numero || 0) + 1;
+  // Contador del servidor: dos celulares vendiendo a la vez nunca reciben el
+  // mismo número (migración 0117). Si la función aún no existe, se cae al
+  // cálculo anterior para no frenar la venta.
+  const { data: numeroServidor, error: errorNumero } = await client.rpc('siguiente_numero_venta_web', { p_cliente_id: clienteId });
+  let numero = typeof numeroServidor === 'number' ? numeroServidor : 0;
+  if (errorNumero || !numero) {
+    const { data: ultimaVenta } = await client
+      .from('ventas')
+      .select('numero')
+      .eq('cliente_id', clienteId)
+      .eq('terminal_id', 'PWA')
+      .order('numero', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    numero = ((ultimaVenta as { numero: number | null } | null)?.numero || 0) + 1;
+  }
 
   const { data: ventaRow, error: e1 } = await client
     .from('ventas')
@@ -89,7 +104,7 @@ export async function crearVentaMovil(
 
   const itemsPayload = items.map((it) => ({
     venta_id: ventaRow.id,
-    producto_id: it.productoId,
+    producto_id: esProductoInventario(it.productoId) ? it.productoId : null,
     nombre: it.nombre,
     cantidad: it.cantidad,
     precio_unitario: it.precio,
@@ -101,7 +116,7 @@ export async function crearVentaMovil(
   if (e2) return { ok: false, error: e2.message };
 
   await Promise.all(
-    items.map((it) =>
+    items.filter((it) => esProductoInventario(it.productoId)).map((it) =>
       client.rpc('descontar_stock_producto', {
         p_producto_id: it.productoId,
         p_cantidad: it.cantidad,

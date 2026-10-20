@@ -6,6 +6,7 @@
 
 import { dbManager } from './indexedDB';
 import { logger } from './logger';
+import { costoPorUnidadDeVenta } from './costoGranel';
 
 // Tipos del sistema
 export interface Venta {
@@ -719,8 +720,9 @@ class ElectronStoreService {
     const productosInventario = await this.obtenerProductos();
     const indexCostoInventario = new Map<string, number>();
     for (const p of (Array.isArray(productosInventario) ? productosInventario : [])) {
-      const costo = Number((p as any)?.costo);
-      if (!Number.isFinite(costo)) continue;
+      if (!Number.isFinite(Number((p as any)?.costo))) continue;
+      // A granel la cantidad vendida son kilos y el costo guardado es el del bulto.
+      const costo = costoPorUnidadDeVenta(p as any);
       const id = normalizarTexto((p as any)?.id);
       const codigo = normalizarTexto((p as any)?.codigo);
       const nombre = normalizarTexto((p as any)?.nombre);

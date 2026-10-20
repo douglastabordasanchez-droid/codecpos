@@ -25,7 +25,6 @@ const CierreCajaPage = lazy(() => import('./components/pos/CierreCajaPage'));
 const ReportesPage = lazy(() => import('./components/pos/ReportesPage'));
 const GastosPage = lazy(() => import('./components/pos/GastosPage'));
 const ContabilidadPage = lazy(() => import('./components/pos/ContabilidadPage'));
-const DevolucionesPage = lazy(() => import('./components/pos/DevolucionesPage'));
 const DispositivosPage = lazy(() => import('./components/devices/DispositivosPage'));
 const UsuariosPage = lazy(() => import('./components/usuarios/UsuariosPage').then(m => ({ default: m.UsuariosPage })).catch(() => ({ default: () => <div>Error cargando Usuarios</div> })));
 const OrganizacionUsuariosPage = lazy(() => import('./components/usuarios/OrganizacionUsuariosPage').catch(() => ({ default: () => <div>Error cargando Usuarios de la organización</div> })));
@@ -259,14 +258,8 @@ export const router = createHashRouter([
           </Suspense>
         )
       },
-      { 
-        path: 'devoluciones', 
-        element: (
-          <Suspense fallback={<LoadingFallback />}>
-            <DevolucionesPage />
-          </Suspense>
-        ) 
-      },
+      // Las devoluciones se hacen desde Ventas (ModalDevolucionVenta).
+      { path: 'devoluciones', element: <Navigate to="/ventas" replace /> },
       { 
         path: 'dispositivos', 
         element: (

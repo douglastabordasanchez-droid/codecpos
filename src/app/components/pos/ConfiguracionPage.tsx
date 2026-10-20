@@ -9,6 +9,7 @@ import { Save, Building, FileText, Printer, DollarSign, Shield, Settings, MapPin
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
@@ -314,7 +315,7 @@ export default function ConfiguracionPage() {
       // que al guardar CUALQUIER cambio de esta pantalla no se pise ese
       // prefijo con el genérico 'FE' — el mismo para toda instalación nueva
       // del sistema si nadie lo hubiera asignado antes.
-      prefijoFactura: localStorage.getItem('codec_pos_prefijo_auto') || 'FE',
+      prefijoFactura: 'FE',
       consecutivoInicial: 1,
       tipoDocumento: 'factura',
       claveResolucionDIAN: '',
@@ -1866,11 +1867,10 @@ export default function ConfiguracionPage() {
                 className={`mt-2 ${darkMode ? 'bg-slate-700 border-slate-600 text-white uppercase' : 'uppercase'}`}
               />
               <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Aparece en cada tirilla/factura que imprime esta caja (ej: {config.prefijoFactura || 'FE'}-000001).
-                {' '}Si tu negocio tiene <strong>más de un local o caja instalada</strong>, cada instalación nueva
-                {' '}ya recibe automáticamente un prefijo único al conectarse por primera vez — así los números
-                {' '}de factura nunca se repiten entre cajas, aunque nadie configure nada aquí. Solo cámbialo si
-                {' '}quieres usar tu propio esquema (ej: "T01", "T02" por local).
+                Esta caja numera así: <strong className="font-mono">{armarNumeroFactura(1, config.prefijoFactura)}</strong>.
+                {' '}Después del prefijo va la <strong>letra de la caja</strong> (A, B, C…), que el sistema asigna solo a
+                {' '}cada computador: así dos cajas o sucursales nunca repiten un número, aunque todas usen el mismo prefijo.
+                {' '}Las ventas de la web y el celular salen con W (W000001).
               </p>
             </div>
 

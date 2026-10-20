@@ -15,7 +15,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Building2, KeyRound, Hash, FlaskConical, Rocket,
-  ChevronLeft, ChevronRight, Loader2, CheckCircle2, AlertTriangle, Upload, ShieldCheck,
+  ChevronLeft, ChevronRight, Loader2, CheckCircle2, AlertTriangle, Upload, ShieldCheck, Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
@@ -27,6 +27,7 @@ import {
   type DatosPerfilFiscalForm,
 } from '../../lib/supabase/fiscalProfileService';
 import { validateFiscalConfiguration, ETIQUETAS_FALTANTES } from '../../lib/dian/validateFiscalConfiguration';
+import { consultarRangosNumeracion, type RangoNumeracionDian } from '../../lib/dian/transporteDian';
 
 interface Props {
   clienteId: string;
@@ -56,6 +57,21 @@ const RESPONSABILIDADES_COMUNES = [
   'O-13 Gran contribuyente', 'O-15 Autorretenedor', 'O-23 Agente de retención IVA',
   'O-47 Régimen simple de tributación', 'O-49 No responsable de IVA',
 ];
+
+/**
+ * Numeración que la DIAN publica para el set de pruebas de habilitación,
+ * igual para todos los facturadores. Compárala con la que muestra el portal
+ * de habilitación del negocio.
+ */
+const NUMERACION_PRUEBAS: RangoNumeracionDian = {
+  resolucionNumero: '18760000001',
+  resolucionFecha: '2019-01-19',
+  prefijo: 'SETP',
+  desde: 990000000,
+  hasta: 995000000,
+  vigenteHasta: '2030-01-19',
+  claveTecnica: 'fc8eac422eba16e22ffd8c6f94b3f40a6e38162c',
+};
 
 function inputClass(darkMode: boolean) {
   return `w-full px-3 py-2 rounded-md border ${
@@ -99,6 +115,8 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
   const [certVencimiento, setCertVencimiento] = useState('');
   const [pin, setPin] = useState('');
   const [pinConfigurado, setPinConfigurado] = useState(perfilExistente?.pinConfigurado ?? false);
+  const [rangosDian, setRangosDian] = useState<RangoNumeracionDian[] | null>(null);
+  const [consultandoRangos, setConsultandoRangos] = useState(false);
 
   useEffect(() => {
     if (!perfil?.id) return;
@@ -222,6 +240,46 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
     } finally {
       setGuardando(false);
     }
+  }
+
+  async function traerRangosDeLaDian() {
+    if (!perfil?.id) return;
+    if (!form.nit || !form.identificadorSoftware) { toast.error('Guarda primero el NIT (paso 1) y el identificador de software (paso 2)'); return; }
+    setConsultandoRangos(true);
+    try {
+      setRangosDian(await consultarRangosNumeracion(perfil.id, form.nit, form.identificadorSoftware));
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo consultar la numeración en la DIAN');
+    } finally {
+      setConsultandoRangos(false);
+    }
+  }
+
+  /** Llena el formulario con el rango elegido y guarda su clave técnica en el perfil. */
+  async function usarRango(rango: RangoNumeracionDian) {
+    if (!perfil?.id) return;
+    const fecha = (v?: string) => (v ? v.slice(0, 10) : '');
+    setNuevaResolucion({
+      tipoDocumento: 'factura',
+      prefijo: rango.prefijo,
+      resolucionNumero: rango.resolucionNumero,
+      resolucionFecha: fecha(rango.resolucionFecha),
+      rangoDesde: String(rango.desde),
+      rangoHasta: String(rango.hasta),
+      vigenciaHasta: fecha(rango.vigenteHasta),
+    });
+    if (rango.claveTecnica && rango.claveTecnica !== form.claveTecnica) {
+      try {
+        setPerfil(await actualizarPerfilFiscal(perfil.id, { claveTecnica: rango.claveTecnica }));
+        setCampo('claveTecnica', rango.claveTecnica);
+        toast.success('Clave técnica guardada. Revisa los datos y pulsa «Registrar numeración».');
+      } catch (e: any) {
+        toast.error(e?.message || 'No se pudo guardar la clave técnica');
+      }
+    } else {
+      toast.success('Datos cargados. Revisa y pulsa «Registrar numeración».');
+    }
+    setRangosDian(null);
   }
 
   const resolucionActiva = resoluciones.find((r) => r.estado === 'activa' && r.tipoDocumento === 'factura') || null;
@@ -386,7 +444,7 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
                   <Label className={darkMode ? 'text-gray-300' : ''}>Clave técnica (ClTec, asignada por la DIAN en la habilitación) *</Label>
                   <input className={inputClass(darkMode)} value={form.claveTecnica || ''} onChange={(e) => setCampo('claveTecnica', e.target.value)} />
                   <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                    No es el identificador de software — es un dato distinto que entrega la DIAN, necesario para calcular el CUFE. Está en la respuesta del rango de numeración (GetNumberingRange).
+                    No es el identificador de software: es un dato distinto que entrega la DIAN, necesario para calcular el CUFE. Puedes dejarlo vacío y traerlo en el paso Numeración.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -463,6 +521,32 @@ export function AsistenteConfiguracionDian({ clienteId, perfilExistente, darkMod
                         ))}
                       </div>
                     )}
+                    <div className={`p-3 rounded-xl border space-y-2 ${darkMode ? 'bg-slate-800/60 border-slate-600' : 'bg-orange-50 border-orange-200'}`}>
+                      <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Llena la numeración sin copiar a mano. En pruebas usa la numeración de habilitación. En producción, trae de la DIAN el rango que asociaste al software (necesita el certificado cargado).
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => usarRango(NUMERACION_PRUEBAS)} disabled={guardando || consultandoRangos}>
+                          <FlaskConical className="w-4 h-4 mr-1.5" /> Usar numeración de pruebas
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={traerRangosDeLaDian} disabled={guardando || consultandoRangos}>
+                          {consultandoRangos ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />}
+                          Traer numeración de la DIAN
+                        </Button>
+                      </div>
+                      {rangosDian && (
+                        <div className="space-y-1.5">
+                          {rangosDian.map((r) => (
+                            <button key={`${r.prefijo}-${r.resolucionNumero}-${r.desde}`} type="button" onClick={() => usarRango(r)}
+                              className={`w-full text-left p-2 rounded-lg border text-sm ${darkMode ? 'border-slate-600 hover:bg-slate-700 text-slate-200' : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-800'}`}>
+                              <span className="font-semibold">{r.prefijo || 'Sin prefijo'}</span> · Res. {r.resolucionNumero} · {r.desde} a {r.hasta}
+                              {r.vigenteHasta ? ` · vence ${r.vigenteHasta.slice(0, 10)}` : ''}
+                              {!r.claveTecnica && <span className="text-amber-500"> · sin clave técnica</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="space-y-2">
                       <Label className={darkMode ? 'text-gray-300' : ''}>Tipo de documento que numera esta resolución *</Label>
                       <select className={inputClass(darkMode)} value={nuevaResolucion.tipoDocumento} onChange={(e) => setNuevaResolucion((s) => ({ ...s, tipoDocumento: e.target.value as ResolucionDian['tipoDocumento'] }))}>

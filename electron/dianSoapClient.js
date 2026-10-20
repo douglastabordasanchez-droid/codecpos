@@ -149,6 +149,9 @@ export function interpretarRespuesta(xml) {
     XmlFileName: desescapar(etiqueta(xml, 'XmlFileName')),
     ErrorMessage: mensajes.length ? { string: mensajes } : undefined,
     ZipKey: desescapar(etiqueta(xml, 'ZipKey')),
+    // ApplicationResponse firmado por la DIAN (base64): va dentro del
+    // AttachedDocument que se le entrega al comprador.
+    XmlBase64Bytes: etiqueta(xml, 'XmlBase64Bytes')?.replace(/\s+/g, '') || undefined,
   };
 }
 

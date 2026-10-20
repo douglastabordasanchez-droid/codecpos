@@ -11,6 +11,7 @@
  *      factura hecha desde la web deja en contingencia, porque la web no
  *      puede firmar — este computador las firma y transmite.
  *   3. Facturas abandonadas a medio envío (la app se cerró en 'signing'/'sent').
+ *   4. Notas crédito y débito en esas mismas dos situaciones.
  *
  * La normativa da 48 horas para transmitir tras restablecerse el servicio;
  * aquí se reintenta cada 30 segundos con espera creciente por documento.
@@ -30,7 +31,10 @@ import {
   actualizarEstadoFactura, incrementarIntentosTransmision, listarFacturasPendientesDeTransmision,
   obtenerFacturaPorVenta, reclamarFacturaParaTransmision,
 } from '../supabase/facturaElectronicaDianService';
-import type { DianResponse, FacturaElectronicaDian } from './types';
+import {
+  actualizarEstadoNota, listarNotasPendientesDeTransmision, reclamarNotaParaTransmision,
+} from '../supabase/notaAjusteDianService';
+import type { DianResponse, FacturaElectronicaDian, NotaAjusteDian } from './types';
 
 export const INTERVALO_COLA_DIAN_MS = 30_000;
 const ESPERA_MAXIMA_MS = 15 * 60_000;
@@ -134,6 +138,50 @@ async function reintentarFactura(f: FacturaElectronicaDian): Promise<void> {
   });
 }
 
+/** Lo mismo que reintentarFactura, para una nota crédito o débito. */
+async function reintentarNota(n: NotaAjusteDian): Promise<void> {
+  if (!n.id || !n.xml) throw new Error('La nota no tiene XML generado');
+  const ambiente = /<cbc:ProfileExecutionID>1</.test(n.xml) ? 'produccion' : 'habilitacion';
+
+  if (!xmlYaFirmado(n.xml) && fechaColombia(n.fechaEmision) !== fechaColombia(new Date())) {
+    await actualizarEstadoNota(n.tipo, n.id, 'error');
+    return;
+  }
+
+  const transporte = await obtenerTransporteDian(n.perfilFiscalId);
+  let xml = n.xml;
+  let respuesta;
+  try {
+    ({ xmlFirmado: xml, respuesta } = await transporte.firmarYTransmitir({ perfilFiscalId: n.perfilFiscalId, ambiente, numero: n.numeroNota, xml: n.xml }));
+  } catch (e) {
+    if (e instanceof ErrorDeTransmision && e.xmlFirmado) await actualizarEstadoNota(n.tipo, n.id, 'signing', { xml: e.xmlFirmado }).catch(() => undefined);
+    throw e;
+  }
+  if (respuesta.estado !== 'accepted' && esDuplicadoEnDian(respuesta) && n.cude) {
+    respuesta = await transporte.consultarEstado(n.perfilFiscalId, ambiente, n.cude);
+  }
+  await actualizarEstadoNota(n.tipo, n.id, respuesta.estado, { xml, respuestaDian: respuesta.crudo as Record<string, unknown> });
+}
+
+async function vaciarNotas(clienteId: string): Promise<{ pendientes: number; ultimoError?: string }> {
+  let ultimoError: string | undefined;
+  for (const n of await listarNotasPendientesDeTransmision(clienteId)) {
+    const clave = `nota:${n.id}`;
+    if (!n.id || !n.actualizadaEn || !leToca(clave)) continue;
+    if (!(await tieneCertificado(n.perfilFiscalId))) continue;
+    if (!(await reclamarNotaParaTransmision(n.tipo, n.id, n.actualizadaEn))) continue;
+    try {
+      await reintentarNota(n);
+      anotarExito(clave);
+    } catch (e) {
+      ultimoError = (e as Error).message;
+      anotarFallo(clave);
+      await actualizarEstadoNota(n.tipo, n.id, 'contingency').catch(() => undefined);
+    }
+  }
+  return { pendientes: (await listarNotasPendientesDeTransmision(clienteId)).length, ultimoError };
+}
+
 async function vaciarEmisionesLocales(): Promise<void> {
   for (const emision of listarEmisionesPendientes()) {
     const { datos } = emision;
@@ -195,10 +243,13 @@ export async function procesarColaDian(clienteId: string): Promise<EstadoColaDia
       }
     }
 
+    const notas = await vaciarNotas(clienteId);
+    ultimoError = ultimoError ?? notas.ultimoError;
+
     pendientes = await listarFacturasPendientesDeTransmision(clienteId);
     ultimoEstado = {
       enLinea: true,
-      pendientes: pendientes.length + listarEmisionesPendientes().length,
+      pendientes: pendientes.length + notas.pendientes + listarEmisionesPendientes().length,
       ultimoError,
       revisadaEn: new Date().toISOString(),
     };

@@ -182,6 +182,56 @@ export async function obtenerTransporteDian(perfilFiscalId: string): Promise<Tra
   return nube;
 }
 
+// ── Rangos de numeración (GetNumberingRange) ──────────────────────────────
+
+/** Un rango autorizado por la DIAN y asociado al software, con su clave técnica. */
+export interface RangoNumeracionDian {
+  resolucionNumero: string;
+  resolucionFecha?: string;
+  prefijo: string;
+  desde: number;
+  hasta: number;
+  vigenteDesde?: string;
+  vigenteHasta?: string;
+  claveTecnica?: string;
+}
+
+function mapearRangos(cruda: any): RangoNumeracionDian[] {
+  const lista = cruda?.ResponseList?.NumberRangeResponse ?? [];
+  const rangos = (Array.isArray(lista) ? lista : [lista]).filter((r: any) => r?.ResolutionNumber);
+  if (rangos.length === 0) {
+    // La DIAN responde 200 con un código y una descripción cuando no hay
+    // rangos o el software aún no está habilitado: se muestra tal cual.
+    throw new Error(cruda?.OperationDescription || 'La DIAN no devolvió rangos de numeración para este software');
+  }
+  return rangos.map((r: any) => ({
+    resolucionNumero: String(r.ResolutionNumber),
+    resolucionFecha: r.ResolutionDate || undefined,
+    prefijo: r.Prefix ? String(r.Prefix) : '',
+    desde: Number(r.FromNumber),
+    hasta: Number(r.ToNumber),
+    vigenteDesde: r.ValidDateFrom || undefined,
+    vigenteHasta: r.ValidDateTo || undefined,
+    claveTecnica: r.TechnicalKey || undefined,
+  }));
+}
+
+/**
+ * Consulta a la DIAN los rangos asociados al software del perfil. Necesita el
+ * certificado ya cargado (la consulta va firmada) y el NIT e identificador de
+ * software guardados. La DIAN solo atiende esta consulta en producción.
+ */
+export async function consultarRangosNumeracion(perfilFiscalId: string, nit: string, identificadorSoftware: string): Promise<RangoNumeracionDian[]> {
+  const transporte = await obtenerTransporteDian(perfilFiscalId);
+  if (transporte.nombre === 'local') {
+    const r = await apiElectron().consultarRangoNumeracion(perfilFiscalId, 'produccion', nit, nit, identificadorSoftware);
+    if (!r?.success) throw new Error(r?.error || 'No se pudo consultar la numeración en la DIAN');
+    return mapearRangos(r.respuesta);
+  }
+  const r = await invocarDianEmision<{ respuesta: unknown }>({ accion: 'rangos-numeracion', perfilFiscalId, ambiente: 'produccion' });
+  return mapearRangos(r.respuesta);
+}
+
 // ── Certificado custodiado en la nube ─────────────────────────────────────
 
 export interface CertificadoNube {

@@ -5,11 +5,9 @@
  * Electron); aquí solo se conecta con la sesión y las rutas de la PWA. La
  * licencia ya la validó <ModuloGate dePago> en routes.tsx.
  *
- * Lo que NO se hace desde la web: firmar y transmitir a la DIAN. El
- * certificado del negocio vive cifrado en el computador (Electron) y no debe
- * llegar a un navegador — ver src/app/lib/dian/signatureProvider.ts. Las
- * facturas se emiten al cobrar en Electron y aquí se consultan, se envían al
- * cliente y se les emiten notas; las compras sí se cargan y causan desde aquí.
+ * Desde la web también se factura: con el certificado custodiado en la nube
+ * (Edge Function dian-emision) se firman y transmiten facturas, notas y el
+ * paquete para el cliente, igual que en Electron.
  */
 import { Navigate, useNavigate } from 'react-router';
 import { usePwaAuth } from '../contexts/PwaAuthContext';

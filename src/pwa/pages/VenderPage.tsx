@@ -9,11 +9,15 @@
  *  · Codec Verify activo + Nequi, Daviplata, Bre-B o transferencia: ventana
  *    "Esperando el pago" que confirma la venta sola cuando llega el pago.
  *  · Impresora y cajón monedero configurados en Dispositivos.
+ *  · Productos a granel (tipo_producto = 'granel'): se pesan con la báscula
+ *    o se escribe el peso, y se cobran por kilo, igual que en Electron.
+ *  · Recibe lo que mandan otros módulos (Veterinaria) por CLAVE_CARRITO_TRANSFERIDO,
+ *    como Electron hace con `codecpos_carrito_transferido`.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera, Share2, Eye, Printer, Inbox, ShieldCheck,
+  ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera, Share2, Eye, Printer, Inbox, ShieldCheck, Scale,
 } from 'lucide-react';
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 import { toast } from 'sonner';
@@ -33,6 +37,9 @@ import type { NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyServ
 import { obtenerDispositivos, imprimirTicket, abrirCajon, tieneImpresoraDirecta } from '../lib/impresoraWeb';
 import { armarTicketVenta } from '../lib/ticketVentaWeb';
 import { useMiNegocio } from '../hooks/useMiNegocio';
+import { numeroVentaWeb } from '../../app/lib/numeracionCaja';
+import { ModalPesaje } from '../components/ModalPesaje';
+import { CLAVE_CARRITO_TRANSFERIDO, formatoCantidad } from '../lib/carritoTransferido';
 
 interface ProductoFila {
   id: string;
@@ -44,7 +51,10 @@ interface ProductoFila {
   foto_url: string | null;
   talla?: string | null;
   color?: string | null;
+  tipo_producto?: string | null;
 }
+
+const esGranel = (p: ProductoFila) => p.tipo_producto === 'granel';
 
 const METODOS_PAGO = [
   { valor: 'efectivo', label: 'Efectivo', emoji: '💵' },
@@ -122,6 +132,7 @@ export default function VenderPage() {
   const [ventaCompletada, setVentaCompletada] = useState<VentaCompletada | null>(null);
   const [compartiendo, setCompartiendo] = useState(false);
   const [viendoFactura, setViendoFactura] = useState(false);
+  const [pesando, setPesando] = useState<ProductoFila | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
   const [docClienteFactura, setDocClienteFactura] = useState('');
   const [nombreClienteFactura, setNombreClienteFactura] = useState('');
@@ -152,7 +163,7 @@ export default function VenderPage() {
     const client = getSupabaseClient();
     const { data } = await client!
       .from('productos')
-      .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color')
+      .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto')
       .eq('cliente_id', empleado.cliente_id)
       .eq('activo', true)
       .order('nombre');
@@ -196,6 +207,27 @@ export default function VenderPage() {
       });
   }, [empleado?.cliente_id]);
 
+  // Lo que manda otro módulo (Veterinaria: bultos pesados, servicios, medicamentos).
+  useEffect(() => {
+    let recibidos: ItemCarritoMovil[] = [];
+    try {
+      recibidos = JSON.parse(sessionStorage.getItem(CLAVE_CARRITO_TRANSFERIDO) || '[]');
+      sessionStorage.removeItem(CLAVE_CARRITO_TRANSFERIDO);
+    } catch { /* nada que recibir */ }
+    if (!Array.isArray(recibidos) || recibidos.length === 0) return;
+    setCarrito((prev) => {
+      const nuevo = { ...prev };
+      for (const it of recibidos) {
+        const actual = nuevo[it.productoId];
+        nuevo[it.productoId] = actual
+          ? { ...actual, cantidad: Math.round((actual.cantidad + it.cantidad) * 1000) / 1000 }
+          : it;
+      }
+      return nuevo;
+    });
+    toast.success(recibidos.length === 1 ? `${recibidos[0].nombre} en el carrito` : `${recibidos.length} ítems en el carrito`);
+  }, []);
+
   const categorias = useMemo(
     () => [...new Set(productos.map((p) => p.categoria).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
     [productos],
@@ -219,12 +251,32 @@ export default function VenderPage() {
     ? Math.max(0, propinaManual === null ? Math.round(totalCarrito * (configPropina.porcentaje / 100)) : propinaManual)
     : 0;
   const totalAPagar = totalCarrito + propinaAplicada;
-  const cantidadCarrito = itemsCarrito.reduce((acc, it) => acc + it.cantidad, 0);
+  // Un bulto pesado cuenta como un producto, no como sus kilos.
+  const cantidadCarrito = itemsCarrito.reduce((acc, it) => acc + (it.unidad === 'kg' ? 1 : it.cantidad), 0);
   const recibidoNum = Number(recibido) || 0;
   const cambio = metodoPago === 'efectivo' && recibidoNum > 0 ? recibidoNum - totalAPagar : 0;
   const esperaraPago = verifyActivo && METODOS_TRANSFERENCIA.includes(metodoPago);
 
+  /** Agrega lo pesado: si ya estaba en el carrito, se suman los kilos. */
+  const agregarPesado = (p: ProductoFila, kg: number, reemplazar = false) => {
+    setCarrito((prev) => {
+      const actual = prev[p.id];
+      const cantidad = Math.round(((reemplazar ? 0 : actual?.cantidad || 0) + kg) * 1000) / 1000;
+      return {
+        ...prev,
+        [p.id]: { productoId: p.id, nombre: p.nombre, precio: actual?.precio ?? p.precio_venta, precioOriginal: p.precio_venta, cantidad, unidad: 'kg' },
+      };
+    });
+    setPesando(null);
+  };
+  const [reemplazarPeso, setReemplazarPeso] = useState(false);
+
   const agregarAlCarrito = (p: ProductoFila) => {
+    if (esGranel(p)) {
+      setReemplazarPeso(false);
+      setPesando(p);
+      return;
+    }
     setCarrito((prev) => {
       const actual = prev[p.id];
       const cantidad = (actual?.cantidad || 0) + 1;
@@ -298,9 +350,19 @@ export default function VenderPage() {
   const mixtoValido = metodoPago !== 'mixto' || Math.abs(diferenciaMixto) < 1;
 
   const cambiarCantidad = (productoId: string, delta: number) => {
+    // Lo pesado no sube ni baja de a uno: se vuelve a pesar.
+    if (carrito[productoId]?.unidad === 'kg' && delta > 0) {
+      const p = productos.find((x) => x.id === productoId);
+      if (p) { setReemplazarPeso(true); setPesando(p); }
+      return;
+    }
     setCarrito((prev) => {
       const actual = prev[productoId];
       if (!actual) return prev;
+      if (actual.unidad === 'kg') {
+        const { [productoId]: _omit, ...resto } = prev;
+        return resto;
+      }
       const nuevaCantidad = actual.cantidad + delta;
       if (nuevaCantidad <= 0) {
         const { [productoId]: _omit, ...resto } = prev;
@@ -358,7 +420,7 @@ export default function VenderPage() {
       const abonoInicial = Math.max(0, Number(carteraAbonoInicial) || 0);
       const carteraResultado = await crearCuentaCarteraMovil(empleado.cliente_id, {
         ventaLocalId: resultado.ventaId,
-        numeroFactura: resultado.numero ? String(resultado.numero) : undefined,
+        numeroFactura: resultado.numero ? numeroVentaWeb(resultado.numero) : undefined,
         clienteNombre: carteraNombre.trim(),
         clienteTelefono: carteraTelefono.trim() || undefined,
         clienteDocumento: carteraDocumento.trim() || undefined,
@@ -595,13 +657,18 @@ export default function VenderPage() {
                     </div>
                   )}
                   <div className="flex items-center justify-between mt-1">
-                    <span className="text-emerald-400 font-black text-sm">{money(p.precio_venta)}</span>
-                    <span className={`text-[10px] ${p.stock <= 3 ? 'text-red-400' : 'text-slate-500'}`}>{p.stock} und</span>
+                    <span className="text-emerald-400 font-black text-sm">{money(p.precio_venta)}{esGranel(p) ? '/kg' : ''}</span>
+                    <span className={`text-[10px] ${p.stock <= 3 ? 'text-red-400' : 'text-slate-500'}`}>
+                      {esGranel(p) ? `${Number(p.stock).toFixed(1)} kg` : `${p.stock} und`}
+                    </span>
                   </div>
+                  {esGranel(p) && (
+                    <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400"><Scale className="w-3 h-3" /> Se pesa</span>
+                  )}
                 </div>
                 {enCarrito > 0 && (
                   <span className="absolute top-2 right-2 min-w-7 h-7 px-1.5 rounded-full bg-amber-500 text-slate-950 text-xs font-black flex items-center justify-center shadow">
-                    {enCarrito}
+                    {formatoCantidad(enCarrito, carrito[p.id]?.unidad)}
                   </span>
                 )}
               </button>
@@ -632,14 +699,20 @@ export default function VenderPage() {
                 className={`mt-0.5 w-24 text-xs font-semibold bg-transparent border rounded-lg px-1.5 py-0.5 ${it.precioOriginal != null && it.precio !== it.precioOriginal ? 'border-amber-500 text-amber-400' : 'border-slate-700 text-slate-300'}`}
               />
             ) : (
-              <p className="text-slate-500 text-xs">{money(it.precio)} c/u</p>
+              <p className="text-slate-500 text-xs">{money(it.precio)} {it.unidad === 'kg' ? 'el kilo' : 'c/u'}</p>
             )}
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button onClick={() => cambiarCantidad(it.productoId, -1)} className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-white"><Minus className="w-3.5 h-3.5" /></button>
-            <span className="text-white font-bold text-sm w-5 text-center">{it.cantidad}</span>
-            <button onClick={() => cambiarCantidad(it.productoId, 1)} className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-slate-950"><Plus className="w-3.5 h-3.5" /></button>
-          </div>
+          {it.unidad === 'kg' ? (
+            <button onClick={() => cambiarCantidad(it.productoId, 1)} className="shrink-0 h-7 px-2 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-bold flex items-center gap-1" title="Volver a pesar">
+              <Scale className="w-3.5 h-3.5" /> {formatoCantidad(it.cantidad, 'kg')}
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button onClick={() => cambiarCantidad(it.productoId, -1)} className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-white"><Minus className="w-3.5 h-3.5" /></button>
+              <span className="text-white font-bold text-sm w-5 text-center">{it.cantidad}</span>
+              <button onClick={() => cambiarCantidad(it.productoId, 1)} className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-slate-950"><Plus className="w-3.5 h-3.5" /></button>
+            </div>
+          )}
           <span className="text-white font-bold text-sm w-20 text-right shrink-0">{money(it.cantidad * it.precio)}</span>
           <button onClick={() => setCarrito((prev) => { const { [it.productoId]: _omit, ...resto } = prev; return resto; })} className="text-red-400 shrink-0" aria-label="Quitar">
             <Trash2 className="w-4 h-4" />
@@ -784,7 +857,7 @@ export default function VenderPage() {
       </div>
       <h2 className="text-white font-black text-xl mb-1">Venta registrada</h2>
       <p className="text-slate-400 text-sm mb-5">
-        Factura #{ventaCompletada.numero}{ventaCompletada.verificado ? ' · pago verificado por Codec Verify' : ''}
+        Factura {numeroVentaWeb(ventaCompletada.numero)}{ventaCompletada.verificado ? ' · pago verificado por Codec Verify' : ''}
       </p>
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-5">
         <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Total cobrado</p>
@@ -814,7 +887,7 @@ export default function VenderPage() {
         <ModalVistaFactura
           abierta
           onCerrar={() => setViendoFactura(false)}
-          titulo={`FAC${String(ventaCompletada.numero ?? 0).padStart(6, '0')}`}
+          titulo={numeroVentaWeb(ventaCompletada.numero ?? 0)}
           obtenerDatos={() => obtenerDatosFactura(empleado.cliente_id, datosFactura())}
         />
       )}
@@ -866,18 +939,18 @@ export default function VenderPage() {
             {[...itemsCarrito].reverse().map((it) => (
               <div key={it.productoId} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="min-w-8 h-8 px-1.5 rounded-lg bg-amber-500/15 text-amber-400 text-sm font-black flex items-center justify-center shrink-0">
-                  {it.cantidad}
+                  {formatoCantidad(it.cantidad, it.unidad)}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-white text-sm font-semibold truncate">{it.nombre}</p>
-                  <p className="text-slate-500 text-[11px]">{money(it.precio)} c/u</p>
+                  <p className="text-slate-500 text-[11px]">{money(it.precio)} {it.unidad === 'kg' ? 'el kilo' : 'c/u'}</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => cambiarCantidad(it.productoId, -1)} className="w-7 h-7 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center" aria-label="Quitar uno">
-                    <Minus className="w-3.5 h-3.5" />
+                  <button onClick={() => cambiarCantidad(it.productoId, -1)} className="w-7 h-7 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center" aria-label={it.unidad === 'kg' ? 'Quitar' : 'Quitar uno'}>
+                    {it.unidad === 'kg' ? <Trash2 className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
                   </button>
-                  <button onClick={() => cambiarCantidad(it.productoId, 1)} className="w-7 h-7 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center" aria-label="Agregar uno">
-                    <Plus className="w-3.5 h-3.5" />
+                  <button onClick={() => cambiarCantidad(it.productoId, 1)} className="w-7 h-7 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center" aria-label={it.unidad === 'kg' ? 'Volver a pesar' : 'Agregar uno'}>
+                    {it.unidad === 'kg' ? <Scale className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                   </button>
                 </div>
                 <span className="text-white text-sm font-bold w-20 text-right shrink-0 tabular-nums">{money(it.cantidad * it.precio)}</span>
@@ -946,6 +1019,15 @@ export default function VenderPage() {
       )}
       {modalEspera}
       {escaner}
+      {pesando && (
+        <ModalPesaje
+          nombre={pesando.nombre}
+          precioPorKg={carrito[pesando.id]?.precio ?? pesando.precio_venta}
+          stockKg={Math.max(0, Number(pesando.stock) - (reemplazarPeso ? 0 : carrito[pesando.id]?.cantidad || 0))}
+          onConfirmar={(kg) => agregarPesado(pesando, kg, reemplazarPeso)}
+          onCerrar={() => setPesando(null)}
+        />
+      )}
     </div>
   );
 }

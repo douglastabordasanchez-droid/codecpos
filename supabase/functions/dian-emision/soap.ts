@@ -110,6 +110,8 @@ export interface RespuestaDian {
   ErrorMessage?: { string: string[] };
   /** Solo SendTestSetAsync: identificador para consultar el resultado del set. */
   ZipKey?: string;
+  /** ApplicationResponse de la DIAN en base64 (SendBillSync y GetStatus). */
+  XmlBase64Bytes?: string;
 }
 
 export function interpretarRespuesta(xml: string): RespuestaDian {
@@ -128,10 +130,13 @@ export function interpretarRespuesta(xml: string): RespuestaDian {
     XmlFileName: desescapar(etiqueta(xml, 'XmlFileName')),
     ErrorMessage: mensajes.length ? { string: mensajes } : undefined,
     ZipKey: desescapar(etiqueta(xml, 'ZipKey')),
+    // ApplicationResponse firmado por la DIAN (base64): va dentro del
+    // AttachedDocument que se le entrega al comprador.
+    XmlBase64Bytes: etiqueta(xml, 'XmlBase64Bytes')?.replace(/\s+/g, '') || undefined,
   };
 }
 
-async function llamar(operacion: string, cuerpo: string, ambiente: Ambiente, credenciales: Credenciales): Promise<RespuestaDian> {
+async function llamarCrudo(operacion: string, cuerpo: string, ambiente: Ambiente, credenciales: Credenciales): Promise<string> {
   const endpoint = ENDPOINTS[ambiente] ?? ENDPOINTS.habilitacion;
   const respuesta = await fetch(endpoint, {
     method: 'POST',
@@ -146,8 +151,11 @@ async function llamar(operacion: string, cuerpo: string, ambiente: Ambiente, cre
   if (!texto.includes('Envelope')) {
     throw new Error(`La DIAN respondió ${respuesta.status} sin un mensaje SOAP (${texto.slice(0, 160) || 'respuesta vacía'}).`);
   }
-  return interpretarRespuesta(texto);
+  return texto;
 }
+
+const llamar = async (operacion: string, cuerpo: string, ambiente: Ambiente, credenciales: Credenciales): Promise<RespuestaDian> =>
+  interpretarRespuesta(await llamarCrudo(operacion, cuerpo, ambiente, credenciales));
 
 export function enviarDocumento(numero: string, xmlFirmado: string, ambiente: Ambiente, credenciales: Credenciales): Promise<RespuestaDian> {
   const { fileName, contentFile } = empaquetarZip(numero, xmlFirmado);
@@ -167,4 +175,53 @@ export function consultarEstadoZip(zipKey: string, ambiente: Ambiente, credencia
 
 export function consultarEstado(trackId: string, ambiente: Ambiente, credenciales: Credenciales): Promise<RespuestaDian> {
   return llamar('GetStatus', `<wcf:trackId>${escapar(trackId)}</wcf:trackId>`, ambiente, credenciales);
+}
+
+/** Forma de NumberingRangeResponse del WSDL, igual a la del cliente de Electron. */
+export interface RangoNumeracion {
+  ResolutionNumber?: string;
+  ResolutionDate?: string;
+  Prefix?: string;
+  FromNumber?: string;
+  ToNumber?: string;
+  ValidDateFrom?: string;
+  ValidDateTo?: string;
+  TechnicalKey?: string;
+}
+
+export interface RespuestaRangos {
+  OperationCode?: string;
+  OperationDescription?: string;
+  ResponseList: { NumberRangeResponse: RangoNumeracion[] };
+}
+
+export function interpretarRangos(xml: string): RespuestaRangos {
+  const falla = etiqueta(xml, 'Fault');
+  if (falla) throw new Error(`La DIAN rechazó la petición: ${desescapar(etiqueta(falla, 'Text')) || 'error SOAP sin detalle'}`);
+  const rangos = [...xml.matchAll(/<(?:\w+:)?NumberRangeResponse(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?NumberRangeResponse>/g)].map(([, r]) => ({
+    ResolutionNumber: desescapar(etiqueta(r, 'ResolutionNumber')),
+    ResolutionDate: desescapar(etiqueta(r, 'ResolutionDate')),
+    Prefix: desescapar(etiqueta(r, 'Prefix')),
+    FromNumber: desescapar(etiqueta(r, 'FromNumber')),
+    ToNumber: desescapar(etiqueta(r, 'ToNumber')),
+    ValidDateFrom: desescapar(etiqueta(r, 'ValidDateFrom')),
+    ValidDateTo: desescapar(etiqueta(r, 'ValidDateTo')),
+    TechnicalKey: desescapar(etiqueta(r, 'TechnicalKey')),
+  }));
+  return {
+    OperationCode: desescapar(etiqueta(xml, 'OperationCode')),
+    OperationDescription: desescapar(etiqueta(xml, 'OperationDescription')),
+    ResponseList: { NumberRangeResponse: rangos },
+  };
+}
+
+/**
+ * Rangos de numeración asociados al software, cada uno con su Clave Técnica.
+ * accountCode es el NIT del facturador; accountCodeT, el de quien opera el
+ * software (en software propio, el mismo NIT).
+ */
+export async function consultarRangosNumeracion(accountCode: string, accountCodeT: string, softwareCode: string, ambiente: Ambiente, credenciales: Credenciales): Promise<RespuestaRangos> {
+  return interpretarRangos(await llamarCrudo('GetNumberingRange',
+    `<wcf:accountCode>${escapar(accountCode)}</wcf:accountCode><wcf:accountCodeT>${escapar(accountCodeT)}</wcf:accountCodeT><wcf:softwareCode>${escapar(softwareCode)}</wcf:softwareCode>`,
+    ambiente, credenciales));
 }

@@ -144,8 +144,29 @@ export function getEtiquetasPrinterNameOrUndefined(): string | undefined {
 // coincidan con el ancho real del rollo térmico del cliente, en vez de
 // asumir 80mm siempre.
 
+// «Papel angosto» de Dispositivos: impresoras de rollo de 57/58 mm. Vive en
+// su propia clave para que guardar Configuración no lo borre.
+const PAPEL_ANGOSTO_KEY = 'codecpos_papel_angosto';
+
+export function isPapelAngosto(): boolean {
+  return getConfiguredTicketWidthMm() === 58;
+}
+
+export function setPapelAngosto(activo: boolean): void {
+  try {
+    localStorage.setItem(PAPEL_ANGOSTO_KEY, activo ? 'true' : 'false');
+  } catch {
+    // noop
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('codecpos:printers-updated', { detail: { scope: 'papel-angosto', activo } }));
+  }
+}
+
 export function getConfiguredTicketWidthMm(): 58 | 80 {
   try {
+    const angosto = localStorage.getItem(PAPEL_ANGOSTO_KEY);
+    if (angosto !== null) return angosto === 'true' ? 58 : 80;
     const raw = localStorage.getItem('codec_pos_config');
     if (!raw) return 80;
     const cfg = JSON.parse(raw);

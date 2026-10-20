@@ -47,6 +47,10 @@ const EXCLUIR_SIEMPRE = new Set<string>([
   // Índice de logins locales — debe verse igual sin importar qué empresa
   // esté activa, para poder reconocer a un usuario que vuelve.
   'codecpos_usuarios', 'codecpos_sesiones', 'codecpos_sesion_activa',
+  // Las mismas listas con el nombre que usa usuariosStorage.ts, que es la que
+  // el login lee PRIMERO: si se archivaban, los cajeros "desaparecían" del
+  // login al cambiar de empresa activa.
+  'codec_pos_usuarios', 'codec_pos_sesiones', 'codec_pos_sesion_activa',
   'codecpos_config_inicial', 'codecpos_config_cliente_completada',
   // Equipo físico, no la empresa.
   'codecpos_machine_id', 'device-type-overrides',

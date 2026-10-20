@@ -17,7 +17,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { abrirP12, firmarXades, metadatosCertificado, yaFirmado, type Credenciales } from './xades.ts';
-import { consultarEstado, consultarEstadoZip, enviarDocumento, enviarSetDePruebas, type Ambiente } from './soap.ts';
+import { consultarEstado, consultarEstadoZip, consultarRangosNumeracion, enviarDocumento, enviarSetDePruebas, type Ambiente } from './soap.ts';
 import { cifrar, descifrar } from './cifrado.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -66,7 +66,7 @@ Deno.serve(async (req: Request) => {
 
     // El perfil fiscal debe ser del negocio de quien llama.
     const { data: perfil } = await admin.from('perfiles_fiscales')
-      .select('id, cliente_id, nit').eq('id', perfilFiscalId).eq('cliente_id', clienteId).maybeSingle();
+      .select('id, cliente_id, nit, identificador_software').eq('id', perfilFiscalId).eq('cliente_id', clienteId).maybeSingle();
     if (!perfil) throw new ErrorHttp('El perfil fiscal no existe o no es de tu negocio', 404);
 
     const exigirAdministrador = async () => {
@@ -101,9 +101,13 @@ Deno.serve(async (req: Request) => {
       return credenciales;
     };
 
-    /** Solo se firma un documento cuyo emisor sea el NIT de este perfil. */
+    /**
+     * Solo se firma un documento cuyo emisor sea el NIT de este perfil: el
+     * proveedor en facturas y notas, el remitente (SenderParty) en el
+     * AttachedDocument que se le entrega al comprador.
+     */
     const exigirEmisorPropio = (xml: string) => {
-      const emisor = xml.match(/<cac:AccountingSupplierParty>[\s\S]*?<cbc:CompanyID[^>]*>([^<]+)<\/cbc:CompanyID>/)?.[1]?.trim();
+      const emisor = xml.match(/<cac:(?:AccountingSupplierParty|SenderParty)>[\s\S]*?<cbc:CompanyID[^>]*>([^<]+)<\/cbc:CompanyID>/)?.[1]?.trim();
       if (!perfil.nit || emisor !== String(perfil.nit).trim()) {
         throw new ErrorHttp('El documento no corresponde al NIT de este perfil fiscal', 400);
       }
@@ -185,6 +189,16 @@ Deno.serve(async (req: Request) => {
         const { trackId, ambiente } = cuerpo as { trackId?: string; ambiente?: Ambiente };
         if (!trackId) throw new ErrorHttp('Falta el identificador a consultar', 400);
         return json({ respuesta: await consultarEstadoZip(trackId, ambiente === 'produccion' ? 'produccion' : 'habilitacion', await cargarCredenciales()) });
+      }
+
+      case 'rangos-numeracion': {
+        // NIT e identificador de software salen del perfil guardado, no del
+        // navegador: solo se consulta la numeración del propio negocio.
+        const { ambiente } = cuerpo as { ambiente?: Ambiente };
+        const nit = String(perfil.nit ?? '').trim();
+        const softwareId = String(perfil.identificador_software ?? '').trim();
+        if (!nit || !softwareId) throw new ErrorHttp('Guarda primero el NIT y el identificador de software del perfil', 400);
+        return json({ respuesta: await consultarRangosNumeracion(nit, nit, softwareId, ambiente === 'habilitacion' ? 'habilitacion' : 'produccion', await cargarCredenciales()) });
       }
 
       default:

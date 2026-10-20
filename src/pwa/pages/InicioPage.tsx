@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock, Calendar, DollarSign, TrendingUp, Receipt, Target } from 'lucide-react';
+import { costoPorUnidadDeVenta } from '../../app/lib/costoGranel';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
@@ -173,8 +174,8 @@ export default function InicioPage() {
         const productoIds = Array.from(new Set(items.map((i) => i.producto_id).filter(Boolean))) as string[];
         const costosPorProducto = new Map<string, number>();
         if (productoIds.length > 0) {
-          const { data: prodsData } = await client.from('productos').select('id, costo').in('id', productoIds);
-          for (const p of (prodsData as { id: string; costo: number }[]) || []) costosPorProducto.set(p.id, Number(p.costo) || 0);
+          const { data: prodsData } = await client.from('productos').select('id, costo, tipo_producto, peso_bulto_kg').in('id', productoIds);
+          for (const p of (prodsData as { id: string; costo: number; tipo_producto: string | null; peso_bulto_kg: number | null }[]) || []) costosPorProducto.set(p.id, costoPorUnidadDeVenta(p));
         }
         const costoTotal = items.reduce((a, i) => a + (costosPorProducto.get(i.producto_id || '') || 0) * Number(i.cantidad), 0);
         const gastosDelPeriodo = ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0);
