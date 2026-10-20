@@ -9,7 +9,11 @@
 import { useNavigate } from 'react-router';
 import { getLinkedClienteId } from '../lib/supabase/tenantLink';
 import { useAuth } from '../contexts/AuthContext';
+import { usePOS } from '../contexts/POSContext';
 import { ModuloFacturacion, type DestinoFacturacion } from '../components/facturacion/ModuloFacturacion';
+// El módulo usa la paleta slate oscura de la web; en modo claro se repinta
+// con las mismas reglas que la PWA, limitadas a este contenedor.
+import '../../pwa/themeClaro.css';
 
 const RUTAS: Record<DestinoFacturacion, string> = {
   vender: '/pos',
@@ -21,6 +25,7 @@ export default function FacturacionElectronicaPage() {
   const clienteId = getLinkedClienteId();
   const { usuarioActual } = useAuth();
   const navigate = useNavigate();
+  const { darkMode } = usePOS();
 
   if (!clienteId) {
     return (
@@ -34,6 +39,9 @@ export default function FacturacionElectronicaPage() {
   }
 
   return (
+    // data-theme va en un contenedor aparte: las reglas de themeClaro.css
+    // pintan a los descendientes, y el fondo degradado es uno de ellos.
+    <div data-theme={darkMode ? 'dark' : 'light'} style={{ colorScheme: darkMode ? 'dark' : 'light' }}>
     <div className="h-screen overflow-y-auto p-6 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
       <ModuloFacturacion
         clienteId={clienteId}
@@ -42,6 +50,7 @@ export default function FacturacionElectronicaPage() {
         operador={{ id: null, nombre: usuarioActual?.nombreCompleto || usuarioActual?.username || 'Administrador' }}
         onIr={(destino) => navigate(RUTAS[destino])}
       />
+    </div>
     </div>
   );
 }

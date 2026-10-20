@@ -9,7 +9,6 @@ import { RingStat } from '../components/RingStat';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import {
   listarClientesAdmin,
-  crearClienteAdmin,
   actualizarClienteAdmin,
   actualizarModulosClienteAdmin,
   activarPruebaGratisAdmin,
@@ -18,45 +17,12 @@ import {
   crearAccesoMovilDueno,
   ClienteAdmin,
   PlanCliente,
-  DuracionCliente,
 } from '../../app/lib/supabase/clientesAdminService';
-import { MODULOS_CATALOGO, MODULOS_VENTA_APARTE, ModuloPOS, modulosDeLicencia } from '../../app/lib/permissions';
-
-// 🛡️ FIX: antes se filtraba contra MODULOS_CLIENTE_OFICIALES, una lista
-// separada que se quedó desactualizada y le faltaban 8 módulos reales que sí
-// se venden (Clientes, Reportes Avanzados, Backup y Restauración, Exportar
-// Datos, Impresora Térmica, Margen Automático, Facturación DIAN, Integración
-// Siigo) — no había forma de activárselos a un cliente que los compró, así
-// que este panel siempre se veía "incompleto" frente al catálogo real. Ahora
-// usa el mismo filtro que ya funciona en Configuración (Electron): todo el
-// catálogo excepto lo exclusivo de desarrollador.
-const MODULOS_DISPONIBLES = MODULOS_CATALOGO.filter((m) => m.categoria !== 'desarrollador');
-const MODULOS_APARTE = MODULOS_DISPONIBLES.filter((m) => MODULOS_VENTA_APARTE.includes(m.id));
-
-const DURACIONES: { id: DuracionCliente; label: string }[] = [
-  { id: '1_MES', label: '1 mes' },
-  { id: '3_MESES', label: '3 meses' },
-  { id: '1_ANO', label: '1 año' },
-  { id: 'VITALICIA', label: 'Vitalicia' },
-];
-
-const FORM_VACIO = {
-  nombreNegocio: '', nit: '', contacto: '', telefono: '', email: '',
-  usuario: '', contraseña: '', plan: 'BASICO' as PlanCliente, duracion: '1_ANO' as DuracionCliente,
-};
-
-function modulosPorPlan(plan: PlanCliente): ModuloPOS[] {
-  return MODULOS_DISPONIBLES
-    .filter((m) => !MODULOS_VENTA_APARTE.includes(m.id))
-    .filter((m) => (plan === 'PREMIUM' ? true : m.planRequerido === 'basico'))
-    .map((m) => m.id);
-}
-
-function calcularExpiracion(duracion: DuracionCliente): string | undefined {
-  if (duracion === 'VITALICIA') return undefined;
-  const dias = duracion === '1_MES' ? 30 : duracion === '3_MESES' ? 90 : 365;
-  return new Date(Date.now() + dias * 86_400_000).toISOString();
-}
+import { MODULOS_VENTA_APARTE, ModuloPOS, modulosDeLicencia } from '../../app/lib/permissions';
+import { resumenVencimiento } from '../../app/lib/bloqueoLicencia';
+import {
+  MODULOS_DISPONIBLES, MODULOS_APARTE, DURACIONES, FORM_VACIO, modulosPorPlan, crearNegocioDesdePanel,
+} from '../../app/lib/altaNegocioAdmin';
 
 function diasRestantes(cliente: ClienteAdmin): number | null {
   if (cliente.duracion === 'VITALICIA' || !cliente.fechaExpiracion) return null;
@@ -131,25 +97,12 @@ export default function PanelDesarrolladorPage() {
   };
 
   const crearCliente = async () => {
-    if (!formNuevo.nombreNegocio.trim()) { setErrorCrear('El nombre del negocio es obligatorio'); return; }
-    if (!formNuevo.usuario.trim() || formNuevo.usuario.length < 4) { setErrorCrear('El usuario debe tener al menos 4 caracteres'); return; }
-    if (!formNuevo.contraseña.trim() || formNuevo.contraseña.length < 6) { setErrorCrear('La contraseña debe tener al menos 6 caracteres'); return; }
-    if (clientes.some((c) => c.usuario === formNuevo.usuario)) { setErrorCrear('Ese usuario ya existe'); return; }
-
     setGuardando(true);
     setErrorCrear(null);
     try {
-      await crearClienteAdmin({
-        ...formNuevo,
-        fechaActivacion: new Date().toISOString(),
-        fechaExpiracion: calcularExpiracion(formNuevo.duracion),
-        estado: 'ACTIVA',
-        enPrueba: false,
-        diasPruebaRestantes: 0,
-        modulosActivos: Array.from(modulosSel),
-      });
+      await crearNegocioDesdePanel(formNuevo, Array.from(modulosSel));
       toast.success(`${formNuevo.nombreNegocio} creado`, {
-        description: `Ya puede entrar a Electron y a la app con el usuario "${formNuevo.usuario}" y la misma contraseña.`,
+        description: `Ya puede entrar a Electron y a la app con el usuario "${formNuevo.usuario.trim()}" y la misma contraseña.`,
       });
       setMostrarCrear(false);
       cargar();
@@ -354,6 +307,16 @@ export default function PanelDesarrolladorPage() {
                 )}
                 <span className="text-slate-500 text-[10px]">{c.usuario}</span>
               </div>
+              {(() => {
+                const v = resumenVencimiento(c.estado, c.duracion, c.fechaExpiracion);
+                return (
+                  <p className={`text-[10px] mt-1 font-semibold ${
+                    v.tono === 'vencida' ? 'text-red-400' : v.tono === 'aviso' ? 'text-amber-400' : v.tono === 'ok' ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
+                    {v.texto}
+                  </p>
+                );
+              })()}
             </button>
           );
         })}
@@ -374,9 +337,7 @@ export default function PanelDesarrolladorPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm font-semibold">Estado: {seleccionado.estado}</p>
                   <p className="text-[11px] text-slate-400">
-                    {seleccionado.duracion === 'VITALICIA' || !seleccionado.fechaExpiracion
-                      ? 'No vence'
-                      : `Vence el ${new Date(seleccionado.fechaExpiracion).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                    {resumenVencimiento(seleccionado.estado, seleccionado.duracion, seleccionado.fechaExpiracion).texto}
                   </p>
                 </div>
                 <Button

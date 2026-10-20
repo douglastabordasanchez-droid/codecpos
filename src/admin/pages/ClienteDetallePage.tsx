@@ -10,6 +10,7 @@ import {
 import { GestionEmpleadosCliente } from '../components/GestionEmpleadosCliente';
 import { CredencialesLicenciaModal } from '../components/CredencialesLicenciaModal';
 import { MODULOS_CATALOGO, MODULOS_VENTA_APARTE, modulosDeLicencia } from '../../app/lib/permissions';
+import { resumenVencimiento } from '../../app/lib/bloqueoLicencia';
 
 const CATEGORIAS: Record<string, string> = {
   ventas: 'Ventas',
@@ -41,6 +42,7 @@ const EVENTO_LABEL: Record<string, string> = {
   ADDON_CANCELADO: 'Add-on cancelado',
   PRUEBA_VENCIDA: 'Prueba vencida',
   DIAS_CORTESIA: 'Días de cortesía',
+  LICENCIA_VENCIDA: 'Pausada por falta de pago',
   MIGRACION_LEGACY: 'Migración inicial',
 };
 
@@ -426,6 +428,15 @@ export function ClienteDetallePage() {
               <div><p className="text-slate-300 text-xs mb-1">Precio efectivo</p><span className="font-semibold">{lic.precio_efectivo != null ? formatoMoneda(lic.precio_efectivo) + '/mes' : 'No configurado'}</span></div>
               <div><p className="text-slate-300 text-xs mb-1">Inicio</p>{formatoFecha(lic.fecha_inicio)}</div>
               <div><p className="text-slate-300 text-xs mb-1">Próxima renovación</p>{lic.fecha_fin_periodo_actual ? formatoFecha(lic.fecha_fin_periodo_actual) : '—'}</div>
+              {(() => {
+                const v = resumenVencimiento(esVitalicio ? 'VITALICIA' : detalle.cliente.estado, lic.modalidad === 'VITALICIA' ? 'VITALICIA' : detalle.cliente.duracion, lic.fecha_fin_periodo_actual);
+                return (
+                  <div className="col-span-2 sm:col-span-3">
+                    <p className={`text-sm font-medium ${v.tono === 'vencida' ? 'text-red-400' : v.tono === 'aviso' ? 'text-amber-400' : 'text-slate-300'}`}>{v.texto}</p>
+                    {!esVitalicio && <p className="text-xs text-slate-500 mt-0.5">Se avisa al negocio 2 días y 1 día antes. Si no se recibe el pago, se pausa solo al vencer y vuelve al pagar o al darle días.</p>}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </SectionCard>

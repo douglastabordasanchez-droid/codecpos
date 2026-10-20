@@ -39,10 +39,15 @@ export async function listarClientes() {
     )
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
+  // Usuario de la credencial de licencia (el que se pone al crear el negocio),
+  // como lo muestra el Panel Desarrollador del celular.
+  const { data: credenciales } = await cliente().from('usuarios_clientes').select('cliente_id, username');
+  const usuarioPorCliente = new Map((credenciales ?? []).map((u: any) => [u.cliente_id, u.username as string]));
   // Solo interesa la licencia vigente de cada cliente -- `licencias` es 1:N
   // (historial completo), no 1:1, así que Supabase la devuelve como array.
   return (data ?? []).map((c: any) => ({
     ...c,
+    usuario: usuarioPorCliente.get(c.id) ?? null,
     licencia_vigente: (c.licencias ?? []).find((l: any) => l.vigente) ?? null,
   }));
 }

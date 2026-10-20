@@ -12,6 +12,7 @@ import { SucursalFlotante } from './SucursalFlotante';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { PantallaBloqueoLicencia } from '../../app/components/licencia/PantallaBloqueoLicencia';
+import { tituloAvisoLicencia } from '../../app/lib/bloqueoLicencia';
 
 /**
  * Mismo enlace, misma app, mismo login — en pantallas ≥1024px (12" en
@@ -32,20 +33,20 @@ export function PwaLayout() {
     if (!client) return;
     const avisar = async () => {
       const { data } = await client.from('avisos_licencia')
-        .select('id, programado_para')
+        .select('id, tipo, programado_para')
         .eq('cliente_id', empleado.cliente_id)
         .is('enviado_en', null)
         .lte('programado_para', new Date().toISOString())
-        .order('programado_para', { ascending: true })
-        .limit(1);
+        .order('programado_para', { ascending: false });
       const aviso = data?.[0];
       if (!aviso) return;
-      toast.warning('Tu licencia está por vencer', {
-        description: 'Renueva tu plan de Codec POS pronto para no perder el acceso.',
+      toast.warning(tituloAvisoLicencia(aviso.tipo), {
+        description: 'Renueva tu plan de Codec POS. Si no se recibe el pago, el sistema se pausa el día que vence.',
         duration: 20000,
         action: { label: 'Pagar ahora', onClick: () => navigate('/planes') },
       });
-      await client.from('avisos_licencia').update({ enviado_en: new Date().toISOString() }).eq('id', aviso.id);
+      // Si se acumularon (equipo apagado), se muestra el más reciente y se dan todos por entregados.
+      await client.from('avisos_licencia').update({ enviado_en: new Date().toISOString() }).in('id', (data ?? []).map((a) => a.id));
     };
     avisar();
     const canal = client.channel(`avisos-licencia-${empleado.cliente_id}`)
