@@ -13,6 +13,7 @@ import { useIsDesktop } from '../hooks/useIsDesktop';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { PantallaBloqueoLicencia } from '../../app/components/licencia/PantallaBloqueoLicencia';
 import { tituloAvisoLicencia } from '../../app/lib/bloqueoLicencia';
+import { useAvisoNumeracionDian } from '../../app/hooks/useAvisoNumeracionDian';
 
 /**
  * Mismo enlace, misma app, mismo login — en pantallas ≥1024px (12" en
@@ -26,6 +27,9 @@ export function PwaLayout() {
   const esEscritorio = useIsDesktop();
   const [navInferiorVisible, setNavInferiorVisible] = useState(true);
   const navigate = useNavigate();
+
+  // 🧾 Numeración DIAN que vence en 15 días o menos: aviso diario al administrador.
+  useAvisoNumeracionDian(empleado?.es_staff_codec ? null : empleado?.cliente_id, empleado?.rol === 'super_usuario' || empleado?.rol === 'admin');
 
   useEffect(() => {
     if (!empleado) return;

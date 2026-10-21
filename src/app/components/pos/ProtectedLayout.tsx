@@ -8,6 +8,8 @@ import { useRegistrarInstalacion } from '../../hooks/useRegistrarInstalacion';
 import { useDeveloperShortcut } from '../../hooks/useDeveloperShortcut';
 import { useSyncModulosNube } from '../../hooks/useSyncModulosNube';
 import { useAvisoLicencia } from '../../hooks/useAvisoLicencia';
+import { useAvisoNumeracionDian } from '../../hooks/useAvisoNumeracionDian';
+import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { LanProvider } from '../../contexts/LanContext';
 import { precargarModulosEnSegundoPlano } from '../../lib/prefetchModulos';
 import { AvisoRetencionDatos } from '../retencion/AvisoRetencionDatos';
@@ -21,7 +23,7 @@ const PlanVencidoPage = lazy(() => import('./PlanVencidoPage'));
  */
 export default function ProtectedLayout() {
   const navigate = useNavigate();
-  const { estaAutenticado, esDesarrollador, cerrarSesion } = useAuth();
+  const { estaAutenticado, esDesarrollador, cerrarSesion, usuarioActual } = useAuth();
   // 🔒 Suspendido o vencido desde el panel de Codec Studio: el sistema no se
   // puede usar (ver useBloqueoLicencia). El staff de Codec Studio no se bloquea.
   const { motivo: motivoBloqueo, nombreNegocio, revisar: revisarLicencia } = useBloqueoLicencia(estaAutenticado);
@@ -56,6 +58,9 @@ export default function ProtectedLayout() {
   // que el dueño renueve antes de quedar bloqueado -- mismo aviso que ya
   // recibe la PWA.
   useAvisoLicencia();
+
+  // 🧾 Numeración DIAN que vence en 15 días o menos: aviso diario al administrador.
+  useAvisoNumeracionDian(estaAutenticado ? getLinkedClienteId() : null, usuarioActual?.rol === 'super_usuario');
 
   // Redirigir si no está autenticado
   useEffect(() => {

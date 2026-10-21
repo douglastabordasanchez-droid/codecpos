@@ -16,6 +16,16 @@ function cliente() {
 }
 
 // ---- Dashboard --------------------------------------------------------
+/** Numeraciones DIAN en producción que vencen en los próximos `dias` (o ya vencieron), migración 0121. */
+export async function listarNumeracionesPorVencer(dias = 30) {
+  const { data, error } = await cliente().rpc('numeraciones_dian_por_vencer', { p_dias: dias });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Array<{
+    cliente_id: string; nombre_negocio: string; prefijo: string; resolucion_numero: string;
+    vigencia_hasta: string; dias_restantes: number; numeros_restantes: number;
+  }>;
+}
+
 export async function obtenerDashboardResumen() {
   const { data, error } = await cliente().rpc('admin_dashboard_resumen');
   if (error) throw new Error(error.message);
