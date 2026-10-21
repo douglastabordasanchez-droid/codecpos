@@ -538,6 +538,21 @@ export const EVENTO_MODULOS_GLOBALES_ACTUALIZADOS = 'codecpos:modulos-globales-a
 export const EVENTO_LICENCIA_DESARROLLADOR_ACTUALIZADA = 'codecpos:licencia-desarrollador-actualizada';
 const INDEXEDDB_PERMISOS_KEY = 'codec_pos_permisos_usuarios';
 
+/**
+ * Lista guardada de permisos por usuario. Si la clave quedó dañada (una
+ * restauración la dejó en `{}`, Boniexpress 21 oct 2026), se toma como vacía:
+ * antes `.find` sobre ese objeto rompía TODOS los logins con "Error del sistema".
+ */
+function leerTodosPermisos(): PermisosUsuario[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.PERMISOS_USUARIOS);
+    const todos = saved ? JSON.parse(saved) : [];
+    return Array.isArray(todos) ? todos.filter((p) => p && typeof p.userId === 'string' && Array.isArray(p.modulosHabilitados)) : [];
+  } catch {
+    return [];
+  }
+}
+
 function obtenerClienteDesarrolladorPorId(clienteId: string): ClienteDesarrollador | null {
   try {
     const raw = localStorage.getItem('codecpos_dev_clientes');
@@ -866,12 +881,8 @@ export function resetearModulosCliente(clienteId: string, plan: 'BASICO' | 'PREM
 // ============================================================
 
 export function obtenerPermisosUsuario(userId: string): PermisosUsuario {
-  const saved = localStorage.getItem(STORAGE_KEYS.PERMISOS_USUARIOS);
-  if (saved) {
-    const todos: PermisosUsuario[] = JSON.parse(saved);
-    const permisos = todos.find(p => p.userId === userId);
-    if (permisos) return permisos;
-  }
+  const permisos = leerTodosPermisos().find(p => p.userId === userId);
+  if (permisos) return permisos;
 
   // Fallback inteligente:
   // - Si el userId corresponde a un cliente de developer panel, usar módulos del cliente.
@@ -890,8 +901,7 @@ export function guardarPermisosUsuario(permisos: PermisosUsuario): void {
     modulosHabilitados: normalizados,
   };
 
-  const saved = localStorage.getItem(STORAGE_KEYS.PERMISOS_USUARIOS);
-  let todos: PermisosUsuario[] = saved ? JSON.parse(saved) : [];
+  const todos = leerTodosPermisos();
   const index = todos.findIndex(p => p.userId === permisos.userId);
   const antes = index >= 0 ? [...todos[index].modulosHabilitados] : [];
   if (index >= 0) {
@@ -975,9 +985,7 @@ export function guardarPermisosUsuario(permisos: PermisosUsuario): void {
 export async function guardarPermisosUsuarioPersistente(permisos: PermisosUsuario): Promise<void> {
   guardarPermisosUsuario(permisos);
 
-  const saved = localStorage.getItem(STORAGE_KEYS.PERMISOS_USUARIOS);
-  const todos: PermisosUsuario[] = saved ? JSON.parse(saved) : [];
-  await dbManager.setConfig(INDEXEDDB_PERMISOS_KEY, todos);
+  await dbManager.setConfig(INDEXEDDB_PERMISOS_KEY, leerTodosPermisos());
 }
 
 export function togglePermisoUsuario(userId: string, modulo: ModuloPOS): void {

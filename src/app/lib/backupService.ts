@@ -384,7 +384,8 @@ class BackupService {
           }
         }
       }
-      if (datos.permisosUsuariosAdmin != null && localStorage.getItem('codec_pos_permisos_usuarios') == null) {
+      // Solo una lista: un `{}` aquí rompía todos los logins (permissions.ts, leerTodosPermisos).
+      if (Array.isArray(datos.permisosUsuariosAdmin) && localStorage.getItem('codec_pos_permisos_usuarios') == null) {
         this.saveToLocalStorage('codec_pos_permisos_usuarios', datos.permisosUsuariosAdmin);
       }
     } catch (error) {
