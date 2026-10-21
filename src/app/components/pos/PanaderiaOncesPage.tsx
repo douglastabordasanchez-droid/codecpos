@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useMultitienda } from '../../contexts/MultitiendaContext';
 import { electronStore, IngredienteInventarioItem, RecetaItem, RecetaIngredienteItem, ComboOncesItem, InventarioProductoItem } from '../../lib/electronStore';
 import type { Comanda, EstadoComanda } from '../../lib/supabase/panaderiaSyncService';
+import { rearmarMenuAlimentos } from '../../lib/menuAlimentosDesdeInventario';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from 'sonner';
@@ -539,6 +540,19 @@ export default function PanaderiaOncesPage() {
     let activo = true;
     const sincronizarConInventario = async () => {
       const inventario = await electronStore.obtenerProductos();
+      // Menú vacío pero inventario con productos de este módulo (equipo
+      // restaurado desde un respaldo que no traía el menú): se rearma.
+      if (productosPos.length === 0) {
+        const rearmado = rearmarMenuAlimentos(inventario);
+        if (rearmado.productos.length > 0 && activo) {
+          setCategoriasPos(rearmado.categorias as CategoriaPos[]);
+          setCatSeleccionada(rearmado.categorias[0]?.id || '');
+          setProductosPos(rearmado.productos as ProductoPos[]);
+          localStorage.setItem('codecpos_panaderia_cats', JSON.stringify(rearmado.categorias));
+          localStorage.setItem('codecpos_panaderia_prods', JSON.stringify(rearmado.productos));
+        }
+        return;
+      }
       const porId = new Map(inventario.map((producto: any) => [String(producto.id), producto]));
       const sincronizados: ProductoPos[] = [];
       for (const producto of productosPos) {

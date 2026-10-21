@@ -57,6 +57,10 @@ interface BackupData {
     clientesAdmin?: any[];
     modulosClientesAdmin?: Record<string, any>;
     permisosUsuariosAdmin?: any;
+    // Menú de Alimentos y Bebidas (categorías con ícono y color, productos
+    // del POS táctil): vive en su propio localStorage y ningún respaldo lo
+    // guardaba (Boniexpress, 21 oct 2026).
+    alimentosBebidas?: { categorias: any[]; productos: any[] };
   };
   stats: {
     totalProductos: number;
@@ -170,6 +174,11 @@ class BackupService {
         }
       } catch { /* no crítico */ }
       const permisosUsuariosAdmin = this.getFromLocalStorage('codec_pos_permisos_usuarios', null);
+      const categoriasAlimentos = this.getFromLocalStorage('codecpos_panaderia_cats', null);
+      const productosAlimentos = this.getFromLocalStorage('codecpos_panaderia_prods', null);
+      const alimentosBebidas = Array.isArray(categoriasAlimentos) && Array.isArray(productosAlimentos)
+        ? { categorias: categoriasAlimentos, productos: productosAlimentos }
+        : undefined;
 
       const backupData: BackupData = {
         version: this.APP_VERSION,
@@ -199,6 +208,7 @@ class BackupService {
           clientesAdmin,
           modulosClientesAdmin,
           permisosUsuariosAdmin,
+          alimentosBebidas,
         },
         stats: {
           totalProductos: productos.length,
@@ -393,6 +403,14 @@ class BackupService {
     }
   }
 
+  /** Menú de Alimentos y Bebidas. Un respaldo sin él deja el menú como esté: la página lo rearma desde el inventario si quedó vacío. */
+  private restaurarMenuAlimentos(datos: BackupData['datos']): void {
+    const menu = datos.alimentosBebidas;
+    if (!menu || !Array.isArray(menu.categorias) || !Array.isArray(menu.productos) || menu.productos.length === 0) return;
+    this.saveToLocalStorage('codecpos_panaderia_cats', menu.categorias);
+    this.saveToLocalStorage('codecpos_panaderia_prods', menu.productos);
+  }
+
   async restoreFromSafeBackup(fileName: string): Promise<boolean> {
     try {
       if (!window.electron?.backup?.read) {
@@ -471,6 +489,7 @@ class BackupService {
 
       // 🛡️ Clientes del Panel de Administración + sus módulos/permisos.
       this.restaurarClientesAdminYModulos(datos);
+      this.restaurarMenuAlimentos(datos);
 
       logger.critical('Restauración de backup blindado completada — relanzando aplicación', undefined, {
         fileName,
@@ -1034,6 +1053,7 @@ class BackupService {
 
       // 🛡️ Clientes del Panel de Administración + sus módulos/permisos.
       this.restaurarClientesAdminYModulos(datos);
+      this.restaurarMenuAlimentos(datos);
 
       logger.critical('Restauración desde archivo completada — reiniciando aplicación', undefined, {
         ventasRestauradas: (datos.ventas || []).length,
