@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  construirEventoFactura, construirEventoVenta, diaColombia, esReintentable, fechaHoraColombia, minutosHastaReintento, nitSoloDigitos,
+  construirEventoFactura, construirEventoVenta, diaColombia, esRechazoPorCupo, esReintentable, fechaHoraColombia, minutosHastaReintento, nitSoloDigitos,
 } from './eventos';
 
 describe('nitSoloDigitos', () => {
@@ -52,6 +52,13 @@ describe('construirEventoFactura', () => {
       { id: 'f-1', cufe: 'c', xml: '<Invoice/>', fecha_emision: '2026-10-21T16:29:40Z', created_at: '2026-10-21T16:29:40Z', venta_referencia: 'FE1' },
       'v-1',
     )).toEqual({ tipo: 'factura_electronica', id_origen: 'f-1', venta_id: 'v-1', cufe: 'c', fecha: '2026-10-21', xml: '<Invoice/>' });
+  });
+});
+
+describe('esRechazoPorCupo', () => {
+  it('reconoce el cupo agotado del plan del contador y no otros rechazos', () => {
+    expect(['cupo_agotado', 'Límite de XML del plan alcanzado', 'quota_exceeded'].map(esRechazoPorCupo)).toEqual([true, true, true]);
+    expect(['xml_invalido', 'venta_no_encontrada', 'aun_no_soportado', null].map(esRechazoPorCupo)).toEqual([false, false, false, false]);
   });
 });
 

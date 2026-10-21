@@ -97,6 +97,15 @@ export function minutosHastaReintento(intentos: number): number {
   return Math.min(2 ** Math.max(0, intentos - 1), 360);
 }
 
+/**
+ * Las facturas del POS cuentan en el cupo mensual de XML del plan del
+ * contador. Un rechazo por cupo no es definitivo: la factura se guarda en
+ * espera hasta que el contador tenga cupo (mes nuevo o plan mayor).
+ */
+export function esRechazoPorCupo(motivo: string | null | undefined): boolean {
+  return /cupo|l[ií]mite|limite_|quota|plan_/i.test(String(motivo ?? ''));
+}
+
 /** 429 y 5xx (o sin respuesta) se reintentan; el resto de 4xx no. */
 export function esReintentable(status: number | null): boolean {
   return status === null || status === 429 || status >= 500;

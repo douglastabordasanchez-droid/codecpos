@@ -19,7 +19,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { cifrar, descifrar } from '../dian-emision/cifrado.ts';
 import {
-  construirEventoFactura, construirEventoVenta, esReintentable, minutosHastaReintento, nitSoloDigitos,
+  construirEventoFactura, construirEventoVenta, esRechazoPorCupo, esReintentable, minutosHastaReintento, nitSoloDigitos,
   type FacturaFila, type ItemFila, type VentaFila,
 } from './eventos.ts';
 
@@ -267,16 +267,30 @@ async function enviarLote(admin: SupabaseClient, clienteId: string, token: strin
   const rechazados: { id_origen: string; motivo?: string }[] = datos?.rechazados ?? [];
   await marcar(admin, aceptados.map((o: string) => porOrigen.get(o)?.id).filter(Boolean) as number[], { estado: 'enviado', enviado_en: ahora, motivo: null });
   await marcar(admin, duplicados.map((o: string) => porOrigen.get(o)?.id).filter(Boolean) as number[], { estado: 'duplicado', enviado_en: ahora, motivo: null });
+  let sinCupo = false;
   for (const r of rechazados) {
     const e = porOrigen.get(String(r.id_origen));
-    if (e) await marcar(admin, [e.id], { estado: 'rechazado', motivo: r.motivo ?? 'Rechazado por Codec Document' });
+    if (!e) continue;
+    if (esRechazoPorCupo(r.motivo)) {
+      // Queda en espera: se reintenta cada 6 horas hasta que el contador tenga cupo.
+      sinCupo = true;
+      await admin.from('contador_eventos').update({
+        intentos: e.intentos + 1, motivo: r.motivo ?? 'cupo', proximo_intento_en: new Date(Date.now() + 360 * 60_000).toISOString(),
+      }).eq('id', e.id);
+    } else {
+      await marcar(admin, [e.id], { estado: 'rechazado', motivo: r.motivo ?? 'Rechazado por Codec Document' });
+    }
   }
   // Lo que Codec Document no mencionó se vuelve a intentar más tarde.
   const mencionados = new Set([...aceptados, ...duplicados, ...rechazados.map((r) => String(r.id_origen))]);
   const sinRespuesta = enviables.filter((e) => !mencionados.has(e.id_origen));
   if (sinRespuesta.length) await reprogramar(admin, sinRespuesta, 'Codec Document no confirmó este evento');
 
-  await admin.from('contador_vinculos').update({ ultimo_envio_en: ahora, ultimo_error: null, updated_at: ahora }).eq('cliente_id', clienteId);
+  await admin.from('contador_vinculos').update({
+    ultimo_envio_en: ahora,
+    ultimo_error: sinCupo ? 'Tu contador llegó al límite de facturas de su plan este mes. Las facturas quedan en espera y le llegan cuando tenga cupo.' : null,
+    updated_at: ahora,
+  }).eq('cliente_id', clienteId);
   return true;
 }
 
