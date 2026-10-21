@@ -13,6 +13,7 @@ import {
   actualizarModulosClienteAdmin,
   activarPruebaGratisAdmin,
   suspenderClienteAdmin,
+  registrarPagoLicenciaAdmin,
   darDiasCortesiaAdmin,
   crearAccesoMovilDueno,
   ClienteAdmin,
@@ -186,6 +187,24 @@ export default function PanelDesarrolladorPage() {
     }
   };
 
+  const registrarPago = async (c: ClienteAdmin) => {
+    setGuardando(true);
+    try {
+      const hasta = await registrarPagoLicenciaAdmin(c.id);
+      toast.success(`Pago registrado para ${c.nombreNegocio}`, {
+        description: hasta
+          ? `Activo hasta el ${new Date(hasta).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })} en Electron, la web y la app.`
+          : 'Licencia vitalicia activa.',
+      });
+      setSeleccionado(null);
+      cargar();
+    } catch (e) {
+      toast.error('No se pudo registrar el pago', { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   const generarAccesoMovil = async (c: ClienteAdmin) => {
     setGuardando(true);
     try {
@@ -350,6 +369,18 @@ export default function PanelDesarrolladorPage() {
                   {seleccionado.estado !== 'SUSPENDIDA' ? 'Suspender' : 'Reactivar'}
                 </Button>
               </div>
+
+              <Button
+                onClick={() => registrarPago(seleccionado)}
+                disabled={guardando}
+                className="w-full h-12 bg-gradient-to-r from-emerald-500 to-green-600"
+              >
+                {guardando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ReceiptText className="w-4 h-4 mr-2" />}
+                Registrar pago
+              </Button>
+              <p className="text-[11px] text-slate-400 -mt-2">
+                Suma un periodo de su plan a su fecha de vencimiento y lo deja activo aunque esté suspendido o vencido.
+              </p>
 
               <div>
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-2">Dar días</p>

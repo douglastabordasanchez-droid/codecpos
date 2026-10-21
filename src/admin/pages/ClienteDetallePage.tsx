@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X, KeyRound, ReceiptText, Power } from 'lucide-react';
-import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, actualizarModulosCliente, suspenderCliente, darDiasCortesia } from '../lib/adminApi';
+import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, actualizarModulosCliente, suspenderCliente, darDiasCortesia, registrarPagoLicencia } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import {
   PageHeader, SectionCard, LoadingState, ErrorState, EstadoBadge, PlanBadge,
@@ -150,6 +150,21 @@ export function ClienteDetallePage() {
     } finally { setProcesando(false); }
   };
 
+  const handleRegistrarPago = async () => {
+    if (!id || !detalle) return;
+    if (!window.confirm(`¿Registrar el pago de ${detalle.cliente.nombre_negocio}? Se suma un periodo a su fecha de vencimiento y queda activo en Electron, la web y la app.`)) return;
+    setProcesando(true);
+    try {
+      const hasta = await registrarPagoLicencia(id);
+      await registrarAuditoria('REGISTRAR_PAGO', id, 'EXITO', { hasta });
+      alert(hasta ? `Pago registrado. Activo hasta el ${new Date(hasta).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}.` : 'Pago registrado. Licencia vitalicia activa.');
+      cargar();
+    } catch (e: any) {
+      await registrarAuditoria('REGISTRAR_PAGO', id, 'ERROR', { error: e.message });
+      alert('No se pudo registrar el pago: ' + e.message);
+    } finally { setProcesando(false); }
+  };
+
   const handleCortesia = async () => {
     if (!id) return;
     const dias = Number(diasPrueba);
@@ -240,6 +255,11 @@ export function ClienteDetallePage() {
         actions={
           !soloLectura ? (
             <div className="flex flex-wrap gap-2">
+              {lic && (
+                <button onClick={handleRegistrarPago} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white hover:bg-emerald-500 rounded-lg px-3 py-2 disabled:opacity-50">
+                  <Check className="w-4 h-4" /> Registrar pago
+                </button>
+              )}
               <button
                 onClick={() => setMostrarCambioPlan((v) => !v)}
                 disabled={procesando}

@@ -372,6 +372,20 @@ export async function suspenderClienteAdmin(clienteId: string, suspender: boolea
   return data as string;
 }
 
+/**
+ * El negocio pagó por fuera: suma un periodo de su modalidad a su fecha de
+ * vencimiento (o desde hoy si ni así alcanza) y lo deja ACTIVO aunque
+ * estuviera suspendido o vencido (migración 0120). Devuelve la nueva fecha,
+ * o null si es vitalicia.
+ */
+export async function registrarPagoLicenciaAdmin(clienteId: string): Promise<string | null> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { data, error } = await client.rpc('registrar_pago_licencia_admin', { p_cliente_id: clienteId });
+  if (error) throw new Error(error.message);
+  return (data as string | null) ?? null;
+}
+
 /** Suma días a la licencia actual sin cambiar el plan (migración 0115). Devuelve la nueva fecha de vencimiento. */
 export async function darDiasCortesiaAdmin(clienteId: string, dias: number): Promise<string> {
   const client = getSupabaseClient();

@@ -252,6 +252,13 @@ export async function suspenderCliente(clienteId: string, suspender: boolean) {
   return data as string;
 }
 
+/** Pago recibido por fuera: suma un periodo desde su vencimiento y deja la licencia ACTIVA (migración 0120). */
+export async function registrarPagoLicencia(clienteId: string) {
+  const { data, error } = await cliente().rpc('registrar_pago_licencia_admin', { p_cliente_id: clienteId });
+  if (error) throw new Error(error.message);
+  return (data as string | null) ?? null;
+}
+
 /** Suma días de cortesía a la licencia actual sin cambiar el plan (migración 0115). */
 export async function darDiasCortesia(clienteId: string, dias: number) {
   const { data, error } = await cliente().rpc('dar_dias_cortesia_admin', { p_cliente_id: clienteId, p_dias: dias });

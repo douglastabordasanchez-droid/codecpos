@@ -62,6 +62,7 @@ import {
   actualizarClienteAdmin,
   eliminarClienteAdmin,
   suspenderClienteAdmin,
+  registrarPagoLicenciaAdmin,
   darDiasCortesiaAdmin,
   actualizarModulosClienteAdmin,
   actualizarAppMovilClienteAdmin,
@@ -197,23 +198,20 @@ export function DeveloperPanel() {
     return new Date(desde + 365 * 86_400_000).toISOString();
   };
 
-  // ── Renovar licencia (extiende desde la fecha de expiración actual o desde hoy si ya venció) ──
+  // ── Registrar pago: suma un periodo a su fecha de vencimiento y lo deja activo ──
   const handleRenovar = async (id: string) => {
-    const c = clientes.find(x => x.id === id);
-    if (!c) return;
-    // Suma un periodo más a la licencia (migración 0115). Antes escribía solo
-    // clientes_pos y el siguiente cambio de la licencia lo deshacía.
-    const dias = c.duracion === '1_MES' ? 30 : c.duracion === '3_MESES' ? 90 : 365;
+    // Antes sumaba días de cortesía, que no quitaban la suspensión y contaban
+    // desde hoy si ya había vencido (migración 0120).
     try {
-      const nuevaFecha = await darDiasCortesiaAdmin(id, dias);
+      const nuevaFecha = await registrarPagoLicenciaAdmin(id);
       await cargarClientes();
-      toast.success('Licencia renovada', {
+      toast.success('Pago registrado', {
         description: nuevaFecha
-          ? `Nueva expiración: ${new Date(nuevaFecha).toLocaleDateString('es-CO')}`
-          : 'Licencia vitalicia',
+          ? `Activo hasta el ${new Date(nuevaFecha).toLocaleDateString('es-CO')} en Electron, la web y la app`
+          : 'Licencia vitalicia activa',
       });
     } catch (error) {
-      toast.error('No se pudo renovar la licencia', { description: error instanceof Error ? error.message : undefined });
+      toast.error('No se pudo registrar el pago', { description: error instanceof Error ? error.message : undefined });
     }
   };
 
@@ -816,16 +814,16 @@ export function DeveloperPanel() {
 
                           {/* Acciones */}
                           <div className="flex flex-col gap-1.5 flex-shrink-0">
-                            {/* Renovar — solo si vencida o por vencer urgente */}
-                            {(cliente.estado === 'VENCIDA' || (diasInfo?.urgente && cliente.estado === 'ACTIVA')) && cliente.duracion !== 'VITALICIA' && (
+                            {/* Registrar pago: vencida, suspendida o por vencer */}
+                            {(cliente.estado === 'VENCIDA' || cliente.estado === 'SUSPENDIDA' || (diasInfo?.urgente && cliente.estado === 'ACTIVA')) && (
                               <Button
                                 onClick={() => handleRenovar(cliente.id)}
                                 size="sm"
                                 className="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-semibold text-xs h-8"
-                                title="Renovar licencia"
+                                title="Suma un periodo a su fecha de vencimiento y lo deja activo"
                               >
                                 <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                                Renovar
+                                Registrar pago
                               </Button>
                             )}
 
