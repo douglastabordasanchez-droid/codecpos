@@ -18,7 +18,8 @@ import { ConectarIphone } from '../components/ConectarIphone';
 import { ConfigurarMiNegocio } from '../components/ConfigurarMiNegocio';
 import { SeccionPlegable } from '../components/SeccionPlegable';
 import { UltimosAvisosCodecVerify } from '../components/UltimosAvisosCodecVerify';
-import { UserCircle, Briefcase, BellRing, ShieldCheck as EscudoPagos } from 'lucide-react';
+import { UserCircle, Briefcase, BellRing, ShieldCheck as EscudoPagos, Calculator } from 'lucide-react';
+import { MiContador } from '../../app/components/contador/MiContador';
 
 interface NegocioForm {
   nombre_negocio: string;
@@ -194,6 +195,12 @@ export default function ConfiguracionPage() {
             {esAdmin && (
               <SeccionPlegable titulo="Configurar mi negocio" subtitulo="Tipo de negocio, propina y precios" icono={Briefcase}>
                 <ConfigurarMiNegocio embebido />
+              </SeccionPlegable>
+            )}
+
+            {esAdmin && (
+              <SeccionPlegable titulo="Mi contador" subtitulo="Tus ventas y facturas le llegan a tu contador en Codec Document" icono={Calculator} colorIcono="text-emerald-400">
+                <MiContador />
               </SeccionPlegable>
             )}
 

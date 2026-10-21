@@ -20,6 +20,7 @@ import { getRealMachineUUID } from '../../utils/machineId';
 import { SyncStatusCard } from '../electron/SyncStatusCard';
 import { ArchivoHistorialCard } from '../retencion/ArchivoHistorialCard';
 import { VinculacionNubeCard } from '../electron/VinculacionNubeCard';
+import { MiContador } from '../contador/MiContador';
 import { ModulosAppWebCard } from '../electron/ModulosAppWebCard';
 import { CodecLogoHorizontal, CodecFavicon } from '../shared/CodecLogos';
 import { PlanSummaryCard } from './PlanSummaryCard';
@@ -268,6 +269,7 @@ export default function ConfiguracionPage() {
     respaldoDatos: false,
     reseteoSistema: false,
     sincronizacionNube: false,
+    miContador: false,
   });
 
   const [config, setConfig] = useState<ConfiguracionEmpresa>(() => {
@@ -2245,6 +2247,25 @@ export default function ConfiguracionPage() {
             <SyncStatusCard />
           </div>
         </AccordionSection>
+
+        {/* 8️⃣.4b MI CONTADOR (Codec Document) */}
+        {esSuperUsuario && (
+          <AccordionSection
+            id="miContador"
+            title="Mi contador"
+            description="Conecta tu negocio con tu contador en Codec Document: tus ventas y facturas electrónicas le llegan solas"
+            icon={<Users className="w-6 h-6 text-emerald-500" />}
+            isOpen={sectionsOpen.miContador}
+            onToggle={() => toggleSection('miContador')}
+            darkMode={darkMode}
+            gradient="from-emerald-900/20 to-teal-900/20"
+            borderColor="border-emerald-700/40"
+          >
+            <div className="max-w-xl">
+              <MiContador oscuro={darkMode} />
+            </div>
+          </AccordionSection>
+        )}
 
         {/* 8️⃣.5 RESPALDO Y RESTAURACIÓN DE DATOS */}
         <AccordionSection
