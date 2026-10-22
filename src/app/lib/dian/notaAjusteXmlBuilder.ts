@@ -7,6 +7,8 @@
  *     cac:BillingReference con el CUFE de la factura que ajusta — sin eso la
  *     DIAN no puede asociar la nota a su factura.
  *   · Sin sts:InvoiceControl: las notas no tienen resolución de numeración.
+ *   · CorporateRegistrationScheme lleva el prefijo de la nota (NCCP), no el
+ *     de la factura: con DBM la DIAN rechaza con la regla CAJ50.
  *   · La nota débito totaliza en cac:RequestedMonetaryTotal.
  *
  * Recibe la nota Y la factura original — nunca relee el perfil fiscal en
@@ -71,7 +73,7 @@ ${construirBloqueDianExtensions(emisor, extension, '', false)}
       <cbc:IssueDate>${fechaColombia(facturaOriginal.fechaEmision)}</cbc:IssueDate>
     </cac:InvoiceDocumentReference>
   </cac:BillingReference>
-${bloqueEmisor(emisor, facturaOriginal.prefijo || extension.prefix, cobraIva)}
+${bloqueEmisor(emisor, nota.prefijo || extension.prefix, cobraIva)}
 ${bloqueAdquirente(facturaOriginal.adquirente)}
 ${bloquePago(facturaOriginal.pago, fecha)}
 ${[

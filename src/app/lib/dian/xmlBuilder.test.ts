@@ -292,6 +292,7 @@ describe('construirXmlNotaAjuste', () => {
     expect(x.todos('cac:CreditNoteLine')).toHaveLength(4);
     expect(x.todos('cac:CreditNoteLine/cbc:CreditedQuantity')).toHaveLength(4);
     expect(x.num('cac:LegalMonetaryTotal/cbc:PayableAmount')).toBe(56899.99);
+    expect(x.texto('cac:AccountingSupplierParty/cac:Party/cac:PartyLegalEntity/cac:CorporateRegistrationScheme/cbc:ID')).toBe('NC');
   });
 
   it('nota débito: raíz, líneas y totales propios', () => {
