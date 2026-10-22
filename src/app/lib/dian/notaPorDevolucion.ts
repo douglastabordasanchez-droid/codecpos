@@ -13,6 +13,7 @@ import { emitirNotaAjuste, itemsDeFactura } from './emitirNotaAjuste';
 import { calcularDocumentoFiscal, redondear2 } from './documentoFiscal';
 import { obtenerFacturaPorVenta } from '../supabase/facturaElectronicaDianService';
 import { asegurarNumeracionNota } from '../supabase/fiscalProfileService';
+import { listarNotasDeFactura } from '../supabase/notaAjusteDianService';
 import type { FacturaElectronicaDian, ItemFacturaDian } from './types';
 
 export interface ItemDevuelto {
@@ -25,6 +26,8 @@ export type ResultadoNotaPorDevolucion =
   | { estado: 'sin_factura' }
   | { estado: 'tiquete_pos' }
   | { estado: 'factura_no_aprobada' }
+  /** La factura ya tiene notas crédito aprobadas por todo su valor. */
+  | { estado: 'ya_anulada'; notas: string[] }
   | { estado: 'sin_numeracion' }
   | { estado: 'emitida'; numeroNota: string; estadoDian: string }
   | { estado: 'error'; motivo: string };
@@ -71,6 +74,12 @@ export async function emitirNotaCreditoPorDevolucion(datos: {
     if (!factura?.id) return { estado: 'sin_factura' };
     if (factura.tipoDocumento === 'documento_equivalente') return { estado: 'tiquete_pos' };
     if (factura.estado !== 'accepted') return { estado: 'factura_no_aprobada' };
+    // Una factura ya anulada con nota crédito no admite otra: la DIAN la
+    // recibiría y el negocio quedaría con un crédito doble.
+    const acreditadas = (await listarNotasDeFactura(factura.id)).filter((n) => n.tipo === 'credito' && n.estado === 'accepted');
+    if (acreditadas.reduce((s, n) => s + Number(n.total || 0), 0) >= factura.total - 1) {
+      return { estado: 'ya_anulada', notas: acreditadas.map((n) => n.numeroNota) };
+    }
 
     const resolucion = await asegurarNumeracionNota(datos.clienteId, factura.perfilFiscalId, 'nota_credito');
     if (!resolucion?.id) return { estado: 'sin_numeracion' };

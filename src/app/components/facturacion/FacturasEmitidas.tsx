@@ -233,6 +233,11 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
     }
   }
 
+  // Ya acreditada por todo su valor: otra nota crédito sería un crédito doble.
+  const facturaYaAnulada = !!facturaNota && notasFactura
+    .filter((n) => n.tipo === 'credito' && n.estado === 'accepted')
+    .reduce((s, n) => s + Number(n.total || 0), 0) >= facturaNota.total - 1;
+
   const resolucionesNota = resolucionesPerfil.filter(
     (r) => r.estado === 'activa' && r.tipoDocumento === (formNota.tipo === 'credito' ? 'nota_credito' : 'nota_debito'),
   );
@@ -525,9 +530,13 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
               <span className="block text-xs text-slate-500">Por defecto ajusta la factura completa.</span>
             </label>
 
+            {facturaYaAnulada && formNota.tipo === 'credito' && (
+              <p className="text-xs text-amber-400">Esta factura ya está anulada con nota crédito aprobada por todo su valor. No se puede emitir otra.</p>
+            )}
+
             <div className="flex gap-2 pt-1">
               <button onClick={() => setFacturaNota(null)} className="flex-1 h-11 rounded-lg border border-slate-800 text-slate-300 text-sm font-semibold">Cancelar</button>
-              <button onClick={confirmarNota} disabled={emitiendoNota} className="flex-1 h-11 rounded-lg bg-amber-500 text-slate-950 text-sm font-bold disabled:opacity-50">
+              <button onClick={confirmarNota} disabled={emitiendoNota || (facturaYaAnulada && formNota.tipo === 'credito')} className="flex-1 h-11 rounded-lg bg-amber-500 text-slate-950 text-sm font-bold disabled:opacity-50">
                 {emitiendoNota ? 'Emitiendo...' : 'Emitir nota'}
               </button>
             </div>

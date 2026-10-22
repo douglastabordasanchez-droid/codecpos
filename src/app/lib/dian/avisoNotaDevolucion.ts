@@ -14,6 +14,8 @@ export function avisarNotaPorDevolucion(r: ResultadoNotaPorDevolucion): void {
     toast.warning('Falta la numeración de notas crédito', { description: 'Emita la nota desde Facturación › Facturas de venta.' });
   } else if (r.estado === 'factura_no_aprobada') {
     toast.warning('La factura electrónica de esta venta aún no está aprobada', { description: 'Cuando la DIAN la apruebe, emita la nota crédito desde Facturación.' });
+  } else if (r.estado === 'ya_anulada') {
+    toast.info('La factura de esta venta ya estaba anulada', { description: `Tiene la nota crédito ${r.notas.join(', ')}. La devolución quedó registrada sin emitir otra nota.` });
   } else if (r.estado === 'tiquete_pos') {
     toast.info('Venta con tiquete POS electrónico', { description: 'La nota de ajuste del tiquete POS todavía no está disponible.' });
   } else if (r.estado === 'error') {
