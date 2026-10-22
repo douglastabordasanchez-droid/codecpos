@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Search, RefreshCw, Eye, Download, Send, Mail, FileMinus2, CheckCircle2, Clock, Copy, X, Package, Loader2 } from 'lucide-react';
+import { Search, RefreshCw, Eye, Download, Send, Mail, FileMinus2, CheckCircle2, Clock, Copy, X, Package, Loader2, FileCheck2 } from 'lucide-react';
 import { listarFacturasDian, marcarCorreoEnviado } from '../../lib/supabase/facturaElectronicaDianService';
 import { asegurarNumeracionNota, listarResolucionesPerfil } from '../../lib/supabase/fiscalProfileService';
 import { listarNotasDeFactura, listarNotasDelCliente, type NotaConFactura } from '../../lib/supabase/notaAjusteDianService';
@@ -15,6 +15,8 @@ import { ManualDeliveryProvider } from '../../lib/dian/deliveryProvider';
 import { emitirNotaAjuste } from '../../lib/dian/emitirNotaAjuste';
 import { prepararPaqueteEntrega } from '../../lib/dian/paqueteEntrega';
 import { enviarFacturaPorCorreoNegocio } from '../../lib/dian/correoFacturas';
+import { facturaReemplazada, referenciaVenta } from '../../lib/dian/refacturar';
+import { ModalFacturarDeNuevo } from './ModalFacturarDeNuevo';
 import {
   CONCEPTOS_NOTA_CREDITO, CONCEPTOS_NOTA_DEBITO,
   type FacturaElectronicaDian, type EstadoDocumentoDian, type ResolucionDian,
@@ -67,6 +69,7 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
   const [enviandoCorreo, setEnviandoCorreo] = useState(false);
 
   const [facturaNota, setFacturaNota] = useState<FacturaElectronicaDian | null>(null);
+  const [facturaRehacer, setFacturaRehacer] = useState<FacturaElectronicaDian | null>(null);
   const [resolucionesPerfil, setResolucionesPerfil] = useState<ResolucionDian[]>([]);
   const [notasFactura, setNotasFactura] = useState<NotaAjusteDian[]>([]);
   const [formNota, setFormNota] = useState({ tipo: 'credito' as TipoNotaAjuste, resolucionId: '', conceptoCodigo: '', motivo: '', total: '' });
@@ -343,6 +346,9 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
                           {' '}{notas.map((n) => n.numeroNota).join(', ')}
                         </button>
                       )}
+                      {facturaReemplazada(f) && (
+                        <p className="mt-1 text-[11px] font-semibold text-emerald-400 whitespace-nowrap">Venta {referenciaVenta(f)} facturada de nuevo</p>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       {f.correoEnviadoAt ? (
@@ -370,6 +376,15 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
                         <button title="Enviar al cliente" onClick={() => abrirEnvio(f)} className="h-8 w-8 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center">
                           <Send className="w-3.5 h-3.5" />
                         </button>
+                        {creditos.length > 0 && anulada && !facturaReemplazada(f) && (
+                          <button
+                            title="Facturar de nuevo: la venta fue real y su factura quedó anulada"
+                            onClick={() => setFacturaRehacer(f)}
+                            className="h-8 px-2.5 rounded-lg bg-emerald-500/15 text-emerald-400 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap"
+                          >
+                            <FileCheck2 className="w-3.5 h-3.5" /> Facturar de nuevo
+                          </button>
+                        )}
                         <button
                           title={f.tipoDocumento === 'documento_equivalente'
                             ? 'Las notas sobre tiquetes POS todavía no están disponibles'
@@ -449,6 +464,15 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
             </div>
           </div>
         </div>
+      )}
+
+      {facturaRehacer && (
+        <ModalFacturarDeNuevo
+          factura={facturaRehacer}
+          notasQueLaAnulan={(notasPorFactura[facturaRehacer.id!] || []).filter((n) => n.tipo === 'credito').map((n) => n.numeroNota)}
+          onCerrar={() => setFacturaRehacer(null)}
+          onEmitida={() => { setFacturaRehacer(null); cargar(); }}
+        />
       )}
 
       {facturaNota && (

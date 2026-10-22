@@ -6,6 +6,7 @@
  */
 import { getSupabaseClient } from '../supabase/config';
 import { prepararPaqueteEntrega } from './paqueteEntrega';
+import { obtenerFacturaPorVenta } from '../supabase/facturaElectronicaDianService';
 import type { FacturaElectronicaDian } from './types';
 
 export interface EstadoCorreoNegocio {
@@ -38,10 +39,15 @@ async function invocar<T>(cuerpo: Record<string, unknown>): Promise<T> {
 
 export const estadoCorreoNegocio = () => invocar<EstadoCorreoNegocio>({ accion: 'estado' });
 
-export const guardarCorreoNegocio = (datos: { proveedor: string; usuario: string; clave: string; remitenteNombre?: string; servidor?: string; puerto?: number }) =>
-  invocar<{ ok: true }>({ accion: 'guardar', ...datos });
+export const guardarCorreoNegocio = (datos: { proveedor: string; usuario: string; clave: string; remitenteNombre?: string; servidor?: string; puerto?: number }) => {
+  correoConectado = null;
+  return invocar<{ ok: true }>({ accion: 'guardar', ...datos });
+};
 
-export const eliminarCorreoNegocio = () => invocar<{ ok: true }>({ accion: 'eliminar' });
+export const eliminarCorreoNegocio = () => {
+  correoConectado = null;
+  return invocar<{ ok: true }>({ accion: 'eliminar' });
+};
 
 const aBase64 = async (blob: Blob) => {
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -75,5 +81,48 @@ export async function enviarFacturaPorCorreoNegocio(factura: FacturaElectronicaD
       { nombre: paquete.nombre, base64: await aBase64(paquete.archivo), tipo: 'application/zip' },
       { nombre: paquete.nombrePdf, base64: await aBase64(paquete.pdf), tipo: 'application/pdf' },
     ],
+  });
+}
+
+// Una consulta por sesión basta: el botón del cobro solo aparece si hay correo conectado.
+let correoConectado: Promise<boolean> | null = null;
+export function correoNegocioConectado(): Promise<boolean> {
+  if (!correoConectado) {
+    correoConectado = estadoCorreoNegocio().then((e) => e.configurado).catch(() => {
+      correoConectado = null;
+      return false;
+    });
+  }
+  return correoConectado;
+}
+
+/** Desde el cobro: busca la factura de la venta y se la manda al cliente. */
+export async function enviarFacturaDeVentaPorCorreo(clienteId: string, ventaReferencia: string, destino: string): Promise<void> {
+  const factura = await obtenerFacturaPorVenta(clienteId, ventaReferencia);
+  if (!factura) throw new Error('No se encontró la factura de esta venta');
+  await enviarFacturaPorCorreoNegocio(factura, destino);
+}
+
+/**
+ * Aviso de factura aprobada con el botón «Enviar por correo» cuando el
+ * negocio conectó su correo y el cliente dio el suyo. Igual en Electron, la
+ * web y el celular.
+ */
+export async function ofrecerEnvioPorCorreo(clienteId: string, ventaReferencia: string, numero: string | undefined, destino: string | undefined): Promise<void> {
+  const correo = (destino || '').trim();
+  if (!correo.includes('@') || !(await correoNegocioConectado())) return;
+  const { toast } = await import('sonner');
+  toast(`¿Enviar la factura ${numero || ''} a ${correo}?`, {
+    description: 'Le llega con el PDF y el archivo para la DIAN.',
+    duration: 30000,
+    action: {
+      label: 'Enviar por correo',
+      onClick: () => {
+        const id = toast.loading('Enviando la factura...');
+        enviarFacturaDeVentaPorCorreo(clienteId, ventaReferencia, correo)
+          .then(() => toast.success(`Factura enviada a ${correo}`, { id }))
+          .catch((e) => toast.error('No se envió el correo', { id, description: e?.message, duration: 12000 }));
+      },
+    },
   });
 }

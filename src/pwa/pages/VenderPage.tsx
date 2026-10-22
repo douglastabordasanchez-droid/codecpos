@@ -47,6 +47,7 @@ import { ModalPesaje } from '../components/ModalPesaje';
 import { CLAVE_CARRITO_TRANSFERIDO, formatoCantidad } from '../lib/carritoTransferido';
 import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../../app/components/factura/RetencionesCobro';
 import { ClienteFacturaCobro } from '../../app/components/factura/ClienteFacturaCobro';
+import { ofrecerEnvioPorCorreo } from '../../app/lib/dian/correoFacturas';
 import { adquirenteDesdeCobro, clienteParaGuardar, CLIENTE_COBRO_VACIO, type DatosClienteCobro } from '../../app/lib/dian/clienteCobro';
 
 interface ProductoFila {
@@ -496,6 +497,7 @@ export default function VenderPage() {
         it.precio,
         Number(productos.find((p) => p.id === it.productoId)?.iva) || 0,
       ));
+      const correoFE = clienteFactura.email.trim();
       if (facturacionDisponible && emitirFE) emitirFacturaDianDirecto({
         clienteId: empleado.cliente_id,
         ventaReferencia: resultado.ventaId,
@@ -510,6 +512,7 @@ export default function VenderPage() {
       }).then((r) => {
         if (r.estado === 'accepted') {
           toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { description: 'Compártala o imprímala desde el recibo.' });
+          void ofrecerEnvioPorCorreo(empleado.cliente_id, resultado.ventaId, r.numero, correoFE);
         } else if (r.estado === 'contingency' || r.estado === 'sent' || r.estado === 'en_cola') {
           toast.warning(`Factura electrónica${r.numero ? ` ${r.numero}` : ''} pendiente`, { description: r.motivo || 'Se reintenta sola.', duration: 10000 });
         } else {

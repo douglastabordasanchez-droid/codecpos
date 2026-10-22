@@ -103,6 +103,7 @@ import { ModalVistaFactura } from '../factura/ModalVistaFactura';
 import { TirillaFacturaElectronica } from '../factura/TirillaFacturaElectronica';
 import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../factura/RetencionesCobro';
 import { ClienteFacturaCobro } from '../factura/ClienteFacturaCobro';
+import { ofrecerEnvioPorCorreo } from '../../lib/dian/correoFacturas';
 import { adquirenteDesdeCobro, clienteParaGuardar, type DatosClienteCobro } from '../../lib/dian/clienteCobro';
 import { registrarClienteDesdeCobro } from '../../lib/supabase/clientesFacturacionService';
 import { datosPdfFacturaDianCompletos } from '../../lib/dian/representacionGrafica';
@@ -2156,6 +2157,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               // Queda en Facturación › Clientes para todas las cajas (nuevo o completado).
               if (clienteIdVinculado) void registrarClienteDesdeCobro(clienteIdVinculado, datosCliente);
             }
+            const correoFE = clienteFE.email.trim();
             if (clienteIdVinculado) {
               emitirFacturaDianDirecto({
                 clienteId: clienteIdVinculado,
@@ -2189,6 +2191,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 retenciones: clienteFE.nitCedula.trim() ? retencionesParaEmitir(retencionesFE) : {},
               }).then(async (r) => {
                 if (r.estado === 'accepted') {
+                  void ofrecerEnvioPorCorreo(clienteIdVinculado, numeroFacturaCompleto, r.numero, correoFE);
                   const factura = await obtenerFacturaPorVenta(clienteIdVinculado, numeroFacturaCompleto).catch(() => null);
                   const visor = feVisorRef.current;
                   if (factura && visor?.venta === numeroFacturaCompleto && visor.estado === 'esperando') {
