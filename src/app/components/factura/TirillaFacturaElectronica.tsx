@@ -26,7 +26,9 @@ import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
 
 interface Props {
   factura: FacturaElectronicaDian;
-  onCerrar: () => void;
+  /** Dentro de otro visor (el del cobro): sin ventana propia ni botón de cerrar. */
+  embebida?: boolean;
+  onCerrar?: () => void;
   /** Abre la factura carta en el visor. */
   onVerCarta: () => void;
 }
@@ -64,7 +66,7 @@ function mesesEntre(desde?: string, hasta?: string): number | null {
   return Math.max(1, Math.round((b - a) / (30.44 * 86_400_000)));
 }
 
-export function TirillaFacturaElectronica({ factura, onCerrar, onVerCarta }: Props) {
+export function TirillaFacturaElectronica({ factura, embebida, onCerrar, onVerCarta }: Props) {
   const [datos, setDatos] = useState<{ venta: Venta; config: ConfigEmpresa & Record<string, any> } | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
@@ -128,18 +130,9 @@ export function TirillaFacturaElectronica({ factura, onCerrar, onVerCarta }: Pro
   const meses = mesesEntre(cfg?.fechaResolucionDIAN, cfg?.vigenciaResolucionHasta);
   const responsable = cfg?.regimenFiscal && cfg.regimenFiscal !== 'simplificado' ? 'Responsable de IVA' : cfg?.regimenFiscal === 'simplificado' ? 'No responsable de IVA' : '';
 
-  return createPortal(
-    <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCerrar}>
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 max-h-[94vh] flex flex-col gap-4 w-full max-w-[400px]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-white font-bold">Factura electrónica {factura.numeroFactura}</p>
-            <p className="text-emerald-400 text-xs font-semibold">Aceptada por la DIAN</p>
-          </div>
-          <button onClick={onCerrar} className="text-slate-400" aria-label="Cerrar"><X className="w-5 h-5" /></button>
-        </div>
-
-        <div className="overflow-y-auto rounded-xl bg-white mx-auto" style={{ width: ancho }}>
+  const contenido = (
+    <>
+        <div className={`rounded-xl bg-white mx-auto shadow-lg ${embebida ? '' : 'overflow-y-auto'}`} style={{ width: ancho }}>
           <style>{CSS}</style>
           {!v || !cfg ? (
             <div className="flex items-center justify-center gap-2 py-16 text-slate-500 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Armando la tirilla...</div>
@@ -273,6 +266,22 @@ export function TirillaFacturaElectronica({ factura, onCerrar, onVerCarta }: Pro
             <FileText className="w-4 h-4" /> Factura carta
           </button>
         </div>
+    </>
+  );
+
+  if (embebida) return <div className="flex flex-col gap-4">{contenido}</div>;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCerrar}>
+      <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 max-h-[94vh] flex flex-col gap-4 w-full max-w-[400px]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-white font-bold">Factura electrónica {factura.numeroFactura}</p>
+            <p className="text-emerald-400 text-xs font-semibold">Aceptada por la DIAN</p>
+          </div>
+          <button onClick={onCerrar} className="text-slate-400" aria-label="Cerrar"><X className="w-5 h-5" /></button>
+        </div>
+        {contenido}
       </div>
     </div>,
     document.body,

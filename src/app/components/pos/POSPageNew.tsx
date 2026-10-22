@@ -35,6 +35,7 @@ import {
   Sparkles,
   QrCode,
   History,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -398,6 +399,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [facturaDianVista, setFacturaDianVista] = useState<FacturaElectronicaDian | null>(null);
   // La factura carta (estilo Siigo) de esa misma factura, en el visor.
   const [cartaDianAbierta, setCartaDianAbierta] = useState(false);
+  // Visor del cobro con «Sí» a factura electrónica: espera la respuesta de la
+  // DIAN y muestra la tirilla electrónica en lugar de la normal. Si la DIAN
+  // no la acepta (o el cajero no quiere esperar), queda la tirilla normal.
+  const [feVisor, setFeVisor] = useState<{ venta: string; estado: 'esperando' | 'lista' | 'normal' } | null>(null);
 
   /** Cliente que ya compró con factura: llena solo lo que el cajero no escribió. */
   const autocompletarClienteFE = async (documento: string) => {
@@ -1959,6 +1964,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           qrUrl: respuestaElectronica?.qrUrl || respuestaElectronica?.qr_url || null,
           contingencia: facturaEstado === 'PENDIENTE_SINCRONIZAR',
         });
+        setFeVisor(feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo'
+          ? { venta: numeroFacturaCompleto, estado: 'esperando' }
+          : null);
+        setFacturaDianVista(null);
+        setCartaDianAbierta(false);
         setMostrarTicket(true);
       } catch { /* UI no crítica */ }
       setCarrito([]);
@@ -2112,8 +2122,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 if (r.estado === 'accepted') {
                   toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { duration: 6000 });
                   const factura = await obtenerFacturaPorVenta(clienteIdVinculado, numeroFacturaCompleto).catch(() => null);
-                  if (factura) { setCartaDianAbierta(false); setFacturaDianVista(factura); }
-                } else if (r.estado === 'en_cola' || r.estado === 'contingency' || r.estado === 'sent') {
+                  if (factura) {
+                    setFacturaDianVista(factura);
+                    setFeVisor((f) => (f?.venta === numeroFacturaCompleto ? { ...f, estado: 'lista' } : f));
+                  } else {
+                    setFeVisor((f) => (f?.venta === numeroFacturaCompleto ? { ...f, estado: 'normal' } : f));
+                  }
+                  return;
+                }
+                setFeVisor((f) => (f?.venta === numeroFacturaCompleto ? { ...f, estado: 'normal' } : f));
+                if (r.estado === 'en_cola' || r.estado === 'contingency' || r.estado === 'sent') {
                   toast.warning(`Factura electrónica${r.numero ? ` ${r.numero}` : ''} pendiente`, {
                     description: r.motivo || 'Se reintenta sola. Revísela en Facturación › Historial.',
                     duration: 10000,
@@ -2125,6 +2143,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   });
                 }
               }).catch((e) => {
+                setFeVisor((f) => (f?.venta === numeroFacturaCompleto ? { ...f, estado: 'normal' } : f));
                 toast.error('La factura electrónica no salió', { description: (e as Error)?.message, duration: 15000 });
               });
             } else {
@@ -4152,7 +4171,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           >
             <div className="flex items-center justify-between mb-6">
               <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                Factura de Venta
+                {feVisor?.venta === ventaActual.numeroFactura && feVisor.estado !== 'normal' ? 'Factura electrónica' : 'Factura de Venta'}
               </h2>
               <Button
                 onClick={() => setMostrarTicket(false)}
@@ -4164,7 +4183,21 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               </Button>
             </div>
 
-            {ticketContenidoListo ? (
+            {feVisor?.venta === ventaActual.numeroFactura && feVisor.estado === 'esperando' ? (
+              <div className="flex flex-col items-center justify-center text-center py-14 gap-3">
+                <Loader2 className="w-9 h-9 animate-spin text-emerald-500" />
+                <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Enviando la factura electrónica a la DIAN…</p>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>En unos segundos aparece la tirilla con el CUFE y el QR.</p>
+                <button
+                  onClick={() => setFeVisor((f) => (f ? { ...f, estado: 'normal' } : f))}
+                  className={`mt-2 text-sm underline ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                >
+                  Ver la tirilla normal mientras tanto
+                </button>
+              </div>
+            ) : feVisor?.venta === ventaActual.numeroFactura && feVisor.estado === 'lista' && facturaDianVista ? (
+              <TirillaFacturaElectronica embebida factura={facturaDianVista} onVerCarta={() => setCartaDianAbierta(true)} />
+            ) : ticketContenidoListo ? (
               <TicketReceipt venta={ventaActual} />
             ) : (
               <div className="animate-pulse space-y-3 py-2">
@@ -4181,7 +4214,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       {/* Factura electrónica aceptada: primero su tirilla para la térmica;
           desde ahí, la factura carta en el visor. La tirilla normal del cobro
           sale igual que siempre. */}
-      {facturaDianVista && !cartaDianAbierta && (
+      {/* La tirilla electrónica aparece dentro del visor del cobro; si el cajero
+          ya lo había cerrado cuando la DIAN contestó, sale en su propia ventana. */}
+      {facturaDianVista && !cartaDianAbierta && !mostrarTicket && (
         <TirillaFacturaElectronica
           factura={facturaDianVista}
           onCerrar={() => setFacturaDianVista(null)}
