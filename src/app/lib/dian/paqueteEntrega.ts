@@ -10,7 +10,8 @@ import { construirAttachedDocument, nombresArchivoEntrega } from './attachedDocu
 import { obtenerTransporteDian } from './transporteDian';
 import { construirUrlQR } from './softwareSecurityCode';
 import { actualizarEstadoFactura } from '../supabase/facturaElectronicaDianService';
-import { generarFacturaPDF, type ConfigEmpresa, type Venta } from '../pdfGenerator';
+import { generarFacturaPDF } from '../pdfGenerator';
+import { datosPdfFacturaDian } from './representacionGrafica';
 import type { FacturaElectronicaDian } from './types';
 
 const deBase64Utf8 = (b64: string) => new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
@@ -34,50 +35,9 @@ async function obtenerApplicationResponse(factura: FacturaElectronicaDian): Prom
 const leer = (xml: string, nombre: string) =>
   xml.match(new RegExp(`<(?:\\w+:)?${nombre}(?:\\s[^>]*)?>([^<]*)</(?:\\w+:)?${nombre}>`))?.[1]?.trim();
 
-/** Representación gráfica: el mismo PDF carta de las ventas, con CUFE y QR de la DIAN. */
+/** Representación gráfica: el mismo PDF carta de las ventas, armado desde el XML firmado. */
 function pdfDeFactura(factura: FacturaElectronicaDian): Promise<Blob> {
-  const xml = factura.xml ?? '';
-  const venta: Venta = {
-    numeroFactura: factura.numeroFactura,
-    numeroElectronico: factura.numeroFactura,
-    fecha: factura.fechaEmision,
-    items: factura.items.map((i) => ({
-      nombre: i.descripcion,
-      codigo: i.codigo,
-      cantidad: i.cantidad,
-      precio: i.precioUnitario,
-      subtotal: i.subtotal,
-      iva: i.impuestos?.find((t) => t.codigo === '01')?.porcentaje,
-    })),
-    subtotal: factura.subtotal,
-    iva: factura.totalImpuestos,
-    total: factura.total,
-    metodoPago: factura.pago?.metodo || 'efectivo',
-    fechaVencimiento: factura.pago?.fechaVencimiento,
-    cajero: '',
-    cliente: factura.adquirente.nombreORazonSocial,
-    clienteDocumento: factura.adquirente.numeroDocumento,
-    clienteTelefono: factura.adquirente.telefono,
-    clienteDireccion: factura.adquirente.direccion,
-    clienteEmail: factura.adquirente.email,
-    cufe: factura.cufe,
-    qrUrl: factura.cufe ? construirUrlQR(factura.cufe, factura.emisor.ambiente ?? 'habilitacion') : null,
-  };
-  const config: ConfigEmpresa = {
-    nombreComercial: factura.emisor.nombreComercial || factura.emisor.nombreORazonSocial || '',
-    razonSocial: factura.emisor.nombreORazonSocial || '',
-    nit: factura.emisor.nit || '',
-    digitoVerificacion: factura.emisor.digitoVerificacion,
-    direccion: factura.emisor.direccion || '',
-    telefono: '',
-    email: factura.emisor.email || '',
-    ciudad: '',
-    prefijoFactura: factura.prefijo,
-    claveResolucionDIAN: leer(xml, 'InvoiceAuthorization'),
-    fechaResolucionDIAN: leer(xml, 'StartDate'),
-    rangoAutorizadoDesde: leer(xml, 'From'),
-    rangoAutorizadoHasta: leer(xml, 'To'),
-  };
+  const { venta, config } = datosPdfFacturaDian(factura);
   return generarFacturaPDF(venta, config);
 }
 

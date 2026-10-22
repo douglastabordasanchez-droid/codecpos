@@ -12,6 +12,8 @@ import { construirUrlQR } from '../../app/lib/dian/softwareSecurityCode';
 import { generarFacturaPDF, nombreArchivoFactura, type ConfigEmpresa, type Venta as VentaFactura } from '../../app/lib/pdfGenerator';
 import { compartirPdf, descargarPdf } from '../../app/lib/archivoPdf';
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
+import { obtenerFacturaPorId } from '../../app/lib/supabase/facturaElectronicaDianService';
+import { datosPdfFacturaDian } from '../../app/lib/dian/representacionGrafica';
 
 interface VentaParaCompartir {
   id: string;
@@ -125,7 +127,7 @@ export async function obtenerDatosFactura(clienteId: string, venta: VentaParaCom
   const referencias = [facturaVenta.numeroFactura, venta.id].filter(Boolean);
   const { data: fe } = await client
     .from('facturas_electronicas')
-    .select('prefijo, numero_factura, cufe, estado, issuer_ambiente, cliente_nit, cliente_nombre, cliente_email, cliente_telefono')
+    .select('id, prefijo, numero_factura, cufe, estado, issuer_ambiente, cliente_nit, cliente_nombre, cliente_email, cliente_telefono')
     .eq('cliente_id', clienteId)
     .in('venta_referencia', referencias)
     .not('cufe', 'is', null)
@@ -135,6 +137,13 @@ export async function obtenerDatosFactura(clienteId: string, venta: VentaParaCom
     .maybeSingle();
   if (fe) {
     const f = fe as Record<string, any>;
+    // Con el XML firmado sale la representación gráfica completa de la DIAN.
+    const factura = await obtenerFacturaPorId(f.id).catch(() => null);
+    if (factura?.xml) {
+      const dian = datosPdfFacturaDian(factura, config);
+      dian.venta.cajero = facturaVenta.cajero;
+      return dian;
+    }
     facturaVenta.cufe = f.cufe;
     facturaVenta.qrUrl = construirUrlQR(f.cufe, f.issuer_ambiente === 'produccion' ? 'produccion' : 'habilitacion');
     facturaVenta.numeroElectronico = `${f.prefijo || ''}${f.numero_factura ?? ''}` || null;

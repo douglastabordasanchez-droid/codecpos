@@ -495,6 +495,14 @@ export default function VenderPage() {
         totalImpuestos: lineasFactura.reduce((s, l) => s + (l.impuestos || []).reduce((t, imp) => t + imp.valor, 0), 0),
         total: totalAPagar,
         pago: { metodo: metodoPago },
+      }).then((r) => {
+        if (r.estado === 'accepted') {
+          toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { description: 'Compártala o imprímala desde el recibo.' });
+        } else if (r.estado === 'contingency' || r.estado === 'sent' || r.estado === 'en_cola') {
+          toast.warning(`Factura electrónica${r.numero ? ` ${r.numero}` : ''} pendiente`, { description: r.motivo || 'Se reintenta sola.', duration: 10000 });
+        } else {
+          toast.error('La factura electrónica no salió', { description: r.motivo || 'Revise Facturación.', duration: 15000 });
+        }
       }).catch(() => {});
       setDocClienteFactura('');
       setNombreClienteFactura('');

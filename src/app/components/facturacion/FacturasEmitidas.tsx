@@ -19,7 +19,8 @@ import {
   type FacturaElectronicaDian, type EstadoDocumentoDian, type ResolucionDian,
   type TipoNotaAjuste, type NotaAjusteDian,
 } from '../../lib/dian/types';
-import { VistaDocumentoFactura } from './VistaDocumentoFactura';
+import { ModalVistaFactura } from '../factura/ModalVistaFactura';
+import { datosPdfFacturaDian } from '../../lib/dian/representacionGrafica';
 import { ESTADO_DIAN_UI, descargarTexto, money } from './comunes';
 
 const delivery = new ManualDeliveryProvider();
@@ -328,7 +329,13 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
         )}
       </div>
 
-      {facturaVista && <VistaDocumentoFactura factura={facturaVista} onCerrar={() => setFacturaVista(null)} />}
+      {/* La misma factura carta que se imprime y se le entrega al cliente. */}
+      <ModalVistaFactura
+        abierta={!!facturaVista}
+        onCerrar={() => setFacturaVista(null)}
+        titulo={facturaVista?.numeroFactura || ''}
+        obtenerDatos={async () => datosPdfFacturaDian(facturaVista!)}
+      />
 
       {facturaEnvio && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setFacturaEnvio(null)}>

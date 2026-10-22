@@ -35,6 +35,10 @@ export interface ConfigEmpresa {
   fechaResolucionDIAN?: string;
   rangoAutorizadoDesde?: number | string;
   rangoAutorizadoHasta?: number | string;
+  /** Fin de la vigencia de la numeración (para «Vigencia: N Meses»). */
+  vigenciaResolucionHasta?: string;
+  /** Código CIIU de la actividad económica principal (4719). */
+  actividadEconomica?: string;
 }
 
 export interface ItemFactura {
@@ -46,6 +50,18 @@ export interface ItemFactura {
   descuento?: number;
   /** Porcentaje de IVA de la línea (0, 5, 19). */
   iva?: number;
+  /** Factura electrónica: valores de la línea tal como van en el XML. Con
+   * ellos la tabla sale con las columnas de la representación gráfica DIAN. */
+  fiscal?: {
+    /** Valor unitario antes de impuestos. */
+    precioBase: number;
+    /** Cantidad por valor unitario, antes de impuestos. */
+    bruto: number;
+    /** Bruto más los impuestos de la línea. */
+    total: number;
+    /** Porcentaje de retención de la línea, si la hay. */
+    retencion?: number;
+  };
 }
 
 export interface Venta {
@@ -77,6 +93,12 @@ export interface Venta {
   qrUrl?: string | null;
   /** Número oficial de la factura electrónica (prefijo y consecutivo DIAN). */
   numeroElectronico?: string | null;
+  /** Factura electrónica: fecha y hora de generación del documento. */
+  fechaGeneracion?: string;
+  /** Factura electrónica: impuestos del documento por tarifa («IVA 19%»). */
+  impuestosDetalle?: Array<{ nombre: string; valor: number }>;
+  /** Retenciones que practica el comprador: se restan del total a pagar. */
+  retenciones?: Array<{ nombre: string; valor: number }>;
 }
 
 // ── Utilidades ─────────────────────────────────────────────────────────────
@@ -87,6 +109,17 @@ const OSCURO: [number, number, number] = [20, 24, 31];
 const FONDO_CABECERA: [number, number, number] = [243, 244, 246];
 
 const dinero = (n: number) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CO')}`;
+/** Valores de la factura electrónica: con centavos, como los reporta el XML. */
+const decimales = (n: number) => (Number(n) || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const cantidadDecimales = (n: number) => (Number(n) || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+/** Meses completos de vigencia de la numeración (para el pie de la factura). */
+function mesesEntre(desde?: string, hasta?: string): number | null {
+  if (!desde || !hasta) return null;
+  const a = new Date(`${String(desde).slice(0, 10)}T12:00:00`);
+  const b = new Date(`${String(hasta).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b <= a) return null;
+  return Math.max(1, Math.round((b.getTime() - a.getTime()) / (30.44 * 24 * 3600 * 1000)));
+}
 const cantidadTexto = (n: number) => (Number.isInteger(n) ? String(n) : n.toLocaleString('es-CO', { maximumFractionDigits: 3 }));
 
 const METODOS: Record<string, string> = {
@@ -255,8 +288,9 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
     startY: y,
     margin: { left: 148 },
     tableWidth: DER - 148,
-    head: [[{ content: 'Fecha y hora', colSpan: 2, styles: { halign: 'center', fillColor: FONDO_CABECERA, fontStyle: 'bold' } }]],
+    head: [[{ content: electronica ? 'Fecha y hora Factura' : 'Fecha y hora', colSpan: 2, styles: { halign: 'center', fillColor: FONDO_CABECERA, fontStyle: 'bold' } }]],
     body: [
+      ...(electronica ? [[{ content: 'Generación', styles: { fontStyle: 'bold' as const } }, { content: fechaHora(venta.fechaGeneracion || venta.fecha), styles: { halign: 'center' as const } }]] : []),
       [{ content: 'Expedición', styles: { fontStyle: 'bold' } }, { content: fechaHora(venta.fecha), styles: { halign: 'center' } }],
       [{ content: 'Vencimiento', styles: { fontStyle: 'bold' } }, { content: soloFecha(venta.fechaVencimiento || venta.fecha), styles: { halign: 'center' } }],
     ],
@@ -287,25 +321,52 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
   // ── Ítems ──
   const hayDescuentos = venta.items.some((i) => (i.descuento || 0) > 0);
   const hayIva = venta.items.some((i) => (i.iva || 0) > 0) || (venta.iva || 0) > 0;
-  const cabecera = ['Ítem', 'Descripción', 'Cantidad', 'Vr. Unitario', ...(hayDescuentos ? ['Desc.'] : []), ...(hayIva ? ['IVA'] : []), 'Vr. Total'];
-  const cuerpo = venta.items.map((it, i) => [
-    String(i + 1),
-    it.codigo ? `${it.nombre}\nCód. ${it.codigo}` : it.nombre,
-    cantidadTexto(Number(it.cantidad) || 0),
-    dinero(it.precio),
-    ...(hayDescuentos ? [it.descuento ? dinero(it.descuento) : ''] : []),
-    ...(hayIva ? [`${it.iva ?? 0} %`] : []),
-    dinero(it.subtotal),
-  ]);
-  const ultima = cabecera.length - 1;
-  const columnas: Record<number, any> = {
-    0: { halign: 'center', cellWidth: 10 },
-    2: { halign: 'right', cellWidth: 18 },
-    3: { halign: 'right', cellWidth: 26 },
-    [ultima]: { halign: 'right', cellWidth: 28 },
-  };
-  if (hayDescuentos) columnas[4] = { halign: 'right', cellWidth: 20 };
-  if (hayIva) columnas[hayDescuentos ? 5 : 4] = { halign: 'center', cellWidth: 14 };
+  // Factura electrónica con las líneas del XML: columnas de la representación
+  // gráfica DIAN (valor unitario sin impuestos, impuesto, bruto, total y retención).
+  const modoFiscal = venta.items.length > 0 && venta.items.every((i) => !!i.fiscal);
+  let cabecera: string[];
+  let cuerpo: string[][];
+  const columnas: Record<number, any> = { 0: { halign: 'center', cellWidth: 10 } };
+  if (modoFiscal) {
+    cabecera = ['Ítem', 'Descripción', 'Cantidad', 'Vr. Unitario', 'Impto. Cargo', 'Vr. Bruto', 'Vr. Total', 'Impto. Rete.'];
+    cuerpo = venta.items.map((it, i) => [
+      String(i + 1),
+      it.nombre,
+      cantidadDecimales(Number(it.cantidad) || 0),
+      decimales(it.fiscal!.precioBase),
+      `${it.iva ?? 0} %`,
+      decimales(it.fiscal!.bruto),
+      decimales(it.fiscal!.total),
+      `${it.fiscal!.retencion ?? 0} %`,
+    ]);
+    Object.assign(columnas, {
+      2: { halign: 'right', cellWidth: 16 },
+      3: { halign: 'right', cellWidth: 21 },
+      4: { halign: 'center', cellWidth: 17 },
+      5: { halign: 'right', cellWidth: 21 },
+      6: { halign: 'right', cellWidth: 22 },
+      7: { halign: 'center', cellWidth: 17 },
+    });
+  } else {
+    cabecera = ['Ítem', 'Descripción', 'Cantidad', 'Vr. Unitario', ...(hayDescuentos ? ['Desc.'] : []), ...(hayIva ? ['IVA'] : []), 'Vr. Total'];
+    cuerpo = venta.items.map((it, i) => [
+      String(i + 1),
+      it.codigo ? `${it.nombre}\nCód. ${it.codigo}` : it.nombre,
+      cantidadTexto(Number(it.cantidad) || 0),
+      dinero(it.precio),
+      ...(hayDescuentos ? [it.descuento ? dinero(it.descuento) : ''] : []),
+      ...(hayIva ? [`${it.iva ?? 0} %`] : []),
+      dinero(it.subtotal),
+    ]);
+    const ultima = cabecera.length - 1;
+    Object.assign(columnas, {
+      2: { halign: 'right', cellWidth: 18 },
+      3: { halign: 'right', cellWidth: 26 },
+      [ultima]: { halign: 'right', cellWidth: 28 },
+    });
+    if (hayDescuentos) columnas[4] = { halign: 'right', cellWidth: 20 };
+    if (hayIva) columnas[hayDescuentos ? 5 : 4] = { halign: 'center', cellWidth: 14 };
+  }
 
   const inicioTabla = y;
   autoTable(doc, {
@@ -338,13 +399,31 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
   // El subtotal se deduce para que el resumen siempre sume exacto al total cobrado,
   // venga como venga el dato de cada pantalla.
   const subtotalMostrado = Number(venta.total) - (Number(venta.iva) || 0) - (Number(venta.propina) || 0) + descuentoTotal;
-  const filasTotales: any[] = [
-    ['Subtotal', dinero(subtotalMostrado)],
-    ...(descuentoTotal > 0 ? [['Descuento', dinero(descuentoTotal)]] : []),
-    ...((venta.iva || 0) > 0 ? [['IVA', dinero(venta.iva)]] : []),
-    ...((venta.propina || 0) > 0 ? [['Propina voluntaria', dinero(venta.propina || 0)]] : []),
-    [{ content: 'Total a pagar', styles: { fontStyle: 'bold', fontSize: 9.5, fillColor: FONDO_CABECERA } }, { content: dinero(venta.total), styles: { fontStyle: 'bold', fontSize: 9.5, fillColor: FONDO_CABECERA } }],
+  const retenciones = (venta.retenciones || []).filter((r) => Number(r.valor) > 0);
+  const totalRetenciones = retenciones.reduce((s, r) => s + Number(r.valor), 0);
+  // Las retenciones las practica el comprador: la factura vale el total, pero
+  // lo que paga es el total menos lo retenido.
+  const totalAPagar = Number(venta.total) - totalRetenciones;
+  const filaTotalAPagar = [
+    { content: 'Total a Pagar', styles: { fontStyle: 'bold', fontSize: 9.5, fillColor: FONDO_CABECERA } },
+    { content: modoFiscal ? decimales(totalAPagar) : dinero(totalAPagar), styles: { fontStyle: 'bold', fontSize: 9.5, fillColor: FONDO_CABECERA } },
   ];
+  const filasTotales: any[] = modoFiscal
+    ? [
+      ['Total Bruto', decimales(subtotalMostrado)],
+      ...(descuentoTotal > 0 ? [['Descuento', decimales(descuentoTotal)]] : []),
+      ...(venta.impuestosDetalle || []).filter((i) => Number(i.valor) > 0).map((i) => [i.nombre, decimales(i.valor)]),
+      ...(retenciones.length > 0 ? [['Total factura', decimales(venta.total)], ...retenciones.map((r) => [r.nombre, `-${decimales(r.valor)}`])] : []),
+      filaTotalAPagar,
+    ]
+    : [
+      ['Subtotal', dinero(subtotalMostrado)],
+      ...(descuentoTotal > 0 ? [['Descuento', dinero(descuentoTotal)]] : []),
+      ...((venta.iva || 0) > 0 ? [['IVA', dinero(venta.iva)]] : []),
+      ...((venta.propina || 0) > 0 ? [['Propina voluntaria', dinero(venta.propina || 0)]] : []),
+      ...(retenciones.length > 0 ? [['Total factura', dinero(venta.total)], ...retenciones.map((r) => [r.nombre, `-${dinero(r.valor)}`])] : []),
+      filaTotalAPagar,
+    ];
   autoTable(doc, {
     ...estiloCaja,
     startY: y,
@@ -381,7 +460,7 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
   y += 7;
 
   titulo('Valor en letras:');
-  parrafo(valorEnLetras(venta.total));
+  parrafo(valorEnLetras(totalAPagar));
 
   titulo('Forma de pago:');
   parrafo(venta.fechaVencimiento || ['cartera', 'credito'].includes(String(venta.metodoPago).toLowerCase()) ? 'Crédito' : 'Contado');
@@ -389,12 +468,12 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
   titulo('Medio de pago:');
   const pagos = venta.pagoMixto
     ? Object.entries(venta.pagoMixto).filter(([, v]) => Number(v) > 0) as Array<[string, number]>
-    : [[venta.metodoPago, venta.total] as [string, number]];
+    : [[venta.metodoPago, totalAPagar] as [string, number]];
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.3);
   for (const [metodo, valor] of pagos) {
     doc.text(nombreMetodo(metodo), IZQ + 2, y);
-    doc.text(dinero(valor), IZQ + anchoIzq - 8, y, { align: 'right' });
+    doc.text(modoFiscal ? `$ ${decimales(valor)}` : dinero(valor), IZQ + anchoIzq - 8, y, { align: 'right' });
     y += 4;
   }
   y += 2.4;
@@ -415,12 +494,24 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
     : regimen === 'gran_contribuyente' ? 'Responsable de IVA · Gran contribuyente'
     : regimen ? 'Responsable de IVA' : '';
   const pie: Array<[string, boolean]> = [];
-  if (config.claveResolucionDIAN) {
+  if (electronica) {
+    pie.push(['A esta factura de venta aplican las normas relativas a la letra de cambio (artículo 5 Ley 1231 de 2008). '
+      + 'Con esta el Comprador declara haber recibido real y materialmente las mercancías o prestación de servicios descritos en este título valor.', false]);
+  }
+  if (electronica && config.claveResolucionDIAN) {
+    const aprobado = String(config.fechaResolucionDIAN || '').slice(0, 10).replace(/-/g, '');
+    const meses = mesesEntre(config.fechaResolucionDIAN, config.vigenciaResolucionHasta);
+    pie.push([`Número Autorización Electrónica ${config.claveResolucionDIAN}${aprobado ? ` aprobado en ${aprobado}` : ''}`
+      + `${config.prefijoFactura ? ` prefijo ${config.prefijoFactura}` : ''}`
+      + `${config.rangoAutorizadoDesde && config.rangoAutorizadoHasta ? ` desde el número ${config.rangoAutorizadoDesde} al ${config.rangoAutorizadoHasta}` : ''}`
+      + `${meses ? ` Vigencia: ${meses} Meses` : ''}`, true]);
+  } else if (config.claveResolucionDIAN) {
     pie.push([`Resolución DIAN No. ${config.claveResolucionDIAN}${config.fechaResolucionDIAN ? ` del ${soloFecha(config.fechaResolucionDIAN)}` : ''}`
       + `${config.prefijoFactura ? `, prefijo ${config.prefijoFactura}` : ''}`
       + `${config.rangoAutorizadoDesde && config.rangoAutorizadoHasta ? `, desde el número ${config.rangoAutorizadoDesde} al ${config.rangoAutorizadoHasta}` : ''}.`, true]);
   }
-  if (textoRegimen) pie.push([textoRegimen, false]);
+  const textoActividad = config.actividadEconomica ? `Actividad Económica ${config.actividadEconomica}` : '';
+  if (textoRegimen || textoActividad) pie.push([[textoRegimen, textoActividad].filter(Boolean).join(' · '), false]);
   if (electronica) pie.push([`CUFE: ${venta.cufe}`, true]);
   else pie.push(['Este documento es un comprobante de venta y no constituye una factura electrónica de venta.', false]);
   pie.push([config.mensajeTirilla || '¡Gracias por su compra!', false]);
@@ -451,7 +542,12 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(5.8);
     doc.setTextColor(150, 155, 162);
-    doc.text('Generado con Codec POS · Software de punto de venta · pos.codecstudio.online', W - 5.5, H / 2 + 40, { angle: 90 });
+    doc.text(
+      electronica
+        ? 'Fabricante Software y Proveedor tecnológico: Codec Studio. Nombre Software: Codec Pos. Firma electrónica: ver en el XML.'
+        : 'Generado con Codec POS · Software de punto de venta · pos.codecstudio.online',
+      W - 5.5, H / 2 + 50, { angle: 90 },
+    );
     doc.setFontSize(7);
     doc.text(`Página ${p} de ${paginas}`, DER, H - 11.5, { align: 'right' });
     if (p > 1) {

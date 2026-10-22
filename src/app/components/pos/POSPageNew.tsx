@@ -97,7 +97,8 @@ import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
 import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '../../lib/dian/types';
 import { obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
-import { VistaDocumentoFactura } from '../facturacion/VistaDocumentoFactura';
+import { ModalVistaFactura } from '../factura/ModalVistaFactura';
+import { datosPdfFacturaDian } from '../../lib/dian/representacionGrafica';
 import { buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
 import { lineaConIvaIncluido } from '../../lib/dian/ivaIncluido';
 
@@ -4167,9 +4168,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         </div>
       )}
 
-      {facturaDianVista && (
-        <VistaDocumentoFactura factura={facturaDianVista} onCerrar={() => setFacturaDianVista(null)} />
-      )}
+      <ModalVistaFactura
+        abierta={!!facturaDianVista}
+        onCerrar={() => setFacturaDianVista(null)}
+        titulo={facturaDianVista?.numeroFactura || ''}
+        obtenerDatos={async () => datosPdfFacturaDian(facturaDianVista!)}
+      />
 
       {/* Modal de Confirmación para Métodos de Pago Simples */}
       <AnimatePresence>
