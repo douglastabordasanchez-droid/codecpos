@@ -272,12 +272,15 @@ export async function obtenerFacturaPorId(id: string): Promise<FacturaElectronic
 export async function obtenerFacturaPorVenta(clienteId: string, ventaReferencia: string): Promise<FacturaElectronicaDian | null> {
   const client = getSupabaseClient();
   if (!client) return null;
-  const { data } = await client
+  const { data, error } = await client
     .from('facturas_electronicas')
     .select('*')
     .eq('cliente_id', clienteId)
     .eq('venta_referencia', ventaReferencia)
     .maybeSingle();
+  // Sin red no se sabe si la factura existe: devolver null haría que la cola
+  // emitiera otra para la misma venta, con un consecutivo nuevo.
+  if (error) throw new Error(error.message);
   if (!data) return null;
   return filaAFactura(data as FacturaRow);
 }

@@ -57,6 +57,11 @@ export interface ResultadoEmision {
   motivo?: string;
 }
 
+/** Errores del fetch cuando no hay red (Chromium/Electron y Node). */
+export function esFallaDeRed(mensaje: string): boolean {
+  return /failed to fetch|fetch failed|networkerror|network request failed|load failed|err_internet|err_name_not_resolved|err_network|err_connection|enotfound|econnrefused|econnreset|etimedout/i.test(mensaje);
+}
+
 const noEmitido = (referencia: string, motivo: string): ResultadoEmision => {
   console.warn(`[DIAN] No se emite documento para ${referencia}: ${motivo}`);
   return { estado: 'no_emitido', motivo };
@@ -88,14 +93,14 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
 
   let facturaId: string | undefined;
   try {
-    const perfil = await obtenerPerfilFiscalActivo(datos.clienteId);
+    const perfil = await obtenerPerfilFiscalActivo(datos.clienteId, { lanzarSiFalla: true });
     if (!perfil?.id) return noEmitido(datos.ventaReferencia, 'El negocio no tiene un perfil fiscal activo.');
     if (!perfil.nit) return noEmitido(datos.ventaReferencia, 'El perfil fiscal no tiene NIT.');
     if (!perfil.identificadorSoftware || !perfil.softwarePin) {
       return noEmitido(datos.ventaReferencia, 'Al perfil fiscal le falta el identificador del software o el PIN del software.');
     }
 
-    const resoluciones = await listarResolucionesPerfil(perfil.id);
+    const resoluciones = await listarResolucionesPerfil(perfil.id, { lanzarSiFalla: true });
     const activas = resoluciones.filter((r) => r.estado === 'activa');
     const tipoDocumento = decidirTipoDocumentoDian(datos.adquirente, activas.map((r) => r.tipoDocumento));
     if (tipoDocumento === 'factura' && !perfil.claveTecnica) {
@@ -236,6 +241,14 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
     }
   } catch (e) {
     const motivo = (e as Error).message;
+    // Windows dice «conectado» pero no hay internet de verdad (wifi sin
+    // salida, red caída a mitad de camino): no alcanzó a crearse el documento,
+    // así que la venta va a la misma cola local que sin conexión.
+    if (!facturaId && hayColaDeEnvios && esFallaDeRed(motivo)) {
+      encolarEmisionPendiente(datos);
+      console.warn(`[DIAN] Sin conexión real con la nube — la emisión de ${datos.ventaReferencia} queda en cola local: ${motivo}`);
+      return { estado: 'en_cola', motivo: 'Sin conexión: se emitirá al volver internet.' };
+    }
     console.error(`[DIAN] Error al emitir el documento de ${datos.ventaReferencia} (la venta ya se guardó, no se vio afectada):`, e);
     if (facturaId) await actualizarEstadoFactura(facturaId, 'error', { motivoRechazo: motivo }).catch(() => undefined);
     return { estado: facturaId ? 'error' : 'no_emitido', motivo };

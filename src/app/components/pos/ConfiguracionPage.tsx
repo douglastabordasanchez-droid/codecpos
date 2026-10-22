@@ -78,6 +78,9 @@ interface ConfiguracionEmpresa {
   // Configuración de IVA
   ivaHabilitado: boolean;
   porcentajeIVA: number;
+  /** true: el precio del producto ya trae el IVA (se despeja al cobrar).
+   * false o sin definir: el IVA se suma encima del precio (como siempre). */
+  ivaIncluidoEnPrecio?: boolean;
   regimenFiscal: 'simplificado' | 'comun' | 'gran_contribuyente';
 
   // Cartera (venta a crédito, ver src/app/lib/carteraService.ts)
@@ -1723,6 +1726,38 @@ export default function ConfiguracionPage() {
               </div>
             )}
 
+            {/* Precio con o sin IVA: cambia cómo se cobra, no solo cómo se muestra. */}
+            {config.ivaHabilitado && (
+              <div className="space-y-2">
+                <Label className={darkMode ? 'text-gray-300' : ''}>El precio de los productos</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {([
+                    [true, 'IVA incluido en el precio', 'El cliente paga el precio del producto; el IVA sale de adentro.'],
+                    [false, 'IVA se suma al precio', 'Al precio del producto se le agrega el IVA al cobrar.'],
+                  ] as const).map(([valor, titulo, detalle]) => (
+                    <button
+                      key={titulo}
+                      type="button"
+                      onClick={() => handleChange('ivaIncluidoEnPrecio', valor)}
+                      className={`text-left px-3 py-2.5 rounded-xl border-2 transition-colors ${
+                        (config.ivaIncluidoEnPrecio === true) === valor
+                          ? 'bg-green-600 border-green-500 text-white'
+                          : darkMode
+                            ? 'bg-slate-800 border-slate-600 text-slate-300'
+                            : 'bg-white border-gray-300 text-gray-700'
+                      }`}
+                    >
+                      <span className="block text-sm font-bold">{titulo}</span>
+                      <span className="block text-xs opacity-80">{detalle}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                  Solo aplica a los productos marcados «Aplica IVA».
+                </p>
+              </div>
+            )}
+
             {/* Ejemplo de Cálculo */}
             {config.ivaHabilitado && (
               <div className={`p-4 rounded-xl border-2 ${
@@ -1733,17 +1768,22 @@ export default function ConfiguracionPage() {
                 <h4 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>
                   💰 Ejemplo de Cálculo con IVA
                 </h4>
+                {/* Precio de ejemplo $100.000: incluido, se despeja; si no, se suma. */}
                 <div className="space-y-2 font-mono text-sm">
                   <div className="flex justify-between">
                     <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Subtotal:</span>
-                    <span className={darkMode ? 'text-white' : 'text-gray-900'}>$100,000</span>
+                    <span className={darkMode ? 'text-white' : 'text-gray-900'}>
+                      ${(config.ivaIncluidoEnPrecio ? Math.round(100000 / (1 + config.porcentajeIVA / 100)) : 100000).toLocaleString('es-CO')}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
                       IVA ({config.porcentajeIVA}%):
                     </span>
                     <span className={darkMode ? 'text-green-400' : 'text-green-600'}>
-                      ${(100000 * (config.porcentajeIVA / 100)).toLocaleString('es-CO')}
+                      ${(config.ivaIncluidoEnPrecio
+                        ? 100000 - Math.round(100000 / (1 + config.porcentajeIVA / 100))
+                        : 100000 * (config.porcentajeIVA / 100)).toLocaleString('es-CO')}
                     </span>
                   </div>
                   <div className={`flex justify-between pt-2 border-t ${
@@ -1753,7 +1793,7 @@ export default function ConfiguracionPage() {
                       Total:
                     </span>
                     <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                      ${(100000 + (100000 * (config.porcentajeIVA / 100))).toLocaleString('es-CO')}
+                      ${(config.ivaIncluidoEnPrecio ? 100000 : 100000 + (100000 * (config.porcentajeIVA / 100))).toLocaleString('es-CO')}
                     </span>
                   </div>
                 </div>

@@ -1003,7 +1003,21 @@ export default function VenderPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-white text-sm font-semibold truncate">{it.nombre}</p>
-                  <p className="text-slate-500 text-[11px]">{money(it.precio)} {it.unidad === 'kg' ? 'el kilo' : 'c/u'}</p>
+                  {permitirModificarPrecio ? (
+                    <label className="flex items-center gap-1 mt-0.5 text-slate-500 text-[11px]">
+                      $
+                      <input
+                        type="number" inputMode="numeric" min={0} value={it.precio}
+                        onChange={(e) => editarPrecioItem(it.productoId, e.target.value === '' ? 0 : Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
+                        aria-label={`Precio de ${it.nombre}`}
+                        className={`w-24 text-xs font-semibold bg-transparent border rounded-lg px-1.5 py-0.5 ${it.precioOriginal != null && it.precio !== it.precioOriginal ? 'border-amber-500 text-amber-400' : 'border-slate-700 text-slate-300'}`}
+                      />
+                      {it.unidad === 'kg' ? 'el kilo' : 'c/u'}
+                    </label>
+                  ) : (
+                    <p className="text-slate-500 text-[11px]">{money(it.precio)} {it.unidad === 'kg' ? 'el kilo' : 'c/u'}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button onClick={() => cambiarCantidad(it.productoId, -1)} className="w-7 h-7 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center" aria-label={it.unidad === 'kg' ? 'Quitar' : 'Quitar uno'}>

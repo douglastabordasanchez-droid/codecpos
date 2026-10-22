@@ -99,6 +99,7 @@ import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '
 import { obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
 import { VistaDocumentoFactura } from '../facturacion/VistaDocumentoFactura';
 import { buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
+import { lineaConIvaIncluido } from '../../lib/dian/ivaIncluido';
 
 interface Producto {
   id: string;
@@ -1548,6 +1549,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return {
       ivaHabilitado: config.ivaHabilitado === true,
       porcentajeIVA: config.porcentajeIVA || 19,
+      ivaIncluidoEnPrecio: config.ivaIncluidoEnPrecio === true,
     };
   };
 
@@ -1572,7 +1574,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // resultado por `carrito` una sola vez por render real del carrito; las
   // funciones de abajo quedan como wrappers finos para no tener que tocar
   // cada punto de la UI que ya las llama como calcularSubtotal().
-  const subtotalMemo = useMemo(() => {
+  // Suma de los precios tal como están en el catálogo (o editados).
+  const brutoMemo = useMemo(() => {
     return carritoItemsValidos().reduce((total, item) => {
       const precioFinal = item.precioEditado ?? precioCatalogoConMods(item);
       if (item.producto.pesable && item.peso) {
@@ -1584,8 +1587,18 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   }, [carrito]);
 
   const ivaMemo = useMemo(() => {
-    const { ivaHabilitado, porcentajeIVA } = obtenerConfigIVA();
+    const { ivaHabilitado, porcentajeIVA, ivaIncluidoEnPrecio } = obtenerConfigIVA();
     if (!ivaHabilitado) return 0;
+
+    // IVA incluido: el precio ya lo trae; se despeja de lo que se cobra.
+    if (ivaIncluidoEnPrecio) {
+      const cobradoConIVA = carritoItemsValidos().reduce((total, item) => {
+        if (!item.producto.aplicaIVA) return total;
+        const precioFinal = item.precioEditado ?? precioCatalogoConMods(item);
+        return total + precioFinal * (item.producto.pesable && item.peso ? item.peso : item.cantidad);
+      }, 0);
+      return Math.round(cobradoConIVA * porcentajeIVA / (100 + porcentajeIVA) * 100) / 100;
+    }
 
     const subtotalConIVA = carritoItemsValidos().reduce((total, item) => {
       if (!item.producto.aplicaIVA) return total;
@@ -1599,6 +1612,13 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrito]);
 
+  // Con IVA incluido el subtotal es la base (precios menos el IVA de adentro),
+  // así subtotal + IVA sigue siendo el total en todos los cálculos de abajo.
+  const subtotalMemo = useMemo(
+    () => (obtenerConfigIVA().ivaIncluidoEnPrecio ? brutoMemo - ivaMemo : brutoMemo),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [brutoMemo, ivaMemo],
+  );
   const totalBaseMemo = useMemo(() => subtotalMemo + ivaMemo, [subtotalMemo, ivaMemo]);
   const propinaAplicada = useMemo(() => {
     if (!propinaActiva) return 0;
@@ -2054,20 +2074,26 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 adquirente: clienteFE.nitCedula.trim()
                   ? { tipoDocumento: '13', numeroDocumento: clienteFE.nitCedula.trim(), nombreORazonSocial: clienteFE.nombre || 'Consumidor final', email: clienteFE.email || undefined, direccion: clienteFE.direccion || undefined }
                   : { tipoDocumento: '13', numeroDocumento: NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, nombreORazonSocial: 'Consumidor final' },
-                items: venta.items.map((it) => ({
-                  codigo: it.codigo,
-                  descripcion: it.nombre,
-                  cantidad: it.cantidad,
-                  precioUnitario: it.precioVenta,
-                  subtotal: it.subtotal,
+                items: venta.items.map((it) => {
                   // Solo los productos marcados «aplica IVA» llevan el impuesto —
                   // el mismo criterio con el que el POS calculó el total
                   // cobrado. Antes se le cargaba IVA a todos los ítems en el
                   // documento electrónico, aunque no se hubiera cobrado.
-                  impuestos: configIVA.ivaHabilitado && carrito.some((c) => c.producto.codigo === it.codigo && c.producto.aplicaIVA)
-                    ? [{ codigo: '01' as const, porcentaje: configIVA.porcentajeIVA, valor: Number((it.subtotal * (configIVA.porcentajeIVA / 100)).toFixed(2)) }]
-                    : undefined,
-                })),
+                  const llevaIVA = configIVA.ivaHabilitado && carrito.some((c) => c.producto.codigo === it.codigo && c.producto.aplicaIVA);
+                  const linea = { codigo: it.codigo, descripcion: it.nombre, cantidad: it.cantidad };
+                  // IVA incluido: lo cobrado de la línea ya trae el impuesto.
+                  if (llevaIVA && configIVA.ivaIncluidoEnPrecio) {
+                    return lineaConIvaIncluido(linea, it.cantidad > 0 ? it.subtotal / it.cantidad : it.subtotal, configIVA.porcentajeIVA);
+                  }
+                  return {
+                    ...linea,
+                    precioUnitario: it.precioVenta,
+                    subtotal: it.subtotal,
+                    impuestos: llevaIVA
+                      ? [{ codigo: '01' as const, porcentaje: configIVA.porcentajeIVA, valor: Number((it.subtotal * (configIVA.porcentajeIVA / 100)).toFixed(2)) }]
+                      : undefined,
+                  };
+                }),
                 subtotal: configIVA.ivaHabilitado ? subtotal : total,
                 totalImpuestos: configIVA.ivaHabilitado ? iva : 0,
                 total,

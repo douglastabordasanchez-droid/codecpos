@@ -89,12 +89,13 @@ export async function listarPerfilesFiscales(clienteId?: string): Promise<Fiscal
 
 /** El perfil ACTIVO del negocio (el que factura en este momento), o null si
  * ninguno está activo todavía. */
-export async function obtenerPerfilFiscalActivo(clienteId?: string): Promise<FiscalProfile | null> {
+export async function obtenerPerfilFiscalActivo(clienteId?: string, opciones: { lanzarSiFalla?: boolean } = {}): Promise<FiscalProfile | null> {
   const cid = clienteId || getLinkedClienteId();
   if (!cid) return null;
   const client = getSupabaseClient();
   if (!client) return null;
   const { data, error } = await client.from('perfiles_fiscales').select('*').eq('cliente_id', cid).eq('activo', true).maybeSingle();
+  if (error && opciones.lanzarSiFalla) throw new Error(error.message);
   if (error || !data) return null;
   return filaAPerfil(data as FiscalProfileRow);
 }
@@ -249,7 +250,7 @@ function filaAResolucion(fila: ResolucionRow): ResolucionDian {
   };
 }
 
-export async function listarResolucionesPerfil(perfilFiscalId: string): Promise<ResolucionDian[]> {
+export async function listarResolucionesPerfil(perfilFiscalId: string, opciones: { lanzarSiFalla?: boolean } = {}): Promise<ResolucionDian[]> {
   const client = getSupabaseClient();
   if (!client) return [];
   const { data, error } = await client
@@ -257,6 +258,7 @@ export async function listarResolucionesPerfil(perfilFiscalId: string): Promise<
     .select('*')
     .eq('perfil_fiscal_id', perfilFiscalId)
     .order('created_at', { ascending: false });
+  if (error && opciones.lanzarSiFalla) throw new Error(error.message);
   if (error || !data) return [];
   return (data as ResolucionRow[]).map(filaAResolucion);
 }
