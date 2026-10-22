@@ -14,6 +14,7 @@ import {
   listarClientesFacturacion, type ClienteFacturacion,
 } from '../../lib/supabase/clientesFacturacionService';
 import { digitoVerificacionNit } from '../../lib/dian/ublComun';
+import { leerClientesDeLibro } from '../../lib/dian/importarClientes';
 
 interface Props {
   clienteId: string;
@@ -25,21 +26,6 @@ const VACIO: ClienteFacturacion = {
 };
 
 const COLUMNAS_EXCEL = ['Tipo documento', 'Número documento', 'DV', 'Nombre o razón social', 'Correo', 'Teléfono', 'Dirección', 'Ciudad', 'Agente retención fuente', 'Agente ReteICA'];
-
-const esSi = (v: unknown) => /^(s[ií]|x|1|true|verdadero)$/i.test(String(v ?? '').trim());
-
-/** "NIT", "31", "Cédula de ciudadanía" → código DIAN. */
-function tipoDesdeTexto(v: unknown): string {
-  const t = String(v ?? '').trim().toLowerCase();
-  if (!t) return '13';
-  const porCodigo = TIPOS_DOCUMENTO_CLIENTE.find((x) => x.codigo === t);
-  if (porCodigo) return porCodigo.codigo;
-  if (t.includes('nit')) return '31';
-  if (t.includes('extranj')) return '22';
-  if (t.includes('pasaporte')) return '41';
-  if (t.includes('tarjeta')) return '12';
-  return '13';
-}
 
 const nombreTipo = (codigo: string) => TIPOS_DOCUMENTO_CLIENTE.find((t) => t.codigo === codigo)?.nombre || codigo;
 
@@ -113,32 +99,21 @@ export function ClientesFacturacion({ clienteId, soloLectura }: Props) {
     try {
       const XLSX = await import('xlsx');
       const libro = XLSX.read(await archivo.arrayBuffer());
-      const filas = XLSX.utils.sheet_to_json<Record<string, unknown>>(libro.Sheets[libro.SheetNames[0]], { defval: '' });
-      // Encabezados sin tildes ni mayúsculas, para aceptar archivos hechos a mano.
-      const clave = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
-      const valor = (fila: Record<string, unknown>, ...nombres: string[]) => {
-        const buscadas = nombres.map(clave);
-        const k = Object.keys(fila).find((x) => buscadas.some((b) => clave(x).startsWith(b)));
-        return k ? String(fila[k] ?? '').trim() : '';
-      };
-      const leidos: ClienteFacturacion[] = filas.map((f) => ({
-        tipoDocumento: tipoDesdeTexto(valor(f, 'tipo')),
-        numeroDocumento: valor(f, 'numero', 'documento', 'nit', 'cedula'),
-        digitoVerificacion: valor(f, 'dv', 'digito') || undefined,
-        nombre: valor(f, 'nombre', 'razon'),
-        email: valor(f, 'correo', 'email') || undefined,
-        telefono: valor(f, 'telefono', 'celular') || undefined,
-        direccion: valor(f, 'direccion') || undefined,
-        ciudad: valor(f, 'ciudad', 'municipio') || undefined,
-        agenteRetencionFuente: esSi(valor(f, 'agenteretencionfuente', 'retefuente', 'retencionfuente')),
-        agenteRetencionIca: esSi(valor(f, 'agentereteica', 'reteica')),
-      })).filter((c) => c.numeroDocumento && c.nombre);
+      // Sirve la plantilla y lo que exportan otros programas (Siigo, Alegra...):
+      // se busca en cada hoja la fila de encabezados con nombre e identificación.
+      const { clientes: leidos, descartadas } = leerClientesDeLibro(
+        libro.SheetNames.map((n) => XLSX.utils.sheet_to_json<any[]>(libro.Sheets[n], { header: 1, defval: '' })),
+      );
       if (leidos.length === 0) {
-        toast.error('El archivo no tiene clientes', { description: 'Use la plantilla: necesita al menos número de documento y nombre.' });
+        toast.error('No se encontraron clientes en el archivo', {
+          description: 'Debe tener una fila de encabezados con el nombre y la identificación (cédula o NIT). Puede usar la plantilla.',
+        });
         return;
       }
       const n = await importarClientesFacturacion(clienteId, leidos);
-      toast.success(`${n} clientes cargados`, { description: 'Los que ya existían se actualizaron.' });
+      toast.success(`${n} clientes cargados`, {
+        description: `Los que ya existían se actualizaron.${descartadas ? ` ${descartadas} filas sin nombre o sin documento no se cargaron.` : ''}`,
+      });
       cargar();
     } catch (e: any) {
       toast.error('No se pudo leer el archivo', { description: e?.message });
@@ -187,8 +162,14 @@ export function ClientesFacturacion({ clienteId, soloLectura }: Props) {
           <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
           <p className="text-white text-sm font-bold">{busqueda ? 'Ningún cliente coincide' : 'Todavía no hay clientes'}</p>
           <p className="text-slate-500 text-xs mt-1">
-            Agréguelos uno por uno o cárguelos con la plantilla de Excel. En el cobro basta escribir la cédula o el NIT.
+            Agréguelos uno por uno o suba su base en Excel: sirve la plantilla o la exportación de terceros de Siigo,
+            Alegra u otro programa. En el cobro basta escribir la cédula o el NIT.
           </p>
+          {!busqueda && !soloLectura && (
+            <button onClick={() => archivoRef.current?.click()} disabled={importando} className="mt-4 h-11 px-5 rounded-xl bg-amber-500 text-slate-950 text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50">
+              {importando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Subir mi base de clientes
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-x-auto">
