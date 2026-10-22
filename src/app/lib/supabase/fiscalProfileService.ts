@@ -42,6 +42,13 @@ interface FiscalProfileRow {
   entrega_whatsapp_habilitada: boolean;
   entrega_email_habilitada: boolean;
   entrega_email_remitente: string | null;
+  retefuente_activa?: boolean;
+  retefuente_porcentaje?: number | string;
+  retefuente_base_minima?: number | string;
+  reteica_activa?: boolean;
+  reteica_tarifa_por_mil?: number | string;
+  reteica_base_minima?: number | string;
+  actividad_economica?: string | null;
 }
 
 function filaAPerfil(fila: FiscalProfileRow): FiscalProfile {
@@ -72,6 +79,15 @@ function filaAPerfil(fila: FiscalProfileRow): FiscalProfile {
     entregaWhatsappHabilitada: fila.entrega_whatsapp_habilitada,
     entregaEmailHabilitada: fila.entrega_email_habilitada,
     entregaEmailRemitente: fila.entrega_email_remitente ?? undefined,
+    retenciones: {
+      retefuenteActiva: fila.retefuente_activa === true,
+      retefuentePorcentaje: Number(fila.retefuente_porcentaje ?? 2.5),
+      retefuenteBaseMinima: Number(fila.retefuente_base_minima ?? 0),
+      reteicaActiva: fila.reteica_activa === true,
+      reteicaTarifaPorMil: Number(fila.reteica_tarifa_por_mil ?? 0),
+      reteicaBaseMinima: Number(fila.reteica_base_minima ?? 0),
+    },
+    actividadEconomica: fila.actividad_economica ?? undefined,
   };
 }
 
@@ -187,6 +203,15 @@ export async function actualizarPerfilFiscal(id: string, datos: DatosPerfilFisca
   if (datos.entregaWhatsappHabilitada !== undefined) payload.entrega_whatsapp_habilitada = datos.entregaWhatsappHabilitada;
   if (datos.entregaEmailHabilitada !== undefined) payload.entrega_email_habilitada = datos.entregaEmailHabilitada;
   if (datos.entregaEmailRemitente !== undefined) payload.entrega_email_remitente = datos.entregaEmailRemitente;
+  if (datos.actividadEconomica !== undefined) payload.actividad_economica = datos.actividadEconomica || null;
+  if (datos.retenciones !== undefined) {
+    payload.retefuente_activa = datos.retenciones.retefuenteActiva;
+    payload.retefuente_porcentaje = datos.retenciones.retefuentePorcentaje;
+    payload.retefuente_base_minima = datos.retenciones.retefuenteBaseMinima;
+    payload.reteica_activa = datos.retenciones.reteicaActiva;
+    payload.reteica_tarifa_por_mil = datos.retenciones.reteicaTarifaPorMil;
+    payload.reteica_base_minima = datos.retenciones.reteicaBaseMinima;
+  }
 
   const { data, error } = await client.from('perfiles_fiscales').update(payload).eq('id', id).select().single();
   if (error) throw new Error(error.message);

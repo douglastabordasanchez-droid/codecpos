@@ -13,7 +13,7 @@ import { generarFacturaPDF, nombreArchivoFactura, type ConfigEmpresa, type Venta
 import { compartirPdf, descargarPdf } from '../../app/lib/archivoPdf';
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 import { obtenerFacturaPorId } from '../../app/lib/supabase/facturaElectronicaDianService';
-import { datosPdfFacturaDian } from '../../app/lib/dian/representacionGrafica';
+import { datosPdfFacturaDianCompletos } from '../../app/lib/dian/representacionGrafica';
 
 interface VentaParaCompartir {
   id: string;
@@ -140,7 +140,7 @@ export async function obtenerDatosFactura(clienteId: string, venta: VentaParaCom
     // Con el XML firmado sale la representación gráfica completa de la DIAN.
     const factura = await obtenerFacturaPorId(f.id).catch(() => null);
     if (factura?.xml) {
-      const dian = datosPdfFacturaDian(factura, config);
+      const dian = await datosPdfFacturaDianCompletos(factura, config);
       dian.venta.cajero = facturaVenta.cajero;
       return dian;
     }

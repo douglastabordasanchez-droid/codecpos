@@ -19,6 +19,8 @@
  * estado del documento ('error' con su motivo, o 'contingency' para que la
  * cola lo reintente) y en el resultado que devuelve.
  */
+import { buscarClienteFacturacion } from '../supabase/clientesFacturacionService';
+import { calcularRetenciones } from './retenciones';
 import type { AdquirenteDian, ItemFacturaDian, EmisorSnapshot, FacturaElectronicaDian, EstadoDocumentoDian } from './types';
 import { decidirTipoDocumentoDian } from './types';
 import { sinIvaParaNoResponsable } from './ivaIncluido';
@@ -144,7 +146,27 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
     if (Math.abs(fiscal.total - datos.total) > 1) {
       console.warn(`[DIAN] ${datos.ventaReferencia}: el total fiscal (${fiscal.total}) difiere del cobrado (${datos.total}) — normal si la venta incluye propina, que no hace parte de la factura.`);
     }
-    const adquirenteId = identificarAdquirente(datos.adquirente);
+    // El cliente de la base de clientes completa lo que el cajero no escribió
+    // (tipo de documento, DV, correo) y dice si es agente de retención.
+    const adquirenteId0 = identificarAdquirente(datos.adquirente);
+    const clienteBase = adquirenteId0.esConsumidorFinal
+      ? null
+      : await buscarClienteFacturacion(datos.clienteId, adquirenteId0.numero).catch(() => null);
+    const adquirente: AdquirenteDian = clienteBase
+      ? {
+        ...datos.adquirente,
+        tipoDocumento: clienteBase.tipoDocumento || datos.adquirente.tipoDocumento,
+        digitoVerificacion: datos.adquirente.digitoVerificacion || clienteBase.digitoVerificacion,
+        nombreORazonSocial: datos.adquirente.nombreORazonSocial?.trim() && datos.adquirente.nombreORazonSocial !== 'Consumidor final'
+          ? datos.adquirente.nombreORazonSocial
+          : clienteBase.nombre,
+        email: datos.adquirente.email || clienteBase.email,
+        telefono: datos.adquirente.telefono || clienteBase.telefono,
+        direccion: datos.adquirente.direccion || clienteBase.direccion,
+      }
+      : datos.adquirente;
+    const adquirenteId = identificarAdquirente(adquirente);
+    const retenciones = tipoDocumento === 'factura' ? calcularRetenciones(perfil.retenciones, clienteBase, fiscal.brutoLineas) : [];
 
     const consecutivo = await siguienteConsecutivoDian(resolucion.id);
     // Prefijo + consecutivo, sin ceros de relleno: así lo compara la DIAN contra el rango autorizado.
@@ -176,13 +198,14 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
       intentosTransmision: 0,
       contingencia: false,
       emisor,
-      adquirente: datos.adquirente,
+      adquirente,
       items,
       subtotal: fiscal.brutoLineas,
       totalImpuestos: fiscal.totalImpuestos,
       total: fiscal.total,
       fechaEmision,
       pago: datos.pago,
+      retenciones: retenciones.length > 0 ? retenciones : undefined,
     };
 
     const extension: DianExtensionData = {

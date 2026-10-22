@@ -11,6 +11,7 @@
  * anexo, y debe confirmarse corriendo el set de pruebas de habilitación con
  * el certificado del negocio.
  */
+import { NOMBRE_RETENCION, type RetencionDocumento } from './retenciones';
 import type { AdquirenteDian, EmisorSnapshot } from './types';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from './types';
 import { resolverUbicacionDian, type UbicacionDian } from './divipola';
@@ -250,6 +251,31 @@ export function bloqueTributosDocumento(doc: DocumentoFiscal): string {
     ${monto('TaxAmount', t.total)}
 ${t.subtotales.map((s) => subtotalTributo(t.codigo, t.nombre, s, '    ')).join('\n')}
   </cac:TaxTotal>`)
+    .join('\n');
+}
+
+/**
+ * cac:WithholdingTaxTotal — retenciones que practica el comprador (06
+ * ReteRenta, 07 ReteICA), una por tributo. Van después de los tributos y no
+ * tocan los totales: el PayableAmount sigue siendo el total de la factura.
+ */
+export function bloqueRetenciones(retenciones: RetencionDocumento[] | undefined): string {
+  return (retenciones || [])
+    .filter((r) => r.valor > 0)
+    .map((r) => `  <cac:WithholdingTaxTotal>
+    ${monto('TaxAmount', r.valor)}
+    <cac:TaxSubtotal>
+      ${monto('TaxableAmount', r.base)}
+      ${monto('TaxAmount', r.valor)}
+      <cac:TaxCategory>
+        <cbc:Percent>${r.porcentaje.toFixed(3)}</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>${r.codigo}</cbc:ID>
+          <cbc:Name>${NOMBRE_RETENCION[r.codigo]}</cbc:Name>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:WithholdingTaxTotal>`)
     .join('\n');
 }
 

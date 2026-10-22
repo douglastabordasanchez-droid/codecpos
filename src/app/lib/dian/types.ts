@@ -83,6 +83,22 @@ export interface FiscalProfile {
   entregaWhatsappHabilitada: boolean;
   entregaEmailHabilitada: boolean;
   entregaEmailRemitente?: string;
+  /** Retenciones que le practican sus clientes agentes de retención (0123). */
+  retenciones?: ConfiguracionRetenciones;
+  /** Código CIIU de la actividad principal (sale en el pie de la factura). */
+  actividadEconomica?: string;
+}
+
+export interface ConfiguracionRetenciones {
+  retefuenteActiva: boolean;
+  /** Porcentaje (2,5 = 2,5 %). */
+  retefuentePorcentaje: number;
+  /** Base mínima en pesos antes de impuestos; por debajo no se retiene. */
+  retefuenteBaseMinima: number;
+  reteicaActiva: boolean;
+  /** Tarifa por mil (11,04 = 11,04 por mil). */
+  reteicaTarifaPorMil: number;
+  reteicaBaseMinima: number;
 }
 
 /** Para qué tipo de documento sirve una numeración/resolución — la DIAN
@@ -223,6 +239,8 @@ export interface FacturaElectronicaDian {
   fechaValidacion?: string;
   /** Cómo se pagó la venta — va en cac:PaymentMeans, que la DIAN exige (FAN01). */
   pago?: { metodo?: string; aCredito?: boolean; fechaVencimiento?: string };
+  /** Retenciones del comprador agente de retención (cac:WithholdingTaxTotal). */
+  retenciones?: Array<{ codigo: '06' | '07'; porcentaje: number; base: number; valor: number }>;
   /** Cuándo y a qué correo se le envió al cliente (migración 0099). Sin valor = pendiente. */
   correoEnviadoAt?: string;
   correoDestino?: string;

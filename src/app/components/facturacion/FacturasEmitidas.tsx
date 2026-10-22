@@ -20,7 +20,7 @@ import {
   type TipoNotaAjuste, type NotaAjusteDian,
 } from '../../lib/dian/types';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
-import { datosPdfFacturaDian } from '../../lib/dian/representacionGrafica';
+import { datosPdfFacturaDianCompletos } from '../../lib/dian/representacionGrafica';
 import { ESTADO_DIAN_UI, descargarTexto, money } from './comunes';
 
 const delivery = new ManualDeliveryProvider();
@@ -334,7 +334,7 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
         abierta={!!facturaVista}
         onCerrar={() => setFacturaVista(null)}
         titulo={facturaVista?.numeroFactura || ''}
-        obtenerDatos={async () => datosPdfFacturaDian(facturaVista!)}
+        obtenerDatos={() => datosPdfFacturaDianCompletos(facturaVista!)}
       />
 
       {facturaEnvio && (

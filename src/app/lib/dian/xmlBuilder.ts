@@ -32,7 +32,7 @@ import type { FacturaElectronicaDian } from './types';
 import { construirBloqueDianExtensions, NAMESPACES_DIAN, type DianExtensionData } from './dianExtensionsBlock';
 import { calcularDocumentoFiscal, fechaColombia, horaColombia } from './documentoFiscal';
 import {
-  bloqueAdquirente, bloqueEmisor, bloqueLineas, bloquePago, bloqueTotales, bloqueTributosDocumento,
+  bloqueAdquirente, bloqueEmisor, bloqueLineas, bloquePago, bloqueRetenciones, bloqueTotales, bloqueTributosDocumento,
   escapeXml, MONEDA, DatosFiscalesIncompletos,
 } from './ublComun';
 
@@ -92,6 +92,6 @@ ${extensiones}
 ${bloqueEmisor(emisor, extension.prefix, cobraIva)}
 ${bloqueAdquirente(factura.adquirente)}
 ${bloquePago(factura.pago, fecha)}
-${[bloqueTributosDocumento(doc), bloqueTotales(doc), bloqueLineas(doc.lineas, 'InvoiceLine', 'InvoicedQuantity')].filter(Boolean).join('\n')}
+${[bloqueTributosDocumento(doc), esPos ? '' : bloqueRetenciones(factura.retenciones), bloqueTotales(doc), bloqueLineas(doc.lineas, 'InvoiceLine', 'InvoicedQuantity')].filter(Boolean).join('\n')}
 </Invoice>`;
 }

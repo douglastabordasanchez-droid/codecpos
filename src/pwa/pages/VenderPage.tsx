@@ -31,7 +31,7 @@ import { compartirRecibo, obtenerDatosFactura } from '../lib/compartirFactura';
 import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactura';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
-import { buscarClienteFactura, recordarClienteFactura } from '../../app/lib/dian/clientesFactura';
+import { avisoAgenteRetencion, buscarClienteFactura, recordarClienteFactura } from '../../app/lib/dian/clientesFactura';
 import { lineaConIvaIncluido } from '../../app/lib/dian/ivaIncluido';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
 import { EsperandoPagoModal, METODOS_TRANSFERENCIA } from '../components/EsperandoPagoModal';
@@ -148,11 +148,13 @@ export default function VenderPage() {
   const { tieneModuloDePago } = useModulosActivos();
   const facturacionDisponible = tieneModuloDePago(ModuloPOS.FACTURACION_DIAN);
   const [clienteFERecordado, setClienteFERecordado] = useState(false);
+  const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
 
   /** Cliente que ya compró con factura: llena el nombre si el cajero no lo escribió. */
   const autocompletarClienteFE = async (documento: string) => {
     const encontrado = await buscarClienteFactura(empleado?.cliente_id, documento);
     setClienteFERecordado(!!encontrado);
+    setAvisoRetencionFE(avisoAgenteRetencion(encontrado));
     if (encontrado) setNombreClienteFactura((n) => n.trim() || encontrado.nombre);
   };
   const [esperando, setEsperando] = useState<{ clave: string } | null>(null);
@@ -890,7 +892,7 @@ export default function VenderPage() {
                 />
                 <input value={nombreClienteFactura} onChange={(e) => setNombreClienteFactura(e.target.value)} placeholder="Nombre" className={campo} />
               </div>
-              {clienteFERecordado && <p className="text-emerald-400 text-[11px] font-semibold">Cliente conocido: su nombre se llenó solo.</p>}
+              {clienteFERecordado && <p className="text-emerald-400 text-[11px] font-semibold">Cliente conocido: su nombre se llenó solo.{avisoRetencionFE && ` ${avisoRetencionFE}`}</p>}
             </>
           )}
         </div>

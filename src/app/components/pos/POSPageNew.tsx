@@ -98,8 +98,8 @@ import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '../../lib/dian/types';
 import { obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
-import { datosPdfFacturaDian } from '../../lib/dian/representacionGrafica';
-import { buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
+import { datosPdfFacturaDianCompletos } from '../../lib/dian/representacionGrafica';
+import { avisoAgenteRetencion, buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
 import { lineaConIvaIncluido } from '../../lib/dian/ivaIncluido';
 
 interface Producto {
@@ -389,6 +389,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // Arranca en «No» y vuelve a «No» después de cobrar.
   const [emitirFE, setEmitirFE] = useState(false);
   const [clienteFERecordado, setClienteFERecordado] = useState(false);
+  const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
   // Factura DIAN aceptada de la última venta: se abre sola para imprimirla
   // con su número DBM, CUFE y QR (el ticket del cobro sale antes de que la
   // DIAN conteste, con el número interno de la caja).
@@ -398,6 +399,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const autocompletarClienteFE = async (documento: string) => {
     const encontrado = await buscarClienteFactura(getLinkedClienteId(), documento);
     setClienteFERecordado(!!encontrado);
+    setAvisoRetencionFE(avisoAgenteRetencion(encontrado));
     if (!encontrado) return;
     setClienteFE((p) => ({
       ...p,
@@ -3911,7 +3913,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </div>
                     {clienteFERecordado && (
                       <p className={`text-xs mt-2 font-semibold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
-                        Cliente conocido: sus datos se llenaron solos. Revísalos antes de cobrar.
+                        Cliente conocido: sus datos se llenaron solos. Revísalos antes de cobrar.{avisoRetencionFE && ` ${avisoRetencionFE}`}
                       </p>
                     )}
                     </>)}
@@ -4172,7 +4174,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         abierta={!!facturaDianVista}
         onCerrar={() => setFacturaDianVista(null)}
         titulo={facturaDianVista?.numeroFactura || ''}
-        obtenerDatos={async () => datosPdfFacturaDian(facturaDianVista!)}
+        obtenerDatos={() => datosPdfFacturaDianCompletos(facturaDianVista!)}
       />
 
       {/* Modal de Confirmación para Métodos de Pago Simples */}

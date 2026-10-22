@@ -333,3 +333,30 @@ describe('datos de apoyo', () => {
     expect(resolverUbicacionDian('')).toBeNull();
   });
 });
+
+describe('retenciones del comprador (cac:WithholdingTaxTotal)', () => {
+  const retenciones = [
+    { codigo: '06' as const, porcentaje: 2.5, base: 52999.99, valor: 1325 },
+    { codigo: '07' as const, porcentaje: 1.104, base: 52999.99, valor: 585.12 },
+  ];
+
+  it('van después de los tributos, antes de los totales, sin cambiar lo que se paga', () => {
+    const sin = construirXmlFactura(facturaBase(), extension);
+    const con = construirXmlFactura(facturaBase({ retenciones }), extension);
+    const pagable = (xml: string) => xml.match(/<cbc:PayableAmount[^>]*>([^<]+)</)?.[1];
+    expect(pagable(con)).toBe(pagable(sin));
+    expect(con.indexOf('<cac:WithholdingTaxTotal>')).toBeGreaterThan(con.lastIndexOf('</cac:TaxTotal>', con.indexOf('<cac:LegalMonetaryTotal>')));
+    expect(con.indexOf('</cac:WithholdingTaxTotal>')).toBeLessThan(con.indexOf('<cac:LegalMonetaryTotal>'));
+    expect(con).toContain('<cbc:Percent>1.104</cbc:Percent>');
+    expect(con).toContain('<cbc:ID>07</cbc:ID>');
+
+    const doc = parseDianXml(con).documento!;
+    expect(doc.resumen.reteRenta).toBe(1325);
+    expect(doc.resumen.reteIca).toBe(585.12);
+  });
+
+  it('el documento equivalente POS no las lleva', () => {
+    const xml = construirXmlFactura(facturaBase({ retenciones, tipoDocumento: 'documento_equivalente' }), extension);
+    expect(xml).not.toContain('WithholdingTaxTotal');
+  });
+});

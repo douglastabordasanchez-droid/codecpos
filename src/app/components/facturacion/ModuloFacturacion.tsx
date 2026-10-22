@@ -9,19 +9,21 @@
  */
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { FilePlus2, FileClock, FileInput, Users, Package, ShieldCheck, ShieldAlert, Receipt, Inbox, Settings2 } from 'lucide-react';
+import { FilePlus2, FileClock, FileInput, Users, Package, ShieldCheck, ShieldAlert, Receipt, Inbox, Settings2, Contact } from 'lucide-react';
 import { listarPerfilesFiscales } from '../../lib/supabase/fiscalProfileService';
 import type { FiscalProfile } from '../../lib/dian/types';
 import { FacturasEmitidas } from './FacturasEmitidas';
 import { RecepcionCausacion } from './RecepcionCausacion';
 import { CertificadoDigital } from './CertificadoDigital';
 import { PruebaHabilitacion } from './PruebaHabilitacion';
+import { ClientesFacturacion } from './ClientesFacturacion';
+import { ConfiguracionRetenciones } from './ConfiguracionRetenciones';
 import { AsistenteConfiguracionDian } from '../settings/AsistenteConfiguracionDian';
 import type { OperadorFacturacion } from './comunes';
 
 export type DestinoFacturacion = 'vender' | 'terceros' | 'productos';
 
-type Pestana = 'ventas' | 'recepcion';
+type Pestana = 'ventas' | 'clientes' | 'recepcion';
 
 interface Props {
   clienteId: string;
@@ -62,6 +64,7 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
       Icon: FileInput, titulo: 'Documento soporte', detalle: 'Sube y causa XML de compras',
       accion: () => setPestana('recepcion'),
     },
+    { Icon: Contact, titulo: 'Clientes', detalle: 'Base para facturar y retenciones', accion: () => setPestana('clientes') },
     { Icon: Users, titulo: 'Terceros', detalle: 'Proveedores del negocio', accion: () => onIr('terceros') },
     { Icon: Package, titulo: 'Productos / Servicios', detalle: 'Catálogo e inventario', accion: () => onIr('productos') },
   ];
@@ -100,7 +103,7 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {accesos.map(({ Icon, titulo, detalle, accion }) => (
           <button
             key={titulo}
@@ -117,13 +120,15 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
       </div>
 
       {perfil?.id && <CertificadoDigital clienteId={clienteId} perfilFiscalId={perfil.id} soloLectura={soloLectura} />}
+      {perfil?.id && <ConfiguracionRetenciones perfil={perfil} soloLectura={soloLectura} onGuardado={() => setRecarga((n) => n + 1)} />}
       {perfil?.id && perfil.activo && perfil.ambiente !== 'produccion' && !soloLectura && (
         <PruebaHabilitacion perfil={perfil} clienteId={clienteId} onTerminado={() => { setPestana('ventas'); setRecarga((n) => n + 1); }} />
       )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {([
           ['ventas', 'Facturas de venta', Receipt],
+          ['clientes', 'Clientes', Contact],
           ['recepcion', 'Recepción y causación', Inbox],
         ] as const).map(([id, label, Icon]) => (
           <button
@@ -152,6 +157,8 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
 
       {pestana === 'ventas'
         ? <FacturasEmitidas clienteId={clienteId} recarga={recarga} />
+        : pestana === 'clientes'
+        ? <ClientesFacturacion clienteId={clienteId} soloLectura={soloLectura} />
         : <RecepcionCausacion clienteId={clienteId} operador={operador} nitPropio={perfil?.nit || ''} soloLectura={soloLectura} />}
     </div>
   );

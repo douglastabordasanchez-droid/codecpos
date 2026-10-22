@@ -11,6 +11,7 @@
 import { parseDianXml } from './recepcion/parser';
 import { IMPUESTOS_DIAN, type DocumentoNormalizado } from './recepcion/types';
 import { construirUrlQR } from './softwareSecurityCode';
+import { obtenerPerfilFiscalPorId } from '../supabase/fiscalProfileService';
 import type { FacturaElectronicaDian } from './types';
 import type { ConfigEmpresa, ItemFactura, Venta } from '../pdfGenerator';
 
@@ -168,4 +169,18 @@ export function datosPdfFacturaDian(
     rangoAutorizadoHasta: doc?.autorizacion.rangoHasta || undefined,
   };
   return { venta, config };
+}
+
+/** Igual que datosPdfFacturaDian, completando con el perfil fiscal la
+ * actividad económica y el régimen que el XML no dice. */
+export async function datosPdfFacturaDianCompletos(
+  factura: FacturaElectronicaDian,
+  empresa: Partial<ConfigEmpresa> = {},
+): Promise<{ venta: Venta; config: ConfigEmpresa }> {
+  const perfil = await obtenerPerfilFiscalPorId(factura.perfilFiscalId).catch(() => null);
+  return datosPdfFacturaDian(factura, {
+    ...empresa,
+    actividadEconomica: empresa.actividadEconomica || perfil?.actividadEconomica,
+    regimenFiscal: empresa.regimenFiscal || perfil?.regimenFiscal,
+  });
 }

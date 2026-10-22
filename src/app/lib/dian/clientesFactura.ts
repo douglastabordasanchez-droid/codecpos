@@ -3,10 +3,10 @@
  * de alguien que ya compró con factura, se llenan solos su nombre, correo y
  * dirección.
  *
- * Primero se busca en este equipo (localStorage, guarda también la
- * dirección) y, si no está, en las facturas electrónicas que ya se le
- * hicieron en la nube, que sirven igual en web, celular y Electron. No hay
- * tabla aparte: la factura ya es el registro del cliente.
+ * Primero se busca en la base de clientes del negocio (Facturación ›
+ * Clientes, tabla clientes_facturacion), luego en este equipo (localStorage)
+ * y por último en las facturas electrónicas que ya se le hicieron en la nube.
+ * Las tres sirven igual en web, celular y Electron.
  */
 import { getSupabaseClient } from '../supabase/config';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from './types';
@@ -16,6 +16,11 @@ export interface ClienteFacturaGuardado {
   nombre: string;
   email?: string;
   direccion?: string;
+  /** Solo los que vienen de la base de clientes. */
+  tipoDocumento?: string;
+  telefono?: string;
+  agenteRetencionFuente?: boolean;
+  agenteRetencionIca?: boolean;
 }
 
 const CLAVE = 'codecpos_clientes_factura';
@@ -52,14 +57,43 @@ export function recordarClienteFactura(cliente: ClienteFacturaGuardado): void {
   try { localStorage.setItem(CLAVE, JSON.stringify(todos)); } catch { /* sin espacio: solo no se recuerda */ }
 }
 
+/** Aviso para el cajero cuando el cliente es agente de retención. */
+export function avisoAgenteRetencion(c: ClienteFacturaGuardado | null | undefined): string {
+  const cuales = [c?.agenteRetencionFuente ? 'ReteFuente' : '', c?.agenteRetencionIca ? 'ReteICA' : ''].filter(Boolean);
+  return cuales.length ? `Agente de retención: la factura lleva ${cuales.join(' y ')} si aplica.` : '';
+}
+
 export async function buscarClienteFactura(clienteId: string | null | undefined, documento: string): Promise<ClienteFacturaGuardado | null> {
   const clave = normalizarDocumento(documento);
   if (clave.length < 5 || clave === NUMERO_DOCUMENTO_CONSUMIDOR_FINAL) return null;
 
+  const client = getSupabaseClient();
+  if (client && clienteId) {
+    try {
+      const { data } = await client
+        .from('clientes_facturacion')
+        .select('tipo_documento, numero_documento, digito_verificacion, nombre, email, telefono, direccion, agente_retencion_fuente, agente_retencion_ica')
+        .eq('cliente_id', clienteId)
+        .eq('numero_documento', clave)
+        .maybeSingle();
+      if (data?.nombre) {
+        return {
+          documento: data.digito_verificacion ? `${data.numero_documento}-${data.digito_verificacion}` : data.numero_documento,
+          nombre: data.nombre,
+          email: data.email || undefined,
+          direccion: data.direccion || undefined,
+          tipoDocumento: data.tipo_documento || undefined,
+          telefono: data.telefono || undefined,
+          agenteRetencionFuente: data.agente_retencion_fuente === true,
+          agenteRetencionIca: data.agente_retencion_ica === true,
+        };
+      }
+    } catch { /* sin red: se sigue con lo del equipo */ }
+  }
+
   const local = leer()[clave];
   if (local) return local;
 
-  const client = getSupabaseClient();
   if (!client || !clienteId) return null;
   try {
     const { data } = await client
