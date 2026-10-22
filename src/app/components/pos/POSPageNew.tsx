@@ -95,7 +95,9 @@ import { suscribirCodigosEscaneados } from '../../lib/supabase/scanBroadcast';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
 import { armarNumeroFactura } from '../../lib/numeracionCaja';
-import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../lib/dian/types';
+import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '../../lib/dian/types';
+import { obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
+import { VistaDocumentoFactura } from '../facturacion/VistaDocumentoFactura';
 import { buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
 
 interface Producto {
@@ -385,6 +387,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // Arranca en «No» y vuelve a «No» después de cobrar.
   const [emitirFE, setEmitirFE] = useState(false);
   const [clienteFERecordado, setClienteFERecordado] = useState(false);
+  // Factura DIAN aceptada de la última venta: se abre sola para imprimirla
+  // con su número DBM, CUFE y QR (el ticket del cobro sale antes de que la
+  // DIAN conteste, con el número interno de la caja).
+  const [facturaDianVista, setFacturaDianVista] = useState<FacturaElectronicaDian | null>(null);
 
   /** Cliente que ya compró con factura: llena solo lo que el cajero no escribió. */
   const autocompletarClienteFE = async (documento: string) => {
@@ -2066,9 +2072,31 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 totalImpuestos: configIVA.ivaHabilitado ? iva : 0,
                 total,
                 pago: { metodo: metodoPago },
-              }).catch(() => {});
+              }).then(async (r) => {
+                if (r.estado === 'accepted') {
+                  toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { duration: 6000 });
+                  const factura = await obtenerFacturaPorVenta(clienteIdVinculado, numeroFacturaCompleto).catch(() => null);
+                  if (factura) setFacturaDianVista(factura);
+                } else if (r.estado === 'en_cola' || r.estado === 'contingency' || r.estado === 'sent') {
+                  toast.warning(`Factura electrónica${r.numero ? ` ${r.numero}` : ''} pendiente`, {
+                    description: r.motivo || 'Se reintenta sola. Revísela en Facturación › Historial.',
+                    duration: 10000,
+                  });
+                } else {
+                  toast.error(`La factura electrónica de ${numeroFacturaCompleto} no salió`, {
+                    description: r.motivo || 'Revise Configuración › Facturación electrónica.',
+                    duration: 15000,
+                  });
+                }
+              }).catch((e) => {
+                toast.error('La factura electrónica no salió', { description: (e as Error)?.message, duration: 15000 });
+              });
             } else {
               console.warn('[DIAN] Negocio no vinculado a la nube — no se puede emitir factura DIAN directa (necesita cliente_id de nuestra base de datos).');
+              toast.error('La factura electrónica no salió', {
+                description: 'Este computador no está vinculado a la nube del negocio.',
+                duration: 15000,
+              });
             }
           }
 
@@ -3824,19 +3852,22 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <Input
+                        value={clienteFE.nitCedula}
+                        onChange={(e) => { setClienteFERecordado(false); setClienteFE((p) => ({ ...p, nitCedula: e.target.value })); }}
+                        onBlur={(e) => { void autocompletarClienteFE(e.target.value); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void autocompletarClienteFE((e.target as HTMLInputElement).value); }}
+                        placeholder="Cédula / NIT"
+                        className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
+                      />
+                      <Input
                         value={clienteFE.nombre}
                         onChange={(e) => setClienteFE((p) => ({ ...p, nombre: e.target.value }))}
                         placeholder="Nombre cliente"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
-                      <Input
-                        value={clienteFE.nitCedula}
-                        onChange={(e) => { setClienteFERecordado(false); setClienteFE((p) => ({ ...p, nitCedula: e.target.value })); }}
-                        onBlur={(e) => { void autocompletarClienteFE(e.target.value); }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') void autocompletarClienteFE((e.target as HTMLInputElement).value); }}
-                        placeholder="NIT / Cédula"
-                        className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
-                      />
+                      {/* DIAN directo solo pide cédula y nombre, como en los
+                          supermercados; correo y dirección son del proveedor externo. */}
+                      {leerConfigEmpresaCacheada().modoFacturacionElectronica !== 'dian_directo' && (<>
                       <Input
                         value={clienteFE.email}
                         onChange={(e) => setClienteFE((p) => ({ ...p, email: e.target.value }))}
@@ -3849,6 +3880,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                         placeholder="Dirección"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
+                      </>)}
                     </div>
                     {clienteFERecordado && (
                       <p className={`text-xs mt-2 font-semibold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
@@ -4107,6 +4139,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             )}
           </div>
         </div>
+      )}
+
+      {facturaDianVista && (
+        <VistaDocumentoFactura factura={facturaDianVista} onCerrar={() => setFacturaDianVista(null)} />
       )}
 
       {/* Modal de Confirmación para Métodos de Pago Simples */}
