@@ -314,6 +314,29 @@ export async function crearResolucionDian(
   return filaAResolucion(data as ResolucionRow);
 }
 
+/**
+ * Numeración activa de notas crédito o débito del perfil; si no hay, la crea.
+ * Las notas no llevan resolución de la DIAN (no van con InvoiceControl): el
+ * facturador elige su prefijo y consecutivo. Se usa NC y ND desde el 1.
+ */
+export async function asegurarNumeracionNota(
+  clienteId: string,
+  perfilFiscalId: string,
+  tipo: 'nota_credito' | 'nota_debito',
+): Promise<ResolucionDian> {
+  const activa = (await listarResolucionesPerfil(perfilFiscalId, { lanzarSiFalla: true }))
+    .find((r) => r.estado === 'activa' && r.tipoDocumento === tipo);
+  if (activa?.id) return activa;
+  return crearResolucionDian(clienteId, perfilFiscalId, {
+    tipoDocumento: tipo,
+    prefijo: tipo === 'nota_credito' ? 'NC' : 'ND',
+    resolucionNumero: 'Sin resolución (notas)',
+    resolucionFecha: new Date().toISOString().slice(0, 10),
+    rangoDesde: 1,
+    rangoHasta: 999999999,
+  });
+}
+
 /** Consume el siguiente consecutivo de forma atómica (RPC — el UPDATE en el
  * servidor toma el row lock, así que dos ventas simultáneas nunca chocan). */
 export async function siguienteConsecutivoDian(resolucionId: string): Promise<number> {

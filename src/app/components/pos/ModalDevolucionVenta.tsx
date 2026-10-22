@@ -21,6 +21,7 @@ import { electronStore, type Venta } from '../../lib/electronStore';
 import { onDevolucionRegistrada } from '../../lib/integracionesService';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { emitirNotaCreditoPorDevolucion } from '../../lib/dian/notaPorDevolucion';
+import { avisarNotaPorDevolucion } from '../../lib/dian/avisoNotaDevolucion';
 
 /** Devolución tal como la guarda el historial (localStorage `codecpos_devoluciones`). */
 export interface DevolucionRegistrada {
@@ -172,21 +173,7 @@ export function ModalDevolucionVenta({ venta, onClose, onHecho }: Props) {
           items: elegidas.map((l) => ({ codigo: l.item.codigo, nombre: l.item.nombre, cantidad: cantidades[l.item.id] })),
           motivo: motivoFinal,
           devolucionTotal,
-        }).then((r) => {
-          if (r.estado === 'emitida') {
-            toast.success(`Nota crédito ${r.numeroNota} emitida`, {
-              description: r.estadoDian === 'accepted' ? 'Aprobada por la DIAN' : 'Se enviará a la DIAN en cuanto haya conexión',
-            });
-          } else if (r.estado === 'sin_numeracion') {
-            toast.warning('Falta la numeración de notas crédito', { description: 'Regístrala en Facturación → Configurar → Numeración y emite la nota desde Facturas emitidas.' });
-          } else if (r.estado === 'factura_no_aprobada') {
-            toast.warning('La factura electrónica de esta venta aún no está aprobada', { description: 'Cuando la DIAN la apruebe, emite la nota crédito desde Facturación.' });
-          } else if (r.estado === 'tiquete_pos') {
-            toast.info('Venta con tiquete POS electrónico', { description: 'La nota de ajuste del tiquete POS todavía no está disponible.' });
-          } else if (r.estado === 'error') {
-            toast.error('No se pudo emitir la nota crédito', { description: `${r.motivo} Emítela desde Facturación → Facturas emitidas.` });
-          }
-        });
+        }).then(avisarNotaPorDevolucion);
       }
 
       triggerRefresh();

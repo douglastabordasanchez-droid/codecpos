@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Search, RefreshCw, Eye, Download, Send, Mail, FileMinus2, CheckCircle2, Clock, Copy, X, Package, Loader2 } from 'lucide-react';
 import { listarFacturasDian, marcarCorreoEnviado } from '../../lib/supabase/facturaElectronicaDianService';
-import { listarResolucionesPerfil } from '../../lib/supabase/fiscalProfileService';
+import { asegurarNumeracionNota, listarResolucionesPerfil } from '../../lib/supabase/fiscalProfileService';
 import { listarNotasDeFactura } from '../../lib/supabase/notaAjusteDianService';
 import { ManualDeliveryProvider } from '../../lib/dian/deliveryProvider';
 import { emitirNotaAjuste } from '../../lib/dian/emitirNotaAjuste';
@@ -144,11 +144,20 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
   async function abrirNota(f: FacturaElectronicaDian) {
     setFacturaNota(f);
     setFormNota({ tipo: 'credito', resolucionId: '', conceptoCodigo: '', motivo: '', total: String(f.total) });
+    // Las notas no necesitan resolución DIAN: si el perfil no tiene numeración
+    // de notas (NC y ND), se crea aquí para que siempre haya con qué emitir.
+    await Promise.all([
+      asegurarNumeracionNota(f.clienteId, f.perfilFiscalId, 'nota_credito'),
+      asegurarNumeracionNota(f.clienteId, f.perfilFiscalId, 'nota_debito'),
+    ]).catch((e) => console.warn('[DIAN] No se pudo preparar la numeración de notas:', e));
     const [resoluciones, notas] = await Promise.all([
       listarResolucionesPerfil(f.perfilFiscalId),
       listarNotasDeFactura(f.id!),
     ]);
     setResolucionesPerfil(resoluciones);
+    // Se deja elegida la numeración de nota crédito (la más común).
+    const nc = resoluciones.find((r) => r.estado === 'activa' && r.tipoDocumento === 'nota_credito');
+    if (nc?.id) setFormNota((x) => ({ ...x, resolucionId: x.resolucionId || nc.id! }));
     setNotasFactura(notas);
   }
 
@@ -398,7 +407,10 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
               {(['credito', 'debito'] as TipoNotaAjuste[]).map((t) => (
                 <button
                   key={t}
-                  onClick={() => setFormNota((s) => ({ ...s, tipo: t, resolucionId: '', conceptoCodigo: '' }))}
+                  onClick={() => setFormNota((s) => ({
+                    ...s, tipo: t, conceptoCodigo: '',
+                    resolucionId: resolucionesPerfil.find((r) => r.estado === 'activa' && r.tipoDocumento === (t === 'credito' ? 'nota_credito' : 'nota_debito'))?.id || '',
+                  }))}
                   className={`flex-1 h-10 rounded-lg text-sm font-bold ${formNota.tipo === t ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 border border-slate-800 text-slate-400'}`}
                 >
                   {t === 'credito' ? 'Nota crédito' : 'Nota débito'}

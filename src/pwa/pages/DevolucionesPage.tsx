@@ -1,11 +1,14 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { motion } from 'motion/react';
-import { Search, RotateCcw, Loader2, ChevronLeft, Undo2 } from 'lucide-react';
+import { Search, RotateCcw, Loader2, ChevronLeft, Undo2, Ban } from 'lucide-react';
+import { useSearchParams } from 'react-router';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
+import { emitirNotaCreditoPorDevolucion } from '../../app/lib/dian/notaPorDevolucion';
+import { avisarNotaPorDevolucion } from '../../app/lib/dian/avisoNotaDevolucion';
 
 interface VentaFila {
   id: string;
@@ -32,7 +35,10 @@ interface DevolucionHistFila {
   estado: string;
 }
 
-const MOTIVOS = ['Defectuoso', 'Talla/color incorrecto', 'No era lo esperado', 'Arrepentimiento', 'Otro'];
+const MOTIVOS = ['Defectuoso', 'Talla/color incorrecto', 'No era lo esperado', 'Arrepentimiento', 'Anulación de la venta', 'Otro'];
+
+/** Lo devuelto antes se agrupa por producto (o por nombre, si no tiene). */
+const claveItem = (it: { producto_id: string | null; nombre: string | null }) => it.producto_id || `n:${(it.nombre || '').trim().toLowerCase()}`;
 
 const fadeUp = {
   hidden: { opacity: 0, y: 10 },
@@ -41,10 +47,13 @@ const fadeUp = {
 
 export default function DevolucionesPage() {
   const { empleado } = usePwaAuth();
-  const [busqueda, setBusqueda] = useState('');
+  const [params] = useSearchParams();
+  const [busqueda, setBusqueda] = useState(params.get('venta') || '');
   const [buscando, setBuscando] = useState(false);
   const [venta, setVenta] = useState<VentaFila | null>(null);
   const [items, setItems] = useState<VentaItemFila[]>([]);
+  // Cantidades ya devueltas de esta venta en devoluciones anteriores.
+  const [yaDevuelto, setYaDevuelto] = useState<Record<string, number>>({});
   const [cantidades, setCantidades] = useState<Record<string, number>>({});
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [procesando, setProcesando] = useState(false);
@@ -76,7 +85,18 @@ export default function DevolucionesPage() {
 
   const handleBuscar = async (e: FormEvent) => {
     e.preventDefault();
-    if (!empleado || !busqueda.trim()) return;
+    await buscarVenta(busqueda);
+  };
+
+  // Desde Ventas › Devolver o anular llega con ?venta=FEA000123.
+  useEffect(() => {
+    const desdeVentas = params.get('venta');
+    if (empleado && desdeVentas) void buscarVenta(desdeVentas);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empleado?.cliente_id]);
+
+  const buscarVenta = async (textoBuscado: string) => {
+    if (!empleado || !textoBuscado.trim()) return;
     setBuscando(true);
     setError(null);
     setVenta(null);
@@ -84,7 +104,7 @@ export default function DevolucionesPage() {
     const client = getSupabaseClient()!;
     // FEA000123 = venta de una caja de escritorio (su local_id);
     // W000123 o solo el número = venta de la web o el celular.
-    const texto = busqueda.trim().toUpperCase();
+    const texto = textoBuscado.trim().toUpperCase();
     let consulta = client
       .from('ventas')
       .select('id, numero, local_id, total, metodo_pago, created_at')
@@ -99,10 +119,22 @@ export default function DevolucionesPage() {
       return;
     }
 
-    const { data: itemsData } = await client
-      .from('venta_items')
-      .select('id, producto_id, nombre, cantidad, precio_unitario')
-      .eq('venta_id', (ventaData as VentaFila).id);
+    const [{ data: itemsData }, { data: anteriores }] = await Promise.all([
+      client
+        .from('venta_items')
+        .select('id, producto_id, nombre, cantidad, precio_unitario')
+        .eq('venta_id', (ventaData as VentaFila).id),
+      client
+        .from('devoluciones')
+        .select('devolucion_items(producto_id, nombre, cantidad)')
+        .eq('cliente_id', empleado.cliente_id)
+        .eq('venta_id', (ventaData as VentaFila).id),
+    ]);
+    const devuelto: Record<string, number> = {};
+    for (const d of (anteriores as Array<{ devolucion_items: Array<{ producto_id: string | null; nombre: string | null; cantidad: number }> }>) || []) {
+      for (const it of d.devolucion_items || []) devuelto[claveItem(it)] = (devuelto[claveItem(it)] || 0) + Number(it.cantidad);
+    }
+    setYaDevuelto(devuelto);
 
     setVenta(ventaData as VentaFila);
     setItems((itemsData as VentaItemFila[]) || []);
@@ -111,9 +143,35 @@ export default function DevolucionesPage() {
     setBuscando(false);
   };
 
-  const handleProcesar = async () => {
+  /** Lo que todavía se puede devolver de cada línea. */
+  const pendiente = (it: VentaItemFila) => {
+    // Si el mismo producto aparece en varias líneas, lo devuelto se descuenta en orden.
+    let resto = yaDevuelto[claveItem(it)] || 0;
+    for (const otra of items) {
+      if (otra.id === it.id) break;
+      if (claveItem(otra) === claveItem(it)) resto = Math.max(0, resto - Number(otra.cantidad));
+    }
+    return Math.max(0, Number(it.cantidad) - resto);
+  };
+  const nadaPendiente = items.length > 0 && items.every((it) => pendiente(it) <= 0);
+
+  const handleAnular = async () => {
+    if (!venta) return;
+    if (!window.confirm(`¿Anular la venta ${numeroVisibleVenta(venta)}? Se devuelve todo al inventario y, si tiene factura electrónica, se emite la nota crédito.`)) return;
+    const todo: Record<string, number> = {};
+    const motivosTodo: Record<string, string> = {};
+    for (const it of items) {
+      todo[it.id] = pendiente(it);
+      motivosTodo[it.id] = 'Anulación de la venta';
+    }
+    setCantidades(todo);
+    setMotivos(motivosTodo);
+    await handleProcesar(todo, motivosTodo);
+  };
+
+  const handleProcesar = async (cantidadesUsar: Record<string, number> = cantidades, motivosUsar: Record<string, string> = motivos) => {
     if (!empleado || !venta) return;
-    const seleccionados = items.filter((it) => (cantidades[it.id] || 0) > 0);
+    const seleccionados = items.filter((it) => (cantidadesUsar[it.id] || 0) > 0);
     if (seleccionados.length === 0) {
       setError('Selecciona al menos un artículo a devolver');
       return;
@@ -124,10 +182,12 @@ export default function DevolucionesPage() {
     const payload = seleccionados.map((it) => ({
       producto_id: it.producto_id,
       nombre: it.nombre || 'Producto',
-      cantidad: cantidades[it.id],
+      cantidad: cantidadesUsar[it.id],
       precio_unitario: it.precio_unitario,
-      motivo: motivos[it.id] || 'Otro',
+      motivo: motivosUsar[it.id] || 'Otro',
     }));
+    // Con esta devolución, ¿queda devuelta toda la venta? Entonces la nota anula la factura.
+    const devolucionTotal = items.every((it) => pendiente(it) - (cantidadesUsar[it.id] || 0) <= 0);
 
     const { error: rpcError } = await client.rpc('procesar_devolucion_movil', {
       p_cliente_id: empleado.cliente_id,
@@ -145,6 +205,16 @@ export default function DevolucionesPage() {
       setError(rpcError.message);
       return;
     }
+    // Si la venta tiene factura electrónica, la devolución se reporta a la DIAN
+    // con su nota crédito. Corre aparte: la devolución ya quedó registrada.
+    emitirNotaCreditoPorDevolucion({
+      clienteId: empleado.cliente_id,
+      ventaReferencia: venta.id,
+      otrasReferencias: [venta.local_id || '', numeroVisibleVenta(venta)],
+      items: payload.map((x) => ({ nombre: x.nombre, cantidad: x.cantidad })),
+      motivo: payload.map((x) => x.motivo).find((m) => m && m !== 'Otro') || 'Devolución de mercancía',
+      devolucionTotal,
+    }).then(avisarNotaPorDevolucion);
     setOk(true);
     setTimeout(() => {
       setOk(false);
@@ -236,13 +306,17 @@ export default function DevolucionesPage() {
               <div key={it.id} className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-white font-semibold text-sm">{it.nombre || 'Producto'}</p>
-                  <p className="text-slate-400 text-xs">de {it.cantidad} · ${it.precio_unitario.toLocaleString('es-CO')}</p>
+                  <p className="text-slate-400 text-xs">
+                    de {it.cantidad} · ${it.precio_unitario.toLocaleString('es-CO')}
+                    {pendiente(it) < Number(it.cantidad) && <span className="text-amber-400"> · ya devueltos {Number(it.cantidad) - pendiente(it)}</span>}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Input
-                    type="number" inputMode="numeric" min={0} max={it.cantidad}
+                    type="number" inputMode="numeric" min={0} max={pendiente(it)}
                     value={cantidades[it.id] || ''}
-                    onChange={(e) => setCantidades({ ...cantidades, [it.id]: Math.min(Number(e.target.value) || 0, it.cantidad) })}
+                    disabled={pendiente(it) <= 0}
+                    onChange={(e) => setCantidades({ ...cantidades, [it.id]: Math.min(Number(e.target.value) || 0, pendiente(it)) })}
                     placeholder="Cantidad a devolver"
                     className="h-10 w-28 bg-slate-950/60 border-slate-700 text-white"
                   />
@@ -261,10 +335,19 @@ export default function DevolucionesPage() {
 
           {error && <p className="text-red-400 text-sm text-center mb-3">{error}</p>}
 
-          <Button onClick={handleProcesar} disabled={procesando} className="w-full h-14 text-base bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20">
-            {procesando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <RotateCcw className="w-5 h-5 mr-2" />}
-            {procesando ? 'Procesando...' : 'Procesar devolución'}
-          </Button>
+          {nadaPendiente ? (
+            <p className="text-amber-400 text-sm text-center py-4">Esta venta ya se devolvió completa.</p>
+          ) : (
+            <div className="space-y-2">
+              <Button onClick={() => handleProcesar()} disabled={procesando} className="w-full h-14 text-base bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20">
+                {procesando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <RotateCcw className="w-5 h-5 mr-2" />}
+                {procesando ? 'Procesando...' : 'Procesar devolución'}
+              </Button>
+              <Button onClick={handleAnular} disabled={procesando} variant="outline" className="w-full h-12 border-red-500/50 text-red-400 bg-transparent hover:bg-red-500/10">
+                <Ban className="w-4 h-4 mr-2" /> Anular venta completa
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -278,7 +361,7 @@ export default function DevolucionesPage() {
             <RotateCcw className="w-8 h-8 text-emerald-400" />
           </div>
           <p className="text-white font-bold text-lg">Devolución procesada</p>
-          <p className="text-slate-400 text-sm">El stock se actualizó automáticamente</p>
+          <p className="text-slate-400 text-sm">El stock se actualizó automáticamente. Si la venta tenía factura electrónica, la nota crédito se está emitiendo.</p>
         </motion.div>
       )}
     </div>

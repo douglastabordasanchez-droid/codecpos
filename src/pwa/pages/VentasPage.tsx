@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, Share2, Loader2, Receipt, Eye } from 'lucide-react';
+import { Search, Share2, Loader2, Receipt, Eye, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
@@ -47,6 +48,7 @@ export default function VentasPage() {
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [compartiendoId, setCompartiendoId] = useState<string | null>(null);
   const [viendo, setViendo] = useState<VentaFila | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!empleado) return;
@@ -172,6 +174,14 @@ export default function VentasPage() {
                   title="Ver factura"
                 >
                   <Eye className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => navigate(`/devoluciones?venta=${encodeURIComponent(numeroVisibleVenta(v))}`)}
+                  className="h-8 w-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300"
+                  aria-label="Devolver o anular"
+                  title="Devolver o anular"
+                >
+                  <RotateCcw className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => handleCompartir(v)}

@@ -12,7 +12,7 @@
 import { emitirNotaAjuste, itemsDeFactura } from './emitirNotaAjuste';
 import { calcularDocumentoFiscal, redondear2 } from './documentoFiscal';
 import { obtenerFacturaPorVenta } from '../supabase/facturaElectronicaDianService';
-import { listarResolucionesPerfil } from '../supabase/fiscalProfileService';
+import { asegurarNumeracionNota } from '../supabase/fiscalProfileService';
 import type { FacturaElectronicaDian, ItemFacturaDian } from './types';
 
 export interface ItemDevuelto {
@@ -55,18 +55,24 @@ export function lineasDevueltas(factura: FacturaElectronicaDian, devueltos: Item
 export async function emitirNotaCreditoPorDevolucion(datos: {
   clienteId: string;
   ventaReferencia: string;
+  /** Otras referencias con que pudo emitirse la factura (en la web: el id de
+   * la venta o el número de la caja que la hizo). */
+  otrasReferencias?: string[];
   items: ItemDevuelto[];
   motivo: string;
   devolucionTotal: boolean;
 }): Promise<ResultadoNotaPorDevolucion> {
   try {
-    const factura = await obtenerFacturaPorVenta(datos.clienteId, datos.ventaReferencia);
+    let factura = null;
+    for (const ref of [datos.ventaReferencia, ...(datos.otrasReferencias || [])].filter(Boolean)) {
+      factura = await obtenerFacturaPorVenta(datos.clienteId, ref);
+      if (factura) break;
+    }
     if (!factura?.id) return { estado: 'sin_factura' };
     if (factura.tipoDocumento === 'documento_equivalente') return { estado: 'tiquete_pos' };
     if (factura.estado !== 'accepted') return { estado: 'factura_no_aprobada' };
 
-    const resolucion = (await listarResolucionesPerfil(factura.perfilFiscalId))
-      .find((r) => r.estado === 'activa' && r.tipoDocumento === 'nota_credito');
+    const resolucion = await asegurarNumeracionNota(datos.clienteId, factura.perfilFiscalId, 'nota_credito');
     if (!resolucion?.id) return { estado: 'sin_numeracion' };
 
     // Devolución completa: la nota toma la factura entera (sin detalle explícito).
