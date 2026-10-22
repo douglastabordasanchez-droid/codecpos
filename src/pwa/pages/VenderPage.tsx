@@ -31,7 +31,7 @@ import { compartirRecibo, obtenerDatosFactura } from '../lib/compartirFactura';
 import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactura';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
-import { avisoAgenteRetencion, buscarClienteFactura, recordarClienteFactura } from '../../app/lib/dian/clientesFactura';
+import { avisoAgenteRetencion, recordarClienteFactura, type ClienteFacturaGuardado } from '../../app/lib/dian/clientesFactura';
 import { registrarClienteDesdeCobro } from '../../app/lib/supabase/clientesFacturacionService';
 import { lineaConIvaIncluido } from '../../app/lib/dian/ivaIncluido';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
@@ -46,6 +46,8 @@ import { numeroVentaWeb } from '../../app/lib/numeracionCaja';
 import { ModalPesaje } from '../components/ModalPesaje';
 import { CLAVE_CARRITO_TRANSFERIDO, formatoCantidad } from '../lib/carritoTransferido';
 import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../../app/components/factura/RetencionesCobro';
+import { ClienteFacturaCobro } from '../../app/components/factura/ClienteFacturaCobro';
+import { adquirenteDesdeCobro, clienteParaGuardar, CLIENTE_COBRO_VACIO, type DatosClienteCobro } from '../../app/lib/dian/clienteCobro';
 
 interface ProductoFila {
   id: string;
@@ -142,30 +144,21 @@ export default function VenderPage() {
   const [viendoFactura, setViendoFactura] = useState(false);
   const [pesando, setPesando] = useState<ProductoFila | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
-  const [docClienteFactura, setDocClienteFactura] = useState('');
-  const [nombreClienteFactura, setNombreClienteFactura] = useState('');
-  // Correo para entregarle la factura al cliente y dirección (opcional).
-  const [correoClienteFactura, setCorreoClienteFactura] = useState('');
-  const [direccionClienteFactura, setDireccionClienteFactura] = useState('');
+  // Comprador de la factura electrónica (cédula o NIT, nombre, correo...).
+  const [clienteFactura, setClienteFactura] = useState<DatosClienteCobro>(CLIENTE_COBRO_VACIO);
+  const docClienteFactura = clienteFactura.documento;
   // Cada venta se pregunta: hay clientes que no quieren factura electrónica.
   // Arranca en «No» y vuelve a «No» después de cobrar.
   const [emitirFE, setEmitirFE] = useState(false);
   const { tieneModuloDePago } = useModulosActivos();
   const facturacionDisponible = tieneModuloDePago(ModuloPOS.FACTURACION_DIAN);
-  const [clienteFERecordado, setClienteFERecordado] = useState(false);
   const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
   const [retencionesFE, setRetencionesFE] = useState(retencionesIniciales);
 
-  /** Cliente conocido: llena lo que el cajero no escribió (nombre, correo y dirección). */
-  const autocompletarClienteFE = async (documento: string) => {
-    const encontrado = await buscarClienteFactura(empleado?.cliente_id, documento);
-    setClienteFERecordado(!!encontrado);
+  /** Cliente de la base elegido o reconocido: dice si es agente de retención. */
+  const alReconocerClienteFE = (encontrado: ClienteFacturaGuardado | null) => {
     setAvisoRetencionFE(avisoAgenteRetencion(encontrado));
     setRetencionesFE((r) => retencionesDelCliente(r, encontrado));
-    if (!encontrado) return;
-    setNombreClienteFactura((n) => n.trim() || encontrado.nombre);
-    setCorreoClienteFactura((c) => c.trim() || encontrado.email || '');
-    setDireccionClienteFactura((d) => d.trim() || encontrado.direccion || '');
   };
   const [esperando, setEsperando] = useState<{ clave: string } | null>(null);
   const [verifyActivo, setVerifyActivo] = useState(codecVerifyPwaActivo);
@@ -418,6 +411,11 @@ export default function VenderPage() {
       setError('Ingresa el nombre del cliente para vender a crédito');
       return;
     }
+    // Con cédula o NIT la factura sale a su nombre: no puede ir sin nombre.
+    if (facturacionDisponible && emitirFE && clienteFactura.documento.trim() && !clienteFactura.nombre.trim()) {
+      setError('Escribe el nombre o la razón social del cliente para la factura electrónica');
+      return;
+    }
     if (metodoPago === 'efectivo' && recibidoNum > 0 && recibidoNum < totalAPagar) {
       setError(`El efectivo recibido no alcanza: faltan ${money(totalAPagar - recibidoNum)}`);
       return;
@@ -487,10 +485,7 @@ export default function VenderPage() {
       // DIAN directo — nunca bloquea la venta (ya se guardó arriba). Solo si
       // el cajero dijo «Sí» a la factura electrónica de esta venta.
       if (facturacionDisponible && emitirFE && docClienteFactura.trim()) {
-        const datosCliente = {
-          documento: docClienteFactura, nombre: nombreClienteFactura,
-          email: correoClienteFactura.trim() || undefined, direccion: direccionClienteFactura.trim() || undefined,
-        };
+        const datosCliente = clienteParaGuardar(clienteFactura);
         recordarClienteFactura(datosCliente);
         // Queda en Facturación › Clientes para todas las cajas (nuevo o completado).
         void registrarClienteDesdeCobro(empleado.cliente_id, datosCliente);
@@ -505,12 +500,7 @@ export default function VenderPage() {
         clienteId: empleado.cliente_id,
         ventaReferencia: resultado.ventaId,
         fecha: new Date().toISOString(),
-        adquirente: docClienteFactura.trim()
-          ? {
-            tipoDocumento: '13', numeroDocumento: docClienteFactura.trim(), nombreORazonSocial: nombreClienteFactura.trim() || 'Consumidor final',
-            email: correoClienteFactura.trim() || undefined, direccion: direccionClienteFactura.trim() || undefined,
-          }
-          : { tipoDocumento: '13', numeroDocumento: NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, nombreORazonSocial: 'Consumidor final' },
+        adquirente: adquirenteDesdeCobro(clienteFactura),
         items: lineasFactura,
         subtotal: lineasFactura.reduce((s, l) => s + l.subtotal, 0),
         totalImpuestos: lineasFactura.reduce((s, l) => s + (l.impuestos || []).reduce((t, imp) => t + imp.valor, 0), 0),
@@ -526,12 +516,9 @@ export default function VenderPage() {
           toast.error('La factura electrónica no salió', { description: r.motivo || 'Revise Facturación.', duration: 15000 });
         }
       }).catch(() => {});
-      setDocClienteFactura('');
-      setNombreClienteFactura('');
-      setCorreoClienteFactura('');
-      setDireccionClienteFactura('');
+      setClienteFactura(CLIENTE_COBRO_VACIO);
+      setAvisoRetencionFE('');
       setEmitirFE(false);
-      setClienteFERecordado(false);
       setRetencionesFE(retencionesIniciales());
       setCarrito({});
       setPropinaManual(null);
@@ -902,34 +889,13 @@ export default function VenderPage() {
           </div>
           {emitirFE && (
             <>
-              <p className="text-slate-500 text-[11px]">Si el cliente da su NIT o cédula, la factura sale a su nombre. Vacío: consumidor final.</p>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  value={docClienteFactura}
-                  onChange={(e) => { setClienteFERecordado(false); setDocClienteFactura(e.target.value); }}
-                  onBlur={(e) => { void autocompletarClienteFE(e.target.value); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') void autocompletarClienteFE((e.target as HTMLInputElement).value); }}
-                  placeholder="NIT / Cédula"
-                  inputMode="numeric"
-                  className={campo}
-                />
-                <input value={nombreClienteFactura} onChange={(e) => setNombreClienteFactura(e.target.value)} placeholder="Nombre" className={campo} />
-              </div>
-              {docClienteFactura.trim() && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <input
-                    value={correoClienteFactura}
-                    onChange={(e) => setCorreoClienteFactura(e.target.value)}
-                    placeholder="Correo (para enviarle la factura)"
-                    type="email"
-                    inputMode="email"
-                    autoCapitalize="none"
-                    className={campo}
-                  />
-                  <input value={direccionClienteFactura} onChange={(e) => setDireccionClienteFactura(e.target.value)} placeholder="Dirección (opcional)" className={campo} />
-                </div>
-              )}
-              {clienteFERecordado && <p className="text-emerald-400 text-[11px] font-semibold">Cliente conocido: su nombre se llenó solo.{avisoRetencionFE && ` ${avisoRetencionFE}`}</p>}
+              <ClienteFacturaCobro
+                clienteId={empleado?.cliente_id}
+                datos={clienteFactura}
+                onChange={setClienteFactura}
+                onReconocido={alReconocerClienteFE}
+              />
+              {avisoRetencionFE && <p className="text-amber-400 text-[11px] font-semibold">{avisoRetencionFE}</p>}
               {docClienteFactura.trim() && (
                 <RetencionesCobro
                   estado={retencionesFE}

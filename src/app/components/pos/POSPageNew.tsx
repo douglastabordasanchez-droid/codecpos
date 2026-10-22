@@ -102,9 +102,11 @@ import { EVENTO_FACTURA_PENDIENTE_APROBADA } from '../../lib/dian/colaDian';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
 import { TirillaFacturaElectronica } from '../factura/TirillaFacturaElectronica';
 import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../factura/RetencionesCobro';
+import { ClienteFacturaCobro } from '../factura/ClienteFacturaCobro';
+import { adquirenteDesdeCobro, clienteParaGuardar, type DatosClienteCobro } from '../../lib/dian/clienteCobro';
 import { registrarClienteDesdeCobro } from '../../lib/supabase/clientesFacturacionService';
 import { datosPdfFacturaDianCompletos } from '../../lib/dian/representacionGrafica';
-import { avisoAgenteRetencion, buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
+import { avisoAgenteRetencion, buscarClienteFactura, recordarClienteFactura, type ClienteFacturaGuardado } from '../../lib/dian/clientesFactura';
 import { lineaConIvaIncluido } from '../../lib/dian/ivaIncluido';
 
 interface Producto {
@@ -396,6 +398,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [clienteFERecordado, setClienteFERecordado] = useState(false);
   const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
   const [retencionesFE, setRetencionesFE] = useState(retencionesIniciales);
+  // DIAN directo: cédula o NIT y teléfono del comprador (el resto va en clienteFE).
+  const [tipoDocFE, setTipoDocFE] = useState('13');
+  const [telefonoFE, setTelefonoFE] = useState('');
+  const datosCobroFE: DatosClienteCobro = {
+    tipo: tipoDocFE, documento: clienteFE.nitCedula, nombre: clienteFE.nombre, email: clienteFE.email, telefono: telefonoFE, direccion: clienteFE.direccion,
+  };
+  const cambiarDatosCobroFE = (d: DatosClienteCobro) => {
+    setTipoDocFE(d.tipo);
+    setTelefonoFE(d.telefono);
+    setClienteFE((p) => ({ ...p, nitCedula: d.documento, nombre: d.nombre, email: d.email, direccion: d.direccion }));
+  };
   // Factura DIAN aceptada de la última venta: se abre sola para imprimirla
   // con su número DBM, CUFE y QR (el ticket del cobro sale antes de que la
   // DIAN conteste, con el número interno de la caja).
@@ -439,6 +452,13 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return () => window.removeEventListener(EVENTO_FACTURA_PENDIENTE_APROBADA, alAprobar);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Cliente de la base elegido o reconocido en el cobro (DIAN directo): dice si es agente de retención. */
+  const alReconocerClienteFE = (encontrado: ClienteFacturaGuardado | null) => {
+    setClienteFERecordado(!!encontrado);
+    setAvisoRetencionFE(avisoAgenteRetencion(encontrado));
+    setRetencionesFE((r) => retencionesDelCliente(r, encontrado));
+  };
 
   /** Cliente que ya compró con factura: llena solo lo que el cajero no escribió. */
   const autocompletarClienteFE = async (documento: string) => {
@@ -2024,6 +2044,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
+      setTipoDocFE('13');
+      setTelefonoFE('');
+      setAvisoRetencionFE('');
       setRetencionesFE(retencionesIniciales());
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
@@ -2128,7 +2151,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           if (feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo') {
             const clienteIdVinculado = getLinkedClienteId();
             if (clienteFE.nitCedula.trim()) {
-              const datosCliente = { documento: clienteFE.nitCedula, nombre: clienteFE.nombre, email: clienteFE.email, direccion: clienteFE.direccion };
+              const datosCliente = clienteParaGuardar(datosCobroFE);
               recordarClienteFactura(datosCliente);
               // Queda en Facturación › Clientes para todas las cajas (nuevo o completado).
               if (clienteIdVinculado) void registrarClienteDesdeCobro(clienteIdVinculado, datosCliente);
@@ -2138,9 +2161,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 clienteId: clienteIdVinculado,
                 ventaReferencia: numeroFacturaCompleto,
                 fecha: venta.fecha,
-                adquirente: clienteFE.nitCedula.trim()
-                  ? { tipoDocumento: '13', numeroDocumento: clienteFE.nitCedula.trim(), nombreORazonSocial: clienteFE.nombre || 'Consumidor final', email: clienteFE.email || undefined, direccion: clienteFE.direccion || undefined }
-                  : { tipoDocumento: '13', numeroDocumento: NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, nombreORazonSocial: 'Consumidor final' },
+                adquirente: adquirenteDesdeCobro(datosCobroFE),
                 items: venta.items.map((it) => {
                   // Solo los productos marcados «aplica IVA» llevan el impuesto —
                   // el mismo criterio con el que el POS calculó el total
@@ -2437,6 +2458,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
+      setTipoDocFE('13');
+      setTelefonoFE('');
+      setAvisoRetencionFE('');
       setRetencionesFE(retencionesIniciales());
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       setMostrarPago(false);
@@ -2678,6 +2702,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
+      setTipoDocFE('13');
+      setTelefonoFE('');
+      setAvisoRetencionFE('');
       setRetencionesFE(retencionesIniciales());
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
@@ -3964,7 +3991,28 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                         ))}
                       </div>
                     </div>
-                    {emitirFE && (<>
+                    {emitirFE && leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo' && (<div className="mt-3 space-y-2">
+                      <ClienteFacturaCobro
+                        clienteId={getLinkedClienteId()}
+                        datos={datosCobroFE}
+                        onChange={cambiarDatosCobroFE}
+                        onReconocido={alReconocerClienteFE}
+                        oscuro={darkMode}
+                      />
+                      {avisoRetencionFE && (
+                        <p className={`text-xs font-semibold ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>{avisoRetencionFE}</p>
+                      )}
+                      {clienteFE.nitCedula.trim() && (
+                        <RetencionesCobro
+                          estado={retencionesFE}
+                          onChange={setRetencionesFE}
+                          base={total - (calcularIVA() || 0)}
+                          total={total}
+                          oscuro={darkMode}
+                        />
+                      )}
+                    </div>)}
+                    {emitirFE && leerConfigEmpresaCacheada().modoFacturacionElectronica !== 'dian_directo' && (<>
                     <p className={`text-xs mt-3 mb-3 ${darkMode ? 'text-orange-200/80' : 'text-orange-700/80'}`}>
                       {leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo'
                         ? 'Sin NIT o cédula sale a nombre de consumidor final.'
@@ -4007,15 +4055,6 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       <p className={`text-xs mt-2 font-semibold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
                         Cliente conocido: sus datos se llenaron solos. Revísalos antes de cobrar.{avisoRetencionFE && ` ${avisoRetencionFE}`}
                       </p>
-                    )}
-                    {leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo' && clienteFE.nitCedula.trim() && (
-                      <RetencionesCobro
-                        estado={retencionesFE}
-                        onChange={setRetencionesFE}
-                        base={total - (calcularIVA() || 0)}
-                        total={total}
-                        oscuro={darkMode}
-                      />
                     )}
                     </>)}
                   </div>

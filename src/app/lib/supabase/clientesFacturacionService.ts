@@ -122,6 +122,27 @@ export async function buscarClienteFacturacion(clienteId: string, documento: str
   return data ? filaACliente(data as Fila) : null;
 }
 
+/** Clientes cuyo nombre contiene el texto o cuyo documento empieza por él, para elegir en el cobro. */
+export async function sugerirClientesFacturacion(clienteId: string, texto: string, limite = 6): Promise<ClienteFacturacion[]> {
+  const client = getSupabaseClient();
+  const t = texto.trim();
+  if (!client || t.length < 2) return [];
+  const numero = normalizarDocumento(t);
+  // Coma y paréntesis rompen el filtro or() de PostgREST.
+  const nombre = t.replace(/[,()%*]/g, ' ').trim();
+  const filtros = [`nombre.ilike.%${nombre}%`];
+  if (/^\d{3,}$/.test(numero)) filtros.push(`numero_documento.like.${numero}%`);
+  const { data, error } = await client
+    .from('clientes_facturacion')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .or(filtros.join(','))
+    .order('nombre')
+    .limit(limite);
+  if (error) throw new Error(error.message);
+  return (data as Fila[]).map(filaACliente);
+}
+
 export async function guardarClienteFacturacion(clienteId: string, cliente: ClienteFacturacion): Promise<ClienteFacturacion> {
   const client = getSupabaseClient();
   if (!client) throw new Error('Sin conexión con la nube');
@@ -172,7 +193,7 @@ export async function importarClientesFacturacion(clienteId: string, clientes: C
  */
 export async function registrarClienteDesdeCobro(
   clienteId: string,
-  datos: { documento: string; nombre: string; email?: string; direccion?: string; telefono?: string },
+  datos: { documento: string; nombre: string; email?: string; direccion?: string; telefono?: string; tipoDocumento?: string },
 ): Promise<void> {
   const client = getSupabaseClient();
   const { numero, dv } = separarDv(datos.documento);
@@ -192,8 +213,8 @@ export async function registrarClienteDesdeCobro(
     }
     await client.from('clientes_facturacion').insert({
       cliente_id: clienteId,
-      // Con dígito de verificación ("900123456-7") es NIT; si no, cédula.
-      tipo_documento: dv ? '31' : '13',
+      // El cajero eligió Cédula o NIT; si no dijo, con dígito de verificación ("900123456-7") es NIT.
+      tipo_documento: datos.tipoDocumento || (dv ? '31' : '13'),
       numero_documento: numero,
       digito_verificacion: dv,
       nombre,
