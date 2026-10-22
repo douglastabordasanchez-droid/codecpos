@@ -163,3 +163,43 @@ export async function importarClientesFacturacion(clienteId: string, clientes: C
   }
   return filas.length;
 }
+
+/**
+ * Cliente nuevo o conocido que se facturó desde el cobro: queda en la base
+ * de clientes para que aparezca en todas las cajas. Si ya existía solo se
+ * completa con lo que el cajero escribió; nunca le borra datos ni le cambia
+ * las marcas de agente de retención. No lanza: la venta ya quedó.
+ */
+export async function registrarClienteDesdeCobro(
+  clienteId: string,
+  datos: { documento: string; nombre: string; email?: string; direccion?: string; telefono?: string },
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { numero, dv } = separarDv(datos.documento);
+  const nombre = datos.nombre.trim();
+  if (!client || !numero || numero === '222222222222' || !nombre || nombre.toLowerCase() === 'consumidor final') return;
+  try {
+    const existente = await buscarClienteFacturacion(clienteId, numero);
+    const cambios: Record<string, unknown> = {};
+    for (const [campo, valor] of [['email', datos.email], ['direccion', datos.direccion], ['telefono', datos.telefono]] as const) {
+      const v = vacioANull(valor);
+      if (v && v !== (existente as any)?.[campo]) cambios[campo] = v;
+    }
+    if (existente?.id) {
+      if (Object.keys(cambios).length === 0) return;
+      await client.from('clientes_facturacion').update({ ...cambios, updated_at: new Date().toISOString() }).eq('id', existente.id);
+      return;
+    }
+    await client.from('clientes_facturacion').insert({
+      cliente_id: clienteId,
+      // Con dígito de verificación ("900123456-7") es NIT; si no, cédula.
+      tipo_documento: dv ? '31' : '13',
+      numero_documento: numero,
+      digito_verificacion: dv,
+      nombre,
+      ...cambios,
+    });
+  } catch (e) {
+    console.warn('[clientes] No se pudo guardar el cliente en la base:', e);
+  }
+}
