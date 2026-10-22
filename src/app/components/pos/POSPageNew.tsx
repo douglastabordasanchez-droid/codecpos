@@ -98,6 +98,8 @@ import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '../../lib/dian/types';
 import { obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
+import { TirillaFacturaElectronica } from '../factura/TirillaFacturaElectronica';
+import { registrarClienteDesdeCobro } from '../../lib/supabase/clientesFacturacionService';
 import { datosPdfFacturaDianCompletos } from '../../lib/dian/representacionGrafica';
 import { avisoAgenteRetencion, buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
 import { lineaConIvaIncluido } from '../../lib/dian/ivaIncluido';
@@ -394,6 +396,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // con su número DBM, CUFE y QR (el ticket del cobro sale antes de que la
   // DIAN conteste, con el número interno de la caja).
   const [facturaDianVista, setFacturaDianVista] = useState<FacturaElectronicaDian | null>(null);
+  // La factura carta (estilo Siigo) de esa misma factura, en el visor.
+  const [cartaDianAbierta, setCartaDianAbierta] = useState(false);
 
   /** Cliente que ya compró con factura: llena solo lo que el cajero no escribió. */
   const autocompletarClienteFE = async (documento: string) => {
@@ -2067,7 +2071,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           if (feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo') {
             const clienteIdVinculado = getLinkedClienteId();
             if (clienteFE.nitCedula.trim()) {
-              recordarClienteFactura({ documento: clienteFE.nitCedula, nombre: clienteFE.nombre, email: clienteFE.email, direccion: clienteFE.direccion });
+              const datosCliente = { documento: clienteFE.nitCedula, nombre: clienteFE.nombre, email: clienteFE.email, direccion: clienteFE.direccion };
+              recordarClienteFactura(datosCliente);
+              // Queda en Facturación › Clientes para todas las cajas (nuevo o completado).
+              if (clienteIdVinculado) void registrarClienteDesdeCobro(clienteIdVinculado, datosCliente);
             }
             if (clienteIdVinculado) {
               emitirFacturaDianDirecto({
@@ -2105,7 +2112,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 if (r.estado === 'accepted') {
                   toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { duration: 6000 });
                   const factura = await obtenerFacturaPorVenta(clienteIdVinculado, numeroFacturaCompleto).catch(() => null);
-                  if (factura) setFacturaDianVista(factura);
+                  if (factura) { setCartaDianAbierta(false); setFacturaDianVista(factura); }
                 } else if (r.estado === 'en_cola' || r.estado === 'contingency' || r.estado === 'sent') {
                   toast.warning(`Factura electrónica${r.numero ? ` ${r.numero}` : ''} pendiente`, {
                     description: r.motivo || 'Se reintenta sola. Revísela en Facturación › Historial.',
@@ -3894,19 +3901,20 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                         placeholder="Nombre cliente"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
-                      {/* DIAN directo solo pide cédula y nombre, como en los
-                          supermercados; correo y dirección son del proveedor externo. */}
-                      {leerConfigEmpresaCacheada().modoFacturacionElectronica !== 'dian_directo' && (<>
+                      {/* DIAN directo: correo (para entregarle la factura) y dirección
+                          opcional, apenas hay cédula o NIT. Sin documento es consumidor final. */}
+                      {(leerConfigEmpresaCacheada().modoFacturacionElectronica !== 'dian_directo' || clienteFE.nitCedula.trim()) && (<>
                       <Input
                         value={clienteFE.email}
                         onChange={(e) => setClienteFE((p) => ({ ...p, email: e.target.value }))}
-                        placeholder="Correo electrónico"
+                        placeholder={leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo' ? 'Correo (para enviarle la factura)' : 'Correo electrónico'}
+                        type="email"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
                       <Input
                         value={clienteFE.direccion}
                         onChange={(e) => setClienteFE((p) => ({ ...p, direccion: e.target.value }))}
-                        placeholder="Dirección"
+                        placeholder={leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo' ? 'Dirección (opcional)' : 'Dirección'}
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
                       </>)}
@@ -4170,9 +4178,19 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         </div>
       )}
 
+      {/* Factura electrónica aceptada: primero su tirilla para la térmica;
+          desde ahí, la factura carta en el visor. La tirilla normal del cobro
+          sale igual que siempre. */}
+      {facturaDianVista && !cartaDianAbierta && (
+        <TirillaFacturaElectronica
+          factura={facturaDianVista}
+          onCerrar={() => setFacturaDianVista(null)}
+          onVerCarta={() => setCartaDianAbierta(true)}
+        />
+      )}
       <ModalVistaFactura
-        abierta={!!facturaDianVista}
-        onCerrar={() => setFacturaDianVista(null)}
+        abierta={!!facturaDianVista && cartaDianAbierta}
+        onCerrar={() => setCartaDianAbierta(false)}
         titulo={facturaDianVista?.numeroFactura || ''}
         obtenerDatos={() => datosPdfFacturaDianCompletos(facturaDianVista!)}
       />
