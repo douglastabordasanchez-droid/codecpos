@@ -41,6 +41,13 @@ interface Props {
   recarga?: number;
 }
 
+/** Mensajes de rechazo de la DIAN (ErrorMessage.string) de una respuesta guardada. */
+function motivosDian(respuesta: Record<string, unknown> | undefined): string[] {
+  const errores = (respuesta?.ErrorMessage as { string?: unknown } | undefined)?.string;
+  const lista = Array.isArray(errores) ? errores : errores ? [errores] : [];
+  return lista.map(String).filter((m) => /rechazo/i.test(m)).slice(0, 3);
+}
+
 export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
   const [facturas, setFacturas] = useState<FacturaElectronicaDian[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -395,9 +402,15 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
               <div className="space-y-1.5">
                 <p className="text-xs text-slate-500 uppercase tracking-wide font-bold">Notas ya emitidas</p>
                 {notasFactura.map((n) => (
-                  <div key={n.id} className="flex items-center justify-between text-xs bg-slate-900 border border-slate-800 rounded-lg px-3 py-2">
-                    <span className="text-slate-300">{n.numeroNota} · {n.tipo === 'credito' ? 'Crédito' : 'Débito'}</span>
-                    <span className="text-slate-500">{money(n.total)} · {ESTADO_DIAN_UI[n.estado]?.label || n.estado}</span>
+                  <div key={n.id} className="text-xs bg-slate-900 border border-slate-800 rounded-lg px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-300">{n.numeroNota} · {n.tipo === 'credito' ? 'Crédito' : 'Débito'}</span>
+                      <span className="text-slate-500">{money(n.total)} · {ESTADO_DIAN_UI[n.estado]?.label || n.estado}</span>
+                    </div>
+                    {/* Por qué la rechazó la DIAN, tal como lo dijo. */}
+                    {n.estado === 'rejected' && motivosDian(n.respuestaDian).map((m) => (
+                      <p key={m} className="text-red-400 mt-1">{m}</p>
+                    ))}
                   </div>
                 ))}
               </div>

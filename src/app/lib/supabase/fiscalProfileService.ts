@@ -329,7 +329,8 @@ export async function asegurarNumeracionNota(
   if (activa?.id) return activa;
   return crearResolucionDian(clienteId, perfilFiscalId, {
     tipoDocumento: tipo,
-    prefijo: tipo === 'nota_credito' ? 'NC' : 'ND',
+    // Prefijo propio: NC y ND ya los usó el proveedor anterior del negocio (regla 90 de la DIAN).
+    prefijo: tipo === 'nota_credito' ? 'NCCP' : 'NDCP',
     resolucionNumero: 'Sin resolución (notas)',
     resolucionFecha: new Date().toISOString().slice(0, 10),
     rangoDesde: 1,
