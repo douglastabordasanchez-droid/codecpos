@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { Search, RefreshCw, Eye, Download, Send, Mail, FileMinus2, CheckCircle2, Clock, Copy, X, Package, Loader2 } from 'lucide-react';
 import { listarFacturasDian, marcarCorreoEnviado } from '../../lib/supabase/facturaElectronicaDianService';
 import { asegurarNumeracionNota, listarResolucionesPerfil } from '../../lib/supabase/fiscalProfileService';
-import { listarNotasDeFactura } from '../../lib/supabase/notaAjusteDianService';
+import { listarNotasDeFactura, listarNotasDelCliente, type NotaConFactura } from '../../lib/supabase/notaAjusteDianService';
 import { ManualDeliveryProvider } from '../../lib/dian/deliveryProvider';
 import { emitirNotaAjuste } from '../../lib/dian/emitirNotaAjuste';
 import { prepararPaqueteEntrega } from '../../lib/dian/paqueteEntrega';
@@ -39,6 +39,8 @@ interface Props {
   clienteId: string;
   /** Cambia para forzar una recarga desde afuera (botón «Actualizar» del módulo). */
   recarga?: number;
+  /** Abre la pestaña de notas buscando esta factura. */
+  onVerNotas?: (numeroFactura: string) => void;
 }
 
 /** Mensajes de rechazo de la DIAN (ErrorMessage.string) de una respuesta guardada. */
@@ -48,8 +50,10 @@ function motivosDian(respuesta: Record<string, unknown> | undefined): string[] {
   return lista.map(String).filter((m) => /rechazo/i.test(m)).slice(0, 3);
 }
 
-export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
+export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas }: Props) {
   const [facturas, setFacturas] = useState<FacturaElectronicaDian[]>([]);
+  // Notas aprobadas por factura: la columna de estado dice si quedó anulada o ajustada.
+  const [notasPorFactura, setNotasPorFactura] = useState<Record<string, NotaConFactura[]>>({});
   const [cargando, setCargando] = useState(true);
   const [filtros, setFiltros] = useState({ desde: '', hasta: '', texto: '', estado: '' as FiltroEstado });
 
@@ -75,6 +79,10 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
         hasta: filtros.hasta ? new Date(`${filtros.hasta}T23:59:59.999`).toISOString() : undefined,
         limite: 300,
       }));
+      const notas = await listarNotasDelCliente(clienteId).catch(() => [] as NotaConFactura[]);
+      const porFactura: Record<string, NotaConFactura[]> = {};
+      for (const n of notas) if (n.estado === 'accepted') (porFactura[n.facturaId] ||= []).push(n);
+      setNotasPorFactura(porFactura);
     } finally {
       setCargando(false);
     }
@@ -267,6 +275,9 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
                 </tr>
               ) : visibles.map((f) => {
                 const info = ESTADO_DIAN_UI[f.estado];
+                const notas = f.id ? notasPorFactura[f.id] || [] : [];
+                const creditos = notas.filter((n) => n.tipo === 'credito');
+                const anulada = creditos.some((n) => n.conceptoCodigo === '2') || creditos.reduce((s, n) => s + n.total, 0) >= f.total - 1;
                 return (
                   <tr key={f.id} className="text-slate-300 border-t border-slate-800">
                     <td className="px-3 py-3 whitespace-nowrap text-slate-400">
@@ -292,6 +303,20 @@ export function FacturasEmitidas({ clienteId, recarga = 0 }: Props) {
                       >
                         <info.Icon className="w-3 h-3" /> {info.label}
                       </span>
+                      {/* Aparte del estado DIAN: si la factura tiene notas, se ve aquí. */}
+                      {notas.length > 0 && (
+                        <button
+                          onClick={() => onVerNotas?.(f.numeroFactura)}
+                          className={`flex items-center gap-1.5 mt-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${
+                            creditos.length > 0 && anulada ? 'bg-red-500/15 text-red-400' : 'bg-sky-500/15 text-sky-400'
+                          }`}
+                          title="Ver el detalle de las notas"
+                        >
+                          <FileMinus2 className="w-3 h-3" />
+                          {creditos.length > 0 && anulada ? 'Anulada con nota crédito' : creditos.length > 0 ? 'Devolución con nota crédito' : 'Con nota débito'}
+                          {' '}{notas.map((n) => n.numeroNota).join(', ')}
+                        </button>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       {f.correoEnviadoAt ? (

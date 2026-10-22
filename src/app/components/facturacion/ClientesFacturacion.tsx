@@ -142,7 +142,7 @@ export function ClientesFacturacion({ clienteId, soloLectura }: Props) {
             <button onClick={() => setEditando({ ...VACIO })} className="h-11 px-4 rounded-xl bg-amber-500 text-slate-950 text-sm font-bold flex items-center gap-2">
               <Plus className="w-4 h-4" /> Nuevo cliente
             </button>
-            <button onClick={() => archivoRef.current?.click()} disabled={importando} className="h-11 px-4 rounded-xl bg-slate-800 text-slate-200 text-sm font-semibold flex items-center gap-2 disabled:opacity-50">
+            <button onClick={() => archivoRef.current?.click()} disabled={importando} className="h-11 px-4 rounded-xl bg-slate-800 text-slate-300 text-sm font-semibold flex items-center gap-2 disabled:opacity-50">
               {importando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Cargar Excel
             </button>
             <button onClick={descargarPlantilla} className="h-11 px-3 rounded-xl bg-slate-800 text-slate-300 text-sm font-semibold flex items-center gap-2" title="Plantilla de Excel">

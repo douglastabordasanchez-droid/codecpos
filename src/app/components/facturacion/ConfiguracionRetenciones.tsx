@@ -73,7 +73,7 @@ export function ConfiguracionRetenciones({ perfil, soloLectura, onGuardado }: Pr
           </p>
         </div>
         {!soloLectura && (
-          <button onClick={() => { setForm(actual); setActividad(perfil.actividadEconomica || ''); setAbierto(true); }} className="h-9 px-3 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold">
+          <button onClick={() => { setForm(actual); setActividad(perfil.actividadEconomica || ''); setAbierto(true); }} className="h-9 px-3 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">
             Configurar
           </button>
         )}

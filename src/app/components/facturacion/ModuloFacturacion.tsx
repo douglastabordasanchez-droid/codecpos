@@ -5,14 +5,15 @@
  *
  * Dos áreas:
  *   · Facturas de venta     — lo que el negocio emitió (tabla estilo Siigo).
+ *   · Notas crédito y débito — las notas de ajuste y su detalle.
  *   · Recepción y causación — XML de proveedores, traído de Codec Document.
  */
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { FilePlus2, FileClock, FileInput, Users, Package, ShieldCheck, ShieldAlert, Receipt, Inbox, Settings2, Contact } from 'lucide-react';
+import { FilePlus2, FileClock, FileInput, Users, Package, ShieldCheck, ShieldAlert, Receipt, Inbox, Settings2, Contact, FileMinus2 } from 'lucide-react';
 import { listarPerfilesFiscales } from '../../lib/supabase/fiscalProfileService';
 import type { FiscalProfile } from '../../lib/dian/types';
 import { FacturasEmitidas } from './FacturasEmitidas';
+import { NotasAjuste } from './NotasAjuste';
 import { RecepcionCausacion } from './RecepcionCausacion';
 import { CertificadoDigital } from './CertificadoDigital';
 import { PruebaHabilitacion } from './PruebaHabilitacion';
@@ -23,7 +24,7 @@ import type { OperadorFacturacion } from './comunes';
 
 export type DestinoFacturacion = 'vender' | 'terceros' | 'productos';
 
-type Pestana = 'ventas' | 'clientes' | 'recepcion';
+type Pestana = 'ventas' | 'notas' | 'clientes' | 'recepcion';
 
 interface Props {
   clienteId: string;
@@ -38,6 +39,9 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
   const [perfil, setPerfil] = useState<FiscalProfile | null | undefined>(undefined);
   const [recarga, setRecarga] = useState(0);
   const [asistente, setAsistente] = useState(false);
+  // Búsqueda con que se abre la pestaña de notas (al llegar desde una factura).
+  const [busquedaNotas, setBusquedaNotas] = useState('');
+  const verNotas = (texto = '') => { setBusquedaNotas(texto); setPestana('notas'); };
 
   useEffect(() => {
     let cancelado = false;
@@ -55,10 +59,7 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
     },
     {
       Icon: FileClock, titulo: 'Eventos en factura', detalle: 'Notas crédito y débito',
-      accion: () => {
-        setPestana('ventas');
-        toast.info('Elige una factura aprobada', { description: 'En la columna Acciones, usa el botón de nota de ajuste para emitir una nota crédito o débito.' });
-      },
+      accion: () => verNotas(),
     },
     {
       Icon: FileInput, titulo: 'Documento soporte', detalle: 'Sube y causa XML de compras',
@@ -128,12 +129,13 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
       <div className="flex flex-wrap gap-2">
         {([
           ['ventas', 'Facturas de venta', Receipt],
+          ['notas', 'Notas crédito y débito', FileMinus2],
           ['clientes', 'Clientes', Contact],
           ['recepcion', 'Recepción y causación', Inbox],
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
-            onClick={() => setPestana(id)}
+            onClick={() => (id === 'notas' ? verNotas() : setPestana(id))}
             className={`h-11 px-4 rounded-xl text-sm font-bold flex items-center gap-2 ${
               pestana === id ? 'bg-amber-500 text-slate-950' : 'bg-slate-800/80 text-slate-400 border border-slate-700'
             }`}
@@ -156,7 +158,9 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
       )}
 
       {pestana === 'ventas'
-        ? <FacturasEmitidas clienteId={clienteId} recarga={recarga} />
+        ? <FacturasEmitidas clienteId={clienteId} recarga={recarga} onVerNotas={verNotas} />
+        : pestana === 'notas'
+        ? <NotasAjuste key={busquedaNotas} clienteId={clienteId} recarga={recarga} textoInicial={busquedaNotas} />
         : pestana === 'clientes'
         ? <ClientesFacturacion clienteId={clienteId} soloLectura={soloLectura} />
         : <RecepcionCausacion clienteId={clienteId} operador={operador} nitPropio={perfil?.nit || ''} soloLectura={soloLectura} />}

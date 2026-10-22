@@ -156,3 +156,52 @@ export async function reclamarNotaParaTransmision(tipo: TipoNotaAjuste, id: stri
     .select('id');
   return !error && (data?.length ?? 0) > 0;
 }
+
+/** Nota con los datos de la factura que ajusta, para el listado de notas. */
+export interface NotaConFactura extends NotaAjusteDian {
+  factura?: { numeroFactura: string; clienteNombre: string; clienteNit: string; total: number };
+}
+
+// Sin el XML: pesa y solo se pide al descargarlo (obtenerXmlNota).
+const COLUMNAS_LISTADO = 'id, cliente_id, perfil_fiscal_id, factura_id, numero_nota, prefijo, resolucion_id, concepto_codigo, cude, motivo, estado, respuesta_dian, items, subtotal, total_impuestos, total, fecha_emision, updated_at, factura:facturas_electronicas(numero_factura, cliente_nombre, cliente_nit, total)';
+
+/** Todas las notas crédito y débito del negocio, de la más reciente a la más antigua. */
+export async function listarNotasDelCliente(
+  clienteId: string,
+  opciones: { desde?: string; hasta?: string; limite?: number } = {},
+): Promise<NotaConFactura[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  const consultas = (['credito', 'debito'] as const).map((tipo) => {
+    let q = client.from(tabla(tipo)).select(COLUMNAS_LISTADO).eq('cliente_id', clienteId);
+    if (opciones.desde) q = q.gte('fecha_emision', opciones.desde);
+    if (opciones.hasta) q = q.lte('fecha_emision', opciones.hasta);
+    return q.order('fecha_emision', { ascending: false }).limit(opciones.limite ?? 300);
+  });
+  const [credito, debito] = await Promise.all(consultas);
+  if (credito.error) throw new Error(credito.error.message);
+  if (debito.error) throw new Error(debito.error.message);
+  type FilaListado = NotaRow & { factura: { numero_factura: string; cliente_nombre: string | null; cliente_nit: string | null; total: number } | null };
+  const convertir = (fila: FilaListado, tipo: TipoNotaAjuste): NotaConFactura => ({
+    ...filaANota({ ...fila, xml: null }, tipo),
+    factura: fila.factura ? {
+      numeroFactura: fila.factura.numero_factura,
+      clienteNombre: fila.factura.cliente_nombre || '',
+      clienteNit: fila.factura.cliente_nit || '',
+      total: Number(fila.factura.total) || 0,
+    } : undefined,
+  });
+  return [
+    ...((credito.data as unknown as FilaListado[] | null) || []).map((f) => convertir(f, 'credito')),
+    ...((debito.data as unknown as FilaListado[] | null) || []).map((f) => convertir(f, 'debito')),
+  ].sort((a, b) => new Date(b.fechaEmision).getTime() - new Date(a.fechaEmision).getTime());
+}
+
+/** XML firmado de una nota, para descargarlo. */
+export async function obtenerXmlNota(tipo: TipoNotaAjuste, id: string): Promise<string | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data, error } = await client.from(tabla(tipo)).select('xml').eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as { xml: string | null } | null)?.xml ?? null;
+}
