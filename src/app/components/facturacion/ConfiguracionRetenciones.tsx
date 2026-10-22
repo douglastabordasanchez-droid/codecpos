@@ -69,7 +69,7 @@ export function ConfiguracionRetenciones({ perfil, soloLectura, onGuardado }: Pr
           <p className="text-slate-400 text-xs">
             {resumen
               ? `${resumen}. Se aplican a los clientes marcados como agentes de retención.`
-              : 'Desactivadas: ninguna factura lleva retenciones.'}
+              : 'Automáticas desactivadas. En el cobro se activan por venta con los botones ReteFuente y ReteICA.'}
           </p>
         </div>
         {!soloLectura && (

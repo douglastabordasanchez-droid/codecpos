@@ -14,6 +14,7 @@ import { listarNotasDeFactura, listarNotasDelCliente, type NotaConFactura } from
 import { ManualDeliveryProvider } from '../../lib/dian/deliveryProvider';
 import { emitirNotaAjuste } from '../../lib/dian/emitirNotaAjuste';
 import { prepararPaqueteEntrega } from '../../lib/dian/paqueteEntrega';
+import { enviarFacturaPorCorreoNegocio } from '../../lib/dian/correoFacturas';
 import {
   CONCEPTOS_NOTA_CREDITO, CONCEPTOS_NOTA_DEBITO,
   type FacturaElectronicaDian, type EstadoDocumentoDian, type ResolucionDian,
@@ -41,6 +42,8 @@ interface Props {
   recarga?: number;
   /** Abre la pestaña de notas buscando esta factura. */
   onVerNotas?: (numeroFactura: string) => void;
+  /** El negocio conectó su correo: Enviar manda la factura sin abrir otro programa. */
+  correoConectado?: boolean;
 }
 
 /** Mensajes de rechazo de la DIAN (ErrorMessage.string) de una respuesta guardada. */
@@ -50,7 +53,7 @@ function motivosDian(respuesta: Record<string, unknown> | undefined): string[] {
   return lista.map(String).filter((m) => /rechazo/i.test(m)).slice(0, 3);
 }
 
-export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas }: Props) {
+export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoConectado }: Props) {
   const [facturas, setFacturas] = useState<FacturaElectronicaDian[]>([]);
   // Notas aprobadas por factura: la columna de estado dice si quedó anulada o ajustada.
   const [notasPorFactura, setNotasPorFactura] = useState<Record<string, NotaConFactura[]>>({});
@@ -61,6 +64,7 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas }: Props) 
   const [facturaEnvio, setFacturaEnvio] = useState<FacturaElectronicaDian | null>(null);
   const [destino, setDestino] = useState('');
   const [armandoPaquete, setArmandoPaquete] = useState(false);
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false);
 
   const [facturaNota, setFacturaNota] = useState<FacturaElectronicaDian | null>(null);
   const [resolucionesPerfil, setResolucionesPerfil] = useState<ResolucionDian[]>([]);
@@ -134,6 +138,23 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas }: Props) 
       toast.error(e?.message || 'No se pudo armar el paquete para el cliente');
     } finally {
       setArmandoPaquete(false);
+    }
+  }
+
+  /** Correo conectado: la factura sale desde el correo del negocio con el ZIP y el PDF adjuntos. */
+  async function enviarDirecto() {
+    if (!facturaEnvio || !destino.trim()) return;
+    setEnviandoCorreo(true);
+    try {
+      const r = await enviarFacturaPorCorreoNegocio(facturaEnvio, destino.trim());
+      toast.success(`Factura ${facturaEnvio.numeroFactura} enviada a ${destino.trim()}`, { description: `Hoy van ${r.enviadosHoy} correos.` });
+      setFacturas((lista) => lista.map((f) => (f.id === facturaEnvio.id
+        ? { ...f, correoEnviadoAt: new Date().toISOString(), correoDestino: destino.trim() } : f)));
+      setFacturaEnvio(null);
+    } catch (e: any) {
+      toast.error('No se envió el correo', { description: e?.message, duration: 12000 });
+    } finally {
+      setEnviandoCorreo(false);
     }
   }
 
@@ -385,12 +406,19 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas }: Props) 
               <p className="font-bold text-white">Enviar {facturaEnvio.numeroFactura}</p>
               <button onClick={() => setFacturaEnvio(null)} className="text-slate-400" aria-label="Cerrar"><X className="w-4 h-4" /></button>
             </div>
+            {correoConectado && facturaEnvio.tipoDocumento === 'factura' && facturaEnvio.estado === 'accepted' ? (
+              <p className="text-xs text-slate-400">
+                Le llega al cliente desde el correo del negocio, con la factura para la DIAN (ZIP) y el PDF adjuntos. Puedes poner varios correos separados por coma.
+              </p>
+            ) : (
             <p className="text-xs text-slate-400">
               Se abre tu correo o WhatsApp con el resumen y el {facturaEnvio.tipoDocumento === 'documento_equivalente' ? 'CUDE' : 'CUFE'} listos.
               {facturaEnvio.tipoDocumento === 'factura'
                 ? 'Primero descarga el paquete (XML con la validación de la DIAN y PDF) y adjúntalo. Al enviar por correo, la factura queda marcada como enviada.'
                 : 'Adjunta el PDF de «Ver documento». Al enviar por correo, queda marcado como enviado.'}
+              {' '}Para enviarla con un clic, conecta el correo del negocio en la tarjeta Correo para enviar facturas.
             </p>
+            )}
             {facturaEnvio.tipoDocumento === 'factura' && (
               <button onClick={descargarPaquete} disabled={armandoPaquete || facturaEnvio.estado !== 'accepted'}
                 title={facturaEnvio.estado === 'accepted' ? undefined : 'Solo para facturas aprobadas por la DIAN'}
@@ -400,6 +428,12 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas }: Props) 
               </button>
             )}
             <input value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Correo o número de WhatsApp" className={`${campo} w-full`} />
+            {correoConectado && facturaEnvio.tipoDocumento === 'factura' && facturaEnvio.estado === 'accepted' && (
+              <button onClick={enviarDirecto} disabled={enviandoCorreo || !destino.includes('@')} className="w-full h-11 rounded-lg bg-amber-500 text-slate-950 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                {enviandoCorreo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                {enviandoCorreo ? 'Enviando...' : 'Enviar por correo ahora'}
+              </button>
+            )}
             <div className="flex gap-2">
               <button onClick={() => enviar('email')} disabled={!destino.includes('@')} className="flex-1 h-10 rounded-lg bg-sky-600/20 text-sky-400 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40">
                 <Mail className="w-4 h-4" /> Correo

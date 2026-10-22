@@ -19,6 +19,7 @@ import { CertificadoDigital } from './CertificadoDigital';
 import { PruebaHabilitacion } from './PruebaHabilitacion';
 import { ClientesFacturacion } from './ClientesFacturacion';
 import { ConfiguracionRetenciones } from './ConfiguracionRetenciones';
+import { ConfiguracionCorreo } from './ConfiguracionCorreo';
 import { AsistenteConfiguracionDian } from '../settings/AsistenteConfiguracionDian';
 import type { OperadorFacturacion } from './comunes';
 
@@ -41,6 +42,8 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
   const [asistente, setAsistente] = useState(false);
   // Búsqueda con que se abre la pestaña de notas (al llegar desde una factura).
   const [busquedaNotas, setBusquedaNotas] = useState('');
+  // Con correo conectado, Enviar manda la factura directo desde el servidor.
+  const [correoConectado, setCorreoConectado] = useState(false);
   const verNotas = (texto = '') => { setBusquedaNotas(texto); setPestana('notas'); };
 
   useEffect(() => {
@@ -122,6 +125,7 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
 
       {perfil?.id && <CertificadoDigital clienteId={clienteId} perfilFiscalId={perfil.id} soloLectura={soloLectura} />}
       {perfil?.id && <ConfiguracionRetenciones perfil={perfil} soloLectura={soloLectura} onGuardado={() => setRecarga((n) => n + 1)} />}
+      {perfil?.id && <ConfiguracionCorreo soloLectura={soloLectura} onCambio={(e) => setCorreoConectado(e.configurado)} />}
       {perfil?.id && perfil.activo && perfil.ambiente !== 'produccion' && !soloLectura && (
         <PruebaHabilitacion perfil={perfil} clienteId={clienteId} onTerminado={() => { setPestana('ventas'); setRecarga((n) => n + 1); }} />
       )}
@@ -158,7 +162,7 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
       )}
 
       {pestana === 'ventas'
-        ? <FacturasEmitidas clienteId={clienteId} recarga={recarga} onVerNotas={verNotas} />
+        ? <FacturasEmitidas clienteId={clienteId} recarga={recarga} onVerNotas={verNotas} correoConectado={correoConectado} />
         : pestana === 'notas'
         ? <NotasAjuste key={busquedaNotas} clienteId={clienteId} recarga={recarga} textoInicial={busquedaNotas} />
         : pestana === 'clientes'

@@ -44,6 +44,9 @@ function pdfDeFactura(factura: FacturaElectronicaDian): Promise<Blob> {
 export interface PaqueteEntrega {
   archivo: Blob;
   nombre: string;
+  /** El PDF también suelto, para adjuntarlo aparte en el correo. */
+  pdf: Blob;
+  nombrePdf: string;
 }
 
 export async function prepararPaqueteEntrega(factura: FacturaElectronicaDian): Promise<PaqueteEntrega> {
@@ -74,5 +77,10 @@ export async function prepararPaqueteEntrega(factura: FacturaElectronicaDian): P
     [nombres.xml]: new TextEncoder().encode(firmado),
     [`${factura.numeroFactura}.pdf`]: new Uint8Array(await pdf.arrayBuffer()),
   });
-  return { archivo: new Blob([zip as Uint8Array<ArrayBuffer>], { type: 'application/zip' }), nombre: nombres.zip };
+  return {
+    archivo: new Blob([zip as Uint8Array<ArrayBuffer>], { type: 'application/zip' }),
+    nombre: nombres.zip,
+    pdf,
+    nombrePdf: `${factura.numeroFactura}.pdf`,
+  };
 }
