@@ -45,6 +45,7 @@ import { ModuloPOS } from '../../app/lib/permissions';
 import { numeroVentaWeb } from '../../app/lib/numeracionCaja';
 import { ModalPesaje } from '../components/ModalPesaje';
 import { CLAVE_CARRITO_TRANSFERIDO, formatoCantidad } from '../lib/carritoTransferido';
+import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../../app/components/factura/RetencionesCobro';
 
 interface ProductoFila {
   id: string;
@@ -153,12 +154,14 @@ export default function VenderPage() {
   const facturacionDisponible = tieneModuloDePago(ModuloPOS.FACTURACION_DIAN);
   const [clienteFERecordado, setClienteFERecordado] = useState(false);
   const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
+  const [retencionesFE, setRetencionesFE] = useState(retencionesIniciales);
 
   /** Cliente conocido: llena lo que el cajero no escribió (nombre, correo y dirección). */
   const autocompletarClienteFE = async (documento: string) => {
     const encontrado = await buscarClienteFactura(empleado?.cliente_id, documento);
     setClienteFERecordado(!!encontrado);
     setAvisoRetencionFE(avisoAgenteRetencion(encontrado));
+    setRetencionesFE((r) => retencionesDelCliente(r, encontrado));
     if (!encontrado) return;
     setNombreClienteFactura((n) => n.trim() || encontrado.nombre);
     setCorreoClienteFactura((c) => c.trim() || encontrado.email || '');
@@ -513,6 +516,7 @@ export default function VenderPage() {
         totalImpuestos: lineasFactura.reduce((s, l) => s + (l.impuestos || []).reduce((t, imp) => t + imp.valor, 0), 0),
         total: totalAPagar,
         pago: { metodo: metodoPago },
+        retenciones: docClienteFactura.trim() ? retencionesParaEmitir(retencionesFE) : {},
       }).then((r) => {
         if (r.estado === 'accepted') {
           toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { description: 'Compártala o imprímala desde el recibo.' });
@@ -528,6 +532,7 @@ export default function VenderPage() {
       setDireccionClienteFactura('');
       setEmitirFE(false);
       setClienteFERecordado(false);
+      setRetencionesFE(retencionesIniciales());
       setCarrito({});
       setPropinaManual(null);
       setRecibido('');
@@ -925,6 +930,14 @@ export default function VenderPage() {
                 </div>
               )}
               {clienteFERecordado && <p className="text-emerald-400 text-[11px] font-semibold">Cliente conocido: su nombre se llenó solo.{avisoRetencionFE && ` ${avisoRetencionFE}`}</p>}
+              {docClienteFactura.trim() && (
+                <RetencionesCobro
+                  estado={retencionesFE}
+                  onChange={setRetencionesFE}
+                  base={itemsCarrito.reduce((acc, it) => acc + it.cantidad * it.precio / (1 + (Number(productos.find((p) => p.id === it.productoId)?.iva) || 0) / 100), 0)}
+                  total={totalCarrito}
+                />
+              )}
             </>
           )}
         </div>

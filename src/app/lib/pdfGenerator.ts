@@ -412,7 +412,11 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
     ? [
       ['Total Bruto', decimales(subtotalMostrado)],
       ...(descuentoTotal > 0 ? [['Descuento', decimales(descuentoTotal)]] : []),
-      ...(venta.impuestosDetalle || []).filter((i) => Number(i.valor) > 0).map((i) => [i.nombre, decimales(i.valor)]),
+      // El IVA siempre se ve, aunque sea 0: así el comprador sabe que no se le cobró.
+      ...(() => {
+        const impuestos = (venta.impuestosDetalle || []).filter((i) => Number(i.valor) > 0);
+        return impuestos.length > 0 ? impuestos.map((i) => [i.nombre, decimales(i.valor)]) : [['IVA', decimales(Number(venta.iva) || 0)]];
+      })(),
       ...(retenciones.length > 0 ? [['Total factura', decimales(venta.total)], ...retenciones.map((r) => [r.nombre, `-${decimales(r.valor)}`])] : []),
       filaTotalAPagar,
     ]

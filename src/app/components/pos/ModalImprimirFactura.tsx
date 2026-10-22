@@ -11,6 +11,8 @@ import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
 import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
 import { getCached } from '../../lib/cachedLocalStorage';
+import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
+import { datosPdfFacturaDianDeVenta } from '../../lib/dian/representacionGrafica';
 
 // ── Config empresa ────────────────────────────────────────────────────────────
 
@@ -290,8 +292,16 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
   const subtotal = (venta as any).subtotal || venta.total;
   const iva      = (venta as any).iva      || 0;
 
-  /** Mismos datos que ejecutarPDF() arma para descargarFacturaPDF — reutilizado por WhatsApp/Correo. */
-  function datosParaCompartir() {
+  /** Datos del PDF para descargar, WhatsApp y correo. Con factura electrónica
+   * aceptada salen del XML de la DIAN (NIT, correo, IVA y CUFE del comprador). */
+  async function datosParaCompartir() {
+    const local = datosLocales();
+    const { logoUrl, telefono, ciudad, nombreComercial } = local.config;
+    const dian = await datosPdfFacturaDianDeVenta(getLinkedClienteId(), [nFactura, venta!.id], { logoUrl, telefono, ciudad, nombreComercial });
+    return dian || local;
+  }
+
+  function datosLocales() {
     const cfg = getCached('codec_pos_config', {} as any);
     return {
       venta: {
@@ -308,6 +318,8 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
         qrUrl: (venta! as any).qrUrl || null,
         numeroElectronico: (venta! as any).folioElectronico || null,
         cliente: (venta as any).cliente || 'Consumidor Final',
+        mesa: venta!.mesa,
+        referencia_mesa: (venta as any).referencia_mesa || undefined,
       },
       config: {
         nombreComercial: cfg.nombreComercial || 'CODEC POS',
@@ -317,6 +329,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
         telefono: cfg.telefono || '',
         email: cfg.email || '',
         ciudad: cfg.ciudad || '',
+        logoUrl: cfg.logoUrl || '',
       },
     };
   }
@@ -325,7 +338,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
     if (!telefono.trim()) { toast.error('Ingresa el número de WhatsApp del cliente'); return; }
     setBusy('whatsapp');
     try {
-      const { venta: v, config } = datosParaCompartir();
+      const { venta: v, config } = await datosParaCompartir();
       await enviarFacturaPorWhatsApp(v, config, telefono.trim());
       toast.success('Factura lista: WhatsApp se abrió con el mensaje. Adjunta el PDF que se descargó.');
       setPanelCompartir(null);
@@ -340,7 +353,7 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
     if (!emailDestino.trim()) { toast.error('Ingresa el correo del cliente'); return; }
     setBusy('email');
     try {
-      const { venta: v, config } = datosParaCompartir();
+      const { venta: v, config } = await datosParaCompartir();
       await enviarFacturaPorEmail(v, config, emailDestino.trim());
       toast.success('Factura lista: tu correo se abrió con el mensaje. Adjunta el PDF que se descargó.');
       setPanelCompartir(null);
@@ -374,40 +387,8 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
   async function ejecutarPDF() {
     setBusy('pdf');
     try {
-      const cfg = getCached('codec_pos_config', {} as any);
-      await descargarFacturaPDF(
-        {
-          numeroFactura: nFactura,
-          fecha: venta.fecha,
-          items: venta.items.map(i => ({
-            nombre: i.nombre, cantidad: i.cantidad, precio: i.precio, subtotal: i.subtotal,
-          })),
-          subtotal: subtotal,
-          iva: iva,
-          total: venta.total,
-          metodoPago: venta.metodoPago,
-          cajero: venta.cajero,
-          descuento: venta.descuento || 0,
-          pagoMixto: (venta as any).pagoMixto || null,
-          fechaVencimiento: (venta as any).carteraFechaVencimiento || undefined,
-          cufe: (venta as any).cufe || null,
-          qrUrl: (venta as any).qrUrl || null,
-          numeroElectronico: (venta as any).folioElectronico || null,
-          cliente: (venta as any).cliente || 'Consumidor Final',
-          mesa: venta.mesa,
-          referencia_mesa: (venta as any).referencia_mesa || undefined,
-        },
-        {
-          nombreComercial: cfg.nombreComercial || 'CODEC POS',
-          razonSocial: cfg.razonSocial || '',
-          nit: cfg.nit || '',
-          direccion: cfg.direccion || '',
-          telefono: cfg.telefono || '',
-          email: cfg.email || '',
-          ciudad: cfg.ciudad || '',
-          logoUrl: cfg.logoUrl || '',
-        }
-      );
+      const { venta: v, config } = await datosParaCompartir();
+      await descargarFacturaPDF(v, config);
       toast.success(`PDF Factura ${nFactura} descargado`);
     } catch {
       toast.error('Error al generar el PDF');

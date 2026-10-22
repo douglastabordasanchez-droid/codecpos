@@ -101,6 +101,7 @@ import { obtenerFacturaPorId, obtenerFacturaPorVenta } from '../../lib/supabase/
 import { EVENTO_FACTURA_PENDIENTE_APROBADA } from '../../lib/dian/colaDian';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
 import { TirillaFacturaElectronica } from '../factura/TirillaFacturaElectronica';
+import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../factura/RetencionesCobro';
 import { registrarClienteDesdeCobro } from '../../lib/supabase/clientesFacturacionService';
 import { datosPdfFacturaDianCompletos } from '../../lib/dian/representacionGrafica';
 import { avisoAgenteRetencion, buscarClienteFactura, recordarClienteFactura } from '../../lib/dian/clientesFactura';
@@ -394,6 +395,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [emitirFE, setEmitirFE] = useState(false);
   const [clienteFERecordado, setClienteFERecordado] = useState(false);
   const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
+  const [retencionesFE, setRetencionesFE] = useState(retencionesIniciales);
   // Factura DIAN aceptada de la última venta: se abre sola para imprimirla
   // con su número DBM, CUFE y QR (el ticket del cobro sale antes de que la
   // DIAN conteste, con el número interno de la caja).
@@ -443,6 +445,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     const encontrado = await buscarClienteFactura(getLinkedClienteId(), documento);
     setClienteFERecordado(!!encontrado);
     setAvisoRetencionFE(avisoAgenteRetencion(encontrado));
+    setRetencionesFE((r) => retencionesDelCliente(r, encontrado));
     if (!encontrado) return;
     setClienteFE((p) => ({
       ...p,
@@ -2021,6 +2024,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
+      setRetencionesFE(retencionesIniciales());
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
@@ -2161,6 +2165,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 totalImpuestos: configIVA.ivaHabilitado ? iva : 0,
                 total,
                 pago: { metodo: metodoPago },
+                retenciones: clienteFE.nitCedula.trim() ? retencionesParaEmitir(retencionesFE) : {},
               }).then(async (r) => {
                 if (r.estado === 'accepted') {
                   const factura = await obtenerFacturaPorVenta(clienteIdVinculado, numeroFacturaCompleto).catch(() => null);
@@ -2432,6 +2437,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
+      setRetencionesFE(retencionesIniciales());
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       setMostrarPago(false);
 
@@ -2672,6 +2678,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
+      setRetencionesFE(retencionesIniciales());
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
@@ -4000,6 +4007,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       <p className={`text-xs mt-2 font-semibold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
                         Cliente conocido: sus datos se llenaron solos. Revísalos antes de cobrar.{avisoRetencionFE && ` ${avisoRetencionFE}`}
                       </p>
+                    )}
+                    {leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo' && clienteFE.nitCedula.trim() && (
+                      <RetencionesCobro
+                        estado={retencionesFE}
+                        onChange={setRetencionesFE}
+                        base={total - (calcularIVA() || 0)}
+                        total={total}
+                        oscuro={darkMode}
+                      />
                     )}
                     </>)}
                   </div>

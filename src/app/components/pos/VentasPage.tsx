@@ -53,6 +53,8 @@ import { ModalDevolucionVenta } from './ModalDevolucionVenta';
 import DevolucionesPage from './DevolucionesPage';
 import { useAuth } from '../../contexts/AuthContext';
 import { ModuloPOS } from '../../lib/permissions';
+import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
+import { datosPdfFacturaDianDeVenta } from '../../lib/dian/representacionGrafica';
 
 type FiltroFecha = 'hoy' | 'ayer' | 'semana' | 'mes' | 'todos' | 'personalizado';
 type OrdenVentas = 'fecha_desc' | 'fecha_asc' | 'total_desc';
@@ -426,10 +428,19 @@ export default function VentasPage() {
     };
   };
 
+  /** Con factura electrónica aceptada, el PDF sale del XML de la DIAN (NIT,
+   * correo, IVA y CUFE del comprador); sin ella, de la venta local. */
+  const datosParaPdf = async (venta: Venta): Promise<DatosFactura> => {
+    const local = armarFactura(venta);
+    const { logoUrl, telefono, ciudad, nombreComercial } = local.config;
+    const dian = await datosPdfFacturaDianDeVenta(getLinkedClienteId(), [venta.numeroFactura, venta.id], { logoUrl, telefono, ciudad, nombreComercial });
+    return dian || local;
+  };
+
   // 📄 Descargar factura individual como PDF
   const descargarFacturaIndividual = async (venta: Venta) => {
     try {
-      const { venta: ventaPDF, config } = armarFactura(venta);
+      const { venta: ventaPDF, config } = await datosParaPdf(venta);
       await descargarFacturaPDF(ventaPDF, config);
       toast.success(`📄 Factura ${venta.numeroFactura || venta.id} descargada`);
     } catch (error) {
@@ -1143,7 +1154,7 @@ export default function VentasPage() {
           abierta
           onCerrar={() => setVentaSeleccionada(null)}
           titulo={ventaSeleccionada.numeroFactura || ventaSeleccionada.id}
-          obtenerDatos={async () => armarFactura(ventaSeleccionada)}
+          obtenerDatos={() => datosParaPdf(ventaSeleccionada)}
           onImprimir={() => {
             const venta = ventaSeleccionada;
             setVentaSeleccionada(null);

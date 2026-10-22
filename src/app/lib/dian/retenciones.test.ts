@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularRetenciones } from './retenciones';
+import { calcularRetenciones, calcularRetencionesElegidas } from './retenciones';
 
 const config = {
   retefuenteActiva: true,
@@ -32,5 +32,16 @@ describe('calcularRetenciones', () => {
 
   it('no retiene si el negocio no activó la retención', () => {
     expect(calcularRetenciones({ ...config, retefuenteActiva: false, reteicaActiva: false }, agente, 500000)).toEqual([]);
+  });
+});
+
+describe('calcularRetencionesElegidas', () => {
+  it('aplica solo las que el cajero activó, sin mirar la base mínima', () => {
+    expect(calcularRetencionesElegidas({ retefuentePorcentaje: 2.5, reteicaTarifaPorMil: 11.04 }, 50000)).toEqual([
+      { codigo: '06', porcentaje: 2.5, base: 50000, valor: 1250 },
+      { codigo: '07', porcentaje: 1.104, base: 50000, valor: 552 },
+    ]);
+    expect(calcularRetencionesElegidas({ reteicaTarifaPorMil: 4.14 }, 100000).map((r) => r.codigo)).toEqual(['07']);
+    expect(calcularRetencionesElegidas({}, 100000)).toEqual([]);
   });
 });

@@ -206,9 +206,11 @@ export function TirillaFacturaElectronica({ factura, embebida, onCerrar, onVerCa
               <table>
                 <tbody>
                   <tr><td>Subtotal (base)</td><td className="r">{pesos(v.subtotal)}</td></tr>
-                  {(v.impuestosDetalle || []).filter((i) => i.valor > 0).map((i) => (
-                    <tr key={i.nombre}><td>{i.nombre}</td><td className="r">{pesos(i.valor)}</td></tr>
-                  ))}
+                  {(v.impuestosDetalle || []).some((i) => i.valor > 0)
+                    ? (v.impuestosDetalle || []).filter((i) => i.valor > 0).map((i) => (
+                      <tr key={i.nombre}><td>{i.nombre}</td><td className="r">{pesos(i.valor)}</td></tr>
+                    ))
+                    : <tr><td>IVA</td><td className="r">{pesos(Number(v.iva) || 0)}</td></tr>}
                   <tr className="b" style={{ fontSize: totalRetenciones > 0 ? 12 : 15 }}><td>TOTAL</td><td className="r">{pesos(v.total)}</td></tr>
                   {totalRetenciones > 0 && (
                     <>

@@ -48,3 +48,27 @@ export function calcularRetenciones(
 
   return retenciones;
 }
+
+/**
+ * Retenciones que el cajero activó en el cobro (botones ReteFuente y
+ * ReteICA). Un campo sin valor = esa retención no aplica. Cuando el cajero
+ * las activa a mano mandan sobre la configuración automática y no se mira la
+ * base mínima: el comprador ya dijo que va a retener.
+ */
+export interface RetencionesElegidas {
+  /** Porcentaje de retención en la fuente (2,5 = 2,5 %). */
+  retefuentePorcentaje?: number;
+  /** Tarifa de ReteICA por mil (11,04 = 11,04 por mil). */
+  reteicaTarifaPorMil?: number;
+}
+
+export function calcularRetencionesElegidas(elegidas: RetencionesElegidas, baseAntesDeImpuestos: number): RetencionDocumento[] {
+  const base = redondear2(Number(baseAntesDeImpuestos) || 0);
+  if (base <= 0) return [];
+  const retenciones: RetencionDocumento[] = [];
+  const pctFuente = Number(elegidas.retefuentePorcentaje) || 0;
+  if (pctFuente > 0) retenciones.push({ codigo: '06', porcentaje: pctFuente, base, valor: redondear2(base * pctFuente / 100) });
+  const porMil = Number(elegidas.reteicaTarifaPorMil) || 0;
+  if (porMil > 0) retenciones.push({ codigo: '07', porcentaje: Math.round(porMil * 100) / 1000, base, valor: redondear2(base * porMil / 1000) });
+  return retenciones;
+}

@@ -20,7 +20,7 @@
  * cola lo reintente) y en el resultado que devuelve.
  */
 import { buscarClienteFacturacion } from '../supabase/clientesFacturacionService';
-import { calcularRetenciones } from './retenciones';
+import { calcularRetenciones, calcularRetencionesElegidas, type RetencionesElegidas } from './retenciones';
 import type { AdquirenteDian, ItemFacturaDian, EmisorSnapshot, FacturaElectronicaDian, EstadoDocumentoDian } from './types';
 import { decidirTipoDocumentoDian } from './types';
 import { sinIvaParaNoResponsable } from './ivaIncluido';
@@ -50,6 +50,9 @@ export interface DatosVentaParaDian {
   total: number;
   /** Método de pago del POS (efectivo, tarjeta, nequi...) y si fue a crédito. */
   pago?: { metodo?: string; aCredito?: boolean; fechaVencimiento?: string };
+  /** Retenciones que el cajero activó en el cobro. Sin este campo se aplican
+   * las automáticas (cliente agente de retención + perfil fiscal). */
+  retenciones?: RetencionesElegidas;
 }
 
 export interface ResultadoEmision {
@@ -166,7 +169,9 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
       }
       : datos.adquirente;
     const adquirenteId = identificarAdquirente(adquirente);
-    const retenciones = tipoDocumento === 'factura' ? calcularRetenciones(perfil.retenciones, clienteBase, fiscal.brutoLineas) : [];
+    const retenciones = tipoDocumento !== 'factura' ? []
+      : datos.retenciones ? calcularRetencionesElegidas(datos.retenciones, fiscal.brutoLineas)
+        : calcularRetenciones(perfil.retenciones, clienteBase, fiscal.brutoLineas);
 
     const consecutivo = await siguienteConsecutivoDian(resolucion.id);
     // Prefijo + consecutivo, sin ceros de relleno: así lo compara la DIAN contra el rango autorizado.

@@ -12,6 +12,7 @@ import { parseDianXml } from './recepcion/parser';
 import { IMPUESTOS_DIAN, type DocumentoNormalizado } from './recepcion/types';
 import { construirUrlQR } from './softwareSecurityCode';
 import { obtenerPerfilFiscalPorId } from '../supabase/fiscalProfileService';
+import { obtenerFacturaPorVenta } from '../supabase/facturaElectronicaDianService';
 import type { FacturaElectronicaDian } from './types';
 import type { ConfigEmpresa, ItemFactura, Venta } from '../pdfGenerator';
 
@@ -183,4 +184,27 @@ export async function datosPdfFacturaDianCompletos(
     actividadEconomica: empresa.actividadEconomica || perfil?.actividadEconomica,
     regimenFiscal: empresa.regimenFiscal || perfil?.regimenFiscal,
   });
+}
+
+/**
+ * PDF de una venta de la caja de escritorio que salió con factura
+ * electrónica aceptada: busca la factura por el número de la venta
+ * (FE000020) y la arma desde su XML. La venta local solo guarda el nombre
+ * del comprador; sin esto el PDF salía sin NIT, correo ni IVA. Devuelve
+ * null sin factura aceptada o sin red, y entonces queda la factura local.
+ */
+export async function datosPdfFacturaDianDeVenta(
+  clienteId: string | null | undefined,
+  referencias: Array<string | null | undefined>,
+  empresa: Partial<ConfigEmpresa> = {},
+): Promise<{ venta: Venta; config: ConfigEmpresa } | null> {
+  if (!clienteId) return null;
+  const unicas = referencias.filter((r, i, arr): r is string => !!r && arr.indexOf(r) === i);
+  try {
+    for (const ref of unicas) {
+      const factura = await obtenerFacturaPorVenta(clienteId, ref);
+      if (factura?.xml && factura.estado === 'accepted') return datosPdfFacturaDianCompletos(factura, empresa);
+    }
+  } catch { /* sin red: factura local */ }
+  return null;
 }
