@@ -97,7 +97,8 @@ import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
 import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '../../lib/dian/types';
-import { obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
+import { obtenerFacturaPorId, obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
+import { EVENTO_FACTURA_PENDIENTE_APROBADA } from '../../lib/dian/colaDian';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
 import { TirillaFacturaElectronica } from '../factura/TirillaFacturaElectronica';
 import { registrarClienteDesdeCobro } from '../../lib/supabase/clientesFacturacionService';
@@ -402,7 +403,40 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // Visor del cobro con «Sí» a factura electrónica: espera la respuesta de la
   // DIAN y muestra la tirilla electrónica en lugar de la normal. Si la DIAN
   // no la acepta (o el cajero no quiere esperar), queda la tirilla normal.
-  const [feVisor, setFeVisor] = useState<{ venta: string; estado: 'esperando' | 'lista' | 'normal' } | null>(null);
+  const [feVisor, setFeVisor] = useState<{ venta: string; estado: 'esperando' | 'lista' | 'normal'; aviso?: string } | null>(null);
+  // Copia para leerlo desde la respuesta de la DIAN, que llega fuera del render.
+  const feVisorRef = useRef(feVisor);
+  feVisorRef.current = feVisor;
+  // Tirilla electrónica en su propia ventana: solo cuando el cajero la pide
+  // (la DIAN contestó tarde o se aprobó después de una contingencia), para no
+  // tapar la venta siguiente.
+  const [tirillaSuelta, setTirillaSuelta] = useState(false);
+
+  /** Abre la tirilla electrónica de una factura ya aprobada, a pedido del cajero. */
+  const verTirillaElectronica = async (facturaId: string) => {
+    const f = await obtenerFacturaPorId(facturaId).catch(() => null);
+    if (!f) { toast.error('No se pudo abrir la factura electrónica'); return; }
+    setCartaDianAbierta(false);
+    setFacturaDianVista(f);
+    setTirillaSuelta(true);
+  };
+
+  // Facturas que quedaron pendientes (sin internet o DIAN caída) y la cola ya
+  // logró aprobar: se avisa sin interrumpir la venta en curso.
+  useEffect(() => {
+    const alAprobar = (e: Event) => {
+      const { id, numero } = (e as CustomEvent<{ id: string; numero?: string }>).detail || ({} as any);
+      if (!id) return;
+      toast.success(`Factura electrónica ${numero || ''} aprobada por la DIAN`, {
+        description: 'Estaba pendiente. Ya la puedes imprimir o enviar al cliente.',
+        duration: 20000,
+        action: { label: 'Ver tirilla', onClick: () => { void verTirillaElectronica(id); } },
+      });
+    };
+    window.addEventListener(EVENTO_FACTURA_PENDIENTE_APROBADA, alAprobar);
+    return () => window.removeEventListener(EVENTO_FACTURA_PENDIENTE_APROBADA, alAprobar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Cliente que ya compró con factura: llena solo lo que el cajero no escribió. */
   const autocompletarClienteFE = async (documento: string) => {
@@ -1964,9 +1998,18 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           qrUrl: respuestaElectronica?.qrUrl || respuestaElectronica?.qr_url || null,
           contingencia: facturaEstado === 'PENDIENTE_SINCRONIZAR',
         });
-        setFeVisor(feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo'
-          ? { venta: numeroFacturaCompleto, estado: 'esperando' }
-          : null);
+        const conFE = feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo';
+        setFeVisor(conFE ? { venta: numeroFacturaCompleto, estado: 'esperando' } : null);
+        setTirillaSuelta(false);
+        if (conFE) {
+          // Con fila no se espera a la DIAN: a los 8 segundos queda la tirilla
+          // normal y la factura se sigue enviando sola por detrás.
+          window.setTimeout(() => {
+            setFeVisor((f) => (f?.venta === numeroFacturaCompleto && f.estado === 'esperando'
+              ? { ...f, estado: 'normal', aviso: 'La DIAN está demorada. La factura electrónica se sigue enviando sola: puedes seguir facturando. Cuando la apruebe te aviso para imprimirla o enviarla al cliente.' }
+              : f));
+          }, 8000);
+        }
         setFacturaDianVista(null);
         setCartaDianAbierta(false);
         setMostrarTicket(true);
@@ -2120,18 +2163,33 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 pago: { metodo: metodoPago },
               }).then(async (r) => {
                 if (r.estado === 'accepted') {
-                  toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { duration: 6000 });
                   const factura = await obtenerFacturaPorVenta(clienteIdVinculado, numeroFacturaCompleto).catch(() => null);
-                  if (factura) {
+                  const visor = feVisorRef.current;
+                  if (factura && visor?.venta === numeroFacturaCompleto && visor.estado === 'esperando') {
                     setFacturaDianVista(factura);
-                    setFeVisor((f) => (f?.venta === numeroFacturaCompleto ? { ...f, estado: 'lista' } : f));
-                  } else {
-                    setFeVisor((f) => (f?.venta === numeroFacturaCompleto ? { ...f, estado: 'normal' } : f));
+                    setFeVisor({ ...visor, estado: 'lista' });
+                  } else if (factura?.id) {
+                    // Llegó tarde: el cajero ya siguió. Se ofrece, no se impone.
+                    const id = factura.id;
+                    toast.success(`Factura ${r.numero} lista`, {
+                      description: 'La DIAN la aprobó. Toca para imprimir la tirilla electrónica.',
+                      duration: 20000,
+                      action: { label: 'Ver tirilla', onClick: () => { void verTirillaElectronica(id); } },
+                    });
                   }
                   return;
                 }
-                setFeVisor((f) => (f?.venta === numeroFacturaCompleto ? { ...f, estado: 'normal' } : f));
-                if (r.estado === 'en_cola' || r.estado === 'contingency' || r.estado === 'sent') {
+                const pendiente = r.estado === 'en_cola' || r.estado === 'contingency' || r.estado === 'sent';
+                setFeVisor((f) => (f?.venta === numeroFacturaCompleto
+                  ? {
+                    ...f,
+                    estado: 'normal',
+                    aviso: pendiente
+                      ? `Factura electrónica${r.numero ? ` ${r.numero}` : ''} en contingencia: la DIAN no respondió y se enviará sola apenas responda. Entrega esta tirilla; cuando quede aprobada te aviso para imprimirla o enviarla al cliente.`
+                      : `La factura electrónica no salió: ${r.motivo || 'revisa Facturación'}. La venta sí quedó registrada.`,
+                  }
+                  : f));
+                if (pendiente) {
                   toast.warning(`Factura electrónica${r.numero ? ` ${r.numero}` : ''} pendiente`, {
                     description: r.motivo || 'Se reintenta sola. Revísela en Facturación › Historial.',
                     duration: 10000,
@@ -4198,7 +4256,14 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             ) : feVisor?.venta === ventaActual.numeroFactura && feVisor.estado === 'lista' && facturaDianVista ? (
               <TirillaFacturaElectronica embebida factura={facturaDianVista} onVerCarta={() => setCartaDianAbierta(true)} />
             ) : ticketContenidoListo ? (
-              <TicketReceipt venta={ventaActual} />
+              <>
+                {feVisor?.venta === ventaActual.numeroFactura && feVisor.aviso && (
+                  <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${darkMode ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
+                    {feVisor.aviso}
+                  </div>
+                )}
+                <TicketReceipt venta={ventaActual} />
+              </>
             ) : (
               <div className="animate-pulse space-y-3 py-2">
                 <div className={`h-24 rounded-xl ${darkMode ? 'bg-slate-800' : 'bg-gray-100'}`} />
@@ -4216,10 +4281,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           sale igual que siempre. */}
       {/* La tirilla electrónica aparece dentro del visor del cobro; si el cajero
           ya lo había cerrado cuando la DIAN contestó, sale en su propia ventana. */}
-      {facturaDianVista && !cartaDianAbierta && !mostrarTicket && (
+      {facturaDianVista && tirillaSuelta && !cartaDianAbierta && (
         <TirillaFacturaElectronica
           factura={facturaDianVista}
-          onCerrar={() => setFacturaDianVista(null)}
+          onCerrar={() => { setTirillaSuelta(false); setFacturaDianVista(null); }}
           onVerCarta={() => setCartaDianAbierta(true)}
         />
       )}

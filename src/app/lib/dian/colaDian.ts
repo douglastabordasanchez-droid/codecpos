@@ -37,6 +37,19 @@ import {
 import type { DianResponse, FacturaElectronicaDian, NotaAjusteDian } from './types';
 
 export const INTERVALO_COLA_DIAN_MS = 30_000;
+
+/** Evento de ventana cuando una factura que había quedado pendiente (sin
+ * internet o en contingencia) por fin la aprueba la DIAN: la caja avisa para
+ * imprimirla o entregársela al cliente. */
+export const EVENTO_FACTURA_PENDIENTE_APROBADA = 'codecpos:factura-dian-aprobada';
+
+function avisarAprobada(factura: { id?: string; numeroFactura?: string; estado?: string } | null | undefined): void {
+  if (!factura?.id || factura.estado !== 'accepted' || typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  // Un aviso que falla nunca puede devolver a contingencia una factura ya aprobada.
+  try {
+    window.dispatchEvent(new CustomEvent(EVENTO_FACTURA_PENDIENTE_APROBADA, { detail: { id: factura.id, numero: factura.numeroFactura } }));
+  } catch { /* sin aviso, la factura igual quedó aprobada */ }
+}
 const ESPERA_MAXIMA_MS = 15 * 60_000;
 
 export interface EstadoColaDian {
@@ -97,7 +110,7 @@ async function tieneCertificado(perfilFiscalId: string): Promise<boolean> {
 const esDuplicadoEnDian = (r: DianResponse) => (r.mensajes || []).some((m) => /procesado anteriormente/i.test(String(m)));
 
 /** Firma (si falta) y transmite una factura que ya existe en la nube. */
-async function reintentarFactura(f: FacturaElectronicaDian): Promise<void> {
+async function reintentarFactura(f: FacturaElectronicaDian): Promise<string | undefined> {
   if (!f.id || !f.xml) throw new Error('La factura no tiene XML generado');
   const ambiente = f.emisor.ambiente || 'habilitacion';
 
@@ -136,6 +149,7 @@ async function reintentarFactura(f: FacturaElectronicaDian): Promise<void> {
     motivoRechazo: respuesta.estado === 'accepted' ? '' : respuesta.mensajes?.join('; ') || 'La DIAN no validó el documento',
     fechaValidacion: respuesta.estado === 'accepted' ? new Date().toISOString() : undefined,
   });
+  return respuesta.estado;
 }
 
 /** Lo mismo que reintentarFactura, para una nota crédito o débito. */
@@ -197,7 +211,9 @@ async function vaciarEmisionesLocales(): Promise<void> {
 
     registrarIntentoEmision(datos.ventaReferencia);
     await emitirFacturaDianDirecto(datos); // nunca lanza
-    if (await obtenerFacturaPorVenta(datos.clienteId, datos.ventaReferencia)) {
+    const emitida = await obtenerFacturaPorVenta(datos.clienteId, datos.ventaReferencia);
+    if (emitida) {
+      avisarAprobada(emitida);
       quitarEmisionPendiente(datos.ventaReferencia);
       anotarExito(clave);
     } else {
@@ -232,7 +248,8 @@ export async function procesarColaDian(clienteId: string): Promise<EstadoColaDia
       if (!(await reclamarFacturaParaTransmision(f.id, f.actualizadaEn))) continue;
 
       try {
-        await reintentarFactura(f);
+        const estadoFinal = await reintentarFactura(f);
+        avisarAprobada({ id: f.id, numeroFactura: f.numeroFactura, estado: estadoFinal });
         anotarExito(f.id);
       } catch (e) {
         ultimoError = (e as Error).message;
