@@ -81,6 +81,9 @@ interface ConfiguracionEmpresa {
   /** true: el precio del producto ya trae el IVA (se despeja al cobrar).
    * false o sin definir: el IVA se suma encima del precio (como siempre). */
   ivaIncluidoEnPrecio?: boolean;
+  /** true: el IVA va a todos los productos aunque el producto diga 0.
+   * false o sin definir: solo a los marcados «Aplica IVA». */
+  ivaTodosLosProductos?: boolean;
   regimenFiscal: 'simplificado' | 'comun' | 'gran_contribuyente';
 
   // Cartera (venta a crédito, ver src/app/lib/carteraService.ts)
@@ -1752,8 +1755,37 @@ export default function ConfiguracionPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* A qué productos: todos, o solo los marcados «Aplica IVA». */}
+            {config.ivaHabilitado && (
+              <div className="space-y-2">
+                <Label className={darkMode ? 'text-gray-300' : ''}>A qué productos se aplica</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {([
+                    [true, 'A todos los productos', 'Todos llevan el IVA, aunque el producto diga 0 %.'],
+                    [false, 'Solo los marcados «Aplica IVA»', 'Los demás se venden sin IVA (exentos o excluidos).'],
+                  ] as const).map(([valor, titulo, detalle]) => (
+                    <button
+                      key={titulo}
+                      type="button"
+                      onClick={() => handleChange('ivaTodosLosProductos', valor)}
+                      className={`text-left px-3 py-2.5 rounded-xl border-2 transition-colors ${
+                        (config.ivaTodosLosProductos === true) === valor
+                          ? 'bg-green-600 border-green-500 text-white'
+                          : darkMode
+                            ? 'bg-slate-800 border-slate-600 text-slate-300'
+                            : 'bg-white border-gray-300 text-gray-700'
+                      }`}
+                    >
+                      <span className="block text-sm font-bold">{titulo}</span>
+                      <span className="block text-xs opacity-80">{detalle}</span>
+                    </button>
+                  ))}
+                </div>
                 <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                  Solo aplica a los productos marcados «Aplica IVA».
+                  También se cambia desde la web y el celular, en Configurar mi negocio.
                 </p>
               </div>
             )}

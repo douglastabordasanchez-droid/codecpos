@@ -182,7 +182,8 @@ export async function datosPdfFacturaDianCompletos(
   return datosPdfFacturaDian(factura, {
     ...empresa,
     actividadEconomica: empresa.actividadEconomica || perfil?.actividadEconomica,
-    regimenFiscal: empresa.regimenFiscal || perfil?.regimenFiscal,
+    // El régimen del perfil fiscal es el que va a la DIAN; el de Configuración puede estar viejo.
+    regimenFiscal: perfil?.regimenFiscal || empresa.regimenFiscal,
   });
 }
 

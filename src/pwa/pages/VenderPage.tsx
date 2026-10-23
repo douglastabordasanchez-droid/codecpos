@@ -34,6 +34,7 @@ import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
 import { avisoAgenteRetencion, recordarClienteFactura, type ClienteFacturaGuardado } from '../../app/lib/dian/clientesFactura';
 import { registrarClienteDesdeCobro } from '../../app/lib/supabase/clientesFacturacionService';
 import { lineaConIvaIncluido } from '../../app/lib/dian/ivaIncluido';
+import { CONFIG_IVA_APAGADO, leerConfigIva, precioDeVentaConIva, tarifaIvaProducto } from '../../app/lib/dian/configIva';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
 import { EsperandoPagoModal, METODOS_TRANSFERENCIA } from '../components/EsperandoPagoModal';
 import type { NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyService';
@@ -61,8 +62,10 @@ interface ProductoFila {
   talla?: string | null;
   color?: string | null;
   tipo_producto?: string | null;
-  /** Tarifa de IVA del producto (19, 5 o 0); el precio de venta ya la incluye. */
+  /** Tarifa de IVA del producto (19, 5 o 0). */
   iva?: number | null;
+  /** Tarifa con la que se vende según el IVA del negocio (configIva.ts); precio_venta ya la incluye. */
+  tarifaIva?: number;
 }
 
 const esGranel = (p: ProductoFila) => p.tipo_producto === 'granel';
@@ -186,13 +189,22 @@ export default function VenderPage() {
     if (!empleado) return;
     setCargando(true);
     const client = getSupabaseClient();
-    const { data } = await client!
-      .from('productos')
-      .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto, iva')
-      .eq('cliente_id', empleado.cliente_id)
-      .eq('activo', true)
-      .order('nombre');
-    let filas = (data as ProductoFila[]) || [];
+    const [{ data }, configIva] = await Promise.all([
+      client!
+        .from('productos')
+        .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto, iva')
+        .eq('cliente_id', empleado.cliente_id)
+        .eq('activo', true)
+        .order('nombre'),
+      // IVA del negocio (el mismo de Electron). Si no se puede leer, se vende sin IVA como Electron sin configurar.
+      leerConfigIva(empleado.cliente_id).catch(() => CONFIG_IVA_APAGADO),
+    ]);
+    // Cada producto queda con la tarifa con la que se vende y, si el IVA se
+    // suma encima, con el precio que de verdad paga el cliente.
+    let filas = ((data as ProductoFila[]) || []).map((p) => {
+      const tarifaIva = tarifaIvaProducto(configIva, p.iva);
+      return { ...p, tarifaIva, precio_venta: precioDeVentaConIva(configIva, Number(p.precio_venta) || 0, tarifaIva) };
+    });
 
     // 🏪 Multi-Tienda: en una sucursal distinta de la principal el stock real
     // vive en `tiendas_stock` (migración 0092), no en `productos.stock`.
@@ -491,11 +503,11 @@ export default function VenderPage() {
         // Queda en Facturación › Clientes para todas las cajas (nuevo o completado).
         void registrarClienteDesdeCobro(empleado.cliente_id, datosCliente);
       }
-      // El precio cobrado ya trae el IVA del producto: la factura lo separa.
+      // El precio cobrado ya trae el IVA (configIva.ts): la factura lo separa.
       const lineasFactura = items.map((it) => lineaConIvaIncluido(
         { codigo: productos.find((p) => p.id === it.productoId)?.codigo_barras || undefined, descripcion: it.nombre, cantidad: it.cantidad },
         it.precio,
-        Number(productos.find((p) => p.id === it.productoId)?.iva) || 0,
+        productos.find((p) => p.id === it.productoId)?.tarifaIva || 0,
       ));
       const correoFE = clienteFactura.email.trim();
       if (facturacionDisponible && emitirFE) emitirFacturaDianDirecto({
@@ -903,7 +915,7 @@ export default function VenderPage() {
                 <RetencionesCobro
                   estado={retencionesFE}
                   onChange={setRetencionesFE}
-                  base={itemsCarrito.reduce((acc, it) => acc + it.cantidad * it.precio / (1 + (Number(productos.find((p) => p.id === it.productoId)?.iva) || 0) / 100), 0)}
+                  base={itemsCarrito.reduce((acc, it) => acc + it.cantidad * it.precio / (1 + (productos.find((p) => p.id === it.productoId)?.tarifaIva || 0) / 100), 0)}
                   total={totalCarrito}
                 />
               )}

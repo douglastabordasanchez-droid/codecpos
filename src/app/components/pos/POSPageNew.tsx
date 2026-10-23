@@ -1620,7 +1620,13 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       ivaHabilitado: config.ivaHabilitado === true,
       porcentajeIVA: config.porcentajeIVA || 19,
       ivaIncluidoEnPrecio: config.ivaIncluidoEnPrecio === true,
+      // El IVA va a todos los productos aunque el producto diga 0 (se edita también desde la web).
+      ivaTodosLosProductos: config.ivaTodosLosProductos === true,
     };
+  };
+  const productoLlevaIVA = (producto: Producto) => {
+    const cfg = obtenerConfigIVA();
+    return cfg.ivaHabilitado && (cfg.ivaTodosLosProductos || producto.aplicaIVA === true);
   };
 
   // 🛡️ Un item de carrito corrupto/viejo (ej. cargado desde un
@@ -1663,7 +1669,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     // IVA incluido: el precio ya lo trae; se despeja de lo que se cobra.
     if (ivaIncluidoEnPrecio) {
       const cobradoConIVA = carritoItemsValidos().reduce((total, item) => {
-        if (!item.producto.aplicaIVA) return total;
+        if (!productoLlevaIVA(item.producto)) return total;
         const precioFinal = item.precioEditado ?? precioCatalogoConMods(item);
         return total + precioFinal * (item.producto.pesable && item.peso ? item.peso : item.cantidad);
       }, 0);
@@ -1671,7 +1677,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }
 
     const subtotalConIVA = carritoItemsValidos().reduce((total, item) => {
-      if (!item.producto.aplicaIVA) return total;
+      if (!productoLlevaIVA(item.producto)) return total;
       if (item.producto.pesable && item.peso) {
         return total + (item.producto.precio * item.peso);
       }
@@ -2165,11 +2171,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 fecha: venta.fecha,
                 adquirente: adquirenteDesdeCobro(datosCobroFE),
                 items: venta.items.map((it) => {
-                  // Solo los productos marcados «aplica IVA» llevan el impuesto —
-                  // el mismo criterio con el que el POS calculó el total
+                  // Solo los productos que llevan IVA (marcados «aplica IVA», o
+                  // todos si así se configuró) llevan el impuesto: el mismo criterio con el que el POS calculó el total
                   // cobrado. Antes se le cargaba IVA a todos los ítems en el
                   // documento electrónico, aunque no se hubiera cobrado.
-                  const llevaIVA = configIVA.ivaHabilitado && carrito.some((c) => c.producto.codigo === it.codigo && c.producto.aplicaIVA);
+                  const llevaIVA = carrito.some((c) => c.producto.codigo === it.codigo && productoLlevaIVA(c.producto));
                   const linea = { codigo: it.codigo, descripcion: it.nombre, cantidad: it.cantidad };
                   // IVA incluido: lo cobrado de la línea ya trae el impuesto.
                   if (llevaIVA && configIVA.ivaIncluidoEnPrecio) {

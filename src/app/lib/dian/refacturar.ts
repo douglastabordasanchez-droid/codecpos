@@ -17,6 +17,7 @@ import { calcularDocumentoFiscal } from './documentoFiscal';
 import { parseDianXml } from './recepcion/parser';
 import { adquirenteDesdeCobro, clienteParaGuardar, type DatosClienteCobro } from './clienteCobro';
 import { recordarClienteFactura } from './clientesFactura';
+import { itemsConIvaConfigurado, type ConfigIva } from './configIva';
 import type { FacturaElectronicaDian } from './types';
 
 /** Marca que lleva la referencia de una factura ya reemplazada. */
@@ -72,14 +73,23 @@ export function clienteDeFactura(f: FacturaElectronicaDian): DatosClienteCobro {
   };
 }
 
-export async function facturarDeNuevo(anulada: FacturaElectronicaDian, cliente: DatosClienteCobro): Promise<ResultadoEmision> {
+/**
+ * Productos de la factura nueva: los mismos de la anulada, con el IVA de la
+ * configuración de hoy si la anulada salió sin él (el total no cambia).
+ */
+export function itemsParaFacturarDeNuevo(anulada: FacturaElectronicaDian, configIva?: ConfigIva | null) {
+  const items = itemsDeFactura(anulada);
+  return configIva ? itemsConIvaConfigurado(items, configIva) : items;
+}
+
+export async function facturarDeNuevo(anulada: FacturaElectronicaDian, cliente: DatosClienteCobro, configIva?: ConfigIva | null): Promise<ResultadoEmision> {
   const client = getSupabaseClient();
   if (!client || !anulada.id) throw new Error('nuestra base de datos no está configurada');
   if (facturaReemplazada(anulada)) throw new Error('Esta venta ya se facturó de nuevo.');
   if (!(await facturaAnulada(anulada))) throw new Error('Solo se factura de nuevo una venta cuya factura quedó anulada con nota crédito aprobada.');
   if (await ventaDevuelta(anulada)) throw new Error('Esta venta se devolvió en Ventas › Devolver o anular: no se vuelve a facturar.');
 
-  const items = itemsDeFactura(anulada);
+  const items = itemsParaFacturarDeNuevo(anulada, configIva);
   if (items.length === 0) throw new Error('No se pudieron leer los productos de la factura anulada.');
   const fiscal = calcularDocumentoFiscal(items);
   const doc = anulada.xml ? parseDianXml(anulada.xml).documento : null;

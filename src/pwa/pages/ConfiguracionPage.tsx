@@ -193,7 +193,7 @@ export default function ConfiguracionPage() {
             </SeccionPlegable>
 
             {esAdmin && (
-              <SeccionPlegable titulo="Configurar mi negocio" subtitulo="Tipo de negocio, propina y precios" icono={Briefcase}>
+              <SeccionPlegable titulo="Configurar mi negocio" subtitulo="Tipo de negocio, propina, precios e IVA" icono={Briefcase}>
                 <ConfigurarMiNegocio embebido />
               </SeccionPlegable>
             )}

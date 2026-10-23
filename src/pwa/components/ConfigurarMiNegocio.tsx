@@ -1,7 +1,7 @@
 /**
  * Configurar mi negocio — web/celular. Mismas opciones que Electron
- * (Configuración > Mi negocio): tipo de negocio, nombre, propina y cambio de
- * precio. Lo que se guarde aquí también queda en Electron, y al revés.
+ * (Configuración > Mi negocio): tipo de negocio, nombre, propina, cambio de
+ * precio e IVA. Lo que se guarde aquí también queda en Electron, y al revés.
  */
 import { useEffect, useState } from 'react';
 import {
@@ -11,7 +11,8 @@ import {
 import { toast } from 'sonner';
 import { TIPOS_NEGOCIO } from '../../data/tipos-negocio';
 import { MODULOS_ESPECIALIZADOS, MODULO_POR_TIPO, ocultosParaTipo } from '../../data/modulosEspecializados';
-import { useMiNegocio, guardarMiNegocio, type MiNegocio } from '../hooks/useMiNegocio';
+import { useMiNegocio, guardarMiNegocio, ivaDisponible, type MiNegocio } from '../hooks/useMiNegocio';
+import type { ConfigIva } from '../../app/lib/dian/configIva';
 
 const ICONOS: Record<string, LucideIcon> = {
   Store, Shirt, Pill, Hammer, Pencil, ChefHat, Scissors, UtensilsCrossed, Wine, Laptop, Sparkles, PawPrint, Star, Trophy, BookOpen,
@@ -44,7 +45,7 @@ export function ConfigurarMiNegocio({ embebido = false }: { embebido?: boolean }
     if (!form.nombreNegocio.trim()) { toast.error('Escribe el nombre de tu negocio'); return; }
     setGuardando(true);
     try {
-      await guardarMiNegocio(form);
+      await guardarMiNegocio(form, miNegocio);
       toast.success('Mi negocio guardado', { description: `${tipo?.nombre || form.tipoNegocio}. También se aplica en Electron.` });
     } catch (e: any) {
       toast.error('No se pudo guardar', { description: e?.message });
@@ -176,6 +177,8 @@ export function ConfigurarMiNegocio({ embebido = false }: { embebido?: boolean }
         </div>
       </div>
 
+      {ivaDisponible() && <SeccionIva iva={form.iva} onChange={(iva) => setForm({ ...form, iva })} />}
+
       <button
         onClick={guardar}
         disabled={!cambios || guardando}
@@ -184,6 +187,91 @@ export function ConfigurarMiNegocio({ embebido = false }: { embebido?: boolean }
       >
         {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {cambios ? 'Guardar cambios' : 'Guardado'}
       </button>
+    </div>
+  );
+}
+
+const TARIFAS_IVA = [19, 5];
+
+/** IVA del negocio: lo mismo que Electron en Configuración › IVA. */
+function SeccionIva({ iva, onChange }: { iva: ConfigIva; onChange: (iva: ConfigIva) => void }) {
+  const opcion = (activa: boolean) =>
+    `text-left rounded-xl border p-3 transition-all ${activa ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-800 bg-slate-950/40'}`;
+  // Ejemplo con un precio de $100.000.
+  const precio = 100000;
+  const base = iva.incluidoEnPrecio ? Math.round(precio / (1 + iva.porcentaje / 100)) : precio;
+  const total = iva.incluidoEnPrecio ? precio : Math.round(precio * (1 + iva.porcentaje / 100));
+  const pesos = (n: number) => `$${n.toLocaleString('es-CO')}`;
+
+  return (
+    <div className="space-y-3 border-t border-slate-800 pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-white text-sm font-semibold">Cobrar IVA</p>
+          <p className="text-slate-500 text-xs">
+            {iva.habilitado ? 'Las ventas y las facturas electrónicas llevan IVA.' : 'Apagado: las ventas y las facturas salen sin IVA.'}
+          </p>
+        </div>
+        <Interruptor activo={iva.habilitado} etiqueta="Cobrar IVA" onClick={() => onChange({ ...iva, habilitado: !iva.habilitado })} />
+      </div>
+
+      {iva.habilitado && (
+        <>
+          <div>
+            <p className="text-slate-400 text-xs mb-1.5">Tarifa de IVA</p>
+            <div className="flex items-center gap-2">
+              {TARIFAS_IVA.map((t) => (
+                <button key={t} type="button" onClick={() => onChange({ ...iva, porcentaje: t })}
+                  className={`h-10 px-4 rounded-lg border text-sm font-bold ${iva.porcentaje === t ? 'border-emerald-500 bg-emerald-500/10 text-white' : 'border-slate-800 text-slate-300'}`}>
+                  {t} %
+                </button>
+              ))}
+              <input
+                type="number" inputMode="decimal" min={0} max={100} value={iva.porcentaje} aria-label="Otra tarifa de IVA"
+                onChange={(e) => onChange({ ...iva, porcentaje: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                className="w-20 h-10 px-3 rounded-lg bg-slate-950 border border-slate-800 text-white text-sm text-right"
+              />
+              <span className="text-slate-400 text-sm">%</span>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-slate-400 text-xs mb-1.5">El precio de los productos</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button type="button" className={opcion(iva.incluidoEnPrecio)} onClick={() => onChange({ ...iva, incluidoEnPrecio: true })}>
+                <p className="text-white text-sm font-semibold">Ya incluye el IVA</p>
+                <p className="text-slate-500 text-[11px]">El cliente paga el precio; el IVA sale de adentro.</p>
+              </button>
+              <button type="button" className={opcion(!iva.incluidoEnPrecio)} onClick={() => onChange({ ...iva, incluidoEnPrecio: false })}>
+                <p className="text-white text-sm font-semibold">El IVA se suma encima</p>
+                <p className="text-slate-500 text-[11px]">Al precio se le agrega el IVA al cobrar.</p>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-slate-400 text-xs mb-1.5">A qué productos</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button type="button" className={opcion(iva.todosLosProductos)} onClick={() => onChange({ ...iva, todosLosProductos: true })}>
+                <p className="text-white text-sm font-semibold">A todos</p>
+                <p className="text-slate-500 text-[11px]">Todos llevan el IVA, aunque el producto diga 0 %.</p>
+              </button>
+              <button type="button" className={opcion(!iva.todosLosProductos)} onClick={() => onChange({ ...iva, todosLosProductos: false })}>
+                <p className="text-white text-sm font-semibold">Según cada producto</p>
+                <p className="text-slate-500 text-[11px]">Solo los que tienen IVA en su ficha; los demás, exentos o excluidos.</p>
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3 text-xs space-y-1 font-mono">
+            <p className="text-slate-500 font-sans">Ejemplo con un producto de {pesos(precio)}</p>
+            <div className="flex justify-between"><span className="text-slate-400">Total bruto</span><span className="text-white">{pesos(base)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">IVA {iva.porcentaje} %</span><span className="text-emerald-400">{pesos(total - base)}</span></div>
+            <div className="flex justify-between border-t border-slate-800 pt-1 font-bold"><span className="text-white">Total a pagar</span><span className="text-white">{pesos(total)}</span></div>
+          </div>
+        </>
+      )}
+      <p className="text-slate-500 text-[11px]">Es el mismo IVA de Electron (Configuración › IVA): lo que cambies aquí se aplica en la web, el celular y Electron.</p>
     </div>
   );
 }
