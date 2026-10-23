@@ -8,7 +8,7 @@
  * equipo con el PDF descargado para adjuntarlo.
  */
 import { useEffect, useState } from 'react';
-import { Download, Loader2, Mail, MessageCircle } from 'lucide-react';
+import { Download, Loader2, Mail, MessageCircle, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import type { FacturaElectronicaDian } from '../../lib/dian/types';
 import { correoNegocioConectado, enviarFacturaPorCorreoNegocio } from '../../lib/dian/correoFacturas';
@@ -71,28 +71,43 @@ export function EnvioFacturaElectronica({ factura, datos }: Props) {
     await descargarFacturaPDF(datos.venta, datos.config);
   });
 
-  const campo = 'flex-1 min-w-0 h-11 px-3 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm placeholder:text-slate-500';
+  // Colores fijos (style): el tema claro de la web y la app repinta las
+  // clases slate y text-white, y el panel quedaba gris sobre gris.
+  const COLOR = { whatsapp: '#25D366', correo: '#2563EB', pdf: 'linear-gradient(90deg, #F59E0B, #EA580C)' };
+  const campo = 'flex-1 min-w-0 h-11 px-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-400';
+  const estiloCampo = { background: '#F8FAFC', border: '1px solid #CBD5E1', color: '#0F172A' };
+  const boton = 'h-11 px-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 shrink-0 shadow-sm transition-opacity disabled:opacity-45';
   const icono = (accion: Accion, Icono: typeof Mail) => (ocupado === accion ? <Loader2 className="w-4 h-4 animate-spin" /> : <Icono className="w-4 h-4" />);
 
   return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-800/60 p-3 space-y-2">
-      <p className="text-white text-sm font-bold">Enviar al cliente</p>
+    <div className="rounded-2xl p-4 space-y-3 shadow-md" style={{ background: '#FFFFFF', border: '1px solid #A7F3D0' }}>
+      <div className="flex items-center gap-2">
+        <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: '#D1FAE5', color: '#047857' }}>
+          <Send className="w-4 h-4" />
+        </span>
+        <div>
+          <p className="text-sm font-bold leading-tight" style={{ color: '#0F172A' }}>Enviar al cliente</p>
+          <p className="text-[11px] leading-tight" style={{ color: '#64748B' }}>Factura {factura.numeroFactura} con CUFE y QR</p>
+        </div>
+      </div>
       <div className="flex gap-2">
-        <input value={telefono} onChange={(e) => setTelefono(e.target.value)} inputMode="tel" placeholder="Celular del cliente" aria-label="Celular para WhatsApp" className={campo} />
+        <input value={telefono} onChange={(e) => setTelefono(e.target.value)} inputMode="tel" placeholder="Celular del cliente" aria-label="Celular para WhatsApp" className={campo} style={estiloCampo} />
         <button
           onClick={enviarWhatsApp}
           disabled={!datos || digitos.length < 7 || !!ocupado}
-          className="h-11 px-3 rounded-xl bg-emerald-600 text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-40 shrink-0"
+          className={boton}
+          style={{ background: COLOR.whatsapp, color: '#FFFFFF' }}
         >
           {icono('whatsapp', MessageCircle)} WhatsApp
         </button>
       </div>
       <div className="flex gap-2">
-        <input value={correo} onChange={(e) => setCorreo(e.target.value)} inputMode="email" placeholder="Correo del cliente" aria-label="Correo del cliente" className={campo} />
+        <input value={correo} onChange={(e) => setCorreo(e.target.value)} inputMode="email" placeholder="Correo del cliente" aria-label="Correo del cliente" className={campo} style={estiloCampo} />
         <button
           onClick={enviarCorreo}
           disabled={!correoValido || (!correoPropio && !datos) || !!ocupado}
-          className="h-11 px-3 rounded-xl bg-sky-600 text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-40 shrink-0"
+          className={boton}
+          style={{ background: COLOR.correo, color: '#FFFFFF' }}
         >
           {icono('correo', Mail)} Correo
         </button>
@@ -100,11 +115,12 @@ export function EnvioFacturaElectronica({ factura, datos }: Props) {
       <button
         onClick={bajarPdf}
         disabled={!datos || !!ocupado}
-        className="w-full h-10 rounded-xl border border-slate-700 text-slate-200 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40"
+        className={`${boton} w-full`}
+        style={{ background: COLOR.pdf, color: '#FFFFFF' }}
       >
         {icono('pdf', Download)} Descargar PDF
       </button>
-      <p className="text-slate-400 text-[11px]">
+      <p className="text-[11px] leading-snug" style={{ color: '#64748B' }}>
         {correoPropio
           ? 'El correo sale desde el correo del negocio con el PDF y el archivo de la DIAN.'
           : 'WhatsApp y correo: se descarga el PDF y se abre el mensaje para adjuntarlo.'}

@@ -277,6 +277,10 @@ export async function obtenerFacturaPorVenta(clienteId: string, ventaReferencia:
     .select('*')
     .eq('cliente_id', clienteId)
     .eq('venta_referencia', ventaReferencia)
+    // Cajas sin número que repitieron FE000012 dejaron varias facturas con la
+    // misma referencia: se toma la más reciente en vez de fallar (0130).
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   // Sin red no se sabe si la factura existe: devolver null haría que la cola
   // emitiera otra para la misma venta, con un consecutivo nuevo.

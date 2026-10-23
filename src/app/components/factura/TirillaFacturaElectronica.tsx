@@ -258,13 +258,16 @@ export function TirillaFacturaElectronica({ factura, embebida, onCerrar, onVerCa
           <button
             onClick={imprimir}
             disabled={!v || imprimiendo}
-            className="h-12 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+            className="h-12 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 text-sm font-bold flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+            style={{ color: '#FFFFFF' }}
           >
             {imprimiendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Imprimir tirilla
           </button>
+          {/* Color fijo: con bg-slate-800 el tema claro lo dejaba casi invisible. */}
           <button
             onClick={onVerCarta}
-            className="h-12 rounded-2xl bg-slate-800 border border-slate-700 text-slate-200 text-sm font-bold flex items-center justify-center gap-2"
+            className="h-12 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 shadow-sm"
+            style={{ background: 'linear-gradient(90deg, #10B981, #059669)', color: '#FFFFFF' }}
           >
             <FileText className="w-4 h-4" /> Factura carta
           </button>

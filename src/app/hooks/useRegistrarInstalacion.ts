@@ -22,6 +22,7 @@ export function useRegistrarInstalacion() {
   useEffect(() => {
     if (!usuarioActual) return;
     let cancelado = false;
+    let limpiar: (() => void) | undefined;
 
     (async () => {
       const machineId = await getRealMachineUUID();
@@ -52,29 +53,55 @@ export function useRegistrarInstalacion() {
       const client = getSupabaseClient();
       if (!client) return;
       const version = (await (window as any).electron?.getRuntimeVersions?.())?.appVersion ?? null;
-      client.rpc('registrar_instalacion', { p_machine_id: machineId, p_tipo: 'ELECTRON', p_version: version })
-        .then(({ data, error }) => {
-          if (error) {
-            console.warn('No se pudo registrar la instalación (no crítico):', error.message);
-            return;
-          }
-          // 🛡️ Prefijo de factura por caja: el servidor asigna, la primera
-          // vez que esta máquina se registra, un prefijo único dentro del
-          // negocio (código del negocio + número de caja) — evita que dos
-          // cajas del mismo dueño repitan números de factura sin que nadie
-          // tenga que configurar nada a mano. Se guarda aparte de
-          // 'codec_pos_config' (nunca pisa un prefijo que el dueño ya haya
-          // elegido explícitamente en Configuración — ver POSPageNew.tsx y
-          // ConfiguracionPage.tsx, que solo lo usan como respaldo).
-          const fila = Array.isArray(data) ? data[0] : data;
-          if (fila?.prefijo) {
-            try { localStorage.setItem('codec_pos_prefijo_auto', fila.prefijo); } catch { /* no crítico */ }
-          }
-          // Número de caja → letra del número de venta (FEA000123), ver numeracionCaja.ts.
-          if (fila?.codigo_caja) guardarCodigoCaja(Number(fila.codigo_caja));
-        });
+
+      // 🛡️ FIX: se intentaba una sola vez, al iniciar sesión, cuando la caja
+      // muchas veces aún no había entrado a la nube (la identidad de
+      // sincronización llega después): la RPC respondía «No autorizado» y
+      // nunca se reintentaba. Ninguna caja recibía su número, todas
+      // numeraban FE000001… y sus ventas se pisaban en la nube (Distribuciones
+      // BM, FE000012 y FE000013 repetidas, 2026-10-23). Ahora se reintenta
+      // hasta lograrlo, y también cuando la caja entra a la nube.
+      let reintento: number | undefined;
+      let intentos = 0;
+      const registrar = async () => {
+        if (cancelado) return;
+        window.clearTimeout(reintento);
+        const { data: sesion } = await client.auth.getSession();
+        const { data, error } = sesion.session
+          ? await client.rpc('registrar_instalacion', { p_machine_id: machineId, p_tipo: 'ELECTRON', p_version: version })
+          : { data: null, error: { message: 'sin sesión en la nube todavía' } };
+        if (cancelado) return;
+        if (error) {
+          intentos += 1;
+          console.warn(`No se pudo registrar la instalación (intento ${intentos}, se reintenta):`, error.message);
+          reintento = window.setTimeout(registrar, Math.min(15_000 * intentos, 120_000));
+          return;
+        }
+        // 🛡️ Prefijo de factura por caja: el servidor asigna, la primera
+        // vez que esta máquina se registra, un prefijo único dentro del
+        // negocio (código del negocio + número de caja) — evita que dos
+        // cajas del mismo dueño repitan números de factura sin que nadie
+        // tenga que configurar nada a mano. Se guarda aparte de
+        // 'codec_pos_config' (nunca pisa un prefijo que el dueño ya haya
+        // elegido explícitamente en Configuración — ver POSPageNew.tsx y
+        // ConfiguracionPage.tsx, que solo lo usan como respaldo).
+        const fila = Array.isArray(data) ? data[0] : data;
+        if (fila?.prefijo) {
+          try { localStorage.setItem('codec_pos_prefijo_auto', fila.prefijo); } catch { /* no crítico */ }
+        }
+        // Número de caja → letra del número de venta (FEA000123), ver numeracionCaja.ts.
+        if (fila?.codigo_caja) guardarCodigoCaja(Number(fila.codigo_caja));
+      };
+
+      // Al entrar a la nube (vincular o renovar la sesión) se intenta de una vez.
+      const { data: escucha } = client.auth.onAuthStateChange((evento) => {
+        if (evento === 'SIGNED_IN' && intentos > 0) void registrar();
+      });
+      limpiar = () => { window.clearTimeout(reintento); escucha.subscription.unsubscribe(); };
+      if (cancelado) limpiar();
+      void registrar();
     })();
 
-    return () => { cancelado = true; };
+    return () => { cancelado = true; limpiar?.(); };
   }, [usuarioActual?.id]);
 }
