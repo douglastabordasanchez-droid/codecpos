@@ -9,7 +9,7 @@
  *   · Recepción y causación — XML de proveedores, traído de Codec Document.
  */
 import { useEffect, useState } from 'react';
-import { FilePlus2, FileClock, FileInput, Users, Package, ShieldCheck, ShieldAlert, Receipt, Inbox, Settings2, Contact, FileMinus2 } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Receipt, Inbox, Settings2, Contact, FileMinus2 } from 'lucide-react';
 import { listarPerfilesFiscales } from '../../lib/supabase/fiscalProfileService';
 import type { FiscalProfile } from '../../lib/dian/types';
 import { FacturasEmitidas } from './FacturasEmitidas';
@@ -35,7 +35,10 @@ interface Props {
   onIr: (destino: DestinoFacturacion) => void;
 }
 
-export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Props) {
+// Las tarjetas de acceso (Crear factura, Eventos, Documento soporte,
+// Clientes, Terceros, Productos) se quitaron: repetían las pestañas, que
+// ahora van arriba, justo debajo del título.
+export function ModuloFacturacion({ clienteId, operador, soloLectura }: Props) {
   const [pestana, setPestana] = useState<Pestana>('ventas');
   const [perfil, setPerfil] = useState<FiscalProfile | null | undefined>(undefined);
   const [recarga, setRecarga] = useState(0);
@@ -54,24 +57,6 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
       .catch(() => { if (!cancelado) setPerfil(null); });
     return () => { cancelado = true; };
   }, [clienteId, recarga]);
-
-  const accesos = [
-    {
-      Icon: FilePlus2, titulo: 'Crear factura electrónica', detalle: 'Se emite y firma al cobrar una venta',
-      accion: () => onIr('vender'),
-    },
-    {
-      Icon: FileClock, titulo: 'Eventos en factura', detalle: 'Notas crédito y débito',
-      accion: () => verNotas(),
-    },
-    {
-      Icon: FileInput, titulo: 'Documento soporte', detalle: 'Sube y causa XML de compras',
-      accion: () => setPestana('recepcion'),
-    },
-    { Icon: Contact, titulo: 'Clientes', detalle: 'Base para facturar y retenciones', accion: () => setPestana('clientes') },
-    { Icon: Users, titulo: 'Terceros', detalle: 'Proveedores del negocio', accion: () => onIr('terceros') },
-    { Icon: Package, titulo: 'Productos / Servicios', detalle: 'Catálogo e inventario', accion: () => onIr('productos') },
-  ];
 
   return (
     <div className="space-y-5">
@@ -107,29 +92,6 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {accesos.map(({ Icon, titulo, detalle, accion }) => (
-          <button
-            key={titulo}
-            onClick={accion}
-            className="text-left bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4 hover:border-slate-700 transition-colors"
-          >
-            <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center mb-3">
-              <Icon className="w-4 h-4 text-amber-400" />
-            </div>
-            <p className="text-white text-sm font-bold leading-tight">{titulo}</p>
-            <p className="text-slate-500 text-xs mt-0.5">{detalle}</p>
-          </button>
-        ))}
-      </div>
-
-      {perfil?.id && <CertificadoDigital clienteId={clienteId} perfilFiscalId={perfil.id} soloLectura={soloLectura} />}
-      {perfil?.id && <ConfiguracionRetenciones perfil={perfil} soloLectura={soloLectura} onGuardado={() => setRecarga((n) => n + 1)} />}
-      {perfil?.id && <ConfiguracionCorreo soloLectura={soloLectura} onCambio={(e) => setCorreoConectado(e.configurado)} />}
-      {perfil?.id && perfil.activo && perfil.ambiente !== 'produccion' && !soloLectura && (
-        <PruebaHabilitacion perfil={perfil} clienteId={clienteId} onTerminado={() => { setPestana('ventas'); setRecarga((n) => n + 1); }} />
-      )}
-
       <div className="flex flex-wrap gap-2">
         {([
           ['ventas', 'Facturas de venta', Receipt],
@@ -148,6 +110,13 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
           </button>
         ))}
       </div>
+
+      {perfil?.id && <CertificadoDigital clienteId={clienteId} perfilFiscalId={perfil.id} soloLectura={soloLectura} />}
+      {perfil?.id && <ConfiguracionRetenciones perfil={perfil} soloLectura={soloLectura} onGuardado={() => setRecarga((n) => n + 1)} />}
+      {perfil?.id && <ConfiguracionCorreo soloLectura={soloLectura} onCambio={(e) => setCorreoConectado(e.configurado)} />}
+      {perfil?.id && perfil.activo && perfil.ambiente !== 'produccion' && !soloLectura && (
+        <PruebaHabilitacion perfil={perfil} clienteId={clienteId} onTerminado={() => { setPestana('ventas'); setRecarga((n) => n + 1); }} />
+      )}
 
       {asistente && (
         <AsistenteConfiguracionDian
