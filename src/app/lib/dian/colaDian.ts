@@ -49,6 +49,8 @@ function avisarAprobada(factura: { id?: string; numeroFactura?: string; estado?:
   try {
     window.dispatchEvent(new CustomEvent(EVENTO_FACTURA_PENDIENTE_APROBADA, { detail: { id: factura.id, numero: factura.numeroFactura } }));
   } catch { /* sin aviso, la factura igual quedó aprobada */ }
+  const id = factura.id;
+  void import('./correoFacturas').then((m) => m.enviarCorreoAlAprobar(id)).catch(() => undefined);
 }
 const ESPERA_MAXIMA_MS = 15 * 60_000;
 

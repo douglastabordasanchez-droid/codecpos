@@ -253,7 +253,10 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
         motivoRechazo: respuesta.estado === 'accepted' ? undefined : respuesta.mensajes?.join('; '),
         fechaValidacion: respuesta.estado === 'accepted' ? new Date().toISOString() : undefined,
       });
-      if (respuesta.estado !== 'accepted') {
+      if (respuesta.estado === 'accepted' && !opciones.testSetId) {
+        const id = facturaId;
+        void import('./correoFacturas').then((m) => m.enviarCorreoAlAprobar(id)).catch(() => undefined);
+      } else if (respuesta.estado !== 'accepted') {
         console.warn(`[DIAN] ${numero} (venta ${datos.ventaReferencia}) fue ${respuesta.estado} por la DIAN: ${respuesta.mensajes?.join('; ')}`);
       }
       return { estado: respuesta.estado, numero, motivo: respuesta.estado === 'accepted' ? undefined : respuesta.mensajes?.join('; ') };

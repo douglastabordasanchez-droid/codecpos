@@ -52,7 +52,6 @@ import { ModalPesaje } from '../components/ModalPesaje';
 import { CLAVE_CARRITO_TRANSFERIDO, formatoCantidad } from '../lib/carritoTransferido';
 import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../../app/components/factura/RetencionesCobro';
 import { ClienteFacturaCobro } from '../../app/components/factura/ClienteFacturaCobro';
-import { ofrecerEnvioPorCorreo } from '../../app/lib/dian/correoFacturas';
 import { adquirenteDesdeCobro, clienteParaGuardar, CLIENTE_COBRO_VACIO, type DatosClienteCobro } from '../../app/lib/dian/clienteCobro';
 
 interface ProductoFila {
@@ -527,7 +526,6 @@ export default function VenderPage() {
         it.precio,
         productos.find((p) => p.id === it.productoId)?.tarifaIva || 0,
       ));
-      const correoFE = clienteFactura.email.trim();
       const conFE = facturacionDisponible && emitirFE;
       const ventaId = resultado.ventaId;
       const actualizarFE = (cambio: Omit<FeCobro, 'ventaId'>, soloSi?: FeCobro['estado'][]) =>
@@ -556,7 +554,6 @@ export default function VenderPage() {
       }).then(async (r) => {
         if (r.estado === 'accepted') {
           toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { description: 'Imprímala o envíela al cliente desde el recibo.' });
-          void ofrecerEnvioPorCorreo(empleado.cliente_id, ventaId, r.numero, correoFE);
           const factura = await obtenerFacturaPorVenta(empleado.cliente_id, ventaId).catch(() => null);
           if (factura) actualizarFE({ estado: 'lista', factura });
           else actualizarFE({ estado: 'fallida', aviso: `La factura ${r.numero} quedó aprobada, pero no se pudo abrir aquí. Búscala en Facturación.` });

@@ -6,7 +6,7 @@
  */
 import { getSupabaseClient } from '../supabase/config';
 import { prepararPaqueteEntrega } from './paqueteEntrega';
-import { obtenerFacturaPorVenta } from '../supabase/facturaElectronicaDianService';
+import { obtenerFacturaPorId, obtenerFacturaPorVenta } from '../supabase/facturaElectronicaDianService';
 import type { FacturaElectronicaDian } from './types';
 
 export interface EstadoCorreoNegocio {
@@ -103,26 +103,29 @@ export async function enviarFacturaDeVentaPorCorreo(clienteId: string, ventaRefe
   await enviarFacturaPorCorreoNegocio(factura, destino);
 }
 
+const enviadasAlAprobar = new Set<string>();
+
 /**
- * Aviso de factura aprobada con el botón «Enviar por correo» cuando el
- * negocio conectó su correo y el cliente dio el suyo. Igual en Electron, la
- * web y el celular.
+ * Apenas la DIAN aprueba una factura de producción, se le manda sola al
+ * correo del comprador (el que dio en el cobro o el de su ficha en
+ * Facturación › Clientes) si el negocio conectó su correo. Sirve para el
+ * cobro, Facturar de nuevo y las que aprueba después la cola. Si falla,
+ * el aviso deja reintentar; también queda el envío a mano en Facturas de venta.
  */
-export async function ofrecerEnvioPorCorreo(clienteId: string, ventaReferencia: string, numero: string | undefined, destino: string | undefined): Promise<void> {
-  const correo = (destino || '').trim();
-  if (!correo.includes('@') || !(await correoNegocioConectado())) return;
+export async function enviarCorreoAlAprobar(facturaId: string): Promise<void> {
+  if (enviadasAlAprobar.has(facturaId) || !(await correoNegocioConectado())) return;
+  const factura = await obtenerFacturaPorId(facturaId);
+  const destino = factura?.adquirente.email?.trim() || '';
+  if (!factura || factura.estado !== 'accepted' || factura.emisor.ambiente !== 'produccion' || !destino.includes('@')) return;
+  enviadasAlAprobar.add(facturaId);
   const { toast } = await import('sonner');
-  toast(`¿Enviar la factura ${numero || ''} a ${correo}?`, {
-    description: 'Le llega con el PDF y el archivo para la DIAN.',
-    duration: 30000,
-    action: {
-      label: 'Enviar por correo',
-      onClick: () => {
-        const id = toast.loading('Enviando la factura...');
-        enviarFacturaDeVentaPorCorreo(clienteId, ventaReferencia, correo)
-          .then(() => toast.success(`Factura enviada a ${correo}`, { id }))
-          .catch((e) => toast.error('No se envió el correo', { id, description: e?.message, duration: 12000 }));
-      },
-    },
-  });
+  const enviar = () => {
+    const id = toast.loading(`Enviando la factura ${factura.numeroFactura} a ${destino}...`);
+    enviarFacturaPorCorreoNegocio(factura, destino)
+      .then(() => toast.success(`Factura ${factura.numeroFactura} enviada a ${destino}`, { id }))
+      .catch((e) => toast.error(`No se envió la factura ${factura.numeroFactura} por correo`, {
+        id, description: e?.message, duration: 30000, action: { label: 'Reintentar', onClick: enviar },
+      }));
+  };
+  enviar();
 }
