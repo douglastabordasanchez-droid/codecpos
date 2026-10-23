@@ -3896,9 +3896,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              style={{ willChange: 'transform, opacity' }}
+              // La pantalla va escalada con el zoom (POSLayoutSidebar): 100vh
+              // solo llenaba ese porcentaje y dejaba una franja vacía abajo.
+              style={{ willChange: 'transform, opacity', maxHeight: `calc(${100 / uiScale}vh - 48px)` }}
               onClick={(e) => e.stopPropagation()}
-              className={`max-w-2xl w-full rounded-3xl flex flex-col max-h-[calc(100vh-48px)] ${
+              className={`max-w-2xl w-full rounded-3xl flex flex-col ${
                 darkMode ? 'bg-slate-900 border-2 border-slate-700' : 'bg-white'
               }`}
             >

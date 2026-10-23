@@ -13,6 +13,8 @@ import { IMPUESTOS_DIAN, type DocumentoNormalizado } from './recepcion/types';
 import { construirUrlQR } from './softwareSecurityCode';
 import { obtenerPerfilFiscalPorId } from '../supabase/fiscalProfileService';
 import { obtenerFacturaPorVenta } from '../supabase/facturaElectronicaDianService';
+import { buscarClienteFacturacion } from '../supabase/clientesFacturacionService';
+import { getSupabaseClient } from '../supabase/config';
 import type { FacturaElectronicaDian } from './types';
 import type { ConfigEmpresa, ItemFactura, Venta } from '../pdfGenerator';
 
@@ -172,19 +174,64 @@ export function datosPdfFacturaDian(
   return { venta, config };
 }
 
+/**
+ * Logo, teléfono y ciudad del negocio guardados en la nube (los sube
+ * Electron o la web a empresa_configuraciones y al bucket empresa-logos).
+ * Se guardan 4 minutos, el enlace firmado del logo dura 10.
+ */
+const empresaNubeCache = new Map<string, { hasta: number; promesa: Promise<Partial<ConfigEmpresa>> }>();
+
+function empresaEnLaNube(clienteId: string): Promise<Partial<ConfigEmpresa>> {
+  const guardada = empresaNubeCache.get(clienteId);
+  if (guardada && guardada.hasta > Date.now()) return guardada.promesa;
+  const promesa = (async () => {
+    const client = getSupabaseClient();
+    if (!client) return {};
+    const { data } = await client.from('empresa_configuraciones').select('datos, logo_path').eq('cliente_id', clienteId).maybeSingle();
+    const fila = data as { datos?: Record<string, any> | null; logo_path?: string | null } | null;
+    const datos = fila?.datos || {};
+    let logoUrl = '';
+    if (fila?.logo_path) {
+      const { data: firmado } = await client.storage.from('empresa-logos').createSignedUrl(fila.logo_path, 600);
+      logoUrl = firmado?.signedUrl || '';
+    }
+    return { logoUrl: logoUrl || undefined, telefono: datos.telefono || undefined, ciudad: datos.ciudad || undefined };
+  })();
+  empresaNubeCache.set(clienteId, { hasta: Date.now() + 4 * 60_000, promesa });
+  promesa.catch(() => empresaNubeCache.delete(clienteId));
+  return promesa;
+}
+
 /** Igual que datosPdfFacturaDian, completando con el perfil fiscal la
- * actividad económica y el régimen que el XML no dice. */
+ * actividad económica y el régimen que el XML no dice, con el logo del
+ * negocio en la nube (el mismo en Electron, la web y el celular) y con la
+ * dirección del comprador guardada en Facturación › Clientes. */
 export async function datosPdfFacturaDianCompletos(
   factura: FacturaElectronicaDian,
   empresa: Partial<ConfigEmpresa> = {},
 ): Promise<{ venta: Venta; config: ConfigEmpresa }> {
-  const perfil = await obtenerPerfilFiscalPorId(factura.perfilFiscalId).catch(() => null);
-  return datosPdfFacturaDian(factura, {
+  const adq = factura.adquirente;
+  const [perfil, nube, comprador] = await Promise.all([
+    obtenerPerfilFiscalPorId(factura.perfilFiscalId).catch(() => null),
+    empresa.logoUrl && empresa.telefono ? null : empresaEnLaNube(factura.clienteId).catch(() => null),
+    adq.direccion || !adq.numeroDocumento ? null : buscarClienteFacturacion(factura.clienteId, adq.numeroDocumento).catch(() => null),
+  ]);
+  const datos = datosPdfFacturaDian(factura, {
     ...empresa,
+    logoUrl: empresa.logoUrl || nube?.logoUrl,
+    telefono: empresa.telefono || nube?.telefono,
+    ciudad: empresa.ciudad || nube?.ciudad,
     actividadEconomica: empresa.actividadEconomica || perfil?.actividadEconomica,
     // El régimen del perfil fiscal es el que va a la DIAN; el de Configuración puede estar viejo.
     regimenFiscal: perfil?.regimenFiscal || empresa.regimenFiscal,
   });
+  // El XML no lleva la dirección del comprador: sale de su ficha.
+  if (comprador) {
+    datos.venta.clienteDireccion ||= comprador.direccion;
+    datos.venta.clienteCiudad ||= comprador.ciudad;
+    datos.venta.clienteTelefono ||= comprador.telefono;
+  }
+  return datos;
 }
 
 /**

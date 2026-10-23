@@ -11,7 +11,7 @@ import { obtenerTransporteDian } from './transporteDian';
 import { construirUrlQR } from './softwareSecurityCode';
 import { actualizarEstadoFactura } from '../supabase/facturaElectronicaDianService';
 import { generarFacturaPDF } from '../pdfGenerator';
-import { datosPdfFacturaDian } from './representacionGrafica';
+import { datosPdfFacturaDianCompletos } from './representacionGrafica';
 import type { FacturaElectronicaDian } from './types';
 
 const deBase64Utf8 = (b64: string) => new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
@@ -36,8 +36,8 @@ const leer = (xml: string, nombre: string) =>
   xml.match(new RegExp(`<(?:\\w+:)?${nombre}(?:\\s[^>]*)?>([^<]*)</(?:\\w+:)?${nombre}>`))?.[1]?.trim();
 
 /** Representación gráfica: el mismo PDF carta de las ventas, armado desde el XML firmado. */
-function pdfDeFactura(factura: FacturaElectronicaDian): Promise<Blob> {
-  const { venta, config } = datosPdfFacturaDian(factura);
+async function pdfDeFactura(factura: FacturaElectronicaDian): Promise<Blob> {
+  const { venta, config } = await datosPdfFacturaDianCompletos(factura);
   return generarFacturaPDF(venta, config);
 }
 
