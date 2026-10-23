@@ -44,6 +44,9 @@ import {
   type ConfiguracionModulosGlobal,
 } from '../../lib/permissions';
 import { guardarConfiguracionEmpresaEnNube, marcarConfiguracionEmpresaPendiente } from '../../lib/supabase/empresaConfigSyncService';
+import { isLinked } from '../../lib/supabase/tenantLink';
+import { syncService } from '../../lib/syncService';
+import { AplicarIvaProductos } from '../settings/AplicarIvaProductos';
 
 interface ConfiguracionEmpresa {
   // Datos de la empresa
@@ -1788,6 +1791,15 @@ export default function ConfiguracionPage() {
                   También se cambia desde la web y el celular, en Configurar mi negocio.
                 </p>
               </div>
+            )}
+
+            {/* Poner la tarifa en la ficha de los productos que dicen 0 % (en la nube; llegan por la sincronización). */}
+            {config.ivaHabilitado && config.porcentajeIVA > 0 && isLinked() && (
+              <AplicarIvaProductos
+                porcentaje={config.porcentajeIVA}
+                darkMode={darkMode}
+                onAplicado={() => { void syncService.forceSyncNow().catch(() => {}); }}
+              />
             )}
 
             {/* Ejemplo de Cálculo */}

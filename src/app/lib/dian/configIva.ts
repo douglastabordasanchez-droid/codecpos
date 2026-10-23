@@ -84,3 +84,17 @@ export function itemsConIvaConfigurado(items: ItemFacturaDian[], c: ConfigIva): 
     };
   });
 }
+
+/** Productos del negocio con IVA 0 % en su ficha. */
+export async function contarProductosSinIva(): Promise<number> {
+  const { data, error } = await getSupabaseClient()!.rpc('contar_productos_sin_iva');
+  if (error) throw new Error(error.message);
+  return Number(data) || 0;
+}
+
+/** Escribe la tarifa en la ficha de los productos sin IVA (migración 0129). Devuelve cuántos cambió. */
+export async function aplicarIvaATodosLosProductos(porcentaje: number): Promise<number> {
+  const { data, error } = await getSupabaseClient()!.rpc('aplicar_iva_a_productos', { p_porcentaje: porcentaje, p_solo_sin_iva: true });
+  if (error) throw new Error(error.message);
+  return Number(data) || 0;
+}

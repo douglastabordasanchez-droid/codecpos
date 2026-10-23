@@ -13,6 +13,7 @@ import { TIPOS_NEGOCIO } from '../../data/tipos-negocio';
 import { MODULOS_ESPECIALIZADOS, MODULO_POR_TIPO, ocultosParaTipo } from '../../data/modulosEspecializados';
 import { useMiNegocio, guardarMiNegocio, ivaDisponible, type MiNegocio } from '../hooks/useMiNegocio';
 import type { ConfigIva } from '../../app/lib/dian/configIva';
+import { AplicarIvaProductos } from '../../app/components/settings/AplicarIvaProductos';
 
 const ICONOS: Record<string, LucideIcon> = {
   Store, Shirt, Pill, Hammer, Pencil, ChefHat, Scissors, UtensilsCrossed, Wine, Laptop, Sparkles, PawPrint, Star, Trophy, BookOpen,
@@ -269,6 +270,8 @@ function SeccionIva({ iva, onChange }: { iva: ConfigIva; onChange: (iva: ConfigI
             <div className="flex justify-between"><span className="text-slate-400">IVA {iva.porcentaje} %</span><span className="text-emerald-400">{pesos(total - base)}</span></div>
             <div className="flex justify-between border-t border-slate-800 pt-1 font-bold"><span className="text-white">Total a pagar</span><span className="text-white">{pesos(total)}</span></div>
           </div>
+
+          {iva.porcentaje > 0 && <AplicarIvaProductos porcentaje={iva.porcentaje} />}
         </>
       )}
       <p className="text-slate-500 text-[11px]">Es el mismo IVA de Electron (Configuración › IVA): lo que cambies aquí se aplica en la web, el celular y Electron.</p>

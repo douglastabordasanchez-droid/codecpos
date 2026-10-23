@@ -29,6 +29,10 @@ import { SucursalFiltro } from '../components/SucursalFiltro';
 import { crearCuentaCarteraMovil } from '../lib/carteraMovilService';
 import { compartirRecibo, obtenerDatosFactura } from '../lib/compartirFactura';
 import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactura';
+import { TirillaFacturaElectronica } from '../../app/components/factura/TirillaFacturaElectronica';
+import { obtenerFacturaPorVenta } from '../../app/lib/supabase/facturaElectronicaDianService';
+import { datosPdfFacturaDianCompletos } from '../../app/lib/dian/representacionGrafica';
+import type { FacturaElectronicaDian } from '../../app/lib/dian/types';
 import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
 import { avisoAgenteRetencion, recordarClienteFactura, type ClienteFacturaGuardado } from '../../app/lib/dian/clientesFactura';
@@ -106,6 +110,18 @@ interface VentaCompletada {
   verificado: boolean;
 }
 
+/**
+ * Factura electrónica de la venta recién cobrada: mientras la DIAN contesta
+ * se espera; aprobada, se muestra la factura (no el ticket normal) con sus
+ * botones para imprimir y enviar al cliente.
+ */
+interface FeCobro {
+  ventaId: string;
+  estado: 'esperando' | 'demorada' | 'lista' | 'fallida';
+  factura?: FacturaElectronicaDian;
+  aviso?: string;
+}
+
 /** Billetes sugeridos para el efectivo recibido: el valor exacto y los redondeos útiles. */
 function billetesSugeridos(total: number): number[] {
   const opciones = new Set<number>([total]);
@@ -146,6 +162,8 @@ export default function VenderPage() {
   const [ventaCompletada, setVentaCompletada] = useState<VentaCompletada | null>(null);
   const [compartiendo, setCompartiendo] = useState(false);
   const [viendoFactura, setViendoFactura] = useState(false);
+  const [feCobro, setFeCobro] = useState<FeCobro | null>(null);
+  const [cartaFE, setCartaFE] = useState(false);
   const [pesando, setPesando] = useState<ProductoFila | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
   // Comprador de la factura electrónica (cédula o NIT, nombre, correo...).
@@ -510,7 +528,21 @@ export default function VenderPage() {
         productos.find((p) => p.id === it.productoId)?.tarifaIva || 0,
       ));
       const correoFE = clienteFactura.email.trim();
-      if (facturacionDisponible && emitirFE) emitirFacturaDianDirecto({
+      const conFE = facturacionDisponible && emitirFE;
+      const ventaId = resultado.ventaId;
+      const actualizarFE = (cambio: Omit<FeCobro, 'ventaId'>, soloSi?: FeCobro['estado'][]) =>
+        setFeCobro((f) => (f?.ventaId === ventaId && (!soloSi || soloSi.includes(f.estado)) ? { ventaId, ...cambio } : f));
+      if (conFE) {
+        setFeCobro({ ventaId, estado: 'esperando' });
+        setCartaFE(false);
+        window.setTimeout(() => actualizarFE({
+          estado: 'demorada',
+          aviso: 'La DIAN está demorada. La factura se sigue enviando sola: puedes seguir vendiendo y te aviso cuando la apruebe.',
+        }, ['esperando']), 8000);
+      } else {
+        setFeCobro(null);
+      }
+      if (conFE) emitirFacturaDianDirecto({
         clienteId: empleado.cliente_id,
         ventaReferencia: resultado.ventaId,
         fecha: new Date().toISOString(),
@@ -521,16 +553,23 @@ export default function VenderPage() {
         total: totalAPagar,
         pago: { metodo: metodoPago },
         retenciones: docClienteFactura.trim() ? retencionesParaEmitir(retencionesFE) : {},
-      }).then((r) => {
+      }).then(async (r) => {
         if (r.estado === 'accepted') {
-          toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { description: 'Compártala o imprímala desde el recibo.' });
-          void ofrecerEnvioPorCorreo(empleado.cliente_id, resultado.ventaId, r.numero, correoFE);
+          toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { description: 'Imprímala o envíela al cliente desde el recibo.' });
+          void ofrecerEnvioPorCorreo(empleado.cliente_id, ventaId, r.numero, correoFE);
+          const factura = await obtenerFacturaPorVenta(empleado.cliente_id, ventaId).catch(() => null);
+          if (factura) actualizarFE({ estado: 'lista', factura });
+          else actualizarFE({ estado: 'fallida', aviso: `La factura ${r.numero} quedó aprobada, pero no se pudo abrir aquí. Búscala en Facturación.` });
         } else if (r.estado === 'contingency' || r.estado === 'sent' || r.estado === 'en_cola') {
           toast.warning(`Factura electrónica${r.numero ? ` ${r.numero}` : ''} pendiente`, { description: r.motivo || 'Se reintenta sola.', duration: 10000 });
+          actualizarFE({ estado: 'demorada', aviso: `Factura electrónica${r.numero ? ` ${r.numero}` : ''} en contingencia: se enviará sola apenas la DIAN responda. Búscala luego en Facturación para enviarla al cliente.` });
         } else {
           toast.error('La factura electrónica no salió', { description: r.motivo || 'Revise Facturación.', duration: 15000 });
+          actualizarFE({ estado: 'fallida', aviso: `La factura electrónica no salió: ${r.motivo || 'revisa Facturación'}. La venta sí quedó registrada.` });
         }
-      }).catch(() => {});
+      }).catch((e) => {
+        actualizarFE({ estado: 'fallida', aviso: `La factura electrónica no salió: ${(e as Error)?.message || 'revisa Facturación'}. La venta sí quedó registrada.` });
+      });
       setClienteFactura(CLIENTE_COBRO_VACIO);
       setAvisoRetencionFE('');
       setEmitirFE(false);
@@ -539,19 +578,19 @@ export default function VenderPage() {
       setPropinaManual(null);
       setRecibido('');
       cargarProductos();
-      despuesDeVender(completada);
+      despuesDeVender(completada, conFE);
     } else {
       setError(resultado.error || 'No se pudo registrar la venta');
       setMostrarCheckout(true);
     }
   };
 
-  /** Impresión automática y cajón monedero, según Dispositivos. */
-  const despuesDeVender = async (v: VentaCompletada) => {
+  /** Impresión automática y cajón monedero, según Dispositivos. Con factura electrónica no sale el ticket normal. */
+  const despuesDeVender = async (v: VentaCompletada, conFacturaElectronica = false) => {
     const cfg = obtenerDispositivos();
     const abrir = tieneImpresoraDirecta() && (cfg.cajon.abrirSiempre || (cfg.cajon.abrirConEfectivo && v.metodoPago === 'efectivo'));
     try {
-      if (cfg.imprimirAlVender && cfg.impresora.tipo) await imprimirVenta(v);
+      if (cfg.imprimirAlVender && cfg.impresora.tipo && !conFacturaElectronica) await imprimirVenta(v);
       if (abrir) await abrirCajon();
     } catch (e: any) {
       toast.error('No se pudo usar la impresora', { description: e?.message, action: { label: 'Dispositivos', onClick: () => navigate('/dispositivos') } });
@@ -605,6 +644,8 @@ export default function VenderPage() {
 
   const cerrarTodo = () => {
     setVentaCompletada(null);
+    setFeCobro(null);
+    setCartaFE(false);
     setMostrarCheckout(false);
     setMetodoPago('efectivo');
     setMontosMixto({});
@@ -946,6 +987,11 @@ export default function VenderPage() {
     </div>
   );
 
+  // Con factura electrónica el recibo es la factura DIAN: el ticket normal
+  // solo vuelve si la factura no salió.
+  const feVentaActual = feCobro && ventaCompletada && feCobro.ventaId === ventaCompletada.id ? feCobro : null;
+  const conFacturaElectronica = !!feVentaActual && feVentaActual.estado !== 'fallida';
+
   const ventaLista = ventaCompletada && (
     <div className="text-center">
       <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto mb-4">
@@ -953,14 +999,37 @@ export default function VenderPage() {
       </div>
       <h2 className="text-white font-black text-xl mb-1">Venta registrada</h2>
       <p className="text-slate-400 text-sm mb-5">
-        Factura {numeroVentaWeb(ventaCompletada.numero)}{ventaCompletada.verificado ? ' · pago verificado por Codec Verify' : ''}
+        {conFacturaElectronica ? 'Venta' : 'Factura'} {numeroVentaWeb(ventaCompletada.numero)}{ventaCompletada.verificado ? ' · pago verificado por Codec Verify' : ''}
       </p>
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-5">
         <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Total cobrado</p>
         <p className="text-emerald-400 text-3xl font-black">{money(ventaCompletada.total)}</p>
         {ventaCompletada.cambio > 0 && <p className="text-white text-lg font-bold mt-2">Cambio: {money(ventaCompletada.cambio)}</p>}
       </div>
+      {feVentaActual && (feVentaActual.estado === 'esperando' || feVentaActual.estado === 'demorada') && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-3 flex flex-col items-center gap-2">
+          <Loader2 className="w-7 h-7 text-emerald-400 animate-spin" />
+          <p className="text-white text-sm font-bold">Enviando la factura electrónica a la DIAN…</p>
+          <p className="text-slate-400 text-xs">{feVentaActual.aviso || 'En unos segundos aparece la factura con el CUFE y el QR, lista para imprimir o enviar al cliente.'}</p>
+        </div>
+      )}
+      {feVentaActual?.estado === 'lista' && feVentaActual.factura && (
+        <div className="text-left mb-3">
+          <p className="text-emerald-400 text-sm font-bold text-center mb-2">Factura electrónica {feVentaActual.factura.numeroFactura} aceptada por la DIAN</p>
+          <TirillaFacturaElectronica embebida factura={feVentaActual.factura} onVerCarta={() => setCartaFE(true)} />
+          <ModalVistaFactura
+            abierta={cartaFE}
+            onCerrar={() => setCartaFE(false)}
+            titulo={feVentaActual.factura.numeroFactura}
+            obtenerDatos={() => datosPdfFacturaDianCompletos(feVentaActual.factura!)}
+          />
+        </div>
+      )}
+      {feVentaActual?.estado === 'fallida' && (
+        <p className="text-red-400 text-xs font-semibold mb-3">{feVentaActual.aviso}</p>
+      )}
       <div className="space-y-2">
+        {!conFacturaElectronica && (<>
         <button onClick={handleImprimirTicket} disabled={imprimiendo} className="w-full h-14 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 font-bold flex items-center justify-center gap-2 disabled:opacity-60" style={{ color: '#fff' }}>
           {imprimiendo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />} Imprimir ticket
         </button>
@@ -972,6 +1041,7 @@ export default function VenderPage() {
             {compartiendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />} Compartir
           </button>
         </div>
+        </>)}
         {tieneImpresoraDirecta() && (
           <button onClick={() => abrirCajon().catch((e) => toast.error(String(e?.message || e)))} className="w-full h-11 rounded-xl border border-slate-700 bg-slate-900/50 text-slate-300 text-sm font-semibold flex items-center justify-center gap-1.5">
             <Inbox className="w-4 h-4" /> Abrir caja

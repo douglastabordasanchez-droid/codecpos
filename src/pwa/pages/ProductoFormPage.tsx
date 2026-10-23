@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { obtenerCategoriasPorTipo, obtenerAtributosPorTipo, normalizarTipoNegocio } from '../../data/tipos-negocio';
+import { leerConfigIva } from '../../app/lib/dian/configIva';
 
 const UNIDADES = ['unidad', 'kg', 'g', 'lb', 'l', 'ml', 'paquete'];
 const MAX_FOTOS = 6;
@@ -113,6 +114,16 @@ export default function ProductoFormPage() {
     if (esNuevo) {
       const codigoPrellenado = (location.state as { codigoBarras?: string } | null)?.codigoBarras;
       if (codigoPrellenado) setForm((f) => ({ ...f, codigo_barras: codigoPrellenado }));
+      // Con el IVA del negocio «a todos los productos», el producto nuevo nace con esa tarifa.
+      if (empleado) {
+        leerConfigIva(empleado.cliente_id)
+          .then((c) => {
+            if (c.habilitado && c.todosLosProductos && c.porcentaje > 0) {
+              setForm((f) => (f.iva === '0' ? { ...f, iva: String(c.porcentaje) } : f));
+            }
+          })
+          .catch(() => {});
+      }
       return;
     }
     const client = getSupabaseClient();

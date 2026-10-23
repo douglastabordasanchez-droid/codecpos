@@ -3,9 +3,9 @@
  *
  * Sale cuando el cajero eligió «Sí» a factura electrónica y la DIAN la
  * aceptó: lleva el número oficial (DBM1504), la autorización de numeración,
- * el comprador, el IVA, el CUFE y el QR de consulta. La tirilla normal del
- * cobro sigue saliendo igual; esta es la representación impresa de la
- * factura. Desde aquí también se abre la factura carta (estilo Siigo).
+ * el comprador, el IVA, el CUFE y el QR de consulta. Con factura electrónica
+ * esta reemplaza a la tirilla normal del cobro. Desde aquí también se abre la
+ * factura carta (estilo Siigo) y se envía al cliente (WhatsApp, correo, PDF).
  *
  * Todo sale del XML firmado (representacionGrafica.ts), así que lo impreso
  * es exactamente lo que validó la DIAN. Se imprime igual que la tirilla del
@@ -23,6 +23,7 @@ import { getCached } from '../../lib/cachedLocalStorage';
 import { getConfiguredTicketWidthMm, getDefaultPrinterNameOrUndefined, getFacturasPrinterNameOrUndefined } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
 import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
+import { EnvioFacturaElectronica } from './EnvioFacturaElectronica';
 
 interface Props {
   factura: FacturaElectronicaDian;
@@ -268,6 +269,7 @@ export function TirillaFacturaElectronica({ factura, embebida, onCerrar, onVerCa
             <FileText className="w-4 h-4" /> Factura carta
           </button>
         </div>
+        <EnvioFacturaElectronica factura={factura} datos={datos} />
     </>
   );
 

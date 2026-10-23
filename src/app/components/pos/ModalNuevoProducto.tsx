@@ -32,6 +32,13 @@ import { usePOS } from '../../contexts/POSContext';
 import { useBusinessContext } from '../../contexts/BusinessContext';
 import { toast } from 'sonner';
 import { TIPOS_NEGOCIO, obtenerCategoriasPorTipo, obtenerAtributosPorTipo, obtenerSugerenciaIVA } from '../../../data/tipos-negocio';
+import { getCached } from '../../lib/cachedLocalStorage';
+
+/** Con el IVA del negocio «a todos los productos», el producto nuevo nace con IVA. */
+function ivaATodosLosProductos(): boolean {
+  const c = getCached<Record<string, unknown>>('codec_pos_config', {});
+  return c.ivaHabilitado === true && c.ivaTodosLosProductos === true;
+}
 
 interface ModalNuevoProductoProps {
   isOpen: boolean;
@@ -96,13 +103,13 @@ export function ModalNuevoProducto({ isOpen, onClose, onProductCreated }: ModalN
     
     // Sugerencia automática de IVA
     const sugerenciaIVA = obtenerSugerenciaIVA(tipoNegocio);
-    setAplicaIVA(sugerenciaIVA);
+    setAplicaIVA(sugerenciaIVA || ivaATodosLosProductos());
   }, [tipoNegocio]);
 
   // 🔄 Actualizar sugerencia de IVA cuando cambia la categoría
   useEffect(() => {
     const sugerenciaIVA = obtenerSugerenciaIVA(tipoNegocio, categoria);
-    setAplicaIVA(sugerenciaIVA);
+    setAplicaIVA(sugerenciaIVA || ivaATodosLosProductos());
   }, [categoria, tipoNegocio]);
 
   // 💰 NUEVO: Efecto para calcular precio automáticamente cuando cambia el costo
