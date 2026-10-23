@@ -9,7 +9,7 @@
  *   · Recepción y causación — XML de proveedores, traído de Codec Document.
  */
 import { useEffect, useState } from 'react';
-import { ShieldCheck, ShieldAlert, Receipt, Inbox, Settings2, Contact, FileMinus2 } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Receipt, Inbox, Settings2, Contact, FileMinus2, FilePlus2, Users, Package } from 'lucide-react';
 import { listarPerfilesFiscales } from '../../lib/supabase/fiscalProfileService';
 import type { FiscalProfile } from '../../lib/dian/types';
 import { FacturasEmitidas } from './FacturasEmitidas';
@@ -35,10 +35,10 @@ interface Props {
   onIr: (destino: DestinoFacturacion) => void;
 }
 
-// Las tarjetas de acceso (Crear factura, Eventos, Documento soporte,
-// Clientes, Terceros, Productos) se quitaron: repetían las pestañas, que
-// ahora van arriba, justo debajo del título.
-export function ModuloFacturacion({ clienteId, operador, soloLectura }: Props) {
+// Las tarjetas de acceso de antes se volvieron una sola fila arriba, justo
+// debajo del título: las pestañas del módulo y los atajos a otras pantallas
+// (Crear factura, Terceros, Productos).
+export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Props) {
   const [pestana, setPestana] = useState<Pestana>('ventas');
   const [perfil, setPerfil] = useState<FiscalProfile | null | undefined>(undefined);
   const [recarga, setRecarga] = useState(0);
@@ -93,11 +93,18 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura }: Props) {
       </div>
 
       <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => onIr('vender')}
+          className="h-11 px-4 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm"
+          style={{ background: 'linear-gradient(90deg, #10B981, #059669)', color: '#FFFFFF' }}
+        >
+          <FilePlus2 className="w-4 h-4" /> Crear factura
+        </button>
         {([
           ['ventas', 'Facturas de venta', Receipt],
           ['notas', 'Notas crédito y débito', FileMinus2],
           ['clientes', 'Clientes', Contact],
-          ['recepcion', 'Recepción y causación', Inbox],
+          ['recepcion', 'Documento soporte y compras', Inbox],
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
@@ -105,6 +112,18 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura }: Props) {
             className={`h-11 px-4 rounded-xl text-sm font-bold flex items-center gap-2 ${
               pestana === id ? 'bg-amber-500 text-slate-950' : 'bg-slate-800/80 text-slate-400 border border-slate-700'
             }`}
+          >
+            <Icon className="w-4 h-4" /> {label}
+          </button>
+        ))}
+        {([
+          ['terceros', 'Terceros', Users],
+          ['productos', 'Productos y servicios', Package],
+        ] as const).map(([destino, label, Icon]) => (
+          <button
+            key={destino}
+            onClick={() => onIr(destino)}
+            className="h-11 px-4 rounded-xl text-sm font-bold flex items-center gap-2 bg-slate-800/80 text-slate-400 border border-slate-700"
           >
             <Icon className="w-4 h-4" /> {label}
           </button>
