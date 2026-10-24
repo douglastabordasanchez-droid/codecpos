@@ -1,12 +1,12 @@
 /**
  * Configuración › Mi contador. El negocio pega el código que le generó su
- * contador en Codec Document y desde ahí sus ventas y facturas electrónicas
- * le llegan solas (ver contadorService.ts). Se usa en Electron y en la web.
+ * contador en Codec Document y desde ahí sus ventas, facturas electrónicas,
+ * gastos, devoluciones y cierres le llegan solos (ver contadorService.ts). Se usa en Electron y en la web.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Link2, Unlink, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { obtenerEstadoContador, conectarContador, desconectarContador, type EstadoContador } from '../../lib/supabase/contadorService';
+import { obtenerEstadoContador, conectarContador, desconectarContador, verificarContador, type EstadoContador } from '../../lib/supabase/contadorService';
 
 const fechaHora = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : 'todavía no';
@@ -34,7 +34,9 @@ export function MiContador({ oscuro = true }: { oscuro?: boolean }) {
   }, []);
 
   useEffect(() => {
-    cargar();
+    // Al abrir se pregunta a Codec Document si la conexión sigue viva: si el
+    // contador la cortó allá, aquí pasa a pedir el código nuevo.
+    verificarContador().catch(() => undefined).finally(cargar);
     const intervalo = window.setInterval(cargar, 30_000);
     return () => window.clearInterval(intervalo);
   }, [cargar]);
@@ -44,7 +46,7 @@ export function MiContador({ oscuro = true }: { oscuro?: boolean }) {
     try {
       const r = await conectarContador(codigo);
       toast.success(`Conectado con ${r.contador || 'tu contador'}`, {
-        description: `${r.encolados} ventas y facturas de este año se están enviando. Las nuevas le llegan solas.`,
+        description: `${r.encolados.toLocaleString('es-CO')} registros de tu historial se están enviando. Lo nuevo le llega solo.`,
       });
       setCodigo('');
       await cargar();
@@ -56,7 +58,7 @@ export function MiContador({ oscuro = true }: { oscuro?: boolean }) {
   };
 
   const desconectar = async () => {
-    if (!window.confirm(`¿Desconectar a ${estado?.contador || 'tu contador'}? Dejará de recibir tus ventas y facturas.`)) return;
+    if (!window.confirm(`¿Desconectar a ${estado?.contador || 'tu contador'}? Dejará de recibir tus ventas, facturas y gastos.`)) return;
     setTrabajando(true);
     try {
       await desconectarContador();
@@ -87,7 +89,7 @@ export function MiContador({ oscuro = true }: { oscuro?: boolean }) {
             </div>
           ))}
         </div>
-        <p className={`text-xs ${suave}`}>Último envío: {fechaHora(estado.ultimoEnvioEn)}. Tus ventas y facturas electrónicas le llegan solas en un par de minutos.</p>
+        <p className={`text-xs ${suave}`}>Último envío: {fechaHora(estado.ultimoEnvioEn)}. Tus ventas, facturas electrónicas, gastos, devoluciones y cierres le llegan solos en un par de minutos.</p>
         {estado.ultimoError && <p className="text-xs text-amber-400 flex items-start gap-1.5"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{estado.ultimoError}</p>}
         <button type="button" onClick={desconectar} disabled={trabajando}
           className="w-full h-10 rounded-xl border border-red-800/60 text-red-400 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
@@ -104,7 +106,7 @@ export function MiContador({ oscuro = true }: { oscuro?: boolean }) {
       )}
       <p className={`text-sm ${suave}`}>
         Si tu contador usa Codec Document, pídele el <strong className={texto}>código de conexión</strong> de tu empresa y pégalo aquí.
-        Desde ese momento tus ventas y facturas electrónicas le llegan solas, incluidas las de este año.
+        Desde ese momento tus ventas, facturas electrónicas, gastos, devoluciones y cierres de caja le llegan solos, con todo tu historial.
       </p>
       <input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="CD-XXXX-XXXX" autoComplete="off"
         className={`w-full h-11 rounded-xl border px-3 font-mono tracking-wider ${oscuro ? 'bg-slate-950/60 border-slate-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />

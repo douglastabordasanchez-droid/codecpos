@@ -60,3 +60,6 @@ export const conectarContador = (codigo: string) =>
   invocar<{ empresa: string | null; contador: string | null; encolados: number }>({ accion: 'vincular', codigo });
 
 export const desconectarContador = () => invocar<{ ok: boolean }>({ accion: 'desvincular' });
+
+/** Pregunta a Codec Document si la conexión sigue viva; si el contador la cortó, queda «revocado». */
+export const verificarContador = () => invocar<{ estado: string | null }>({ accion: 'verificar' });
