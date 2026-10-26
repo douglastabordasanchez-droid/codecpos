@@ -9,6 +9,7 @@ import { Label } from '../../app/components/ui/label';
 import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { soloAgregar } from '../lib/restriccionesEmpleado';
 import { obtenerCategoriasPorTipo, obtenerAtributosPorTipo, normalizarTipoNegocio } from '../../data/tipos-negocio';
 import { leerConfigIva } from '../../app/lib/dian/configIva';
 
@@ -92,6 +93,13 @@ export default function ProductoFormPage() {
   const location = useLocation();
   const { empleado } = usePwaAuth();
   const esNuevo = id === 'nuevo';
+  const sinPermisoDeEditar = !esNuevo && soloAgregar(empleado);
+
+  useEffect(() => {
+    if (!sinPermisoDeEditar) return;
+    toast.error('Tu usuario solo puede agregar productos nuevos');
+    navigate('/inventario', { replace: true });
+  }, [sinPermisoDeEditar, navigate]);
 
   const [form, setForm] = useState<FormState>(VACIO);
   const [cargando, setCargando] = useState(!esNuevo);

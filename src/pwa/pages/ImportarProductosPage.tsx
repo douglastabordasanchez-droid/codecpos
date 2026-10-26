@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router';
 import { AlertTriangle, ArrowLeft, CheckCircle2, Download, FileSpreadsheet, Loader2, Upload, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { soloAgregar } from '../lib/restriccionesEmpleado';
 import {
   COLUMNAS, descargarPlantilla, importarProductos, leerArchivoProductos,
   type ArchivoLeido, type ResultadoImportacion,
@@ -74,7 +75,7 @@ export default function ImportarProductosPage() {
     if (!leido || resumen.listas === 0) return;
     setProgreso({ hechas: 0, total: resumen.listas });
     try {
-      const r = await importarProductos(empleado.cliente_id, empleado.id, leido.filas, { actualizarExistentes: actualizar },
+      const r = await importarProductos(empleado.cliente_id, empleado.id, leido.filas, { actualizarExistentes: actualizar && !soloAgregar(empleado) },
         (hechas, total) => setProgreso({ hechas, total }));
       setResultado(r);
       if (r.errores.length === 0) toast.success(`Listo: ${num(r.nuevos)} nuevos y ${num(r.actualizados)} actualizados`);
@@ -151,6 +152,9 @@ export default function ImportarProductosPage() {
               {leido.columnasIgnoradas.length > 0 && ` · Se ignoran: ${leido.columnasIgnoradas.join(', ')}`}
             </p>
 
+            {soloAgregar(empleado) ? (
+              <p className={`${caja} p-3 text-sm text-slate-300`}>Los códigos que ya existen en tu inventario se dejan igual: tu usuario solo agrega productos nuevos.</p>
+            ) : (
             <div className={`${caja} p-3 flex flex-col md:flex-row md:items-center gap-3`}>
               <p className="text-sm text-slate-300 flex-1">Si un código ya existe en tu inventario:</p>
               <div className="grid grid-cols-2 gap-2">
@@ -158,6 +162,7 @@ export default function ImportarProductosPage() {
                 <button onClick={() => setActualizar(false)} className={`${boton} h-10 border ${!actualizar ? 'border-amber-500 bg-amber-500/10 text-amber-300' : 'border-slate-700 text-slate-300'}`}>Dejarlo igual</button>
               </div>
             </div>
+            )}
 
             <div className="flex gap-2 overflow-x-auto">
               {([['todas', `Todas (${num(resumen.total)})`], ['errores', `Errores (${num(resumen.conErrores)})`], ['avisos', `Avisos (${num(resumen.conAvisos)})`]] as Array<[Filtro, string]>).map(([id, t]) => (

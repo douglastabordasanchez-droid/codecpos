@@ -1088,6 +1088,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const empleadoRemoto = resultadoEmpleado.empleado;
           const esRolAdministrativo = empleadoRemoto.rol === 'admin' || empleadoRemoto.rol === 'super_usuario';
 
+          // El administrador lo dejó entrar solo desde el celular (migración 0132).
+          if (empleadoRemoto.permisos?.soloCelular) {
+            console.log('❌ Este empleado solo puede entrar desde el celular');
+            return false;
+          }
+
           if (isLinked() && getLinkedClienteId() !== empleadoRemoto.cliente_id) {
             console.log('❌ Empleado válido en Supabase pero esta instalación ya está vinculada a otro negocio');
             return false;

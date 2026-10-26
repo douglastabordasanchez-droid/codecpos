@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { enviarCodigoEscaneado } from '../../app/lib/supabase/scanBroadcast';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { soloAgregar } from '../lib/restriccionesEmpleado';
 
 interface ProductoEncontrado {
   id: string;
@@ -150,7 +151,7 @@ export default function EscanerPage() {
               <p className="text-slate-400 text-sm">
                 ${producto.precio_venta.toLocaleString('es-CO')} · Stock: {producto.stock}
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={`grid gap-3 ${soloAgregar(empleado) ? 'grid-cols-1' : 'grid-cols-2'}`}>
                 <Button
                   onClick={handleEnviarACaja}
                   disabled={enviando}
@@ -159,14 +160,14 @@ export default function EscanerPage() {
                   <Send className="w-4 h-4 mr-2" />
                   Enviar a caja
                 </Button>
-                <Button
+                {!soloAgregar(empleado) && <Button
                   variant="outline"
                   onClick={() => navigate(`/inventario/${producto.id}`)}
                   className="h-12 border-slate-700 bg-slate-900/50 text-slate-300"
                 >
                   <Pencil className="w-4 h-4 mr-2" />
                   Editar
-                </Button>
+                </Button>}
               </div>
             </div>
           )}

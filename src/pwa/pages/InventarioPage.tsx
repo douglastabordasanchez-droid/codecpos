@@ -5,6 +5,7 @@ import { Input } from '../../app/components/ui/input';
 import { Button } from '../../app/components/ui/button';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { soloAgregar } from '../lib/restriccionesEmpleado';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 
@@ -136,7 +137,7 @@ export default function InventarioPage() {
           return (
             <button
               key={p.id}
-              onClick={() => navigate(`/inventario/${p.id}`)}
+              onClick={() => { if (!soloAgregar(empleado)) navigate(`/inventario/${p.id}`); }}
               className="w-full flex items-center gap-3 bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3 text-left shadow-sm"
             >
               <div className="w-11 h-11 rounded-lg bg-slate-800 flex items-center justify-center overflow-hidden shrink-0">

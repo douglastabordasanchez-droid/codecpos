@@ -7,7 +7,8 @@ export interface EmpleadoSupabase {
   rol: string;
   activo: boolean;
   es_staff_codec: boolean;
-  permisos?: { modulosHabilitados?: string[] } | null;
+  /** soloAgregar: crea pero no cambia ni borra lo existente; soloCelular: no entra desde Electron ni el navegador del computador (migración 0132). */
+  permisos?: { modulosHabilitados?: string[]; soloAgregar?: boolean; soloCelular?: boolean } | null;
   foto_url?: string | null;
   fecha_nacimiento?: string | null;
   telefono?: string | null;
@@ -41,10 +42,17 @@ export async function signInSupabase(
       p_usuario: emailOUsuario,
       p_password: password,
     });
-    if (resolveError || !clienteId) {
-      return { ok: false, error: 'Usuario o contraseña incorrectos' };
+    if (!resolveError && clienteId) {
+      email = `owner+${clienteId}@codecpos.internal`;
+    } else {
+      // Empleado con usuario corto (migración 0132).
+      const { data: correo } = await client.rpc('resolver_login_empleado', {
+        p_usuario: emailOUsuario,
+        p_password: password,
+      });
+      if (!correo) return { ok: false, error: 'Usuario o contraseña incorrectos' };
+      email = correo as string;
     }
-    email = `owner+${clienteId}@codecpos.internal`;
   }
 
   const { data, error } = await client.auth.signInWithPassword({ email, password });

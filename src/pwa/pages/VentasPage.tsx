@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
+import { soloAgregar } from '../lib/restriccionesEmpleado';
 import { compartirRecibo, obtenerDatosFactura } from '../lib/compartirFactura';
 import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactura';
 import { precargarVisorPdf } from '../../app/lib/pdfVista';
@@ -175,14 +176,14 @@ export default function VentasPage() {
                 >
                   <Eye className="w-4 h-4" />
                 </button>
-                <button
+                {!soloAgregar(empleado) && <button
                   onClick={() => navigate(`/devoluciones?venta=${encodeURIComponent(numeroVisibleVenta(v))}`)}
                   className="h-8 w-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300"
                   aria-label="Devolver o anular"
                   title="Devolver o anular"
                 >
                   <RotateCcw className="w-4 h-4" />
-                </button>
+                </button>}
                 <button
                   onClick={() => handleCompartir(v)}
                   disabled={compartiendoId === v.id}

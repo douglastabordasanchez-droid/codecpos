@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { signInSupabase, EmpleadoSupabase } from '../../app/lib/supabase/authService';
 import { sincronizarSesionConAndroid, cerrarSesionAndroid } from '../lib/androidBridge';
 import { registrarInstalacionPwa } from '../lib/registrarInstalacion';
+import { soloCelular, esDispositivoMovil, MENSAJE_SOLO_CELULAR } from '../lib/restriccionesEmpleado';
 
 export interface TiendaDisponible {
   clienteId: string;
@@ -88,6 +89,11 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
         .eq('id', uid)
         .maybeSingle();
       const empleadoCargado = (fila as EmpleadoSupabase) || null;
+      if (soloCelular(empleadoCargado) && !esDispositivoMovil()) {
+        await client.auth.signOut();
+        setCargando(false);
+        return;
+      }
       setEmpleadoReal(empleadoCargado);
       if (empleadoCargado) {
         await cargarTiendasDisponibles(empleadoCargado.cliente_id);
@@ -103,6 +109,10 @@ export function PwaAuthProvider({ children }: { children: ReactNode }) {
 
   const iniciarSesion = useCallback(async (email: string, password: string) => {
     const resultado = await signInSupabase(email, password);
+    if (resultado.ok && resultado.empleado && soloCelular(resultado.empleado) && !esDispositivoMovil()) {
+      await getSupabaseClient()?.auth.signOut();
+      return { ok: false, error: MENSAJE_SOLO_CELULAR };
+    }
     if (resultado.ok && resultado.empleado) {
       setEmpleadoReal(resultado.empleado);
       await cargarTiendasDisponibles(resultado.empleado.cliente_id);
