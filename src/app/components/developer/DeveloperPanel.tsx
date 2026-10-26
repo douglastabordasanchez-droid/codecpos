@@ -1114,7 +1114,12 @@ export function DeveloperPanel() {
                     <span className={`text-xs font-bold ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>{modulosSeleccionados.size} / {modulosClienteDisponibles.length}</span>
                   </div>
                   <div className="flex flex-wrap gap-2 mb-3">
-                    <Button type="button" variant="outline" size="sm" onClick={() => setModulosSeleccionados(new Set(construirModulosPorPlan(formData.plan)))} className={darkMode ? 'border-slate-500 hover:bg-slate-700' : ''}>Restaurar por plan</Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setModulosSeleccionados(prev => {
+                      // Facturación se vende aparte: restaurar el plan no la quita.
+                      const n = new Set(construirModulosPorPlan(formData.plan));
+                      MODULOS_VENTA_APARTE.forEach(id => { if (prev.has(id)) n.add(id); });
+                      return n;
+                    })} className={darkMode ? 'border-slate-500 hover:bg-slate-700' : ''}>Restaurar por plan</Button>
                     <Button type="button" variant="outline" size="sm" onClick={() => setModulosSeleccionados(new Set(modulosClienteDisponibles.map(m => m.id)))} className={darkMode ? 'border-slate-500 hover:bg-slate-700' : ''}>Activar todos</Button>
                   </div>
                   <div className={`rounded-md border max-h-56 overflow-y-auto ${darkMode ? 'border-slate-600' : 'border-gray-300'}`}>

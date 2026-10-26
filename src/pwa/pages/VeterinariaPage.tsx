@@ -176,7 +176,7 @@ export default function VeterinariaPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-40 lg:pb-28">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-[calc(12rem+env(safe-area-inset-bottom))] lg:pb-28">
       <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-4 flex items-center gap-3">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
           <PawPrint className="w-6 h-6" style={{ color: '#fff' }} />
@@ -224,7 +224,7 @@ export default function VeterinariaPage() {
       </div>
 
       {pendientes.length > 0 && (
-        <div className="fixed bottom-20 lg:bottom-6 left-4 right-4 lg:left-auto lg:right-6 lg:w-96 z-30">
+        <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:bottom-6 left-4 right-4 lg:left-auto lg:right-6 lg:w-96 z-30">
           <button onClick={() => navigate('/vender')}
             className="w-full h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 shadow-xl shadow-emerald-500/30 flex items-center justify-between px-5 font-bold"
             style={{ color: '#fff' }}>

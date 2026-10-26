@@ -1146,7 +1146,7 @@ export default function VenderPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-40 lg:pb-28">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-[calc(12rem+env(safe-area-inset-bottom))] lg:pb-28">
       <div className="max-w-6xl mx-auto">
         <div className="px-4 lg:px-6 pt-6 pb-3 flex items-center justify-between gap-3">
           <div>
@@ -1159,8 +1159,9 @@ export default function VenderPage() {
         <div className="px-4 lg:px-6">{rejillaProductos}</div>
       </div>
 
+      {/* Encima del menú de abajo, que en iPhone crece con la barra de inicio (safe area) y tiene el botón Vender sobresaliendo. */}
       {cantidadCarrito > 0 && !mostrarCheckout && (
-        <div className="fixed bottom-16 lg:bottom-6 left-0 right-0 lg:left-auto lg:right-8 px-4 lg:px-0 pb-3 lg:pb-0 z-30">
+        <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:bottom-6 left-0 right-0 lg:left-auto lg:right-8 px-4 lg:px-0 pb-3 lg:pb-0 z-30">
           <button
             onClick={() => setMostrarCheckout(true)}
             className="w-full lg:w-[380px] h-14 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-orange-500/40 flex items-center justify-between px-5"
