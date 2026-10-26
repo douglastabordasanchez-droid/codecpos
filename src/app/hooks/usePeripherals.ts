@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { useBasculaWeb } from '../../pwa/hooks/useBasculaWeb';
+import {
+  conectarBascula as conectarBascula_,
+  desconectarBascula as desconectarBascula_,
+  estadoBascula,
+  tararBascula,
+} from '../../pwa/lib/basculaWeb';
 
 // Hook para Scanner de Códigos de Barras (USB HID)
 // Los scanners envían caracteres muy rápido (< 50 ms entre teclas) y terminan con Enter.
@@ -50,108 +57,39 @@ export function useBarcodeScanner(onScan: (code: string) => void) {
 }
 
 // Hook para Báscula por Puerto Serial (Web Serial API)
+// Usa la misma báscula que la web (basculaWeb.ts): cualquier chip USB-serie o
+// COM, velocidad y comando configurables, tara real y reconexión sola al
+// volver a abrir la pantalla. `peso` sigue en gramos para la caja de Electron.
 export function useSerialScale() {
-  const [port, setPort] = useState<SerialPort | null>(null);
-  const [peso, setPeso] = useState<number>(0);
-  const [conectado, setConectado] = useState(false);
+  const estado = useBasculaWeb();
 
   const conectarBascula = async () => {
     try {
-      // Verificar si Web Serial API está disponible
-      if (!('serial' in navigator)) {
-        toast.error('Tu navegador no soporta Web Serial API. Usa Chrome o Edge.');
-        return;
-      }
-
-      // Solicitar puerto serial
-      const selectedPort = await (navigator as any).serial.requestPort({
-        filters: [
-          { usbVendorId: 0x0403 }, // FTDI
-          { usbVendorId: 0x067B }, // Prolific
-          { usbVendorId: 0x1A86 }, // QinHeng CH340
-        ]
-      });
-
-      await selectedPort.open({ 
-        baudRate: 9600,
-        dataBits: 8,
-        stopBits: 1,
-        parity: 'none'
-      });
-
-      setPort(selectedPort);
-      setConectado(true);
-      toast.success('Báscula conectada correctamente');
-
-      // Leer datos del puerto
-      const reader = selectedPort.readable.getReader();
-      let buffer = '';
-
-      const readLoop = async () => {
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-
-            // Convertir bytes a string
-            const text = new TextDecoder().decode(value);
-            buffer += text;
-
-            // Buscar patrón de peso (ejemplo: "W 00.500 kg")
-            const match = buffer.match(/(\d+\.?\d*)\s*(kg|g|lb)/i);
-            if (match) {
-              const pesoValue = parseFloat(match[1]);
-              const unidad = match[2].toLowerCase();
-              
-              // Convertir todo a gramos
-              let pesoGramos = pesoValue;
-              if (unidad === 'kg') pesoGramos *= 1000;
-              if (unidad === 'lb') pesoGramos *= 453.592;
-              
-              setPeso(pesoGramos);
-              buffer = ''; // Limpiar buffer después de encontrar peso
-            }
-
-            // Limpiar buffer si es muy largo
-            if (buffer.length > 100) {
-              buffer = buffer.slice(-50);
-            }
-          }
-        } catch (error) {
-          console.error('Error leyendo báscula:', error);
-        }
-      };
-
-      readLoop();
-
+      await conectarBascula_();
+      if (estadoBascula().conectada) toast.success('Báscula conectada correctamente');
     } catch (error: any) {
       console.error('Error conectando báscula:', error);
-      toast.error('No se pudo conectar la báscula');
+      toast.error('No se pudo conectar la báscula', {
+        description: error?.message?.includes('Failed to open')
+          ? 'El puerto está ocupado por otro programa o la báscula se desconectó.'
+          : error?.message,
+      });
     }
   };
 
   const desconectarBascula = async () => {
-    if (port) {
-      try {
-        await port.close();
-        setPort(null);
-        setConectado(false);
-        setPeso(0);
-        toast.info('Báscula desconectada');
-      } catch (error) {
-        console.error('Error desconectando báscula:', error);
-      }
-    }
+    await desconectarBascula_(false);
+    toast.info('Báscula desconectada');
   };
 
   const tarar = () => {
-    setPeso(0);
+    tararBascula();
     toast.success('Báscula tarada');
   };
 
   return {
-    peso,
-    conectado,
+    peso: estado.pesoKg * 1000,
+    conectado: estado.conectada,
     conectarBascula,
     desconectarBascula,
     tarar

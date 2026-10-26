@@ -1119,6 +1119,52 @@ function createSplash() {
 }
 
 // ── Ventana principal (OPTIMIZADA PARA BAJOS RECURSOS) ───────────────────────
+// ── Báscula por Web Serial (navigator.serial) ────────────────────────────────
+// En Electron, requestPort() no muestra selector propio: si nadie atiende
+// 'select-serial-port' la petición se cancela y la báscula nunca conecta.
+// Aquí se elige el puerto (con un cuadro si hay varios) y se deja recordar el
+// permiso para que getPorts() la reabra sola al volver a abrir el programa.
+let serialConfigurado = false;
+function configurarPuertoSerie(win) {
+  const ses = win.webContents.session;
+  if (serialConfigurado) return;
+  serialConfigurado = true;
+
+  ses.on('select-serial-port', async (event, portList, webContents, callback) => {
+    event.preventDefault();
+    const puertos = portList || [];
+    if (puertos.length === 0) {
+      callback('');
+      dialog.showMessageBox(BrowserWindow.fromWebContents(webContents) || win, {
+        type: 'warning',
+        title: 'Báscula',
+        message: 'No se encontró ningún puerto COM.',
+        detail: 'Revisa que la báscula esté encendida y conectada, y que Windows tenga instalado su controlador (CH340, Prolific, FTDI o CP210x). En el Administrador de dispositivos debe aparecer en «Puertos (COM y LPT)».',
+      }).catch(() => {});
+      return;
+    }
+    if (puertos.length === 1) { callback(puertos[0].portId); return; }
+    const nombre = (p) => `${p.portName || ''}${p.displayName ? ` · ${p.displayName}` : ''}`.trim() || p.portId;
+    try {
+      const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(webContents) || win, {
+        type: 'question',
+        title: 'Báscula',
+        message: '¿En cuál puerto está la báscula?',
+        buttons: [...puertos.map(nombre), 'Cancelar'],
+        cancelId: puertos.length,
+        noLink: true,
+      });
+      callback(response < puertos.length ? puertos[response].portId : '');
+    } catch {
+      callback('');
+    }
+  });
+
+  // Sin esto getPorts() vuelve vacío tras reiniciar y hay que elegir la báscula cada vez.
+  ses.setPermissionCheckHandler(() => true);
+  ses.setDevicePermissionHandler((details) => details.deviceType === 'serial');
+}
+
 function createWindow() {
   const iconPath   = findIcon();
   const preloadPath = findPreload();
@@ -1183,7 +1229,8 @@ function createWindow() {
   if (iconPath) winOpts.icon = iconPath;
 
   mainWindow = new BrowserWindow(winOpts);
-  
+  configurarPuertoSerie(mainWindow);
+
   // ✅ OPTIMIZACIÓN: Limitar memoria de la ventana
   mainWindow.webContents.setMaxListeners(10); // Reducir listeners
   

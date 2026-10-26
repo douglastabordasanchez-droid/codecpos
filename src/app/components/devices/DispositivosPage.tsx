@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { TarjetaBascula } from '../../../pwa/pages/DispositivosPage';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Printer,
@@ -595,6 +596,9 @@ export default function DispositivosPage() {
             </Button>
           </div>
         </div>
+
+        {/* Báscula: elegir puerto, velocidad y comando de lectura (basculaWeb.ts) */}
+        <TarjetaBascula />
 
         {/* DEVICE STATUS — 5 illuminating cards */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">

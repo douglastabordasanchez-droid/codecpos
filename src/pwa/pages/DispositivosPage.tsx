@@ -31,7 +31,8 @@ function Interruptor({ activo, onClick, etiqueta }: { activo: boolean; onClick: 
 
 const NOMBRE_TIPO: Record<TipoConexion, string> = { usb: 'USB', serial: 'Puerto serie', bluetooth: 'Bluetooth', sistema: 'Impresora del sistema' };
 
-function TarjetaBascula() {
+/** También la usa Dispositivos de Electron (misma báscula, mismo equipo). */
+export function TarjetaBascula() {
   const bascula = useBasculaWeb();
   const [cfg, setCfg] = useState<ConfigBascula>(obtenerConfigBascula);
   const hayPuerto = soporteBascula();
