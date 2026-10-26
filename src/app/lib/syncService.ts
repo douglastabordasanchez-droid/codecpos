@@ -254,6 +254,18 @@ function construirEntradaLocalStorage(producto: Producto, existente: any | undef
     unidadesPorBolsa: producto.unidadesPorBolsa,
     ventaPorUnidad: producto.ventaPorUnidad,
     lote: producto.lote,
+    // Sin estos, al subir el producto se perdía el granel (Veterinaria) y,
+    // sin el id de la nube, se creaba una fila duplicada.
+    supabaseId: producto.supabaseId ?? existente?.supabaseId,
+    tipoProducto: producto.tipoProducto,
+    esBulto: producto.esBulto,
+    pesoBultoKg: producto.pesoBultoKg,
+    precioPorKilo: producto.precioPorKilo,
+    rendimientoRaciones: producto.rendimientoRaciones,
+    especie: producto.especie,
+    requiereReceta: producto.requiereReceta,
+    talla: producto.talla,
+    color: producto.color,
     // 🛡️ Este producto ya viene DE Supabase (pull) — marcarlo evita que
     // pushProductosLocalStorage lo reinterprete como "nuevo local" y cree
     // una fila duplicada en vez de actualizar la misma.
@@ -1388,48 +1400,64 @@ class SyncService {
     await subirAjustesManualesStock(client, pendientes.map((p: any) => ({ ...p, supabaseId: p.supabaseId || mapaIdSupabase[p.id] })));
 
     for (const p of pendientes) {
-      const { data: filaSubida, error } = await client.from('productos').upsert(
-        {
-          cliente_id: clienteId,
-          local_id: p.id,
-          codigo_barras: p.codigo || null,
-          nombre: p.nombre,
-          categoria: p.categoria || null,
-          precio_venta: p.precio ?? 0,
-          costo: p.costo ?? 0,
-          ...(multitiendaEnNube() && mapaIdSupabase[p.id] ? {} : { stock: p.stock ?? 0 }),
-          stock_minimo: p.minStock ?? p.stockMinimo ?? null,
-          iva: p.aplicaIVA ? 19 : 0,
-          fecha_vencimiento: p.fechaVencimiento || null,
-          foto_url: p.imagenUrl || (Array.isArray(p.fotosUrls) ? p.fotosUrls[0] : null) || null,
-          fotos_urls: p.fotosUrls || null,
-          activo: p.activo !== false,
-          es_papeleria_pinateria: !!p.esPapeleriaPinateria,
-          categoria_especifica: p.categoriaEspecifica || null,
-          tematica: p.tematica || null,
-          calibre_globo: p.calibreGlobo || null,
-          color_acabado: p.colorAcabado || null,
-          // Modo ropa: talla y color viajan a la nube para verse en la web (migración 0106).
-          talla: p.talla || null,
-          color: p.color || null,
-          marca: p.marca || null,
-          es_dulceria: !!p.esDulceria,
-          permitir_fraccion: !!p.permitirFraccion,
-          componentes_combo: p.componentesCombo || null,
-          unidades_por_bolsa: p.unidadesPorBolsa ?? null,
-          venta_por_unidad: p.ventaPorUnidad !== false,
-          lote: p.lote || null,
-          tipo_producto: p.tipoProducto || null,
-          es_bulto: !!p.esBulto,
-          peso_bulto_kg: p.pesoBultoKg ?? null,
-          precio_por_kilo: p.precioPorKilo ?? null,
-          rendimiento_raciones: p.rendimientoRaciones ?? null,
-          especie: p.especie || null,
-          requiere_receta: !!p.requiereReceta,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'cliente_id,local_id' }
-      ).select('id').single();
+      // Un producto bajado de la nube (creado en la web o importado allá) no
+      // tiene local_id en Supabase: el upsert por (cliente_id, local_id)
+      // creaba una fila duplicada en vez de actualizar la suya.
+      const idNube: string | null = p.supabaseId || mapaIdSupabase[p.id]
+        || (typeof p.id === 'string' && p.id.startsWith('remote-') ? p.id.slice(7) : null);
+      const fila = {
+        codigo_barras: p.codigo || null,
+        nombre: p.nombre,
+        categoria: p.categoria || null,
+        precio_venta: p.precio ?? 0,
+        costo: p.costo ?? 0,
+        ...(multitiendaEnNube() && idNube ? {} : { stock: p.stock ?? 0 }),
+        stock_minimo: p.minStock ?? p.stockMinimo ?? null,
+        iva: p.aplicaIVA ? 19 : 0,
+        fecha_vencimiento: p.fechaVencimiento || null,
+        foto_url: p.imagenUrl || (Array.isArray(p.fotosUrls) ? p.fotosUrls[0] : null) || null,
+        fotos_urls: p.fotosUrls || null,
+        activo: p.activo !== false,
+        es_papeleria_pinateria: !!p.esPapeleriaPinateria,
+        categoria_especifica: p.categoriaEspecifica || null,
+        tematica: p.tematica || null,
+        calibre_globo: p.calibreGlobo || null,
+        color_acabado: p.colorAcabado || null,
+        // Modo ropa: talla y color viajan a la nube para verse en la web (migración 0106).
+        talla: p.talla || null,
+        color: p.color || null,
+        marca: p.marca || null,
+        es_dulceria: !!p.esDulceria,
+        permitir_fraccion: !!p.permitirFraccion,
+        componentes_combo: p.componentesCombo || null,
+        unidades_por_bolsa: p.unidadesPorBolsa ?? null,
+        venta_por_unidad: p.ventaPorUnidad !== false,
+        lote: p.lote || null,
+        tipo_producto: p.tipoProducto || null,
+        es_bulto: !!p.esBulto,
+        peso_bulto_kg: p.pesoBultoKg ?? null,
+        precio_por_kilo: p.precioPorKilo ?? null,
+        rendimiento_raciones: p.rendimientoRaciones ?? null,
+        especie: p.especie || null,
+        requiere_receta: !!p.requiereReceta,
+        updated_at: new Date().toISOString(),
+      };
+      let filaSubida: { id: string } | null = null;
+      let error: { message: string } | null = null;
+      if (idNube) {
+        const r = await client.from('productos').update(fila).eq('id', idNube).eq('cliente_id', clienteId).select('id');
+        error = r.error;
+        filaSubida = (r.data as { id: string }[] | null)?.[0] || null;
+      }
+      // Sin id de la nube, o esa fila ya no existe: se sube por local_id como siempre.
+      if (!error && !filaSubida) {
+        const r = await client.from('productos').upsert(
+          { ...fila, cliente_id: clienteId, local_id: p.id },
+          { onConflict: 'cliente_id,local_id' }
+        ).select('id').single();
+        error = r.error;
+        filaSubida = r.data as { id: string } | null;
+      }
 
       if (error) {
         console.error(`[sync] Error subiendo producto local ${p.nombre}:`, error.message);
