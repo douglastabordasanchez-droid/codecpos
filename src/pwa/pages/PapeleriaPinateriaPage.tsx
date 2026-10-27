@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PartyPopper, Search, Ruler, Palette, Tag, PackageCheck, Loader2, X, ImageOff } from 'lucide-react';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { traerTodo } from '../lib/nubeConsultas';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 
 interface ProductoFila {
@@ -43,15 +44,17 @@ export default function PapeleriaPinateriaPage() {
     const client = getSupabaseClient();
     if (!client) { setCargando(false); return; }
     setCargando(true);
-    client
+    traerTodo<ProductoFila>((desde, hasta) => client
       .from('productos')
       .select('id, codigo_barras, nombre, precio_venta, stock, categoria, categoria_especifica, tematica, calibre_globo, color_acabado, marca, foto_url')
       .eq('cliente_id', empleado.cliente_id)
       .eq('es_papeleria_pinateria', true)
       .eq('activo', true)
       .order('nombre')
-      .limit(1000)
-      .then(({ data }) => { setProductos((data as ProductoFila[]) || []); setCargando(false); });
+      .order('id')
+      .range(desde, hasta))
+      .catch(() => [] as ProductoFila[])
+      .then((data) => { setProductos(data); setCargando(false); });
   }, [empleado?.cliente_id]);
 
   const tematicas = useMemo(() => [...new Set(productos.map((p) => p.tematica).filter(Boolean))] as string[], [productos]);

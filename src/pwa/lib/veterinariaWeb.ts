@@ -9,6 +9,7 @@
  * (VeterinariaPage.tsx), así Electron lo vende por peso cuando lo baja.
  */
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { traerTodo } from './nubeConsultas';
 
 export interface ProductoVetWeb {
   id: string;
@@ -52,14 +53,15 @@ function cliente() {
 }
 
 export async function listarProductosVet(clienteId: string): Promise<ProductoVetWeb[]> {
-  const { data, error } = await cliente()
+  const data = await traerTodo<any>((desde, hasta) => cliente()
     .from('productos')
     .select(SELECT_PRODUCTO)
     .eq('cliente_id', clienteId)
     .eq('activo', true)
-    .order('nombre');
-  if (error) throw new Error(error.message);
-  return (data || []).map((p: any) => ({
+    .order('nombre')
+    .order('id')
+    .range(desde, hasta));
+  return data.map((p: any) => ({
     ...p,
     precio_venta: Number(p.precio_venta) || 0,
     costo: Number(p.costo) || 0,

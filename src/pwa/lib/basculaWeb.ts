@@ -7,7 +7,8 @@
  *     página: recuerda el puerto y lo vuelve a abrir sin preguntar.
  *   · Velocidad, bits, paridad y comando de lectura configurables: unas
  *     básculas mandan el peso solas (continuo) y otras lo mandan cuando se
- *     les pide (P, W, ENQ...).
+ *     les pide (P, W, ENQ...). Al conectar se autodetectan (ver
+ *     detectarConfigSerie), así no hay que saber el modelo de la báscula.
  *   · Entiende los formatos más comunes: "ST,GS,+0001.250kg", "W 1.250 kg",
  *     "  1250 g", "2.75 lb" y números solos (en la unidad configurada).
  *   · Tara y peso estable (tres lecturas seguidas iguales).
@@ -92,6 +93,112 @@ export function interpretarTrama(trama: string, unidadSinMarca: 'kg' | 'g' = 'kg
   const unidad = (m[3] || unidadSinMarca).toLowerCase();
   const factor = unidad === 'g' ? 0.001 : unidad === 'lb' ? 0.45359237 : unidad === 'oz' ? 0.028349523 : 1;
   return Math.round(signo * numero * factor * 1000) / 1000;
+}
+
+// ── Autodetección ──────────────────────────────────────────────────────────
+
+type SerieBascula = Pick<ConfigBascula, 'baudRate' | 'dataBits' | 'parity' | 'stopBits'>;
+
+/** De la más común a la menos común en básculas de mostrador. */
+const SERIES_BASCULA: SerieBascula[] = [
+  { baudRate: 9600, dataBits: 8, parity: 'none', stopBits: 1 },
+  { baudRate: 9600, dataBits: 7, parity: 'even', stopBits: 1 },
+  { baudRate: 4800, dataBits: 8, parity: 'none', stopBits: 1 },
+  { baudRate: 2400, dataBits: 8, parity: 'none', stopBits: 1 },
+  { baudRate: 19200, dataBits: 8, parity: 'none', stopBits: 1 },
+  { baudRate: 4800, dataBits: 7, parity: 'even', stopBits: 1 },
+  { baudRate: 2400, dataBits: 7, parity: 'even', stopBits: 1 },
+  { baudRate: 1200, dataBits: 8, parity: 'none', stopBits: 1 },
+];
+const COMANDOS_SONDEO: ComandoBascula[] = ['P', 'ENQ', 'W', 'R', '$'];
+const MS_ESPERA_CONTINUA = 1200;
+const MS_POR_COMANDO = 400;
+
+/** A velocidad o paridad equivocada llegan bytes basura: una trama válida es texto legible. */
+export function tramaLegible(trama: string): boolean {
+  const limpia = trama.replace(/[\x00-\x1f]/g, ' ').trim();
+  return limpia.length > 0 && /^[\x20-\x7e]+$/.test(limpia);
+}
+
+/**
+ * Abre el puerto con `serie`, primero escucha (báscula que manda sola) y
+ * luego prueba los comandos de lectura uno por uno. Devuelve el comando con
+ * el que respondió ('' = continua) tras dos tramas válidas, o null. Siempre
+ * deja el puerto cerrado.
+ */
+async function sondearSerie(puerto: any, serie: SerieBascula, unidadSinMarca: 'kg' | 'g'): Promise<ComandoBascula | null> {
+  await puerto.open(serie);
+  const lector = puerto.readable.getReader();
+  let validas = 0;
+  let enviado: ComandoBascula = '';
+  let respondio: ComandoBascula | null = null;
+  let indice = 0;
+  const inicio = Date.now();
+
+  const enviar = async (comando: ComandoBascula) => {
+    const bytes = bytesComando(comando);
+    if (!bytes || !puerto.writable) return;
+    try {
+      const w = puerto.writable.getWriter();
+      await w.write(bytes);
+      w.releaseLock();
+    } catch { /* se reintenta en la siguiente vuelta */ }
+  };
+
+  const sondeo = setInterval(() => {
+    const t = Date.now() - inicio;
+    if (respondio !== null) {
+      // Ya respondió a un comando: se le sigue pidiendo para la 2.ª trama.
+      if (respondio) enviar(respondio);
+    } else if (t >= MS_ESPERA_CONTINUA && indice < COMANDOS_SONDEO.length) {
+      enviado = COMANDOS_SONDEO[indice++];
+      enviar(enviado);
+    }
+  }, MS_POR_COMANDO);
+  const limite = MS_ESPERA_CONTINUA + MS_POR_COMANDO * (COMANDOS_SONDEO.length + 1) + 1200;
+  const corte = setTimeout(() => { lector.cancel().catch(() => {}); }, limite);
+
+  try {
+    const decodificador = new TextDecoder();
+    let buffer = '';
+    while (validas < 2) {
+      const { value, done } = await lector.read();
+      if (done) break;
+      buffer += decodificador.decode(value, { stream: true });
+      const partes = buffer.split(/[\r\n\x03]+/);
+      buffer = (partes.pop() || '').slice(-64);
+      for (const trama of partes) {
+        if (!tramaLegible(trama) || interpretarTrama(trama, unidadSinMarca) === null) continue;
+        if (respondio === null) respondio = enviado;
+        validas++;
+      }
+    }
+  } catch { /* corte por tiempo o puerto desconectado */ }
+
+  clearInterval(sondeo);
+  clearTimeout(corte);
+  try { await lector.cancel(); } catch { /* ya cancelado */ }
+  try { lector.releaseLock(); } catch { /* ya liberado */ }
+  try { await puerto.close(); } catch { /* ya cerrado */ }
+  return validas >= 2 ? respondio : null;
+}
+
+/**
+ * Busca velocidad, paridad y comando con los que la báscula manda peso,
+ * empezando por la configuración guardada. null si ninguna respondió
+ * (báscula apagada, cable suelto o formato desconocido).
+ */
+export async function detectarConfigSerie(puerto: any): Promise<Partial<ConfigBascula> | null> {
+  const cfg = obtenerConfigBascula();
+  const actual: SerieBascula = { baudRate: cfg.baudRate, dataBits: cfg.dataBits, parity: cfg.parity, stopBits: cfg.stopBits };
+  const igual = (a: SerieBascula, b: SerieBascula) =>
+    a.baudRate === b.baudRate && a.dataBits === b.dataBits && a.parity === b.parity && a.stopBits === b.stopBits;
+  const series = [actual, ...SERIES_BASCULA.filter((s) => !igual(s, actual))];
+  for (const serie of series) {
+    const comando = await sondearSerie(puerto, serie, cfg.unidadSinMarca);
+    if (comando !== null) return { ...serie, comando };
+  }
+  return null;
 }
 
 // ── Estado compartido ──────────────────────────────────────────────────────
@@ -214,12 +321,23 @@ export async function conectarBascula(): Promise<void> {
   publicar({ conectando: true, error: null });
   try {
     await desconectarBascula(false);
+    // Sin filtros a propósito: las básculas suelen ir a un puerto COM nativo
+    // del computador (DB9), que no tiene usbVendorId.
     const puerto = await (navigator as any).serial.requestPort();
+    const detectada = await detectarConfigSerie(puerto);
+    if (detectada) guardarConfigBascula(detectada);
     await abrir(puerto);
+    if (!detectada) {
+      publicar({ error: 'El puerto quedó abierto, pero la báscula no está mandando el peso. Revisa que esté encendida y el cable bien conectado, o ajusta velocidad y comando en Dispositivos.' });
+    }
   } catch (e: any) {
     const cancelado = e?.name === 'NotFoundError';
-    publicar({ conectando: false, error: cancelado ? null : (e?.message || 'No se pudo abrir la báscula') });
-    if (!cancelado) throw e;
+    const ocupado = e?.name === 'InvalidStateError' || e?.name === 'NetworkError';
+    const mensaje = ocupado
+      ? 'El puerto de la báscula está ocupado por otro programa (por ejemplo CodecPOS de escritorio). Ciérralo y vuelve a conectar.'
+      : (e?.message || 'No se pudo abrir la báscula');
+    publicar({ conectando: false, error: cancelado ? null : mensaje });
+    if (!cancelado) throw new Error(mensaje);
   }
 }
 

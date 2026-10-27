@@ -13,6 +13,7 @@ import { Barcode, Search, RefreshCw, Loader2 } from 'lucide-react';
 import { Input } from '../../app/components/ui/input';
 import { Button } from '../../app/components/ui/button';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { traerTodo } from '../lib/nubeConsultas';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { generarCodigoEAN13 } from '../../app/lib/codigosBarrasService';
 import { toast } from 'sonner';
@@ -36,12 +37,14 @@ export default function CodigosBarrasPage() {
     if (!empleado) return;
     setCargando(true);
     const client = getSupabaseClient();
-    const { data } = await client!
+    const data = await traerTodo<ProductoFila>((desde, hasta) => client!
       .from('productos')
       .select('id, nombre, categoria, codigo_barras')
       .eq('cliente_id', empleado.cliente_id)
-      .order('nombre');
-    setProductos((data as ProductoFila[]) || []);
+      .order('nombre')
+      .order('id')
+      .range(desde, hasta)).catch(() => [] as ProductoFila[]);
+    setProductos(data);
     setCargando(false);
   };
 

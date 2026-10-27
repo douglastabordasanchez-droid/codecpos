@@ -22,6 +22,7 @@ import {
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { traerTodo } from '../lib/nubeConsultas';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil } from '../lib/ventaMovilService';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
@@ -206,19 +207,23 @@ export default function VenderPage() {
     if (!empleado) return;
     setCargando(true);
     const client = getSupabaseClient();
-    const [{ data }, configIva] = await Promise.all([
-      client!
+    // Paginado: PostgREST corta en 1000 filas y un negocio con más productos
+    // solo veía los primeros 1000 (A..M) sin ningún aviso.
+    const [data, configIva] = await Promise.all([
+      traerTodo<ProductoFila>((desde, hasta) => client!
         .from('productos')
         .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto, iva')
         .eq('cliente_id', empleado.cliente_id)
         .eq('activo', true)
-        .order('nombre'),
+        .order('nombre')
+        .order('id')
+        .range(desde, hasta)).catch(() => [] as ProductoFila[]),
       // IVA del negocio (el mismo de Electron). Si no se puede leer, se vende sin IVA como Electron sin configurar.
       leerConfigIva(empleado.cliente_id).catch(() => CONFIG_IVA_APAGADO),
     ]);
     // Cada producto queda con la tarifa con la que se vende y, si el IVA se
     // suma encima, con el precio que de verdad paga el cliente.
-    let filas = ((data as ProductoFila[]) || []).map((p) => {
+    let filas = data.map((p) => {
       const tarifaIva = tarifaIvaProducto(configIva, p.iva);
       return { ...p, tarifaIva, precio_venta: precioDeVentaConIva(configIva, Number(p.precio_venta) || 0, tarifaIva) };
     });
@@ -227,11 +232,13 @@ export default function VenderPage() {
     // vive en `tiendas_stock` (migración 0092), no en `productos.stock`.
     const tiendaId = tiendaEfectiva;
     if (tiendaId && tiendaId !== 'tienda_principal') {
-      const { data: stockTienda } = await client!
+      const stockTienda = await traerTodo<{ producto_id: string; cantidad: number }>((desde, hasta) => client!
         .from('tiendas_stock')
         .select('producto_id, cantidad')
         .eq('cliente_id', empleado.cliente_id)
-        .eq('tienda_id', tiendaId);
+        .eq('tienda_id', tiendaId)
+        .order('producto_id')
+        .range(desde, hasta)).catch(() => []);
       const stockPorProducto = new Map((stockTienda || []).map((s: any) => [s.producto_id, Number(s.cantidad) || 0]));
       filas = filas.map((p) => ({ ...p, stock: stockPorProducto.get(p.id) ?? 0 }));
     }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Package, TrendingUp, Bell } from 'lucide-react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { traerTodo } from '../lib/nubeConsultas';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { limpiarAvisosDelIcono } from '../lib/androidBridge';
 
@@ -39,14 +40,15 @@ export default function AlertasPage() {
 
     const cargar = async () => {
       const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const [{ data: productos }, { data: ventas }] = await Promise.all([
-        client.from('productos').select('id, nombre, stock, stock_minimo')
-          .eq('cliente_id', empleado.cliente_id).eq('activo', true).not('stock_minimo', 'is', null),
+      const [productos, { data: ventas }] = await Promise.all([
+        traerTodo<ProductoBajo>((desde, hasta) => client.from('productos').select('id, nombre, stock, stock_minimo')
+          .eq('cliente_id', empleado.cliente_id).eq('activo', true).not('stock_minimo', 'is', null)
+          .order('id').range(desde, hasta)).catch(() => [] as ProductoBajo[]),
         client.from('ventas').select('id, numero, total, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
           .gte('created_at', desde).order('total', { ascending: false }).limit(5),
       ]);
-      const bajos = ((productos as ProductoBajo[]) || []).filter((p) => p.stock <= p.stock_minimo);
+      const bajos = productos.filter((p) => p.stock <= p.stock_minimo);
       setStockBajo(bajos);
       setVentasGrandes((ventas as VentaReciente[]) || []);
       setCargando(false);

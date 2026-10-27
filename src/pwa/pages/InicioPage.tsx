@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock, Calendar, DollarSign, TrendingUp, Receipt, Target } from 'lucide-react';
 import { costoPorUnidadDeVenta } from '../../app/lib/costoGranel';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { traerTodo } from '../lib/nubeConsultas';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { ModuloPOS } from '../../app/lib/permissions';
@@ -134,7 +135,8 @@ export default function InicioPage() {
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
           .gte('created_at', inicioAnterior.toISOString()).lt('created_at', finAnterior.toISOString())),
         esAdmin
-          ? client.from('productos').select('id, stock, stock_minimo').eq('cliente_id', empleado.cliente_id).eq('activo', true)
+          ? traerTodo<any>((desde, hasta) => client.from('productos').select('id, stock, stock_minimo').eq('cliente_id', empleado.cliente_id).eq('activo', true).order('id').range(desde, hasta))
+              .then((data) => ({ data }), () => ({ data: [] as any[] }))
           : Promise.resolve({ data: [] as any[] }),
         esAdmin
           ? client.from('sesiones_activas').select('id, terminal_nombre, terminal_id, cajero_nombre, ultima_actividad, activa')
