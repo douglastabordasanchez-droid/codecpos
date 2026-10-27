@@ -126,7 +126,12 @@ export function tramaLegible(trama: string): boolean {
  * el que respondió ('' = continua) tras dos tramas válidas, o null. Siempre
  * deja el puerto cerrado.
  */
-async function sondearSerie(puerto: any, serie: SerieBascula, unidadSinMarca: 'kg' | 'g'): Promise<ComandoBascula | null> {
+async function sondearSerie(
+  puerto: any,
+  serie: SerieBascula,
+  unidadSinMarca: 'kg' | 'g',
+  comandos: ComandoBascula[] = COMANDOS_SONDEO,
+): Promise<ComandoBascula | null> {
   await puerto.open(serie);
   const lector = puerto.readable.getReader();
   let validas = 0;
@@ -150,12 +155,12 @@ async function sondearSerie(puerto: any, serie: SerieBascula, unidadSinMarca: 'k
     if (respondio !== null) {
       // Ya respondió a un comando: se le sigue pidiendo para la 2.ª trama.
       if (respondio) enviar(respondio);
-    } else if (t >= MS_ESPERA_CONTINUA && indice < COMANDOS_SONDEO.length) {
-      enviado = COMANDOS_SONDEO[indice++];
+    } else if (t >= MS_ESPERA_CONTINUA && indice < comandos.length) {
+      enviado = comandos[indice++];
       enviar(enviado);
     }
   }, MS_POR_COMANDO);
-  const limite = MS_ESPERA_CONTINUA + MS_POR_COMANDO * (COMANDOS_SONDEO.length + 1) + 1200;
+  const limite = MS_ESPERA_CONTINUA + MS_POR_COMANDO * (comandos.length + 1) + 1200;
   const corte = setTimeout(() => { lector.cancel().catch(() => {}); }, limite);
 
   try {
@@ -328,6 +333,8 @@ export async function conectarBascula(): Promise<void> {
     if (detectada) guardarConfigBascula(detectada);
     await abrir(puerto);
     if (!detectada) {
+      // Electron recuerda el COM elegido; si ahí no hay báscula, que vuelva a preguntar.
+      (window as any).electron?.scale?.olvidarPuerto?.().catch?.(() => {});
       publicar({ error: 'El puerto quedó abierto, pero la báscula no está mandando el peso. Revisa que esté encendida y el cable bien conectado, o ajusta velocidad y comando en Dispositivos.' });
     }
   } catch (e: any) {
@@ -341,19 +348,40 @@ export async function conectarBascula(): Promise<void> {
   }
 }
 
+let reconexionEnCurso: Promise<boolean> | null = null;
+
 /** Vuelve a abrir la báscula recordada sin preguntar. true si quedó conectada. */
-export async function reconectarBascula(): Promise<boolean> {
+export function reconectarBascula(): Promise<boolean> {
+  // Varias pantallas montan useBasculaWeb a la vez: una sola reconexión.
+  if (!reconexionEnCurso) {
+    reconexionEnCurso = reconectarBascula_().finally(() => { reconexionEnCurso = null; });
+  }
+  return reconexionEnCurso;
+}
+
+async function reconectarBascula_(): Promise<boolean> {
   if (!soporteBascula() || estado.conectada || estado.conectando) return estado.conectada;
   const cfg = obtenerConfigBascula();
   if (!cfg.puerto) return false;
   try {
     const puertos: any[] = await (navigator as any).serial.getPorts();
-    const puerto = puertos.find((p) => {
+    const candidatos = puertos.filter((p) => {
       const i = p.getInfo?.() || {};
       return i.usbVendorId === cfg.puerto?.usbVendorId && i.usbProductId === cfg.puerto?.usbProductId;
-    }) || (puertos.length === 1 ? puertos[0] : null);
-    if (!puerto) return false;
+    });
+    const lista = candidatos.length > 0 ? candidatos : (puertos.length === 1 ? puertos : []);
+    if (lista.length === 0) return false;
     publicar({ conectando: true, error: null });
+    // Varios COM sin datos USB (puerto de la tarjeta madre + tarjeta PCI):
+    // se toma el que de verdad manda peso con la configuración guardada.
+    let puerto = lista[0];
+    if (lista.length > 1) {
+      const serie: SerieBascula = { baudRate: cfg.baudRate, dataBits: cfg.dataBits, parity: cfg.parity, stopBits: cfg.stopBits };
+      for (const p of lista) {
+        if (p.readable) continue;
+        if (await sondearSerie(p, serie, cfg.unidadSinMarca, cfg.comando ? [cfg.comando] : []).catch(() => null) !== null) { puerto = p; break; }
+      }
+    }
     await abrir(puerto);
     return true;
   } catch (e: any) {

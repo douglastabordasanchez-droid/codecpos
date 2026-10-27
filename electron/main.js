@@ -1124,6 +1124,139 @@ function createSplash() {
 // 'select-serial-port' la petición se cancela y la báscula nunca conecta.
 // Aquí se elige el puerto (con un cuadro si hay varios) y se deja recordar el
 // permiso para que getPorts() la reabra sola al volver a abrir el programa.
+// El puerto elegido (p. ej. "COM3") se guarda en userData: con una tarjeta
+// serie PCI suele haber varios COM y el cajero no sabe cuál es la báscula,
+// así que la próxima vez se toma solo. Si en ese puerto la báscula no
+// responde, el renderer lo olvida (bascula:olvidar-puerto) y se vuelve a
+// preguntar.
+const PUERTO_BASCULA_FILE = path.join(app.getPath('userData'), 'bascula-puerto.json');
+
+async function leerPuertoBascula() {
+  try { return JSON.parse(await fsPromises.readFile(PUERTO_BASCULA_FILE, 'utf8')).portName || null; }
+  catch { return null; }
+}
+
+async function guardarPuertoBascula(portName) {
+  try {
+    if (portName) await fsPromises.writeFile(PUERTO_BASCULA_FILE, JSON.stringify({ portName }), 'utf8');
+    else await fsPromises.rm(PUERTO_BASCULA_FILE, { force: true });
+  } catch (e) {
+    console.warn('[Báscula] No se pudo guardar el puerto:', e?.message);
+  }
+}
+
+ipcMain.handle('bascula:olvidar-puerto', async () => { await guardarPuertoBascula(null); return true; });
+
+// ── Controlador del puerto de la báscula ──────────────────────────────────
+// Si el puerto COM (tarjeta serie PCI/PCIe o cable USB-serie) no tiene
+// controlador, Windows no lo muestra y la báscula "no existe". Aquí se
+// detecta ese caso, se identifica el chip por su VEN/VID y se ofrece
+// instalarlo: pnputil /scan-devices hace que Windows lo busque en su
+// almacén de controladores y en Windows Update (pide permiso de administrador).
+const CHIPS_SERIE = {
+  'PCI:1C00': 'WCH CH382/CH384/CH351 (tarjeta serie PCIe)',
+  'PCI:4348': 'WCH CH351/CH352/CH353 (tarjeta serie PCI)',
+  'PCI:9710': 'MosChip MCS9865/MCS9901/MCS9922 (tarjeta serie PCI)',
+  'PCI:125B': 'ASIX AX99100 (tarjeta serie PCIe)',
+  'PCI:1415': 'Oxford OXPCIe952/OX16PCI954 (tarjeta serie)',
+  'PCI:1393': 'Moxa (tarjeta serie)',
+  'PCI:14DB': 'Avlab (tarjeta serie PCI)',
+  'PCI:131F': 'SIIG (tarjeta serie PCI)',
+  'USB:1A86': 'WCH CH340/CH341 (cable USB-serie)',
+  'USB:067B': 'Prolific PL2303 (cable USB-serie)',
+  'USB:0403': 'FTDI FT232 (cable USB-serie)',
+  'USB:10C4': 'Silicon Labs CP210x (cable USB-serie)',
+};
+const DESCARGA_CHIP = {
+  'USB:1A86': 'https://www.wch-ic.com/downloads/CH341SER_EXE.html',
+  'USB:0403': 'https://ftdichip.com/drivers/vcp-drivers/',
+  'USB:10C4': 'https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers',
+};
+
+function chipDeDispositivo(instanceId) {
+  const m = String(instanceId || '').toUpperCase().match(/^(PCI)\\VEN_([0-9A-F]{4})|^(USB)\\VID_([0-9A-F]{4})/);
+  if (!m) return null;
+  const clave = m[1] ? `PCI:${m[2]}` : `USB:${m[4]}`;
+  return { clave, nombre: CHIPS_SERIE[clave] || null };
+}
+
+/** Dispositivos de puerto serie presentes pero sin controlador o con error (solo Windows). */
+async function diagnosticarPuertosSerie() {
+  if (process.platform !== 'win32') return [];
+  const script = `
+$ErrorActionPreference = 'SilentlyContinue'
+$out = @(Get-PnpDevice -PresentOnly | Where-Object {
+  $_.Status -ne 'OK' -and ($_.InstanceId -like 'PCI\\*' -or $_.InstanceId -like 'USB\\*') -and
+  (-not $_.Class -or $_.Class -in @('Ports', 'MultiFunction'))
+} | ForEach-Object { [pscustomobject]@{ nombre = [string]$_.FriendlyName; clase = [string]$_.Class; id = [string]$_.InstanceId } })
+ConvertTo-Json -Compress -InputObject $out
+`;
+  try {
+    const crudo = await runPowerShellScript(script, 20000);
+    const lista = JSON.parse(crudo || '[]');
+    return (Array.isArray(lista) ? lista : [lista])
+      .map((d) => ({ ...d, chip: chipDeDispositivo(d.id) }))
+      .filter((d) => d.chip?.nombre || d.clase === 'Ports' || /seri|com\b|ch3[0-9]|pl2303|ft232|cp210|comunicaci|communication/i.test(d.nombre || ''));
+  } catch (e) {
+    console.warn('[Báscula] Diagnóstico de controladores falló:', e?.message);
+    return [];
+  }
+}
+
+/**
+ * Ofrece instalar el controlador que falta. Devuelve 'continuar' si el
+ * usuario quiere seguir con los puertos que ya hay, o 'reintentar' si debe
+ * volver a pulsar "Conectar báscula" después de instalar.
+ */
+async function ofrecerControladorBascula(parent, problemas, hayPuertos) {
+  const principal = problemas.find((d) => d.chip?.nombre) || problemas[0];
+  const chip = principal.chip?.nombre || principal.nombre || 'puerto serie';
+  const url = DESCARGA_CHIP[principal.chip?.clave]
+    || `https://www.google.com/search?q=${encodeURIComponent(`${chip.replace(/\s*\(.*\)$/, '')} driver Windows`)}`;
+  const lista = problemas.map((d) => `• ${d.nombre || 'Dispositivo desconocido'}${d.chip?.nombre ? ` — ${d.chip.nombre}` : ''}`).join('\n');
+  console.log('[Báscula] Dispositivos serie sin controlador:', problemas.map((d) => d.id).join(', '));
+
+  const { response } = await dialog.showMessageBox(parent, {
+    type: 'warning',
+    title: 'Báscula',
+    message: 'Falta el controlador del puerto de la báscula',
+    detail: `Windows tiene estos dispositivos sin controlador, por eso el puerto de la báscula puede no aparecer:\n\n${lista}\n\n«Instalar automáticamente» le pide a Windows que busque e instale el controlador (te pedirá permiso de administrador).`,
+    buttons: ['Instalar automáticamente', 'Descargar controlador', hayPuertos ? 'Continuar sin instalar' : 'Cerrar'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+  if (response === 2) return 'continuar';
+  if (response === 1) { shell.openExternal(url).catch(() => {}); return 'reintentar'; }
+
+  try {
+    await runPowerShellScript(
+      "Start-Process pnputil.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '/scan-devices'",
+      180000
+    );
+  } catch (e) {
+    console.warn('[Báscula] pnputil /scan-devices falló:', e?.message);
+  }
+  await new Promise((r) => setTimeout(r, 4000)); // Windows termina de instalar en segundo plano
+  const pendientes = await diagnosticarPuertosSerie();
+  if (pendientes.length === 0) {
+    await dialog.showMessageBox(parent, {
+      type: 'info', title: 'Báscula', message: 'Controlador instalado',
+      detail: 'Vuelve a pulsar «Conectar báscula».',
+    }).catch(() => {});
+  } else {
+    const { response: r2 } = await dialog.showMessageBox(parent, {
+      type: 'warning', title: 'Báscula', message: 'Windows no encontró el controlador automáticamente',
+      detail: `Hay que instalarlo a mano para: ${chip}.\n\nSe abrirá la página de descarga. Instálalo, reinicia el computador si lo pide y vuelve a pulsar «Conectar báscula».`,
+      buttons: ['Abrir página de descarga', 'Cerrar'], defaultId: 0, cancelId: 1, noLink: true,
+    }).catch(() => ({ response: 1 }));
+    if (r2 === 0) shell.openExternal(url).catch(() => {});
+  }
+  return 'reintentar';
+}
+
+ipcMain.handle('bascula:diagnostico', async () => diagnosticarPuertosSerie());
+
 let serialConfigurado = false;
 function configurarPuertoSerie(win) {
   const ses = win.webContents.session;
@@ -1133,27 +1266,42 @@ function configurarPuertoSerie(win) {
   ses.on('select-serial-port', async (event, portList, webContents, callback) => {
     event.preventDefault();
     const puertos = portList || [];
+    const ventana = BrowserWindow.fromWebContents(webContents) || win;
+    console.log('[Báscula] Puertos disponibles:', puertos.map((p) => `${p.portName} (${p.displayName || 'sin nombre'})`).join(', ') || 'ninguno');
+    const recordado = await leerPuertoBascula();
+    const previo = recordado && puertos.find((p) => p.portName === recordado);
+    if (previo) { callback(previo.portId); return; }
+
+    // Antes de preguntar el puerto: ¿hay un puerto serie sin controlador?
+    const problemas = await diagnosticarPuertosSerie();
+    if (problemas.length > 0) {
+      const accion = await ofrecerControladorBascula(ventana, problemas, puertos.length > 0).catch(() => 'continuar');
+      if (accion === 'reintentar') { callback(''); return; }
+    }
+
     if (puertos.length === 0) {
       callback('');
       dialog.showMessageBox(BrowserWindow.fromWebContents(webContents) || win, {
         type: 'warning',
         title: 'Báscula',
         message: 'No se encontró ningún puerto COM.',
-        detail: 'Revisa que la báscula esté encendida y conectada, y que Windows tenga instalado su controlador (CH340, Prolific, FTDI o CP210x). En el Administrador de dispositivos debe aparecer en «Puertos (COM y LPT)».',
+        detail: 'Revisa que la báscula esté encendida y conectada, y que Windows tenga instalado el controlador del puerto: el del cable USB-serie (CH340, Prolific, FTDI o CP210x) o el de la tarjeta serie PCI/PCIe (WCH CH382/CH351, MosChip/ASIX). En el Administrador de dispositivos debe aparecer en «Puertos (COM y LPT)» sin signo de admiración.',
       }).catch(() => {});
       return;
     }
-    if (puertos.length === 1) { callback(puertos[0].portId); return; }
+    if (puertos.length === 1) { await guardarPuertoBascula(puertos[0].portName); callback(puertos[0].portId); return; }
     const nombre = (p) => `${p.portName || ''}${p.displayName ? ` · ${p.displayName}` : ''}`.trim() || p.portId;
     try {
       const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(webContents) || win, {
         type: 'question',
         title: 'Báscula',
         message: '¿En cuál puerto está la báscula?',
+        detail: 'Si no sabes, elige uno: si ahí no responde la báscula, CodecPOS te vuelve a preguntar.',
         buttons: [...puertos.map(nombre), 'Cancelar'],
         cancelId: puertos.length,
         noLink: true,
       });
+      if (response < puertos.length) await guardarPuertoBascula(puertos[response].portName);
       callback(response < puertos.length ? puertos[response].portId : '');
     } catch {
       callback('');

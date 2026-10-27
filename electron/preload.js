@@ -139,6 +139,8 @@ contextBridge.exposeInMainWorld('electron', {
   scale: {
     read: (port) => ipcRenderer.invoke('scale:read', port),
     test: (port) => ipcRenderer.invoke('scale:test', port),
+    /** La báscula no respondió en el puerto recordado: volver a preguntar la próxima vez. */
+    olvidarPuerto: () => ipcRenderer.invoke('bascula:olvidar-puerto'),
   },
 
   /**
