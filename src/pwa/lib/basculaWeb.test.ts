@@ -37,6 +37,15 @@ describe('miligramos, gramos y kilos', () => {
   it('número solo en la unidad configurada, también miligramos', () => {
     expect(interpretarTrama('  750', 'mg')).toBe(0.00075);
   });
+  it('Mega Can: "0,000.485" con coma de miles y punto decimal es 0,485 kg', () => {
+    expect(interpretarTrama('0,000.485')).toBe(0.485);
+    expect(interpretarTrama('0,000.485', 'g')).toBe(0.485);
+    expect(interpretarTrama('0,000.065')).toBe(0.065);
+    expect(interpretarTrama('0,001.250')).toBe(1.25);
+    expect(interpretarTrama('ST,GS,+0,012.500kg')).toBe(12.5);
+    expect(interpretarTrama('1.250,5 g')).toBe(1.2505);
+    expect(interpretarTrama('0,485')).toBe(0.485);
+  });
   it('un número con decimales siempre es kilos, aunque esté marcada en mg o g (caso Mega Can)', () => {
     expect(interpretarTrama('  0.485', 'mg')).toBe(0.485);
     expect(interpretarTrama('0,485', 'g')).toBe(0.485);

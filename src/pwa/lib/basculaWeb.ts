@@ -107,6 +107,27 @@ const FACTOR_KG: Record<string, number> = {
 const unidadDeNumero = (texto: string, unidadSinMarca: UnidadBascula): UnidadBascula =>
   /[.,]\d/.test(texto) ? 'kg' : unidadSinMarca;
 
+/**
+ * Número como lo escribe la báscula, con separador de miles y de decimales:
+ * "0,000.485" (Mega Can) = 0.485, "1.250,5" = 1250.5, "1,75" = 1.75.
+ * Con los dos separadores, el último es el decimal. Con uno solo repetido
+ * ("1,000,000") son miles; una sola vez ("0,485" o "0.485"), decimal: las
+ * básculas escriben los gramos como decimales del kilo.
+ */
+export function numeroBascula(texto: string): number {
+  const t = texto.trim();
+  const ultimo = Math.max(t.lastIndexOf('.'), t.lastIndexOf(','));
+  let limpio: string;
+  if (t.includes('.') && t.includes(',')) {
+    limpio = t.slice(0, ultimo).replace(/[.,]/g, '') + '.' + t.slice(ultimo + 1);
+  } else {
+    const sep = t.includes(',') ? ',' : '.';
+    const veces = t.split(sep).length - 1;
+    limpio = veces > 1 ? t.split(sep).join('') : t.replace(',', '.');
+  }
+  return parseFloat(limpio);
+}
+
 /** Kilos con precisión de miligramo (6 decimales). */
 const aMiligramo = (kg: number) => Math.round(kg * 1e6) / 1e6;
 
@@ -152,10 +173,11 @@ export function interpretarTrama(trama: string, unidadSinMarca: UnidadBascula = 
 
   // Primero el número que trae su unidad (así un número de báscula o de
   // estado que vaya antes no se toma por el peso); si no hay, el primer número.
-  const conUnidad = limpia.match(/([-+]?)\s*(\d+(?:[.,]\d+)?)\s*(mg|kg|grs|gr|g|lbs|lb|oz)(?![a-z])/i);
-  const m = conUnidad || limpia.match(/([-+]?)\s*(\d+(?:[.,]\d+)?)/);
+  // El número puede traer miles y decimales ("0,000.485"): se toma completo.
+  const conUnidad = limpia.match(/([-+]?)\s*(\d+(?:[.,]\d+)*)\s*(mg|kg|grs|gr|g|lbs|lb|oz)(?![a-z])/i);
+  const m = conUnidad || limpia.match(/([-+]?)\s*(\d+(?:[.,]\d+)*)/);
   if (!m) return null;
-  const numero = parseFloat(m[2].replace(',', '.'));
+  const numero = numeroBascula(m[2]);
   if (!Number.isFinite(numero)) return null;
   const signo = m[1] === '-' ? -1 : 1;
   const unidad = (conUnidad ? m[3] : unidadDeNumero(m[2], unidadSinMarca)).toLowerCase();
