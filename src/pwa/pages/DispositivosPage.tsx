@@ -108,6 +108,17 @@ export function TarjetaBascula({ claro = false }: { claro?: boolean }) {
               </button>
             )}
             {bascula.error && <p className={`${t.error} text-xs`}>{bascula.error}</p>}
+            {/* No reconecta la báscula: solo cambia si sale la ventana al pesar. */}
+            <button type="button" onClick={() => setCfg(guardarConfigBascula({ popupAlPesar: !cfg.popupAlPesar }))}
+              className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left ${cfg.popupAlPesar ? 'border-emerald-500 bg-emerald-500/10' : t.inactivo}`}>
+              <span>
+                <span className="block text-sm font-bold">Ventana automática al pesar</span>
+                <span className={`block text-[11px] ${t.suave}`}>Al poner algo en la báscula sale el peso y un buscador para elegir el producto.</span>
+              </span>
+              <span className={`relative shrink-0 w-11 h-6 rounded-full transition ${cfg.popupAlPesar ? 'bg-emerald-500' : 'bg-slate-400/50'}`}>
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${cfg.popupAlPesar ? 'left-[22px]' : 'left-0.5'}`} />
+              </span>
+            </button>
             {bascula.conectada && (
               <p className={`text-[11px] ${t.suave}`}>Última lectura recibida: <span className={`font-mono ${t.mono}`}>{bascula.ultimaTrama || 'nada todavía'}</span></p>
             )}
@@ -145,7 +156,7 @@ export function TarjetaBascula({ claro = false }: { claro?: boolean }) {
               </select>
             </div>
             <div className="col-span-2">
-              <p className={`${t.etiqueta} text-xs mb-1.5`}>Si la báscula manda solo el número, está en</p>
+              <p className={`${t.etiqueta} text-xs mb-1.5`}>Si la báscula manda un número entero sin unidad (ej. 485), está en</p>
               <div className="flex gap-2">
                 {(['kg', 'g', 'mg'] as const).map((u) => (
                   <button key={u} onClick={() => cambiar({ unidadSinMarca: u })}
@@ -154,6 +165,7 @@ export function TarjetaBascula({ claro = false }: { claro?: boolean }) {
                   </button>
                 ))}
               </div>
+              <p className={`${t.etiqueta} text-xs mt-1.5 opacity-80`}>Un número con punto o coma (ej. 0.485) siempre se lee en kilos.</p>
             </div>
           </div>
         </div>

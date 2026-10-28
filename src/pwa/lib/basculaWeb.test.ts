@@ -36,7 +36,11 @@ describe('miligramos, gramos y kilos', () => {
   });
   it('número solo en la unidad configurada, también miligramos', () => {
     expect(interpretarTrama('  750', 'mg')).toBe(0.00075);
-    expect(interpretarTrama('0.5', 'g')).toBe(0.0005);
+  });
+  it('un número con decimales siempre es kilos, aunque esté marcada en mg o g (caso Mega Can)', () => {
+    expect(interpretarTrama('  0.485', 'mg')).toBe(0.485);
+    expect(interpretarTrama('0,485', 'g')).toBe(0.485);
+    expect(interpretarTrama('=584.0', 'mg')).toBe(0.485);
   });
   it('si hay número de báscula antes, toma el que trae unidad', () => {
     expect(interpretarTrama('N 001 W 1.250kg')).toBe(1.25);

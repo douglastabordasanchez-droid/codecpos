@@ -32,7 +32,12 @@ export interface ConfigBascula {
   /** Puerto recordado para reconectar sin preguntar. */
   puerto?: { usbVendorId?: number; usbProductId?: number };
   nombre?: string;
+  /** Al poner algo en la báscula sale solo la ventana de peso con el buscador (PesoRapido). */
+  popupAlPesar?: boolean;
 }
+
+/** Se dispara al guardar la configuración, para que las pantallas abiertas la lean de nuevo. */
+export const EVENTO_CONFIG_BASCULA = 'codecpos:bascula-config';
 
 export interface EstadoBascula {
   conectada: boolean;
@@ -72,6 +77,7 @@ export function obtenerConfigBascula(): ConfigBascula {
 export function guardarConfigBascula(cambios: Partial<ConfigBascula>): ConfigBascula {
   const nueva = { ...obtenerConfigBascula(), ...cambios };
   try { localStorage.setItem(CLAVE, JSON.stringify(nueva)); } catch { /* sin almacenamiento */ }
+  try { window.dispatchEvent(new Event(EVENTO_CONFIG_BASCULA)); } catch { /* sin ventana (pruebas) */ }
   return nueva;
 }
 
@@ -87,6 +93,15 @@ export type UnidadBascula = 'kg' | 'g' | 'mg';
 const FACTOR_KG: Record<string, number> = {
   kg: 1, g: 0.001, gr: 0.001, grs: 0.001, mg: 0.000001, lb: 0.45359237, lbs: 0.45359237, oz: 0.028349523,
 };
+
+/**
+ * Unidad de un número que llegó sin "kg"/"g": con decimales ("0.485") es kilos
+ * —las básculas en gramos o miligramos mandan enteros—; entero ("485"), la que
+ * se configuró. Antes "0.485" con la báscula marcada en miligramos se leía
+ * como 0,485 mg y el peso quedaba en 0.
+ */
+const unidadDeNumero = (texto: string, unidadSinMarca: UnidadBascula): UnidadBascula =>
+  /[.,]\d/.test(texto) ? 'kg' : unidadSinMarca;
 
 /** Kilos con precisión de miligramo (6 decimales). */
 const aMiligramo = (kg: number) => Math.round(kg * 1e6) / 1e6;
@@ -128,7 +143,7 @@ export function interpretarTrama(trama: string, unidadSinMarca: UnidadBascula = 
     const negativo = texto.endsWith('-') || texto.startsWith('-');
     const numero = parseFloat(texto.replace(/-/g, ''));
     if (!Number.isFinite(numero)) return null;
-    return aMiligramo((negativo ? -1 : 1) * numero * FACTOR_KG[unidadSinMarca]);
+    return aMiligramo((negativo ? -1 : 1) * numero * FACTOR_KG[unidadDeNumero(texto, unidadSinMarca)]);
   }
 
   // Primero el número que trae su unidad (así un número de báscula o de
@@ -139,7 +154,7 @@ export function interpretarTrama(trama: string, unidadSinMarca: UnidadBascula = 
   const numero = parseFloat(m[2].replace(',', '.'));
   if (!Number.isFinite(numero)) return null;
   const signo = m[1] === '-' ? -1 : 1;
-  const unidad = (conUnidad ? m[3] : unidadSinMarca).toLowerCase();
+  const unidad = (conUnidad ? m[3] : unidadDeNumero(m[2], unidadSinMarca)).toLowerCase();
   return aMiligramo(signo * numero * (FACTOR_KG[unidad] ?? 1));
 }
 

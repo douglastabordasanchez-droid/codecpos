@@ -51,6 +51,7 @@ import { ModuloPOS } from '../../app/lib/permissions';
 import { areaDeItem, seVendeSinStock } from '../lib/ventasPorArea';
 import { numeroVentaWeb } from '../../app/lib/numeracionCaja';
 import { ModalPesaje } from '../components/ModalPesaje';
+import { PesoRapido } from '../components/PesoRapido';
 import { CLAVE_CARRITO_TRANSFERIDO, formatoCantidad } from '../lib/carritoTransferido';
 import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../../app/components/factura/RetencionesCobro';
 import { ClienteFacturaCobro } from '../../app/components/factura/ClienteFacturaCobro';
@@ -346,6 +347,14 @@ export default function VenderPage() {
     setPesando(null);
   };
   const [reemplazarPeso, setReemplazarPeso] = useState(false);
+  // Peso rápido (Dispositivos → Báscula): lo que ya hay en el carrito se descuenta del stock.
+  const productosPesoRapido = useMemo(
+    () => productos.filter(esGranel).map((p) => ({
+      id: p.id, nombre: p.nombre, codigo: p.codigo_barras, precioKg: carrito[p.id]?.precio ?? p.precio_venta,
+      stockKg: Math.max(0, Number(p.stock) - (carrito[p.id]?.cantidad || 0)),
+    })),
+    [productos, carrito]
+  );
 
   const agregarAlCarrito = (p: ProductoFila) => {
     if (esGranel(p)) {
@@ -1226,6 +1235,11 @@ export default function VenderPage() {
       )}
       {modalEspera}
       {escaner}
+      <PesoRapido
+        productos={productosPesoRapido}
+        bloqueado={!!pesando || mostrarCheckout || mostrarScanner}
+        onAgregar={(id, kg) => { const p = productos.find((x) => x.id === id); if (p) agregarPesado(p, kg); }}
+      />
       {pesando && (
         <ModalPesaje
           nombre={pesando.nombre}

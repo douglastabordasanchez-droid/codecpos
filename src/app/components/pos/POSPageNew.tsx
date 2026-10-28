@@ -100,6 +100,7 @@ import { modoFacturacionEfectivo } from '../../lib/dian/modoFacturacion';
 import { ModalPesaje } from '../../../pwa/components/ModalPesaje';
 import { formatoPeso } from '../../../pwa/lib/basculaWeb';
 import { usePesoVisible } from '../../../pwa/hooks/useBasculaWeb';
+import { PesoRapido } from '../../../pwa/components/PesoRapido';
 
 /** Peso en la barra de la caja: solo este pedacito se redibuja con cada lectura de la báscula. */
 function PesoEnVivo() {
@@ -1382,7 +1383,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const agregarProductoPesable = (pesoKg: number) => {
+  const agregarProductoPesable = (pesoKg: number, producto: Producto | null = productoPesable) => {
+    const productoPesable = producto;
     if (!productoPesable) return;
     if (!(pesoKg > 0)) {
       toast.error('No se detectó peso en la báscula');
@@ -1408,8 +1410,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
     toast.success(`${productoPesable.nombre} - ${formatoPeso(pesoKg)} agregado`);
     setProductoPesable(null);
-    bascula.tarar();
+    // Sin tarar aquí: con el producto todavía encima, la tara dejaba el
+    // siguiente pesaje descontado (o en 0 al quitarlo).
   };
+
+  // Peso rápido (Dispositivos → Báscula): los productos a granel para el buscador.
+  const productosPesoRapido = useMemo(
+    () => productos.filter((p) => p.pesable || (p as any).tipoProducto === 'granel').map((p) => ({
+      id: p.id, nombre: p.nombre, codigo: p.codigo, precioKg: p.precio, stockKg: p.stock > 0 ? p.stock : undefined,
+    })),
+    [productos]
+  );
 
   // Guardar nuevo producto desde el modal de auto-completado
   const handleGuardarProductoNuevo = (nuevoProducto: any) => {
@@ -3831,6 +3842,13 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           />
         )}
       </AnimatePresence>
+
+      <PesoRapido
+        claro={!darkMode}
+        productos={productosPesoRapido}
+        bloqueado={!!productoPesable || mostrarPago || showPagoModal || showPagoMixtoModal || mostrarTicket || showProductoNuevoModal || showProductoManualModal}
+        onAgregar={(id, kg) => agregarProductoPesable(kg, productos.find((p) => p.id === id) || null)}
+      />
 
       {/* Modal de Pago */}
       <AnimatePresence>
