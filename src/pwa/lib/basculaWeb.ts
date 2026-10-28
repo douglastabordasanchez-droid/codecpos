@@ -28,7 +28,7 @@ export interface ConfigBascula {
   /** '' = la báscula manda el peso sola. */
   comando: ComandoBascula;
   /** Unidad cuando la báscula manda solo el número. */
-  unidadSinMarca: 'kg' | 'g';
+  unidadSinMarca: UnidadBascula;
   /** Puerto recordado para reconectar sin preguntar. */
   puerto?: { usbVendorId?: number; usbProductId?: number };
   nombre?: string;
@@ -81,18 +81,92 @@ export function basculaConfigurada(): boolean {
 
 // ── Lectura de tramas ──────────────────────────────────────────────────────
 
-/** Convierte una trama de la báscula en kg, o null si no trae un peso. */
-export function interpretarTrama(trama: string, unidadSinMarca: 'kg' | 'g' = 'kg'): number | null {
+/** Unidad en que pesa la báscula cuando manda solo el número (sin "kg", "g"...). */
+export type UnidadBascula = 'kg' | 'g' | 'mg';
+
+const FACTOR_KG: Record<string, number> = {
+  kg: 1, g: 0.001, gr: 0.001, grs: 0.001, mg: 0.000001, lb: 0.45359237, lbs: 0.45359237, oz: 0.028349523,
+};
+
+/** Kilos con precisión de miligramo (6 decimales). */
+const aMiligramo = (kg: number) => Math.round(kg * 1e6) / 1e6;
+
+/**
+ * Formato continuo de Toledo (y sus copias): STX + 3 bytes de estado + 6
+ * dígitos de peso + 6 de tara, sin punto decimal. El punto lo dicen los bits
+ * 0-2 del primer byte; el signo y kg/lb, el segundo. null si no es ese formato.
+ */
+function interpretarToledo(trama: string): number | null {
+  const t = trama.replace(/^\x02/, '');
+  if (t.length < 15 || !/^.{3}\d{12}/.test(t)) return null;
+  const a = t.charCodeAt(0);
+  const b = t.charCodeAt(1);
+  if ((a & 0x20) === 0 || (b & 0x20) === 0) return null; // el bit 5 de los estados siempre va en 1
+  const decimales = [-2, -1, 0, 1, 2, 3, 4, 5][a & 0x07];
+  const peso = parseInt(t.slice(3, 9), 10) / 10 ** decimales;
+  const signo = b & 0x02 ? -1 : 1;
+  const factor = b & 0x10 ? 1 : FACTOR_KG.lb;
+  return aMiligramo(signo * peso * factor);
+}
+
+/**
+ * Convierte una trama de la báscula en kg (con miligramos), o null si no trae
+ * un peso. Entiende "ST,GS,+0001.250kg", "W 1.250 kg", "1250 gr", "250 mg",
+ * "2.75 lb", el formato continuo de Toledo, el invertido de los indicadores
+ * XK3190 ("=05.2100" = 0012.50) y números solos en la unidad configurada.
+ */
+export function interpretarTrama(trama: string, unidadSinMarca: UnidadBascula = 'kg'): number | null {
+  const toledo = interpretarToledo(trama);
+  if (toledo !== null) return toledo;
   const limpia = trama.replace(/[\x00-\x1f]/g, ' ').trim();
   if (!limpia) return null;
-  const m = limpia.match(/([-+]?)\s*(\d+(?:[.,]\d+)?)\s*(kg|g|lb|oz)?/i);
+
+  // Invertido (XK3190 y similares): "=" + el número escrito al revés, sin unidad.
+  const invertido = limpia.match(/^=\s*([-\d.]+)$/);
+  if (invertido) {
+    const texto = invertido[1].split('').reverse().join('');
+    const negativo = texto.endsWith('-') || texto.startsWith('-');
+    const numero = parseFloat(texto.replace(/-/g, ''));
+    if (!Number.isFinite(numero)) return null;
+    return aMiligramo((negativo ? -1 : 1) * numero * FACTOR_KG[unidadSinMarca]);
+  }
+
+  // Primero el número que trae su unidad (así un número de báscula o de
+  // estado que vaya antes no se toma por el peso); si no hay, el primer número.
+  const conUnidad = limpia.match(/([-+]?)\s*(\d+(?:[.,]\d+)?)\s*(mg|kg|grs|gr|g|lbs|lb|oz)(?![a-z])/i);
+  const m = conUnidad || limpia.match(/([-+]?)\s*(\d+(?:[.,]\d+)?)/);
   if (!m) return null;
   const numero = parseFloat(m[2].replace(',', '.'));
   if (!Number.isFinite(numero)) return null;
   const signo = m[1] === '-' ? -1 : 1;
-  const unidad = (m[3] || unidadSinMarca).toLowerCase();
-  const factor = unidad === 'g' ? 0.001 : unidad === 'lb' ? 0.45359237 : unidad === 'oz' ? 0.028349523 : 1;
-  return Math.round(signo * numero * factor * 1000) / 1000;
+  const unidad = (conUnidad ? m[3] : unidadSinMarca).toLowerCase();
+  return aMiligramo(signo * numero * (FACTOR_KG[unidad] ?? 1));
+}
+
+/**
+ * Parte lo que llegó del puerto en tramas. Una trama termina en salto de
+ * línea, retorno o ETX; empieza en STX o en "=" (las básculas que mandan
+ * "=05.2100=05.2100" sin salto de línea). Devuelve las tramas completas y lo
+ * que quedó a medias para la siguiente lectura.
+ */
+export function partirTramas(buffer: string): { tramas: string[]; resto: string } {
+  const partes = buffer.split(/[\r\n\x03]+|(?=[\x02=])/);
+  const resto = partes.pop() ?? '';
+  return { tramas: partes.filter((p) => p.replace(/[\x00-\x20]/g, '') !== ''), resto };
+}
+
+/** Lo que mandó la báscula, legible (los caracteres de control como ·), para "Última lectura". */
+export function tramaVisible(trama: string): string {
+  return trama.replace(/[\x00-\x1f\x7f-\xff]/g, '·').trim().slice(0, 40);
+}
+
+/** Peso para mostrar: kilos desde 1 kg, gramos desde 1 g y miligramos por debajo. */
+export function formatoPeso(kg: number): string {
+  const a = Math.abs(kg);
+  if (a >= 1) return `${kg.toLocaleString('es-CO', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
+  if (a >= 0.001) return `${(kg * 1000).toLocaleString('es-CO', { maximumFractionDigits: 1 })} g`;
+  if (a > 0) return `${Math.round(kg * 1e6).toLocaleString('es-CO')} mg`;
+  return '0 g';
 }
 
 // ── Autodetección ──────────────────────────────────────────────────────────
@@ -129,7 +203,7 @@ export function tramaLegible(trama: string): boolean {
 async function sondearSerie(
   puerto: any,
   serie: SerieBascula,
-  unidadSinMarca: 'kg' | 'g',
+  unidadSinMarca: UnidadBascula,
   comandos: ComandoBascula[] = COMANDOS_SONDEO,
 ): Promise<ComandoBascula | null> {
   await puerto.open(serie);
@@ -164,15 +238,16 @@ async function sondearSerie(
   const corte = setTimeout(() => { lector.cancel().catch(() => {}); }, limite);
 
   try {
-    const decodificador = new TextDecoder();
+    // latin1: los bytes de estado de algunas básculas (Toledo) pasan tal cual.
+    const decodificador = new TextDecoder('latin1');
     let buffer = '';
     while (validas < 2) {
       const { value, done } = await lector.read();
       if (done) break;
       buffer += decodificador.decode(value, { stream: true });
-      const partes = buffer.split(/[\r\n\x03]+/);
-      buffer = (partes.pop() || '').slice(-64);
-      for (const trama of partes) {
+      const { tramas, resto } = partirTramas(buffer);
+      buffer = resto.slice(-64);
+      for (const trama of tramas) {
         if (!tramaLegible(trama) || interpretarTrama(trama, unidadSinMarca) === null) continue;
         if (respondio === null) respondio = enviado;
         validas++;
@@ -235,8 +310,10 @@ export function suscribirBascula(f: (e: EstadoBascula) => void): () => void {
 function registrarPeso(kg: number) {
   pesoBrutoKg = kg;
   recientes = [...recientes.slice(-2), kg];
-  const estable = recientes.length === 3 && Math.max(...recientes) - Math.min(...recientes) < 0.002;
-  publicar({ pesoKg: Math.max(0, Math.round((kg - taraKg) * 1000) / 1000), estable });
+  // Estable: tres lecturas seguidas casi iguales (1 mg o el 0,1 % del peso).
+  const margen = Math.max(0.000001, Math.abs(kg) * 0.001);
+  const estable = recientes.length === 3 && Math.max(...recientes) - Math.min(...recientes) <= margen;
+  publicar({ pesoKg: Math.max(0, aMiligramo(kg - taraKg)), estable });
 }
 
 function bytesComando(comando: ComandoBascula): Uint8Array | null {
@@ -275,8 +352,8 @@ async function abrir(puerto: any) {
   leer(puerto, cfg.unidadSinMarca);
 }
 
-async function leer(puerto: any, unidadSinMarca: 'kg' | 'g') {
-  const decodificador = new TextDecoder();
+async function leer(puerto: any, unidadSinMarca: UnidadBascula) {
+  const decodificador = new TextDecoder('latin1');
   let buffer = '';
   try {
     while (puerto.readable && puertoActual === puerto) {
@@ -286,19 +363,22 @@ async function leer(puerto: any, unidadSinMarca: 'kg' | 'g') {
           const { value, done } = await lector.read();
           if (done) break;
           buffer += decodificador.decode(value, { stream: true });
-          // Una trama termina en salto de línea, retorno o ETX.
-          const partes = buffer.split(/[\r\n\x03]+/);
-          buffer = partes.pop() || '';
-          for (const trama of partes) {
+          const { tramas, resto } = partirTramas(buffer);
+          buffer = resto;
+          for (const trama of tramas) {
             const kg = interpretarTrama(trama, unidadSinMarca);
-            if (trama.trim()) publicar({ ultimaTrama: trama.trim().slice(0, 40) });
+            publicar({ ultimaTrama: tramaVisible(trama) });
             if (kg !== null) registrarPeso(kg);
           }
-          // Básculas que mandan el número sin terminador.
+          // Básculas que mandan el número sin terminador: se lee lo acumulado.
           if (buffer.length > 64) {
             const kg = interpretarTrama(buffer, unidadSinMarca);
+            publicar({ ultimaTrama: tramaVisible(buffer) });
             if (kg !== null) registrarPeso(kg);
             buffer = '';
+          } else if (!tramas.length && buffer.trim()) {
+            // Aún sin trama completa: se muestra lo que va llegando para poder revisarlo.
+            publicar({ ultimaTrama: tramaVisible(buffer) });
           }
         }
       } finally {

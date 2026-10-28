@@ -35,8 +35,9 @@ import { CLAVE_CARRITO_TRANSFERIDO, transferirAlCarrito } from '../lib/carritoTr
 import type { ItemCarritoMovil } from '../lib/ventaMovilService';
 import {
   listarProductosVet, esProductoFarmacia, listarCategoriasGranel, guardarCategoriaGranel, eliminarCategoriaGranel,
-  guardarBulto, eliminarProductoVet, crearProductoMascotas, type ProductoVetWeb, type CategoriaGranelWeb,
+  guardarBulto, eliminarProductoVet, crearProductoMascotas, coincideBusquedaVet, type ProductoVetWeb, type CategoriaGranelWeb,
 } from '../lib/veterinariaWeb';
+import { DescargarExcelMascotas } from '../components/DescargarExcelMascotas';
 import {
   listarCitasGrooming, crearCitaGrooming, actualizarEstadoCita,
   type CitaGrooming, type EstadoCita, type TipoCita,
@@ -183,7 +184,7 @@ export default function VeterinariaPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-[calc(12rem+env(safe-area-inset-bottom))] lg:pb-28">
-      <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-4 flex items-center gap-3">
+      <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-4 flex flex-wrap items-center gap-3">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
           <PawPrint className="w-6 h-6" style={{ color: '#fff' }} />
         </div>
@@ -191,6 +192,7 @@ export default function VeterinariaPage() {
           <h1 className="text-white text-xl sm:text-2xl font-black">Veterinaria y Mascotas</h1>
           <p className="text-slate-400 text-xs sm:text-sm">Granel con báscula, ficha clínica, agenda y farmacia, conectados al inventario y a la caja</p>
         </div>
+        <DescargarExcelMascotas clienteId={clienteId} claro={false} />
         <BotonNuevoMascotas tema={TEMA_WEB} onGuardar={async (item) => {
           if (item.tipo === 'bulto' && item.bulto) {
             // Igual que crear un bulto en Alimentos a Granel: precio y stock en kilos.
@@ -286,7 +288,7 @@ function TabGranel({ clienteId, empleadoId, productos, pendientes, onCambio, onV
   const categoriaDe = (p: ProductoVetWeb) => categorias.find((c) => c.nombre.toLowerCase() === (p.categoria || '').toLowerCase());
   const visibles = productos.filter((p) =>
     (!filtro || (p.categoria || '').toLowerCase() === filtro.toLowerCase()) &&
-    (!busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.toLowerCase())));
+    coincideBusquedaVet(p, busqueda));
   const kgPendientes = (id: string) => pendientes.filter((it) => it.productoId === id).reduce((a, it) => a + it.cantidad, 0);
 
   const guardarCategoria = async () => {
@@ -1165,7 +1167,7 @@ function TabFarmacia({ productos, serviciosConsulta, onVender, onFacturarConsult
   const [precioConsulta, setPrecioConsulta] = useState('45000');
 
   const visibles = useMemo(
-    () => productos.filter((p) => !busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.toLowerCase())),
+    () => productos.filter((p) => coincideBusquedaVet(p, busqueda)),
     [productos, busqueda],
   );
   const cant = (id: string) => cantidades[id] ?? 1;

@@ -97,6 +97,14 @@ import { suscribirCodigosEscaneados } from '../../lib/supabase/scanBroadcast';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
 import { modoFacturacionEfectivo } from '../../lib/dian/modoFacturacion';
+import { ModalPesaje } from '../../../pwa/components/ModalPesaje';
+import { formatoPeso } from '../../../pwa/lib/basculaWeb';
+import { usePesoVisible } from '../../../pwa/hooks/useBasculaWeb';
+
+/** Peso en la barra de la caja: solo este pedacito se redibuja con cada lectura de la báscula. */
+function PesoEnVivo() {
+  return <>{usePesoVisible() || '0 g'}</>;
+}
 import { avisoProductosSinIva } from '../../lib/dian/configIva';
 import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '../../lib/dian/types';
@@ -1194,14 +1202,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     if (producto) {
       // ✅ PRODUCTO ENCONTRADO
       if (producto.pesable) {
-        // Producto se vende por peso, esperar lectura de báscula
-        if (!bascula.conectado) {
-          toast.error('Conecta la báscula para productos pesables', {
-            icon: '⚖️',
-            duration: 3000,
-          });
-          return;
-        }
+        // Producto se vende por peso: la ventana de pesaje lee la báscula o deja escribir el peso.
         setProductoPesable(producto);
         toast.info(`Coloca ${producto.nombre} en la báscula...`, {
           icon: '⚖️',
@@ -1354,10 +1355,6 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // Seleccionar producto de las sugerencias
   const seleccionarProductoSugerido = (producto: Producto) => {
     if (producto.pesable) {
-      if (!bascula.conectado) {
-        toast.error('Conecta la báscula para productos pesables');
-        return;
-      }
       setProductoPesable(producto);
       toast.info(`Coloca ${producto.nombre} en la báscula...`);
     } else {
@@ -1385,12 +1382,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const agregarProductoPesable = () => {
+  const agregarProductoPesable = (pesoKg: number) => {
     if (!productoPesable) return;
-
-    const pesoRaw = bascula?.peso ?? 0;
-    const pesoKg = pesoRaw / 1000;
-    if (pesoKg === 0) {
+    if (!(pesoKg > 0)) {
       toast.error('No se detectó peso en la báscula');
       return;
     }
@@ -1412,7 +1406,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       }, ...carrito]);
     }
 
-    toast.success(`${productoPesable.nombre} - ${pesoKg.toFixed(2)} kg agregado`);
+    toast.success(`${productoPesable.nombre} - ${formatoPeso(pesoKg)} agregado`);
     setProductoPesable(null);
     bascula.tarar();
   };
@@ -2963,7 +2957,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             className={`rounded-lg text-[10px] h-7 px-2 transition-colors ${bascula.conectado ? 'bg-emerald-600 hover:bg-emerald-700 border-emerald-600 text-white' : ''}`}
           >
             <Scale className="w-3 h-3 mr-1" />
-            {bascula.conectado ? `${(bascula.peso / 1000).toFixed(2)}kg` : 'Báscula'}
+            {bascula.conectado ? <PesoEnVivo /> : 'Báscula'}
           </Button>
 
           <Button
@@ -3163,7 +3157,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                                 <div className="flex items-center gap-2">
                                   <Scale className="w-4 h-4 text-blue-500" />
                                   <span className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    {item.peso.toFixed(2)} kg × ${item.producto.precio.toLocaleString('es-CO')}/kg
+                                    {formatoPeso(item.peso)} × ${item.producto.precio.toLocaleString('es-CO')}/kg
                                   </span>
                                 </div>
                               ) : (
@@ -3825,64 +3819,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         )}
 
         {productoPesable && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center"
-          >
-            <motion.div
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.9 }}
-              className={`max-w-md w-full rounded-3xl p-8 ${
-                darkMode ? 'bg-slate-900 border-2 border-slate-700' : 'bg-white'
-              }`}
-            >
-              <div className="text-center mb-6">
-                <Scale className="w-20 h-20 text-blue-500 mx-auto mb-4" />
-                <h3 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {productoPesable.nombre}
-                </h3>
-                <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  ${productoPesable.precio.toLocaleString('es-CO')} /kg
-                </p>
-              </div>
-
-              <div className={`p-6 rounded-2xl mb-6 ${
-                darkMode ? 'bg-slate-800 border-2 border-slate-700' : 'bg-gray-50'
-              }`}>
-                <div className="text-center">
-                  <p className={`text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Peso detectado:
-                  </p>
-                  <div className="text-6xl font-bold text-blue-500 mb-2">
-                    {(bascula.peso / 1000).toFixed(3)}
-                  </div>
-                  <p className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    kilogramos
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setProductoPesable(null)}
-                  variant="outline"
-                  className="flex-1 rounded-2xl h-14 text-lg"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={agregarProductoPesable}
-                  disabled={bascula.peso === 0}
-                  className="flex-1 rounded-2xl h-14 text-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                >
-                  Agregar
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
+          // La misma ventana de pesaje de la web (ModalPesaje): báscula en vivo, tara,
+          // peso a mano en kg, g o mg, y funciona aunque la báscula no esté conectada.
+          <ModalPesaje
+            claro={!darkMode}
+            nombre={productoPesable.nombre}
+            precioPorKg={productoPesable.precio}
+            stockKg={productoPesable.stock > 0 ? productoPesable.stock : undefined}
+            onConfirmar={(kg) => agregarProductoPesable(kg)}
+            onCerrar={() => setProductoPesable(null)}
+          />
         )}
       </AnimatePresence>
 
@@ -4334,16 +4280,19 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             </div>
 
             {feVisor?.venta === ventaActual.numeroFactura && (feVisor.estado === 'esperando' || feVisor.estado === 'demorada') ? (
-              <div className="flex flex-col items-center justify-center text-center py-14 gap-3">
-                <Loader2 className="w-9 h-9 animate-spin text-emerald-500" />
-                <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Enviando la factura electrónica a la DIAN…</p>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {feVisor.estado === 'demorada' && feVisor.aviso ? feVisor.aviso : 'En unos segundos aparece la factura con el CUFE y el QR, lista para imprimir o enviar al cliente.'}
-                </p>
-                {feVisor.estado === 'demorada' && (
-                  <Button onClick={() => setMostrarTicket(false)} className="mt-2 rounded-xl">Cerrar y seguir vendiendo</Button>
-                )}
-              </div>
+              // La tirilla normal sale de una vez; la electrónica la reemplaza sola cuando
+              // la DIAN la aprueba. Antes el cajero miraba un "Enviando…" en blanco varios segundos.
+              <>
+                <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm flex items-start gap-3 ${darkMode ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200' : 'bg-emerald-50 border-emerald-300 text-emerald-800'}`}>
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0 mt-0.5" />
+                  <span>
+                    {feVisor.estado === 'demorada' && feVisor.aviso
+                      ? feVisor.aviso
+                      : 'Enviando la factura electrónica a la DIAN. Cuando la apruebe, aquí aparece con el CUFE y el QR. Puedes seguir vendiendo.'}
+                  </span>
+                </div>
+                {ticketContenidoListo && <TicketReceipt venta={ventaActual} />}
+              </>
             ) : feVisor?.venta === ventaActual.numeroFactura && feVisor.estado === 'fallida' ? (
               <div className="flex flex-col items-center justify-center text-center py-10 gap-3">
                 <AlertTriangle className="w-9 h-9 text-red-500" />

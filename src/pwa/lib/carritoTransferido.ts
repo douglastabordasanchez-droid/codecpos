@@ -5,6 +5,7 @@
  * `codecpos_carrito_transferido` en Electron.
  */
 import type { ItemCarritoMovil } from './ventaMovilService';
+import { formatoPeso } from './basculaWeb';
 
 export const CLAVE_CARRITO_TRANSFERIDO = 'codecpos_web_carrito_transferido';
 
@@ -18,7 +19,7 @@ export function transferirAlCarrito(items: ItemCarritoMovil[]): boolean {
   }
 }
 
-/** "1.250 kg" para lo pesado, el número tal cual para unidades. */
+/** "1,250 kg", "250 g" o "500 mg" para lo pesado; el número tal cual para unidades. */
 export function formatoCantidad(cantidad: number, unidad?: 'kg'): string {
-  return unidad === 'kg' ? `${cantidad.toFixed(3).replace(/\.?0+$/, '')} kg` : String(cantidad);
+  return unidad === 'kg' ? formatoPeso(cantidad) : String(cantidad);
 }

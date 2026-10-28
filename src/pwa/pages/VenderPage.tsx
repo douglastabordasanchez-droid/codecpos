@@ -290,7 +290,7 @@ export default function VenderPage() {
       for (const it of recibidos) {
         const actual = nuevo[it.productoId];
         nuevo[it.productoId] = actual
-          ? { ...actual, cantidad: Math.round((actual.cantidad + it.cantidad) * 1000) / 1000 }
+          ? { ...actual, cantidad: Math.round((actual.cantidad + it.cantidad) * 1e6) / 1e6 }
           : it;
       }
       return nuevo;
@@ -336,7 +336,8 @@ export default function VenderPage() {
   const agregarPesado = (p: ProductoFila, kg: number, reemplazar = false) => {
     setCarrito((prev) => {
       const actual = prev[p.id];
-      const cantidad = Math.round(((reemplazar ? 0 : actual?.cantidad || 0) + kg) * 1000) / 1000;
+      // Con miligramos: la báscula puede pesar en mg, g o kg.
+      const cantidad = Math.round(((reemplazar ? 0 : actual?.cantidad || 0) + kg) * 1e6) / 1e6;
       return {
         ...prev,
         [p.id]: { productoId: p.id, nombre: p.nombre, precio: actual?.precio ?? p.precio_venta, precioOriginal: p.precio_venta, cantidad, unidad: 'kg', area: areaVet(p) },

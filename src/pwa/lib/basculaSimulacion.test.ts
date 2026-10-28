@@ -9,7 +9,7 @@ const store: Record<string, string> = {};
 };
 (globalThis as any).window = globalThis;
 
-type Modelo = { baudRate: number; dataBits: number; parity: string; comando: string | null; trama: string };
+type Modelo = { baudRate: number; dataBits: number; parity: string; comando: string | null; trama: string; fin?: string };
 
 function puertoFalso(modelo: Modelo | null, info: any = {}) {
   let abierto: any = null;
@@ -18,7 +18,7 @@ function puertoFalso(modelo: Modelo | null, info: any = {}) {
   const coincide = () => modelo && abierto && abierto.baudRate === modelo.baudRate && abierto.dataBits === modelo.dataBits && abierto.parity === modelo.parity;
   const mandar = () => {
     if (!ctrl) return;
-    if (coincide()) ctrl.enqueue(new TextEncoder().encode(modelo!.trama + '\r\n'));
+    if (coincide()) ctrl.enqueue(new TextEncoder().encode(modelo!.trama + (modelo!.fin ?? '\r\n')));
     else if (modelo) ctrl.enqueue(new Uint8Array([0xb5, 0xfe, 0x8a, 0x0d, 0x0a])); // basura por config equivocada
   };
   const p: any = {
@@ -95,6 +95,30 @@ describe('simulación de básculas', () => {
     await b.reconectarBascula();
     expect(autodetectar).toHaveBeenCalledTimes(1);
   }, 30000);
+
+  it('XK3190: manda "=05.2100" pegado y sin salto de línea; se detecta y pesa 12,5 kg', async () => {
+    const b = await cargar();
+    const p = puertoFalso({ baudRate: 9600, dataBits: 8, parity: 'none', comando: null, trama: '=05.2100', fin: '' });
+    expect(await b.detectarConfigSerie(p)).toMatchObject({ baudRate: 9600, comando: '' });
+    Object.defineProperty(globalThis, "navigator", { value: { serial: { requestPort: async () => p, getPorts: async () => [p] } }, configurable: true });
+    await b.conectarBascula();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(b.estadoBascula()).toMatchObject({ conectada: true, pesoKg: 12.5, error: null });
+    expect(b.estadoBascula().ultimaTrama).toBe('=05.2100');
+    await b.desconectarBascula(false);
+  }, 60000);
+
+  it('báscula en miligramos sin unidad (configurada en mg)', async () => {
+    const b = await cargar();
+    b.guardarConfigBascula({ unidadSinMarca: 'mg' });
+    const p = puertoFalso({ baudRate: 9600, dataBits: 8, parity: 'none', comando: null, trama: '  250' });
+    Object.defineProperty(globalThis, "navigator", { value: { serial: { requestPort: async () => p, getPorts: async () => [p] } }, configurable: true });
+    await b.conectarBascula();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(b.estadoBascula().pesoKg).toBe(0.00025);
+    expect(b.formatoPeso(b.estadoBascula().pesoKg)).toBe('250 mg');
+    await b.desconectarBascula(false);
+  }, 60000);
 
   it('flujo completo: conectar, leer peso, tara; en Electron olvida el COM si no hay peso', async () => {
     const b = await cargar();

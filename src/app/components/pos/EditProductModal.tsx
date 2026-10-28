@@ -56,19 +56,28 @@ export function EditProductModal({ darkMode, isOpen, product, onClose, onProduct
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.codigo || !formData.nombre || !formData.precio || !formData.stock || !formData.costo) {
-      toast.error('Complete todos los campos obligatorios');
+    // Existencia y costo pueden ser 0 (antes un 0 se tomaba como campo vacío y no dejaba guardar).
+    const vacio = (v: unknown) => v === undefined || v === null || String(v).trim() === '';
+    if (vacio(formData.codigo) || vacio(formData.nombre) || vacio(formData.precio)) {
+      toast.error('Complete el código, el nombre y el precio');
       return;
     }
+    const codigoNuevo = String(formData.codigo).trim();
 
     try {
       // Actualizar en localStorage
       const productosLocal = localStorage.getItem('pos-productos');
       if (productosLocal) {
         const productos = JSON.parse(productosLocal);
+        // El código identifica el producto en la caja, el lector y la báscula: no puede repetirse.
+        const otro = productos.find((p: Producto) => p.id !== formData.id && String(p.codigo || '').trim().toLowerCase() === codigoNuevo.toLowerCase());
+        if (otro) {
+          toast.error(`El código ${codigoNuevo} ya lo tiene «${otro.nombre}»`, { description: 'Usa otro código para no confundir los productos.' });
+          return;
+        }
         const index = productos.findIndex((p: Producto) => p.id === formData.id);
         if (index !== -1) {
-          productos[index] = formData;
+          productos[index] = { ...formData, codigo: codigoNuevo };
           localStorage.setItem('pos-productos', JSON.stringify(productos));
         }
       }
@@ -148,12 +157,12 @@ export function EditProductModal({ darkMode, isOpen, product, onClose, onProduct
                 <label className={`block mb-2 font-semibold text-sm ${
                   darkMode ? 'text-gray-300' : 'text-gray-700'
                 }`}>
-                  Código de Barras *
+                  Código * <span className="font-normal opacity-70">(de barras o corto, ej. G42)</span>
                 </label>
                 <Input
                   value={formData.codigo}
                   onChange={(e) => handleChange('codigo', e.target.value)}
-                  placeholder="7702001001"
+                  placeholder="7702001001 o G42"
                   required
                   className={`rounded-xl ${
                     darkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white'

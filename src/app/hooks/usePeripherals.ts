@@ -59,9 +59,11 @@ export function useBarcodeScanner(onScan: (code: string) => void) {
 // Hook para Báscula por Puerto Serial (Web Serial API)
 // Usa la misma báscula que la web (basculaWeb.ts): cualquier chip USB-serie o
 // COM, velocidad y comando configurables, tara real y reconexión sola al
-// volver a abrir la pantalla. `peso` sigue en gramos para la caja de Electron.
+// volver a abrir la pantalla. No trae el peso: la caja solo se redibuja si la
+// báscula se conecta o se desconecta (no con cada lectura); el peso lo muestran
+// ModalPesaje y PesoEnVivo, que son pequeños.
 export function useSerialScale() {
-  const estado = useBasculaWeb();
+  const estado = useBasculaWeb((e) => ({ conectada: e.conectada }));
 
   const conectarBascula = async () => {
     try {
@@ -91,7 +93,6 @@ export function useSerialScale() {
   };
 
   return {
-    peso: estado.pesoKg * 1000,
     conectado: estado.conectada,
     conectarBascula,
     desconectarBascula,

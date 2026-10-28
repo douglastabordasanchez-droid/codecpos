@@ -14,6 +14,8 @@ import { traerTodo } from './nubeConsultas';
 export interface ProductoVetWeb {
   id: string;
   nombre: string;
+  /** Código de barras o corto (G16): para buscarlo como en la caja. */
+  codigo_barras?: string | null;
   categoria: string | null;
   precio_venta: number;
   costo: number;
@@ -44,7 +46,7 @@ export const CATEGORIAS_GRANEL_INICIALES = [
   { nombre: 'Otros Animales', icono: 'general', color: '#8b5cf6' },
 ];
 
-const SELECT_PRODUCTO = 'id, nombre, categoria, precio_venta, costo, stock, tipo_producto, especie, requiere_receta, lote, fecha_vencimiento, peso_bulto_kg, precio_por_kilo, rendimiento_raciones';
+const SELECT_PRODUCTO = 'id, nombre, codigo_barras, categoria, precio_venta, costo, stock, tipo_producto, especie, requiere_receta, lote, fecha_vencimiento, peso_bulto_kg, precio_por_kilo, rendimiento_raciones';
 
 function cliente() {
   const c = getSupabaseClient();
@@ -67,6 +69,14 @@ export async function listarProductosVet(clienteId: string): Promise<ProductoVet
     costo: Number(p.costo) || 0,
     stock: Number(p.stock) || 0,
   }));
+}
+
+const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/** Busca por nombre o por código (G16, 16G…), sin importar tildes ni mayúsculas. */
+export function coincideBusquedaVet(p: ProductoVetWeb, busqueda: string): boolean {
+  const q = sinTildes(busqueda.trim());
+  return q === '' || sinTildes(p.nombre).includes(q) || sinTildes(String(p.codigo_barras ?? '')).includes(q);
 }
 
 /** Mismo criterio que Electron para la pestaña Farmacia. */

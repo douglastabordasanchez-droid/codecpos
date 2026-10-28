@@ -13,7 +13,7 @@ import {
 } from '../lib/impresoraWeb';
 import { esIphone } from '../lib/pushPagos';
 import {
-  soporteBascula, conectarBascula, desconectarBascula, tararBascula, obtenerConfigBascula, guardarConfigBascula,
+  soporteBascula, conectarBascula, desconectarBascula, tararBascula, obtenerConfigBascula, guardarConfigBascula, formatoPeso,
   COMANDOS_BASCULA, type ComandoBascula, type ConfigBascula,
 } from '../lib/basculaWeb';
 import { useBasculaWeb } from '../hooks/useBasculaWeb';
@@ -89,7 +89,7 @@ export function TarjetaBascula({ claro = false }: { claro?: boolean }) {
                 <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className={`${t.texto} text-sm font-bold truncate`}>{cfg.nombre || 'Báscula conectada'}</p>
-                  <p className={`${t.suave} text-xs`}>Peso: <b className={bascula.estable ? 'text-emerald-500' : 'text-amber-500'}>{bascula.pesoKg.toFixed(3)} kg</b>{bascula.estable ? ' · estable' : ''}</p>
+                  <p className={`${t.suave} text-xs`}>Peso: <b className={bascula.estable ? 'text-emerald-500' : 'text-amber-500'}>{formatoPeso(bascula.pesoKg)}</b>{bascula.estable ? ' · estable' : ''}</p>
                 </div>
                 <button onClick={tararBascula} className={`px-2.5 h-8 rounded-lg ${t.tarar} text-xs font-semibold`}>Tarar</button>
                 <button onClick={() => { desconectarBascula(true); toast('Báscula olvidada en este equipo'); }} className={`p-2 rounded-lg ${t.suave} hover:text-red-500`} title="Olvidar báscula">
@@ -147,10 +147,10 @@ export function TarjetaBascula({ claro = false }: { claro?: boolean }) {
             <div className="col-span-2">
               <p className={`${t.etiqueta} text-xs mb-1.5`}>Si la báscula manda solo el número, está en</p>
               <div className="flex gap-2">
-                {(['kg', 'g'] as const).map((u) => (
+                {(['kg', 'g', 'mg'] as const).map((u) => (
                   <button key={u} onClick={() => cambiar({ unidadSinMarca: u })}
                     className={`flex-1 h-10 rounded-xl text-sm font-bold ${cfg.unidadSinMarca === u ? 'bg-amber-500 text-slate-950' : t.inactivo}`}>
-                    {u === 'kg' ? 'Kilos' : 'Gramos'}
+                    {u === 'kg' ? 'Kilos' : u === 'g' ? 'Gramos' : 'Miligramos'}
                   </button>
                 ))}
               </div>

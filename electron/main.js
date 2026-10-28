@@ -1319,7 +1319,9 @@ function sondearPuertoMain(ruta, serie) {
     port.on('data', (data) => {
       bytes += data.length;
       buffer += data.toString('latin1');
-      const partes = buffer.split(/[\r\n\x03]+/);
+      // Igual que partirTramas (basculaWeb.ts): termina en salto de línea, CR o
+      // ETX; empieza en STX o en "=" (las que mandan "=05.2100" sin salto de línea).
+      const partes = buffer.split(/[\r\n\x03]+|(?=[\x02=])/);
       buffer = (partes.pop() || '').slice(-64);
       for (const p of partes) {
         if (!tramaConPeso(p)) continue;

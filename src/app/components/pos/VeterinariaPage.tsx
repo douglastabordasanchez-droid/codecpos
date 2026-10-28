@@ -29,7 +29,9 @@ import { usePOS } from '../../contexts/POSContext';
 import { electronStore } from '../../lib/electronStore';
 import { desactivarProductoEnNube } from '../../lib/syncService';
 import { onVacunaProximaVencer } from '../../lib/integracionesService';
-import { useSerialScale } from '../../hooks/usePeripherals';
+import { ModalPesaje } from '../../../pwa/components/ModalPesaje';
+import { DescargarExcelMascotas } from '../../../pwa/components/DescargarExcelMascotas';
+import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import {
   CobroRapidoPeluqueria, BotonNuevoMascotas, temaElectron, unirServicios, type ServicioMascota, type NuevoItemMascotas,
 } from '../../../pwa/components/VeterinariaRapido';
@@ -138,6 +140,8 @@ const CATEGORIAS_GRANEL_DEFAULT: CategoriaGranel[] = [
 
 type Tab = 'granel' | 'mascotas' | 'estetica' | 'farmacia';
 
+const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
 export default function VeterinariaPage() {
   const { darkMode, triggerRefresh } = usePOS();
   const navigate = useNavigate();
@@ -153,16 +157,21 @@ export default function VeterinariaPage() {
     });
   }, []);
 
+  // Busca por nombre o por código (G16, 16G…), sin importar tildes ni mayúsculas.
+  const coincide = (p: ProductoVet) => {
+    const q = sinTildes(busqueda.trim());
+    return q === '' || sinTildes(p.nombre).includes(q) || sinTildes(String(p.codigo ?? '')).includes(q);
+  };
   const productosGranel = useMemo(
-    () => productos.filter((p) => (p.pesable || p.tipoProducto === 'granel') &&
-      (busqueda.trim() === '' || p.nombre.toLowerCase().includes(busqueda.toLowerCase()))),
+    () => productos.filter((p) => (p.pesable || p.tipoProducto === 'granel') && coincide(p))
+      // El código exacto primero: "G16" muestra G16 antes que G160.
+      .sort((a, b) => Number(sinTildes(String(b.codigo ?? '')) === sinTildes(busqueda.trim())) - Number(sinTildes(String(a.codigo ?? '')) === sinTildes(busqueda.trim()))),
     [productos, busqueda]
   );
   const productosFarmacia = useMemo(
     () => productos.filter((p) =>
       (p.requiereReceta || p.categoria?.toLowerCase().includes('medicamento') || p.tipoProducto === 'fisico') &&
-      !p.pesable && p.tipoProducto !== 'granel' &&
-      (busqueda.trim() === '' || p.nombre.toLowerCase().includes(busqueda.toLowerCase()))),
+      !p.pesable && p.tipoProducto !== 'granel' && coincide(p)),
     [productos, busqueda]
   );
 
@@ -232,6 +241,7 @@ export default function VeterinariaPage() {
           <h1 className={`text-2xl font-black ${textCls}`}>Veterinaria y Mascotas</h1>
           <p className={`text-sm ${mutedCls}`}>Alimentos a granel, ficha clínica, agenda y farmacia — todo conectado al mismo inventario y carrito</p>
         </div>
+        <DescargarExcelMascotas clienteId={getLinkedClienteId()} claro={!darkMode} />
         <BotonNuevoMascotas tema={temaElectron(darkMode)} onGuardar={crearNuevo} />
       </div>
 
@@ -326,9 +336,6 @@ function TabGranel({ productos, busqueda, setBusqueda, darkMode, cardCls, textCl
   onProductoEliminado: (id: string) => void;
 }) {
   const [productoActivo, setProductoActivo] = useState<ProductoVet | null>(null);
-  const bascula = useSerialScale();
-  const [pesoManual, setPesoManual] = useState('');
-  const [modoManual, setModoManual] = useState(false);
 
   // ── Categorías (color + ícono), mismo patrón que Alimentos y Bebidas ──
   const [categorias, setCategorias] = useState<CategoriaGranel[]>(() => {
@@ -345,14 +352,10 @@ function TabGranel({ productos, busqueda, setBusqueda, darkMode, cardCls, textCl
   const [guardandoProducto, setGuardandoProducto] = useState(false);
   const [form, setForm] = useState(PRODUCTO_GRANEL_FORM_VACIO);
 
-  const pesoKg = modoManual ? (parseFloat(pesoManual.replace(',', '.')) || 0) : bascula.peso / 1000;
-
-  const confirmar = () => {
+  const confirmar = (pesoKg: number) => {
     if (!productoActivo || pesoKg <= 0) return;
     onVender(productoActivo, pesoKg);
     setProductoActivo(null);
-    setPesoManual('');
-    setModoManual(false);
   };
 
   const categoriaDe = (p: ProductoVet) => categorias.find((c) => c.id === p.categoriaId);
@@ -558,7 +561,9 @@ function TabGranel({ productos, busqueda, setBusqueda, darkMode, cardCls, textCl
 
       {productosFiltrados.length === 0 && productos.length === 0 ? (
         <EmptyHint darkMode={darkMode} icon={Scale}
-          texto='No hay bultos a granel todavía. Créalos con el botón "+ Agregar bulto", o impórtalos con la plantilla de Veterinaria (columna TipoProducto = Granel-Alimento).' />
+          texto={busqueda.trim()
+            ? `No hay ningún alimento a granel con "${busqueda.trim()}". Revisa el código o el nombre.`
+            : 'No hay bultos a granel todavía. Créalos con el botón "+ Agregar bulto", o impórtalos con la plantilla de Veterinaria (columna TipoProducto = Granel-Alimento).'} />
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {productosFiltrados.map((p) => {
@@ -684,58 +689,17 @@ function TabGranel({ productos, busqueda, setBusqueda, darkMode, cardCls, textCl
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {productoActivo && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-              className={`max-w-md w-full rounded-3xl p-8 ${darkMode ? 'bg-slate-900 border-2 border-slate-700' : 'bg-white'}`}>
-              <div className="text-center mb-6">
-                <Scale className="w-16 h-16 text-emerald-500 mx-auto mb-3" />
-                <h3 className={`text-xl font-bold mb-1 ${textCls}`}>{productoActivo.nombre}</h3>
-                <p className={mutedCls}>${productoActivo.precio.toLocaleString('es-CO')} /kg</p>
-              </div>
-
-              {!bascula.conectado && !modoManual && (
-                <Button onClick={bascula.conectarBascula} className="w-full mb-3 bg-emerald-600 hover:bg-emerald-700">
-                  Conectar báscula (puerto serial)
-                </Button>
-              )}
-
-              {!modoManual ? (
-                <div className={`p-6 rounded-2xl mb-4 text-center ${darkMode ? 'bg-slate-800 border-2 border-slate-700' : 'bg-gray-50'}`}>
-                  <p className={`text-sm mb-2 ${mutedCls}`}>Peso detectado:</p>
-                  <div className="text-5xl font-black text-emerald-500 mb-1">{pesoKg.toFixed(3)}</div>
-                  <p className={mutedCls}>kilogramos</p>
-                  {bascula.conectado && (
-                    <button onClick={bascula.tarar} className="text-xs text-emerald-500 underline mt-2">Tarar</button>
-                  )}
-                </div>
-              ) : (
-                <div className="mb-4">
-                  <label className={`text-xs font-bold ${mutedCls}`}>Peso manual (kg)</label>
-                  <Input value={pesoManual} onChange={(e) => setPesoManual(e.target.value)} placeholder="Ej. 1.500"
-                    className={`mt-1 text-center text-2xl h-14 font-black ${darkMode ? 'bg-slate-800 border-slate-700 text-white' : ''}`} />
-                </div>
-              )}
-
-              <button onClick={() => setModoManual((v) => !v)} className={`text-xs underline mb-4 block mx-auto ${mutedCls}`}>
-                {modoManual ? 'Usar báscula' : 'La báscula no está disponible — ingresar peso manualmente'}
-              </button>
-
-              <div className="flex gap-3">
-                <Button onClick={() => { setProductoActivo(null); setModoManual(false); setPesoManual(''); }} variant="outline" className="flex-1 h-12">
-                  Cancelar
-                </Button>
-                <Button onClick={confirmar} disabled={pesoKg <= 0}
-                  className="flex-1 h-12 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700">
-                  <ShoppingCart className="w-4 h-4 mr-2" /> Agregar al carrito
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {productoActivo && (
+        // La misma ventana de pesaje de la caja y la web (ModalPesaje).
+        <ModalPesaje
+          claro={!darkMode}
+          nombre={productoActivo.nombre}
+          precioPorKg={productoActivo.precio}
+          stockKg={productoActivo.stock > 0 ? productoActivo.stock : undefined}
+          onConfirmar={confirmar}
+          onCerrar={() => setProductoActivo(null)}
+        />
+      )}
     </div>
   );
 }
