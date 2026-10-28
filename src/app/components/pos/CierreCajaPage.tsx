@@ -71,6 +71,40 @@ import {
   type MedioCierreUniversal,
   type MedioCuadrado,
 } from '../../lib/cierreUniversal';
+import { VentasPorArea } from '../../../pwa/components/VentasPorArea';
+import { areaDeItem, htmlRecibos, type ItemVendido, type LineaRecibo } from '../../../pwa/lib/ventasPorArea';
+import { ModuloPOS, esModuloPermitidoLicenciaDesarrollador } from '../../lib/permissions';
+import { getConfiguredTicketWidthMm } from '../../lib/printerConfig';
+import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
+
+/** Logo del negocio (configuración de Electron; se baja de la nube como imagen). */
+function logoNegocioRecibo(): string | undefined {
+  try { return JSON.parse(localStorage.getItem('codec_pos_config') || '{}').logoUrl || undefined; } catch { return undefined; }
+}
+
+/** Nombre del negocio para el encabezado de los recibos por área. */
+function nombreNegocioRecibo(): string | undefined {
+  try {
+    const c = JSON.parse(localStorage.getItem('codec_pos_config') || '{}');
+    return c.nombreComercial || c.nombreEmpresa || c.razonSocial || undefined;
+  } catch { return undefined; }
+}
+
+/** Recibos por área (granel, peluquería…): a la impresora del cierre, como la tirilla. */
+async function imprimirRecibosElectron(recibos: LineaRecibo[][], ancho?: 58 | 80, logo?: string): Promise<boolean> {
+  const widthMm = ancho || getConfiguredTicketWidthMm();
+  const html = htmlRecibos(recibos, widthMm, logo);
+  const printerName = getPrinterForSectionOrUndefined('cierre_caja');
+  const electron = (window as any).electron;
+  if (electron?.print?.printHtml) {
+    await electron.print.printHtml({ html, silent: !!printerName, printerName, widthMm, raster: !!printerName });
+    return true;
+  }
+  const w = window.open('', '_blank', 'width=420,height=640');
+  if (!w) return false;
+  w.document.write(html); w.document.close(); w.focus(); w.print();
+  return true;
+}
 
 interface AperturaCaja {
   id: string;
@@ -178,6 +212,9 @@ export default function CierreCajaPage() {
 
   // Datos del sistema
   const [totalSistema, setTotalSistema] = useState(0);
+  // Ventas por área: solo si el negocio tiene el módulo Veterinaria (en otros negocios el cierre no cambia).
+  const conVeterinaria = esModuloPermitidoLicenciaDesarrollador(ModuloPOS.VETERINARIA);
+  const [itemsPorArea, setItemsPorArea] = useState<ItemVendido[]>([]);
   const [totalPropinas, setTotalPropinas] = useState(0);
   const [desgloseSistema, setDesgloseSistema] = useState({
     efectivo: 0,
@@ -792,6 +829,46 @@ export default function CierreCajaPage() {
       setIsSaving(false);
     }
   };
+
+  // Lo vendido en el turno con su área (ventasPorArea.ts). Se recalcula con cada venta nueva (totalSistema cambia).
+  useEffect(() => {
+    if (!conVeterinaria || !turnoActivo || !aperturaActual?.id) { setItemsPorArea([]); return; }
+    let vigente = true;
+    (async () => {
+      try {
+        const [ventas, productos] = await Promise.all([
+          electronStore.obtenerVentasDelDia({
+            incluirTodosLosCajeros: !!esSuperUsuario,
+            cajeroId: esSuperUsuario ? undefined : usuarioActual?.id,
+            cajeroNombre: esSuperUsuario ? undefined : (usuarioActual?.nombreCompleto || usuarioActual?.username),
+            sesionCajaId: aperturaActual.id,
+          }),
+          electronStore.obtenerProductos(),
+        ]);
+        const porId = new Map((productos || []).map((p: any) => [String(p.id), p]));
+        const items: ItemVendido[] = [];
+        for (const v of (Array.isArray(ventas) ? ventas : [])) {
+          for (const it of ((v as any).items || [])) {
+            const p: any = porId.get(String(it.id)) || {};
+            items.push({
+              nombre: String(it.nombre || 'Producto'),
+              cantidad: Number(it.cantidad) || 1,
+              total: Number(it.subtotal ?? it.total ?? 0),
+              fecha: (v as any).fecha,
+              area: areaDeItem({
+                nombre: it.nombre, area: it.area ?? p.area, categoria: it.categoria || p.categoria,
+                tipoProducto: p.tipoProducto, pesable: p.pesable, requiereReceta: p.requiereReceta,
+              }),
+            });
+          }
+        }
+        if (vigente) setItemsPorArea(items);
+      } catch {
+        if (vigente) setItemsPorArea([]);
+      }
+    })();
+    return () => { vigente = false; };
+  }, [conVeterinaria, turnoActivo, aperturaActual?.id, totalSistema]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Calcula el top de productos vendidos en el día
   const calcularProductosTop = async (stats: any) => {
@@ -1545,6 +1622,13 @@ export default function CierreCajaPage() {
               </Button>
             )}
           </div>
+          {/* Ventas por área (granel, peluquería, consultas…): solo con el módulo Veterinaria */}
+          {conVeterinaria && turnoActivo && itemsPorArea.length > 0 && (
+            <div className="mb-6">
+              <VentasPorArea items={itemsPorArea} claro={!darkMode} imprimir={imprimirRecibosElectron} anchoPredeterminado={getConfiguredTicketWidthMm()}
+                datos={{ negocio: nombreNegocioRecibo(), logo: logoNegocioRecibo(), cajero: aperturaActual?.cajero, desde: aperturaActual?.fecha }} />
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Panel Izquierdo - Datos del Sistema */}
             <div className="lg:col-span-1">

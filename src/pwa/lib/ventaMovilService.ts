@@ -21,6 +21,10 @@ export interface ItemCarritoMovil {
   precioOriginal?: number;
   /** 'kg' = producto a granel pesado: `cantidad` son kilos (con decimales). */
   unidad?: 'kg';
+  /** Veterinaria: área para el cierre por áreas (granel, peluqueria, consultas…; ver ventasPorArea.ts). */
+  area?: string;
+  /** Veterinaria: servicio del inventario (baño, consulta) que no descuenta stock. */
+  sinInventario?: boolean;
 }
 
 /** Servicios (baño, consulta, honorarios) no son productos del inventario:
@@ -110,13 +114,20 @@ export async function crearVentaMovil(
     precio_unitario: it.precio,
     precio_original: it.precioOriginal ?? it.precio,
     subtotal: it.cantidad * it.precio,
+    // Solo las ventas de Veterinaria llevan área; las demás no cambian.
+    ...(it.area ? { area: it.area } : {}),
   }));
 
-  const { error: e2 } = await client.from('venta_items').insert(itemsPayload);
+  let { error: e2 } = await client.from('venta_items').insert(itemsPayload);
+  // La nube aún sin la columna `area` (migración 0134): se guarda sin ella y
+  // el cierre deduce el área del producto y del nombre.
+  if (e2 && /area/i.test(e2.message) && itemsPayload.some((it) => 'area' in it)) {
+    ({ error: e2 } = await client.from('venta_items').insert(itemsPayload.map(({ area: _area, ...resto }: any) => resto)));
+  }
   if (e2) return { ok: false, error: e2.message };
 
   await Promise.all(
-    items.filter((it) => esProductoInventario(it.productoId)).map((it) =>
+    items.filter((it) => esProductoInventario(it.productoId) && !it.sinInventario).map((it) =>
       client.rpc('descontar_stock_producto', {
         p_producto_id: it.productoId,
         p_cantidad: it.cantidad,

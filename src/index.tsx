@@ -9,6 +9,9 @@ import './styles/index.css';
 
 import { MotionGlobalConfig } from 'motion/react';
 import { prepararAlmacenGrande } from './app/lib/almacenGrande';
+import { recargarSiFaltaPantalla } from './app/lib/recargarSiFaltaPantalla';
+
+recargarSiFaltaPantalla();
 
 // ⚡ Modo liviano de la caja (Electron): sin vidrio esmerilado, animaciones decorativas
 // limitadas y transiciones instantáneas. Las animaciones infinitas obligaban a redibujar

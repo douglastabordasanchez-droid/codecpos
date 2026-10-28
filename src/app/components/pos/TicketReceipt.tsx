@@ -7,7 +7,7 @@ import logoImage from '/logo.png';
 import { printSaleReceipt } from '../../lib/thermalPrinter';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
-import { enviarFacturaPorWhatsApp, enviarFacturaPorEmail } from '../../lib/pdfGenerator';
+import { enviarFacturaPorWhatsApp, enviarFacturaPorEmail, cargarImagen, encajar } from '../../lib/pdfGenerator';
 import { getCached } from '../../lib/cachedLocalStorage';
 import { getConfiguredTicketWidthMm, getDefaultPrinterNameOrUndefined, getFacturasPrinterNameOrUndefined } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
@@ -264,7 +264,9 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       .finally(() => setImprimiendo(false));
   };
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
+    // El logo con sus medidas reales: antes se estiraba a 30×16 mm y uno cuadrado o alargado salía deformado.
+    const logo = config.logoUrl ? await cargarImagen(config.logoUrl) : null;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [80, 200] });
     const empresa = config;
     const W = 80;
@@ -294,11 +296,11 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     };
 
     // Logo
-    if (empresa.logoUrl) {
+    if (logo) {
       try {
-        const ext = empresa.logoUrl.includes('png') ? 'PNG' : 'JPEG';
-        doc.addImage(empresa.logoUrl, ext, W / 2 - 15, y, 30, 16);
-        y += 19;
+        const t = encajar(logo, 50, 22); // ajustado al papel: máx. 50 mm de ancho y 22 de alto
+        doc.addImage(logo.data, 'PNG', (W - t.w) / 2, y, t.w, t.h, 'logo', 'FAST');
+        y += t.h + 3;
       } catch { /* skip logo if error */ }
     }
 

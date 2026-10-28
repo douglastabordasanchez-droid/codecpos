@@ -68,7 +68,7 @@ const PagoMixtoModal = lazy(() => import('./PagoMixtoModal').then(m => ({ defaul
 const ModalVentaCartera = lazy(() => import('./ModalVentaCartera').then(m => ({ default: m.ModalVentaCartera })));
 import type { DatosVentaCartera } from './ModalVentaCartera';
 import { crearCuentaCartera } from '../../lib/carteraService';
-import { electronStore, PagoMixtoDetalle } from '../../lib/electronStore';
+import { electronStore, PagoMixtoDetalle, permiteVenderSinStock } from '../../lib/electronStore';
 import { getCached } from '../../lib/cachedLocalStorage';
 import { logger } from '../../lib/logger';
 import { useAuth } from '../../contexts/AuthContext';
@@ -96,6 +96,8 @@ import { buscarPorCodigoBarras } from '../../lib/promocionesService';
 import { suscribirCodigosEscaneados } from '../../lib/supabase/scanBroadcast';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
+import { modoFacturacionEfectivo } from '../../lib/dian/modoFacturacion';
+import { avisoProductosSinIva } from '../../lib/dian/configIva';
 import { armarNumeroFactura } from '../../lib/numeracionCaja';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '../../lib/dian/types';
 import { obtenerFacturaPorId, obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
@@ -1436,7 +1438,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   };
 
   const agregarAlCarritoDirecto = (producto: Producto, modifiersElegidos?: ItemCarrito['modifiersSeleccionados'], cantidadInicial: number = 1) => {
-    if (producto.stock <= 0) {
+    if (producto.stock <= 0 && !permiteVenderSinStock(producto)) {
       toast.error('Producto sin stock');
       return;
     }
@@ -1445,7 +1447,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
     if (itemExistente) {
       const nuevaCantidad = itemExistente.cantidad + cantidadInicial;
-      if (nuevaCantidad > producto.stock) {
+      if (nuevaCantidad > producto.stock && !permiteVenderSinStock(producto)) {
         toast.error('No hay suficiente stock');
         return;
       }
@@ -1455,7 +1457,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           : item
       ));
     } else {
-      if (cantidadInicial > producto.stock) {
+      if (cantidadInicial > producto.stock && !permiteVenderSinStock(producto)) {
         toast.error('No hay suficiente stock');
         return;
       }
@@ -1479,7 +1481,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const agregarAlCarritoConCantidad = (producto: Producto, cantidad: number) => {
     const cantidadSolicitada = Math.max(1, Math.floor(Number(cantidad) || 1));
 
-    if (producto.stock <= 0) {
+    if (producto.stock <= 0 && !permiteVenderSinStock(producto)) {
       toast.error('Producto sin stock');
       return;
     }
@@ -1488,7 +1490,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
     if (itemExistente) {
       const nuevaCantidad = itemExistente.cantidad + cantidadSolicitada;
-      if (nuevaCantidad > producto.stock) {
+      if (nuevaCantidad > producto.stock && !permiteVenderSinStock(producto)) {
         toast.error('No hay suficiente stock');
         return;
       }
@@ -1499,7 +1501,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           : item
       ));
     } else {
-      if (cantidadSolicitada > producto.stock) {
+      if (cantidadSolicitada > producto.stock && !permiteVenderSinStock(producto)) {
         toast.error('No hay suficiente stock');
         return;
       }
@@ -1574,7 +1576,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
   const aumentarCantidad = (productoId: string) => {
     const item = carrito.find(i => i.producto.id === productoId);
-    if (item && item.cantidad >= item.producto.stock) {
+    if (item && item.cantidad >= item.producto.stock && !permiteVenderSinStock(item.producto)) {
       toast.error('No hay más stock disponible');
       return;
     }
@@ -1748,7 +1750,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return {
       // «DIAN directo» no pasa por la prueba de conexión del proveedor externo
       // (que es la que prende esas dos banderas): con él elegido ya está activa.
-      feActiva: config.modoFacturacionElectronica === 'dian_directo'
+      feActiva: modoFacturacionEfectivo(config) === 'dian_directo'
         || Boolean(config.facturacionElectronicaHabilitada && config.ecosistemaFacturacionActivo),
       endpointApiUrl: String(config.endpointApiUrl || '').trim(),
       apiKey: String(config.apiKey || '').trim(),
@@ -1759,7 +1761,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const validarClienteFacturacion = () => {
     // DIAN directo: sin documento sale a consumidor final; con documento, el
     // nombre es lo único que la factura no puede llevar vacío.
-    if (leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo') {
+    if (modoFacturacionEfectivo(leerConfigEmpresaCacheada()) === 'dian_directo') {
       if (clienteFE.nitCedula.trim() && !clienteFE.nombre.trim()) {
         toast.error('Escribe el nombre del cliente para la factura electrónica.');
         return false;
@@ -1959,7 +1961,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       // segundo plano y sin bloquear la venta (ver emitirFacturaDianDirecto
       // más abajo), así que aquí no debe intentar pegarle a un endpoint que
       // ni siquiera aplica en ese modo.
-      if (feConfig.feActiva && config.modoFacturacionElectronica !== 'dian_directo') {
+      if (feConfig.feActiva && modoFacturacionEfectivo(config) !== 'dian_directo') {
         const payloadElectronico = {
           documento: {
             numero: numeroFacturaCompleto,
@@ -2032,7 +2034,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           qrUrl: respuestaElectronica?.qrUrl || respuestaElectronica?.qr_url || null,
           contingencia: facturaEstado === 'PENDIENTE_SINCRONIZAR',
         });
-        const conFE = feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo';
+        const conFE = feConfig.feActiva && modoFacturacionEfectivo(config) === 'dian_directo';
         setFeVisor(conFE ? { venta: numeroFacturaCompleto, estado: 'esperando' } : null);
         setTirillaSuelta(false);
         if (conFE) {
@@ -2160,7 +2162,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           // negocio eligió explícitamente "DIAN directo" en Configuración,
           // separado del stub de proveedor externo (feConfig.feActiva) que
           // ya se maneja arriba de forma síncrona.
-          if (feConfig.feActiva && config.modoFacturacionElectronica === 'dian_directo') {
+          if (feConfig.feActiva && modoFacturacionEfectivo(config) === 'dian_directo') {
             const clienteIdVinculado = getLinkedClienteId();
             if (clienteFE.nitCedula.trim()) {
               const datosCliente = clienteParaGuardar(datosCobroFE);
@@ -2179,7 +2181,13 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   // todos si así se configuró) llevan el impuesto: el mismo criterio con el que el POS calculó el total
                   // cobrado. Antes se le cargaba IVA a todos los ítems en el
                   // documento electrónico, aunque no se hubiera cobrado.
-                  const llevaIVA = carrito.some((c) => c.producto.codigo === it.codigo && productoLlevaIVA(c.producto));
+                  // Por el id, no por el código: servicios, manuales y combos
+                  // comparten o no tienen código y salían sin IVA aunque el
+                  // negocio cobre IVA a todos los productos.
+                  const productoLinea = carrito.find((c) => String(c.producto.id) === String(it.id))?.producto;
+                  const llevaIVA = productoLinea
+                    ? productoLlevaIVA(productoLinea)
+                    : obtenerConfigIVA().ivaHabilitado && obtenerConfigIVA().ivaTodosLosProductos;
                   const linea = { codigo: it.codigo, descripcion: it.nombre, cantidad: it.cantidad };
                   // IVA incluido: lo cobrado de la línea ya trae el impuesto.
                   if (llevaIVA && configIVA.ivaIncluidoEnPrecio) {
@@ -3190,7 +3198,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                                         ));
                                       }}
                                       onBlur={() => {
-                                        const maxima = item.producto.stock;
+                                        const maxima = permiteVenderSinStock(item.producto) ? Infinity : item.producto.stock;
                                         const corregida = Math.max(1, Math.min(item.cantidad, maxima));
                                         if (item.cantidad > maxima) toast.error('Stock insuficiente');
                                         if (corregida !== item.cantidad) {
@@ -3210,7 +3218,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                                       size="sm"
                                       variant="outline"
                                       onClick={() => {
-                                        if (item.cantidad < item.producto.stock) {
+                                        if (item.cantidad < item.producto.stock || permiteVenderSinStock(item.producto)) {
                                           setCarrito(carrito.map((c, i) =>
                                             i === index ? { ...c, cantidad: c.cantidad + 1 } : c
                                           ));
@@ -3986,6 +3994,19 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               </div>
 
               <div className="space-y-4 mb-6">
+                {(() => {
+                  // IVA a todos los productos, pero alguno tiene IVA 0 % en su ficha: se le cobra igual; avisar para corregir la ficha.
+                  const cfgIva = obtenerConfigIVA();
+                  const aviso = avisoProductosSinIva(
+                    { habilitado: cfgIva.ivaHabilitado, todosLosProductos: cfgIva.ivaTodosLosProductos, porcentaje: cfgIva.porcentajeIVA },
+                    carrito.filter((c) => !String(c.producto.id).startsWith('srv-') && c.producto.aplicaIVA !== true).map((c) => c.producto.nombre),
+                  );
+                  return aviso && (
+                    <div className={`px-3 py-2 rounded-xl border text-xs ${darkMode ? 'bg-amber-500/10 border-amber-500/40 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
+                      ⚠️ {aviso} <span className="opacity-80">Para corregir todas de una vez: Configuración › IVA › «IVA en la ficha de los productos» › «Poner {cfgIva.porcentajeIVA} % en los productos».</span>
+                    </div>
+                  );
+                })()}
                 {getConfigFacturacion().feActiva && (
                   <div className={`p-4 rounded-2xl border-2 ${darkMode ? 'bg-slate-800 border-orange-500' : 'bg-orange-50 border-orange-300'}`}>
                     <div className="flex items-center justify-between gap-3">
@@ -4007,7 +4028,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                         ))}
                       </div>
                     </div>
-                    {emitirFE && leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo' && (<div className="mt-3 space-y-2">
+                    {emitirFE && modoFacturacionEfectivo(leerConfigEmpresaCacheada()) === 'dian_directo' && (<div className="mt-3 space-y-2">
                       <ClienteFacturaCobro
                         clienteId={getLinkedClienteId()}
                         datos={datosCobroFE}
@@ -4028,9 +4049,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                         />
                       )}
                     </div>)}
-                    {emitirFE && leerConfigEmpresaCacheada().modoFacturacionElectronica !== 'dian_directo' && (<>
+                    {emitirFE && modoFacturacionEfectivo(leerConfigEmpresaCacheada()) !== 'dian_directo' && (<>
                     <p className={`text-xs mt-3 mb-3 ${darkMode ? 'text-orange-200/80' : 'text-orange-700/80'}`}>
-                      {leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo'
+                      {modoFacturacionEfectivo(leerConfigEmpresaCacheada()) === 'dian_directo'
                         ? 'Sin NIT o cédula sale a nombre de consumidor final.'
                         : 'Todos los datos del cliente son obligatorios.'}
                     </p>
@@ -4051,18 +4072,18 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       />
                       {/* DIAN directo: correo (para entregarle la factura) y dirección
                           opcional, apenas hay cédula o NIT. Sin documento es consumidor final. */}
-                      {(leerConfigEmpresaCacheada().modoFacturacionElectronica !== 'dian_directo' || clienteFE.nitCedula.trim()) && (<>
+                      {(modoFacturacionEfectivo(leerConfigEmpresaCacheada()) !== 'dian_directo' || clienteFE.nitCedula.trim()) && (<>
                       <Input
                         value={clienteFE.email}
                         onChange={(e) => setClienteFE((p) => ({ ...p, email: e.target.value }))}
-                        placeholder={leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo' ? 'Correo (para enviarle la factura)' : 'Correo electrónico'}
+                        placeholder={modoFacturacionEfectivo(leerConfigEmpresaCacheada()) === 'dian_directo' ? 'Correo (para enviarle la factura)' : 'Correo electrónico'}
                         type="email"
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
                       <Input
                         value={clienteFE.direccion}
                         onChange={(e) => setClienteFE((p) => ({ ...p, direccion: e.target.value }))}
-                        placeholder={leerConfigEmpresaCacheada().modoFacturacionElectronica === 'dian_directo' ? 'Dirección (opcional)' : 'Dirección'}
+                        placeholder={modoFacturacionEfectivo(leerConfigEmpresaCacheada()) === 'dian_directo' ? 'Dirección (opcional)' : 'Dirección'}
                         className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
                       />
                       </>)}
@@ -4500,6 +4521,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             iva={calcularIVA()}
             porcentajeIVA={obtenerConfigIVA().porcentajeIVA}
             ivaHabilitado={obtenerConfigIVA().ivaHabilitado}
+            darkMode={darkMode}
             onConfirm={(detalles) => {
               // Convertir objeto PagoMixtoDetalle a array para handlePagoMixto
               const detallesArray: any[] = [];

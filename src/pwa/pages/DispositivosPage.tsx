@@ -31,12 +31,34 @@ function Interruptor({ activo, onClick, etiqueta }: { activo: boolean; onClick: 
 
 const NOMBRE_TIPO: Record<TipoConexion, string> = { usb: 'USB', serial: 'Puerto serie', bluetooth: 'Bluetooth', sistema: 'Impresora del sistema' };
 
-/** También la usa Dispositivos de Electron (misma báscula, mismo equipo). */
-export function TarjetaBascula() {
+/**
+ * También la usa Dispositivos de Electron (misma báscula, mismo equipo).
+ * `claro`: Electron en modo claro, para que combine con sus tarjetas blancas.
+ */
+export function TarjetaBascula({ claro = false }: { claro?: boolean }) {
   const bascula = useBasculaWeb();
   const [cfg, setCfg] = useState<ConfigBascula>(obtenerConfigBascula);
   const hayPuerto = soporteBascula();
-  const selectCls = 'w-full h-10 rounded-lg bg-slate-950 border border-slate-800 text-white text-sm px-3';
+  // Cada texto lleva su color: el CSS global de Electron oscurece los <p> que lo heredan.
+  const t = claro
+    ? {
+        tarjeta: 'bg-white border-2 border-gray-100 rounded-3xl p-6 shadow-sm',
+        titulo: 'text-gray-700', etiqueta: 'text-gray-500', texto: 'text-gray-900', suave: 'text-gray-500',
+        select: 'w-full h-10 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 text-sm px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/40',
+        inactivo: 'bg-gray-50 border border-gray-200 text-gray-500 hover:bg-gray-100',
+        conectada: 'bg-emerald-50 border border-emerald-200', tarar: 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50',
+        ayuda: 'bg-amber-50 border border-amber-100', ayudaTitulo: 'text-amber-800', ayudaTexto: 'text-amber-900/80',
+        error: 'text-red-600', mono: 'text-gray-800',
+      }
+    : {
+        tarjeta,
+        titulo: 'text-slate-400', etiqueta: 'text-slate-400', texto: 'text-white', suave: 'text-slate-400',
+        select: 'w-full h-10 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm px-3',
+        inactivo: 'bg-slate-950 border border-slate-800 text-slate-400',
+        conectada: 'bg-emerald-500/10 border border-emerald-500/30', tarar: 'bg-slate-800 text-slate-200',
+        ayuda: 'bg-slate-950/50 border border-slate-800', ayudaTitulo: 'text-slate-300', ayudaTexto: 'text-slate-400',
+        error: 'text-red-400', mono: 'text-slate-300',
+      };
 
   // Cambiar la velocidad o el comando exige reabrir el puerto.
   const cambiar = async (cambios: Partial<ConfigBascula>) => {
@@ -48,88 +70,93 @@ export function TarjetaBascula() {
   };
 
   return (
-    <div className={`${tarjeta} space-y-4`}>
+    <div className={`${t.tarjeta} space-y-4`}>
       <div className="flex items-center gap-2">
-        <Scale className="w-4 h-4 text-amber-400" />
-        <span className="text-slate-400 text-xs font-bold uppercase tracking-wide">Báscula</span>
+        <Scale className="w-4 h-4 text-amber-500" />
+        <span className={`${t.titulo} text-xs font-bold uppercase tracking-wide`}>Báscula</span>
       </div>
 
       {!hayPuerto ? (
-        <p className="text-slate-500 text-xs">
+        <p className={`${t.suave} text-xs`}>
           Este navegador no tiene puerto serie. La báscula se conecta desde Chrome o Edge en el computador. En el celular y en la app el peso se escribe a mano al vender.
         </p>
       ) : (
-        <>
-          {bascula.conectada ? (
-            <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-white text-sm font-bold truncate">{cfg.nombre || 'Báscula conectada'}</p>
-                <p className="text-slate-400 text-xs">Peso: <b className={bascula.estable ? 'text-emerald-400' : 'text-amber-400'}>{bascula.pesoKg.toFixed(3)} kg</b>{bascula.estable ? ' · estable' : ''}</p>
+        <div className={`grid grid-cols-1 gap-4 ${claro ? 'lg:grid-cols-2 lg:gap-6' : ''}`}>
+          {/* Conexión, peso en vivo y ayuda */}
+          <div className="space-y-3">
+            {bascula.conectada ? (
+              <div className={`rounded-xl ${t.conectada} p-3 flex items-center gap-3`}>
+                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className={`${t.texto} text-sm font-bold truncate`}>{cfg.nombre || 'Báscula conectada'}</p>
+                  <p className={`${t.suave} text-xs`}>Peso: <b className={bascula.estable ? 'text-emerald-500' : 'text-amber-500'}>{bascula.pesoKg.toFixed(3)} kg</b>{bascula.estable ? ' · estable' : ''}</p>
+                </div>
+                <button onClick={tararBascula} className={`px-2.5 h-8 rounded-lg ${t.tarar} text-xs font-semibold`}>Tarar</button>
+                <button onClick={() => { desconectarBascula(true); toast('Báscula olvidada en este equipo'); }} className={`p-2 rounded-lg ${t.suave} hover:text-red-500`} title="Olvidar báscula">
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
-              <button onClick={tararBascula} className="px-2.5 h-8 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold">Tarar</button>
-              <button onClick={() => { desconectarBascula(true); toast('Báscula olvidada en este equipo'); }} className="p-2 rounded-lg text-slate-400 hover:text-red-400" title="Olvidar báscula">
-                <Trash2 className="w-4 h-4" />
+            ) : (
+              <button
+                disabled={bascula.conectando}
+                onClick={() => conectarBascula().then(() => setCfg(obtenerConfigBascula())).catch((e) => toast.error(e?.message || 'No se pudo conectar'))}
+                className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+                style={{ color: '#fff' }}
+              >
+                {bascula.conectando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
+                {bascula.conectando ? 'Buscando la báscula…' : 'Conectar báscula'}
               </button>
+            )}
+            {bascula.error && <p className={`${t.error} text-xs`}>{bascula.error}</p>}
+            {bascula.conectada && (
+              <p className={`text-[11px] ${t.suave}`}>Última lectura recibida: <span className={`font-mono ${t.mono}`}>{bascula.ultimaTrama || 'nada todavía'}</span></p>
+            )}
+            <div className={`rounded-xl ${t.ayuda} p-3 text-[11px] space-y-1`}>
+              <p className={`flex items-center gap-1.5 ${t.ayudaTitulo} font-semibold`}><Info className="w-3.5 h-3.5" /> Si el peso no aparece</p>
+              <p className={t.ayudaTexto}>Al conectar, CodecPOS prueba solo la velocidad y el comando. Si aun así no llega el peso, pon un objeto en la báscula y mira la «última lectura»: si no llega nada, prueba otro comando (casi todas usan Ninguno o P); si llegan letras raras, cambia la velocidad (la mayoría usa 9600, algunas 2400 o 4800). El manual de la báscula lo dice.</p>
             </div>
-          ) : (
-            <button
-              disabled={bascula.conectando}
-              onClick={() => conectarBascula().then(() => setCfg(obtenerConfigBascula())).catch((e) => toast.error(e?.message || 'No se pudo conectar'))}
-              className="w-full h-11 rounded-xl bg-emerald-600 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {bascula.conectando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />} Conectar báscula
-            </button>
-          )}
-          {bascula.error && <p className="text-red-400 text-xs">{bascula.error}</p>}
+          </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Configuración del puerto */}
+          <div className="grid grid-cols-2 gap-3 content-start">
             <div>
-              <p className="text-slate-400 text-xs mb-1.5">Velocidad (baudios)</p>
-              <select value={cfg.baudRate} onChange={(e) => cambiar({ baudRate: Number(e.target.value) })} className={selectCls}>
+              <p className={`${t.etiqueta} text-xs mb-1.5`}>Velocidad (baudios)</p>
+              <select value={cfg.baudRate} onChange={(e) => cambiar({ baudRate: Number(e.target.value) })} className={t.select}>
                 {[1200, 2400, 4800, 9600, 19200, 38400].map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
             <div>
-              <p className="text-slate-400 text-xs mb-1.5">Bits y paridad</p>
+              <p className={`${t.etiqueta} text-xs mb-1.5`}>Bits y paridad</p>
               <select
                 value={`${cfg.dataBits}${cfg.parity[0].toUpperCase()}${cfg.stopBits}`}
                 onChange={(e) => {
                   const v = e.target.value;
                   cambiar({ dataBits: Number(v[0]) as 7 | 8, parity: v[1] === 'E' ? 'even' : v[1] === 'O' ? 'odd' : 'none', stopBits: Number(v[2]) as 1 | 2 });
                 }}
-                className={selectCls}
+                className={t.select}
               >
                 {['8N1', '7E1', '7O1', '8E1', '8N2'].map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="col-span-2">
-              <p className="text-slate-400 text-xs mb-1.5">Comando para pedir el peso</p>
-              <select value={cfg.comando} onChange={(e) => cambiar({ comando: e.target.value as ComandoBascula })} className={selectCls}>
+              <p className={`${t.etiqueta} text-xs mb-1.5`}>Comando para pedir el peso</p>
+              <select value={cfg.comando} onChange={(e) => cambiar({ comando: e.target.value as ComandoBascula })} className={t.select}>
                 {COMANDOS_BASCULA.map((c) => <option key={c.valor} value={c.valor}>{c.label}</option>)}
               </select>
             </div>
             <div className="col-span-2">
-              <p className="text-slate-400 text-xs mb-1.5">Si la báscula manda solo el número, está en</p>
+              <p className={`${t.etiqueta} text-xs mb-1.5`}>Si la báscula manda solo el número, está en</p>
               <div className="flex gap-2">
                 {(['kg', 'g'] as const).map((u) => (
                   <button key={u} onClick={() => cambiar({ unidadSinMarca: u })}
-                    className={`flex-1 h-10 rounded-xl text-sm font-bold ${cfg.unidadSinMarca === u ? 'bg-amber-500 text-slate-950' : 'bg-slate-950 border border-slate-800 text-slate-400'}`}>
+                    className={`flex-1 h-10 rounded-xl text-sm font-bold ${cfg.unidadSinMarca === u ? 'bg-amber-500 text-slate-950' : t.inactivo}`}>
                     {u === 'kg' ? 'Kilos' : 'Gramos'}
                   </button>
                 ))}
               </div>
             </div>
           </div>
-
-          {bascula.conectada && (
-            <p className="text-[11px] text-slate-500">Última lectura recibida: <span className="font-mono text-slate-300">{bascula.ultimaTrama || 'nada todavía'}</span></p>
-          )}
-          <div className="rounded-xl bg-slate-950/50 border border-slate-800 p-3 text-[11px] text-slate-400 space-y-1">
-            <p className="flex items-center gap-1.5 text-slate-300 font-semibold"><Info className="w-3.5 h-3.5" /> Si el peso no aparece</p>
-            <p>Pon un objeto en la báscula y mira la «última lectura». Si no llega nada, prueba otro comando (casi todas usan Ninguno o P). Si llegan letras raras, cambia la velocidad: la mayoría usa 9600, algunas 2400 o 4800. El manual de la báscula lo dice.</p>
-          </div>
-        </>
+        </div>
       )}
     </div>
   );

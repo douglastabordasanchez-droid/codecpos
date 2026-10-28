@@ -92,6 +92,28 @@ export function construirEventoFactura(factura: FacturaFila, ventaId: string | n
   };
 }
 
+/** Factura con la nota interna del administrador para el contador (migración 0135). */
+export interface NotaFacturaFila {
+  id: string; cufe: string | null; prefijo: string | null; numero_factura: string | number | null;
+  nota_contador: string | null; nota_contador_actualizada_en: string | null; fecha_emision: string | null; created_at: string;
+}
+
+/**
+ * Nota del negocio sobre una factura ya enviada. Va aparte de la factura
+ * (que viaja como XML y no se toca): Codec Document la guarda por CUFE y la
+ * reemplaza con cada versión; nota vacía = el negocio la borró.
+ */
+export function construirEventoNotaFactura(f: NotaFacturaFila) {
+  return {
+    tipo: 'nota_factura' as const,
+    id_origen: f.id,
+    cufe: f.cufe,
+    numero: `${f.prefijo ?? ''}${f.numero_factura ?? ''}` || null,
+    nota: (f.nota_contador ?? '').slice(0, 1000),
+    actualizada_en: f.nota_contador_actualizada_en || f.fecha_emision || f.created_at,
+  };
+}
+
 // ── Fase 2 ──────────────────────────────────────────────────────────────
 
 export interface GastoFila {

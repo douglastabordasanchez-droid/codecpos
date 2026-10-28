@@ -57,6 +57,19 @@ export function tarifaIvaProducto(c: ConfigIva, ivaDelProducto: number | null | 
   return Math.max(0, Number(ivaDelProducto) || 0);
 }
 
+/**
+ * Aviso para el cajero: con «A todos los productos», los productos de la venta
+ * cuya ficha dice IVA 0 %. Se les cobra igual el IVA del negocio, pero la
+ * ficha está mal y conviene corregirla en Inventario. null si no hay nada que avisar.
+ */
+export function avisoProductosSinIva(c: Pick<ConfigIva, 'habilitado' | 'todosLosProductos' | 'porcentaje'>, nombresSinIvaEnFicha: string[]): string | null {
+  if (!c.habilitado || !c.todosLosProductos) return null;
+  const unicos = [...new Set(nombresSinIvaEnFicha.filter(Boolean))];
+  if (unicos.length === 0) return null;
+  const lista = unicos.length <= 3 ? unicos.join(', ') : `${unicos.slice(0, 3).join(', ')} y ${unicos.length - 3} más`;
+  return `${unicos.length === 1 ? 'Este producto tiene' : 'Estos productos tienen'} IVA 0 % en su ficha: ${lista}. Como tu negocio cobra IVA a todos los productos, se ${unicos.length === 1 ? 'le cobra' : 'les cobra'} el ${c.porcentaje} %. Corrige la ficha en Inventario.`;
+}
+
 /** Lo que paga el cliente por unidad: si el IVA se suma encima, se agrega aquí. */
 export function precioDeVentaConIva(c: ConfigIva, precio: number, tarifa: number): number {
   if (c.incluidoEnPrecio || tarifa <= 0) return precio;

@@ -17,6 +17,7 @@
  */
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { traerTodo } from './nubeConsultas';
+import { areaDeItem, type ItemVendido } from './ventasPorArea';
 
 export const TERMINAL_PWA = 'PWA';
 
@@ -115,6 +116,43 @@ export async function cargarTurno(clienteId: string, desdeIso: string): Promise<
     gastos: gastos.map((g) => ({ monto: Number(g.monto) || 0, medio: String(g.medio_pago || 'efectivo').toLowerCase(), descripcion: g.descripcion || '', categoria: g.categoria || '' })),
     devoluciones: devoluciones.map((d) => ({ total: Number(d.total_devolucion) || 0, metodo: String(d.metodo_pago || '').toLowerCase() })),
   };
+}
+
+/**
+ * Cada ítem vendido desde la web en el turno, con su área (ventasPorArea.ts)
+ * para el cierre por áreas. Si la nube aún no tiene la columna `area`
+ * (migración 0134), el área se deduce del producto y del nombre.
+ */
+export async function cargarItemsTurno(clienteId: string, desdeIso: string): Promise<ItemVendido[]> {
+  const c = getSupabaseClient();
+  if (!c) throw new Error('nuestra base de datos no está configurada');
+  const ventas = await traerTodo<any>((i, j) => c.from('ventas').select('id, created_at')
+    .eq('cliente_id', clienteId).eq('terminal_id', TERMINAL_PWA).eq('estado', 'completada').gte('created_at', desdeIso).order('created_at').range(i, j));
+  const fechaDe = new Map(ventas.map((v) => [v.id, v.created_at]));
+  const ids = ventas.map((v) => v.id);
+  const filas: any[] = [];
+  const PRODUCTO = 'productos(categoria, tipo_producto, requiere_receta)';
+  let conArea = true;
+  for (let k = 0; k < ids.length; k += 200) {
+    const lote = ids.slice(k, k + 200);
+    let r: any = await c.from('venta_items').select(`venta_id, nombre, cantidad, subtotal, ${conArea ? 'area, ' : ''}${PRODUCTO}`).in('venta_id', lote);
+    if (r.error && conArea && /area/i.test(r.error.message)) {
+      conArea = false;
+      r = await c.from('venta_items').select(`venta_id, nombre, cantidad, subtotal, ${PRODUCTO}`).in('venta_id', lote);
+    }
+    if (r.error) throw new Error(r.error.message);
+    filas.push(...(r.data || []));
+  }
+  return filas.map((f: any) => ({
+    nombre: String(f.nombre || 'Producto'),
+    cantidad: Number(f.cantidad) || 0,
+    total: Number(f.subtotal) || 0,
+    fecha: fechaDe.get(f.venta_id),
+    area: areaDeItem({
+      nombre: f.nombre, area: f.area, categoria: f.productos?.categoria,
+      tipoProducto: f.productos?.tipo_producto, requiereReceta: f.productos?.requiere_receta,
+    }),
+  }));
 }
 
 /** Detalle del cierre con la forma de Electron (ver ModalDetalleCierre / TirillaCierreCaja). */

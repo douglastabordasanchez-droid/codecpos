@@ -27,11 +27,15 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Resp
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { ModalPesaje } from '../components/ModalPesaje';
 import { useBasculaWeb } from '../hooks/useBasculaWeb';
+import { areaDeItem, type AreaVenta } from '../lib/ventasPorArea';
+import {
+  CobroRapidoPeluqueria, BotonNuevoMascotas, TEMA_WEB, unirServicios, type ServicioMascota,
+} from '../components/VeterinariaRapido';
 import { CLAVE_CARRITO_TRANSFERIDO, transferirAlCarrito } from '../lib/carritoTransferido';
 import type { ItemCarritoMovil } from '../lib/ventaMovilService';
 import {
   listarProductosVet, esProductoFarmacia, listarCategoriasGranel, guardarCategoriaGranel, eliminarCategoriaGranel,
-  guardarBulto, eliminarProductoVet, type ProductoVetWeb, type CategoriaGranelWeb,
+  guardarBulto, eliminarProductoVet, crearProductoMascotas, type ProductoVetWeb, type CategoriaGranelWeb,
 } from '../lib/veterinariaWeb';
 import {
   listarCitasGrooming, crearCitaGrooming, actualizarEstadoCita,
@@ -86,17 +90,14 @@ const esColorClaro = (hex: string) => {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.68;
 };
 
-const SERVICIOS_ESTETICA = [
-  { nombre: 'Baño Básico', precio: 25000 },
-  { nombre: 'Baño Medicado', precio: 38000 },
-  { nombre: 'Corte de Pelo', precio: 35000 },
-  { nombre: 'Corte de Uñas', precio: 12000 },
-  { nombre: 'Desparasitación Externa', precio: 20000 },
-];
-
 /** Ítem de servicio para el carrito: no es un producto del inventario. */
-const itemServicio = (nombre: string, precio: number): ItemCarritoMovil => ({
-  productoId: `srv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, nombre, precio, precioOriginal: precio, cantidad: 1,
+const itemServicio = (nombre: string, precio: number, area: AreaVenta): ItemCarritoMovil => ({
+  productoId: `srv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, nombre, precio, precioOriginal: precio, cantidad: 1, area,
+});
+
+/** Área de un producto de Veterinaria para el cierre por áreas. */
+const areaProducto = (p: ProductoVetWeb) => areaDeItem({
+  nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipo_producto, requiereReceta: p.requiere_receta,
 });
 
 const whatsapp = (telefono: string, texto: string) => {
@@ -167,6 +168,11 @@ export default function VeterinariaPage() {
   };
 
   const totalPendiente = pendientes.reduce((a, it) => a + it.cantidad * it.precio, 0);
+  // Peluquería: los de siempre más los servicios creados con el "+".
+  const servicios = useMemo(() => unirServicios(
+    // Servicios creados con el "+" y los de peluquería que el negocio ya tenía como productos ("BAÑO # 1").
+    productos.filter((p) => p.tipo_producto !== 'granel' && areaProducto(p) === 'peluqueria').map((p) => ({ nombre: p.nombre, precio: p.precio_venta })),
+  ), [productos]);
 
   const TABS: { id: Tab; label: string; corto: string; icon: typeof Scale }[] = [
     { id: 'granel', label: 'Alimentos a Granel', corto: 'Granel', icon: Scale },
@@ -181,10 +187,24 @@ export default function VeterinariaPage() {
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
           <PawPrint className="w-6 h-6" style={{ color: '#fff' }} />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-white text-xl sm:text-2xl font-black">Veterinaria y Mascotas</h1>
           <p className="text-slate-400 text-xs sm:text-sm">Granel con báscula, ficha clínica, agenda y farmacia, conectados al inventario y a la caja</p>
         </div>
+        <BotonNuevoMascotas tema={TEMA_WEB} onGuardar={async (item) => {
+          if (item.tipo === 'bulto' && item.bulto) {
+            // Igual que crear un bulto en Alimentos a Granel: precio y stock en kilos.
+            await guardarBulto(clienteId, empleado?.id || '', {
+              nombre: item.nombre, categoria: item.categoria, especie: item.bulto.especie, costo: item.costo,
+              precioPorKilo: item.precio, pesoBultoKg: item.bulto.pesoKg, rendimientoRaciones: null,
+              stockKg: item.cantidad, fechaVencimiento: null, lote: null,
+            });
+          } else {
+            await crearProductoMascotas(clienteId, empleado?.id || '', item);
+          }
+          await cargarProductos();
+          setTab(item.tipo === 'servicio' ? 'agenda' : item.tipo === 'bulto' ? 'granel' : 'farmacia');
+        }} />
       </div>
 
       <div className="flex gap-2 px-4 sm:px-6 mb-5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
@@ -208,16 +228,17 @@ export default function VeterinariaPage() {
                 productos={productos.filter((p) => p.tipo_producto === 'granel')}
                 pendientes={pendientes}
                 onCambio={cargarProductos}
-                onVender={(p, kg) => enviar([{ productoId: p.id, nombre: p.nombre, precio: p.precio_venta, precioOriginal: p.precio_venta, cantidad: kg, unidad: 'kg' }])} />
+                onVender={(p, kg) => enviar([{ productoId: p.id, nombre: p.nombre, precio: p.precio_venta, precioOriginal: p.precio_venta, cantidad: kg, unidad: 'kg', area: 'granel' }])} />
             )}
             {tab === 'mascotas' && <TabMascotas clienteId={clienteId} />}
             {tab === 'agenda' && (
-              <TabAgenda clienteId={clienteId} onFacturar={(nombre, precio, cobrarYa) => enviar([itemServicio(nombre, precio)], cobrarYa)} />
+              <TabAgenda clienteId={clienteId} servicios={servicios} onFacturar={(nombre, precio, cobrarYa, area) => enviar([itemServicio(nombre, precio, area)], cobrarYa)} />
             )}
             {tab === 'farmacia' && (
               <TabFarmacia productos={productos.filter(esProductoFarmacia)}
-                onVender={(p, cantidad) => enviar([{ productoId: p.id, nombre: p.nombre, precio: p.precio_venta, precioOriginal: p.precio_venta, cantidad }])}
-                onFacturarConsulta={(nombre, precio) => enviar([itemServicio(nombre, precio)])} />
+                serviciosConsulta={productos.filter((p) => p.tipo_producto === 'servicio' && areaProducto(p) === 'consultas')}
+                onVender={(p, cantidad) => enviar([{ productoId: p.id, nombre: p.nombre, precio: p.precio_venta, precioOriginal: p.precio_venta, cantidad, area: areaProducto(p) }])}
+                onFacturarConsulta={(nombre, precio) => enviar([itemServicio(nombre, precio, 'consultas')])} />
             )}
           </>
         )}
@@ -918,7 +939,9 @@ const hoyISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-function TabAgenda({ clienteId, onFacturar }: { clienteId: string; onFacturar: (nombre: string, precio: number, cobrarYa: boolean) => void }) {
+function TabAgenda({ clienteId, servicios, onFacturar }: {
+  clienteId: string; servicios: ServicioMascota[]; onFacturar: (nombre: string, precio: number, cobrarYa: boolean, area: AreaVenta) => void;
+}) {
   const [tipoCita, setTipoCita] = useState<TipoCita>('grooming');
   const [mascotaId, setMascotaId] = useState('');
   const [mascotas, setMascotas] = useState<Mascota[]>([]);
@@ -929,9 +952,9 @@ function TabAgenda({ clienteId, onFacturar }: { clienteId: string; onFacturar: (
   const [raza, setRaza] = useState('');
   const [tipoPelo, setTipoPelo] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [servicio, setServicio] = useState(SERVICIOS_ESTETICA[0]);
+  const [servicio, setServicio] = useState(servicios[0]);
   const [concepto, setConcepto] = useState('Consulta General');
-  const [precio, setPrecio] = useState(String(SERVICIOS_ESTETICA[0].precio));
+  const [precio, setPrecio] = useState(String(servicios[0]?.precio ?? ''));
   const [fechaHora, setFechaHora] = useState(() => {
     const d = new Date(Date.now() + 60 * 60 * 1000);
     return `${hoyISO()}T${String(d.getHours()).padStart(2, '0')}:00`;
@@ -959,7 +982,7 @@ function TabAgenda({ clienteId, onFacturar }: { clienteId: string; onFacturar: (
     }
   };
 
-  const conceptoActual = tipoCita === 'grooming' ? servicio.nombre : concepto.trim();
+  const conceptoActual = tipoCita === 'grooming' ? (servicio?.nombre || '') : concepto.trim();
   const valido = !!(tutor.trim() && mascotaNombre.trim() && Number(precio) > 0 && conceptoActual);
 
   const agendar = async () => {
@@ -982,7 +1005,7 @@ function TabAgenda({ clienteId, onFacturar }: { clienteId: string; onFacturar: (
   const cambiarEstado = async (c: CitaGrooming, estado: EstadoCita, facturar = false) => {
     try {
       await actualizarEstadoCita(c.id, estado);
-      if (facturar) onFacturar(`${c.servicio}: ${c.mascotaNombre}`, c.precio, false);
+      if (facturar) onFacturar(`${c.servicio}: ${c.mascotaNombre}`, c.precio, false, c.tipo === 'grooming' ? 'peluqueria' : 'consultas');
       cargarCitas();
     } catch (e: any) { toast.error(e?.message || 'No se pudo actualizar la cita'); }
   };
@@ -995,8 +1018,11 @@ function TabAgenda({ clienteId, onFacturar }: { clienteId: string; onFacturar: (
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="lg:col-span-2">
+        <CobroRapidoPeluqueria servicios={servicios} tema={TEMA_WEB} onCobrar={(concepto, valor) => onFacturar(concepto, valor, true, 'peluqueria')} />
+      </div>
       <div className={`${tarjeta} p-5`}>
-        <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2"><Sparkles className="w-5 h-5 text-purple-500" /> Nueva cita</h3>
+        <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2"><Sparkles className="w-5 h-5 text-purple-500" /> Nueva cita (con agenda)</h3>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1040,10 +1066,10 @@ function TabAgenda({ clienteId, onFacturar }: { clienteId: string; onFacturar: (
               <div>
                 <label className={etiqueta}>Servicio</label>
                 <select value={servicio.nombre} onChange={(e) => {
-                  const s = SERVICIOS_ESTETICA.find((x) => x.nombre === e.target.value) || SERVICIOS_ESTETICA[0];
+                  const s = servicios.find((x) => x.nombre === e.target.value) || servicios[0];
                   setServicio(s); setPrecio(String(s.precio));
                 }} className={campo}>
-                  {SERVICIOS_ESTETICA.map((s) => <option key={s.nombre} value={s.nombre}>{s.nombre}</option>)}
+                  {servicios.map((s) => <option key={s.nombre} value={s.nombre}>{s.nombre}</option>)}
                 </select>
               </div>
             ) : (
@@ -1060,7 +1086,7 @@ function TabAgenda({ clienteId, onFacturar }: { clienteId: string; onFacturar: (
           <button onClick={agendar} disabled={guardando || !valido} className="flex-1 h-11 rounded-xl bg-slate-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-40">
             {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />} Agendar turno
           </button>
-          <button onClick={() => valido ? onFacturar(`${conceptoActual}: ${mascotaNombre.trim()}`, Number(precio), true) : toast.error('Completa tutor, mascota y precio')}
+          <button onClick={() => valido ? onFacturar(`${conceptoActual}: ${mascotaNombre.trim()}`, Number(precio), true, tipoCita === 'grooming' ? 'peluqueria' : 'consultas') : toast.error('Completa tutor, mascota y precio')}
             disabled={!valido} className="flex-1 h-11 rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-600 font-bold flex items-center justify-center gap-2 disabled:opacity-40" style={{ color: '#fff' }}>
             <ShoppingCart className="w-4 h-4" /> Facturar ahora
           </button>
@@ -1126,8 +1152,10 @@ function EstadoCitaBadge({ estado }: { estado: EstadoCita }) {
 
 // ═══════════════════ FARMACIA Y SERVICIOS ═══════════════════
 
-function TabFarmacia({ productos, onVender, onFacturarConsulta }: {
+function TabFarmacia({ productos, serviciosConsulta, onVender, onFacturarConsulta }: {
   productos: ProductoVetWeb[];
+  /** Consultas y procedimientos creados con el "+": un toque y se facturan. */
+  serviciosConsulta: ProductoVetWeb[];
   onVender: (p: ProductoVetWeb, cantidad: number) => void;
   onFacturarConsulta: (nombre: string, precio: number) => void;
 }) {
@@ -1148,6 +1176,16 @@ function TabFarmacia({ productos, onVender, onFacturarConsulta }: {
     <div>
       <div className={`${tarjeta} p-5 mb-5`}>
         <h3 className="text-white font-bold mb-3 flex items-center gap-2"><Pill className="w-4 h-4 text-sky-500" /> Consulta, procedimiento u honorarios</h3>
+        {serviciosConsulta.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {serviciosConsulta.map((sv) => (
+              <button key={sv.id} type="button" onClick={() => { setNombreConsulta(sv.nombre); setPrecioConsulta(String(sv.precio_venta)); }}
+                className={`h-9 px-3 rounded-full text-xs font-semibold ${nombreConsulta === sv.nombre ? 'bg-sky-500/15 border border-sky-500 text-sky-400' : 'bg-slate-950 border border-slate-800 text-slate-300'}`}>
+                {sv.nombre} · {money(sv.precio_venta)}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
           <div className="flex-1"><label className={etiqueta}>Concepto</label><input value={nombreConsulta} onChange={(e) => setNombreConsulta(e.target.value)} className={campo} /></div>
           <div className="sm:w-40"><label className={etiqueta}>Valor</label><input inputMode="numeric" value={precioConsulta} onChange={(e) => setPrecioConsulta(e.target.value)} className={campo} /></div>
@@ -1160,12 +1198,12 @@ function TabFarmacia({ productos, onVender, onFacturarConsulta }: {
 
       <div className="relative mb-4 max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-        <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar medicamento..."
+        <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar producto o medicamento..."
           className="w-full h-11 pl-9 pr-3 rounded-xl bg-slate-900/70 border border-slate-800 text-white text-sm outline-none focus:border-sky-500" />
       </div>
 
       {productos.length === 0 ? (
-        <Vacio icono={Pill} texto="No hay medicamentos registrados todavía. Créalos en Inventario con categoría Medicamentos, lote y fecha de vencimiento, o impórtalos con la plantilla de Veterinaria." />
+        <Vacio icono={Pill} texto="Todavía no hay productos aquí. Toca el botón «+ Nuevo» de arriba para crear uno (collar, juguete, champú, medicamento…)." />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {visibles.map((p) => (

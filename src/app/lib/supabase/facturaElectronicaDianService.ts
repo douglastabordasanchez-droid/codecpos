@@ -46,6 +46,7 @@ interface FacturaRow {
   fecha_validacion: string | null;
   correo_enviado_at?: string | null;
   correo_destino?: string | null;
+  nota_contador?: string | null;
   updated_at?: string;
 }
 
@@ -95,6 +96,7 @@ function filaAFactura(fila: FacturaRow): FacturaElectronicaDian {
     fechaValidacion: fila.fecha_validacion ?? undefined,
     correoEnviadoAt: fila.correo_enviado_at ?? undefined,
     correoDestino: fila.correo_destino ?? undefined,
+    notaContador: fila.nota_contador ?? undefined,
     actualizadaEn: fila.updated_at,
   };
 }
@@ -184,6 +186,26 @@ export async function marcarCorreoEnviado(id: string, destino: string): Promise<
     .update({ correo_enviado_at: new Date().toISOString(), correo_destino: destino })
     .eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Nota interna del administrador para su contador (migración 0135): no la ve
+ * el cliente ni va a la DIAN. Con "Mi contador" conectado le llega a Codec
+ * Document; cada cambio se vuelve a mandar. Vacía = sin nota.
+ */
+export async function guardarNotaContador(id: string, nota: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const limpia = nota.trim().slice(0, 1000);
+  const { error } = await client
+    .from('facturas_electronicas')
+    .update({ nota_contador: limpia || null, nota_contador_actualizada_en: new Date().toISOString() })
+    .eq('id', id);
+  if (error) {
+    throw new Error(/nota_contador/.test(error.message)
+      ? 'Falta actualizar la base de datos (migración 0135) para guardar notas.'
+      : error.message);
+  }
 }
 
 /** Minutos tras los cuales una factura que sigue en 'signing' o 'sent' se

@@ -598,7 +598,7 @@ export default function DispositivosPage() {
         </div>
 
         {/* Báscula: elegir puerto, velocidad y comando de lectura (basculaWeb.ts) */}
-        <TarjetaBascula />
+        <TarjetaBascula claro={!darkMode} />
 
         {/* DEVICE STATUS — 5 illuminating cards */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">

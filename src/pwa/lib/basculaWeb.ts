@@ -256,7 +256,7 @@ async function abrir(puerto: any) {
   const info = puerto.getInfo?.() || {};
   guardarConfigBascula({
     puerto: { usbVendorId: info.usbVendorId, usbProductId: info.usbProductId },
-    nombre: info.usbVendorId ? `Báscula USB ${info.usbVendorId.toString(16).padStart(4, '0')}:${(info.usbProductId || 0).toString(16).padStart(4, '0')}` : 'Báscula en puerto serie',
+    nombre: info.usbVendorId ? `Báscula USB ${info.usbVendorId.toString(16).padStart(4, '0')}:${(info.usbProductId || 0).toString(16).padStart(4, '0')}` : (/^Báscula en COM/.test(cfg.nombre || '') ? cfg.nombre : 'Báscula en puerto serie'),
   });
   publicar({ conectada: true, conectando: false, error: null, pesoKg: 0, estable: false });
 
@@ -359,10 +359,28 @@ export function reconectarBascula(): Promise<boolean> {
   return reconexionEnCurso;
 }
 
+/** Electron busca la báscula solo una vez por sesión (tarda unos segundos por puerto). */
+let autodeteccionHecha = false;
+
 async function reconectarBascula_(): Promise<boolean> {
   if (!soporteBascula() || estado.conectada || estado.conectando) return estado.conectada;
-  const cfg = obtenerConfigBascula();
-  if (!cfg.puerto) return false;
+  let cfg = obtenerConfigBascula();
+  if (!cfg.puerto) {
+    // Sin báscula recordada: Electron la busca sola en los COM (main.js,
+    // bascula:autodetectar). En el navegador no se puede: Chrome exige que
+    // la persona elija el puerto una vez con el botón Conectar báscula.
+    const autodetectar = (window as any).electron?.scale?.autodetectar;
+    if (!autodetectar || autodeteccionHecha) return false;
+    autodeteccionHecha = true;
+    publicar({ conectando: true, error: null });
+    const r = await autodetectar().catch(() => null);
+    publicar({ conectando: false });
+    if (!r) return false;
+    cfg = guardarConfigBascula({
+      baudRate: r.baudRate, dataBits: r.dataBits, parity: r.parity, stopBits: r.stopBits, comando: r.comando,
+      puerto: {}, nombre: `Báscula en ${r.portName}`,
+    });
+  }
   try {
     const puertos: any[] = await (navigator as any).serial.getPorts();
     const candidatos = puertos.filter((p) => {

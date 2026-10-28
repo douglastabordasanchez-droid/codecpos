@@ -180,6 +180,32 @@ export async function guardarBulto(clienteId: string, empleadoId: string, datos:
   if (error) throw new Error(error.message);
 }
 
+// ── "+" de Veterinaria: producto o servicio nuevo ─────────────────────────
+
+/**
+ * Un producto entra al inventario con su cantidad (tipo 'fisico', así sale en
+ * Farmacia y en Vender); un servicio queda con tipo 'servicio' y sin stock, y
+ * aparece en el cobro rápido de peluquería.
+ */
+export async function crearProductoMascotas(clienteId: string, empleadoId: string, item: {
+  tipo: 'producto' | 'servicio' | 'bulto'; nombre: string; precio: number; cantidad: number; costo: number; categoria: string;
+}): Promise<void> {
+  const esServicio = item.tipo === 'servicio';
+  const { error } = await cliente().from('productos').insert({
+    cliente_id: clienteId,
+    nombre: item.nombre.trim(),
+    categoria: item.categoria,
+    precio_venta: item.precio,
+    costo: item.costo,
+    stock: esServicio ? 0 : Math.max(0, item.cantidad),
+    unidad: 'unidad',
+    tipo_producto: esServicio ? 'servicio' : 'fisico',
+    requiere_receta: false,
+    updated_by: empleadoId,
+  });
+  if (error) throw new Error(error.message);
+}
+
 /** Igual que Electron: el producto se desactiva (no se borra), así las ventas viejas lo siguen mostrando. */
 export async function eliminarProductoVet(id: string): Promise<void> {
   const { error } = await cliente().from('productos').update({ activo: false }).eq('id', id);

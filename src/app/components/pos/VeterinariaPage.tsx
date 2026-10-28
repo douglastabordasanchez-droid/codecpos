@@ -30,6 +30,20 @@ import { electronStore } from '../../lib/electronStore';
 import { desactivarProductoEnNube } from '../../lib/syncService';
 import { onVacunaProximaVencer } from '../../lib/integracionesService';
 import { useSerialScale } from '../../hooks/usePeripherals';
+import {
+  CobroRapidoPeluqueria, BotonNuevoMascotas, temaElectron, unirServicios, type ServicioMascota, type NuevoItemMascotas,
+} from '../../../pwa/components/VeterinariaRapido';
+import { areaDeItem, CATEGORIA_CONSULTAS, CATEGORIA_PELUQUERIA, type AreaVenta } from '../../../pwa/lib/ventasPorArea';
+
+/** Área de un producto de Veterinaria para el cierre por áreas. */
+const areaProducto = (p: { nombre: string; categoria?: string; tipoProducto?: string; pesable?: boolean; requiereReceta?: boolean }) =>
+  areaDeItem({ nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipoProducto, pesable: p.pesable, requiereReceta: p.requiereReceta });
+
+/** Servicio sin inventario para el carrito de la caja, con la categoría de su área. */
+const productoServicio = (nombre: string, precio: number, area: AreaVenta) => ({
+  id: `srv-${Date.now()}`, nombre, precio, codigo: 'SERVICIO', area,
+  categoria: area === 'peluqueria' ? CATEGORIA_PELUQUERIA : CATEGORIA_CONSULTAS,
+});
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -122,14 +136,6 @@ const CATEGORIAS_GRANEL_DEFAULT: CategoriaGranel[] = [
   { id: `${GRANEL_CAT_ID_PREFIX}otros`, nombre: 'Otros Animales', icono: 'general', color: '#8b5cf6' },
 ];
 
-const SERVICIOS_ESTETICA = [
-  { nombre: 'Baño Básico', precio: 25000 },
-  { nombre: 'Baño Medicado', precio: 38000 },
-  { nombre: 'Corte de Pelo', precio: 35000 },
-  { nombre: 'Corte de Uñas', precio: 12000 },
-  { nombre: 'Desparasitación Externa', precio: 20000 },
-];
-
 type Tab = 'granel' | 'mascotas' | 'estetica' | 'farmacia';
 
 export default function VeterinariaPage() {
@@ -160,6 +166,40 @@ export default function VeterinariaPage() {
     [productos, busqueda]
   );
 
+  // Peluquería: los de siempre más los servicios creados con el "+".
+  const servicios = useMemo(() => unirServicios(
+    // Servicios creados con el "+" y los de peluquería que el negocio ya tenía como productos ("BAÑO # 1").
+    productos.filter((p) => p.tipoProducto !== 'granel' && !p.pesable && areaProducto(p) === 'peluqueria').map((p) => ({ nombre: p.nombre, precio: p.precio })),
+  ), [productos]);
+
+  /** "+" Nuevo: un producto entra al inventario con su cantidad; un servicio, sin stock. */
+  const crearNuevo = async (item: NuevoItemMascotas) => {
+    const sello = Date.now();
+    if (item.tipo === 'bulto' && item.bulto) {
+      // Igual que guardarProductoForm de TabGranel: precio y stock en kilos, pesable.
+      const catId = { perro: 'perro', gato: 'gato', generales: 'otros' }[item.bulto.especie];
+      const guardado = await electronStore.upsertProducto({
+        id: `vetgr-${sello}`, codigo: `VETGR-${sello}`, nombre: item.nombre, categoria: item.categoria,
+        categoriaId: `${GRANEL_CAT_ID_PREFIX}${catId}`, especie: item.bulto.especie, costo: item.costo,
+        precio: item.precio, precioPorKilo: item.precio, pesoBultoKg: item.bulto.pesoKg, stock: item.cantidad,
+        tipoProducto: 'granel', pesable: true, esBulto: true, requiereReceta: false,
+      } as any);
+      setProductos((prev) => [guardado as ProductoVet, ...prev]);
+      triggerRefresh?.();
+      setTab('granel');
+      return;
+    }
+    const esServicio = item.tipo === 'servicio';
+    const guardado = await electronStore.upsertProducto({
+      id: `vet-${sello}`, codigo: `VET-${sello}`, nombre: item.nombre, categoria: item.categoria,
+      precio: item.precio, costo: item.costo, stock: esServicio ? 0 : item.cantidad,
+      tipoProducto: esServicio ? 'servicio' : 'fisico', requiereReceta: false,
+    } as any);
+    setProductos((prev) => [guardado as ProductoVet, ...prev]);
+    triggerRefresh?.();
+    setTab(esServicio ? 'estetica' : 'farmacia');
+  };
+
   const enviarACarrito = (items: Array<{ producto: any; cantidad: number; peso?: number }>) => {
     try {
       localStorage.setItem(STORAGE_TRANSFER_CART, JSON.stringify(items));
@@ -188,10 +228,11 @@ export default function VeterinariaPage() {
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
           <PawPrint className="w-7 h-7 text-white" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className={`text-2xl font-black ${textCls}`}>Veterinaria y Mascotas</h1>
           <p className={`text-sm ${mutedCls}`}>Alimentos a granel, ficha clínica, agenda y farmacia — todo conectado al mismo inventario y carrito</p>
         </div>
+        <BotonNuevoMascotas tema={temaElectron(darkMode)} onGuardar={crearNuevo} />
       </div>
 
       {/* Tabs */}
@@ -244,9 +285,9 @@ export default function VeterinariaPage() {
           )}
           {tab === 'estetica' && (
             <motion.div key="estetica" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <TabEstetica darkMode={darkMode} cardCls={cardCls} textCls={textCls} mutedCls={mutedCls}
-                onFacturar={(nombreItem, precio) => enviarACarrito([{
-                  producto: { id: `srv-${Date.now()}`, nombre: nombreItem, precio, codigo: 'SERVICIO', categoria: 'Estética' },
+              <TabEstetica darkMode={darkMode} cardCls={cardCls} textCls={textCls} mutedCls={mutedCls} servicios={servicios}
+                onFacturar={(nombreItem, precio, area) => enviarACarrito([{
+                  producto: productoServicio(nombreItem, precio, area),
                   cantidad: 1,
                 }])} />
             </motion.div>
@@ -255,9 +296,10 @@ export default function VeterinariaPage() {
             <motion.div key="farmacia" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <TabFarmacia productos={productosFarmacia} busqueda={busqueda} setBusqueda={setBusqueda}
                 darkMode={darkMode} cardCls={cardCls} textCls={textCls} mutedCls={mutedCls}
+                serviciosConsulta={productos.filter((p) => p.tipoProducto === 'servicio' && areaProducto(p) === 'consultas')}
                 onVender={(producto, cantidad) => enviarACarrito([{ producto, cantidad }])}
                 onFacturarConsulta={(nombre, precio) => enviarACarrito([{
-                  producto: { id: `srv-${Date.now()}`, nombre, precio, codigo: 'SERVICIO', categoria: 'Servicios Médicos' },
+                  producto: productoServicio(nombre, precio, 'consultas'),
                   cantidad: 1,
                 }])} />
             </motion.div>
@@ -1145,9 +1187,9 @@ const TIPO_CITA_INFO: Record<TipoCita, { label: string; color: string }> = {
   otro: { label: 'Otro', color: '#64748b' },
 };
 
-function TabEstetica({ darkMode, cardCls, textCls, mutedCls, onFacturar }: {
-  darkMode: boolean; cardCls: string; textCls: string; mutedCls: string;
-  onFacturar: (nombreItem: string, precio: number) => void;
+function TabEstetica({ darkMode, cardCls, textCls, mutedCls, servicios, onFacturar }: {
+  darkMode: boolean; cardCls: string; textCls: string; mutedCls: string; servicios: ServicioMascota[];
+  onFacturar: (nombreItem: string, precio: number, area: AreaVenta) => void;
 }) {
   const [tipoCita, setTipoCita] = useState<TipoCita>('grooming');
   const [mascotaIdVinculada, setMascotaIdVinculada] = useState('');
@@ -1160,9 +1202,9 @@ function TabEstetica({ darkMode, cardCls, textCls, mutedCls, onFacturar }: {
   const [raza, setRaza] = useState('');
   const [tipoPelo, setTipoPelo] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [servicioSeleccionado, setServicioSeleccionado] = useState(SERVICIOS_ESTETICA[0]);
+  const [servicioSeleccionado, setServicioSeleccionado] = useState<ServicioMascota | undefined>(servicios[0]);
   const [conceptoLibre, setConceptoLibre] = useState('Consulta General');
-  const [precioServicio, setPrecioServicio] = useState(String(SERVICIOS_ESTETICA[0].precio));
+  const [precioServicio, setPrecioServicio] = useState(String(servicios[0]?.precio ?? ''));
   const [guardandoCita, setGuardandoCita] = useState(false);
 
   const [citas, setCitas] = useState<CitaGrooming[]>([]);
@@ -1191,7 +1233,7 @@ function TabEstetica({ darkMode, cardCls, textCls, mutedCls, onFacturar }: {
     }
   };
 
-  const conceptoActual = tipoCita === 'grooming' ? servicioSeleccionado.nombre : conceptoLibre.trim();
+  const conceptoActual = tipoCita === 'grooming' ? (servicioSeleccionado?.nombre || '') : conceptoLibre.trim();
   const formValido = tutorNombre.trim() && mascotaNombre.trim() && Number(precioServicio) > 0 && conceptoActual;
 
   const handleAgendar = async () => {
@@ -1217,7 +1259,7 @@ function TabEstetica({ darkMode, cardCls, textCls, mutedCls, onFacturar }: {
 
   const handleFacturarAhora = () => {
     if (!formValido) { toast.error('Completa tutor, mascota y precio'); return; }
-    onFacturar(`${conceptoActual} — ${mascotaNombre.trim()}`, Number(precioServicio));
+    onFacturar(`${conceptoActual} — ${mascotaNombre.trim()}`, Number(precioServicio), tipoCita === 'grooming' ? 'peluqueria' : 'consultas');
   };
 
   const inputCls = `mt-1 ${darkMode ? 'bg-slate-800 border-slate-700 text-white' : ''}`;
@@ -1226,10 +1268,14 @@ function TabEstetica({ darkMode, cardCls, textCls, mutedCls, onFacturar }: {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Cobro rápido: solo el nombre del perrito y el servicio */}
+      <div className="lg:col-span-2">
+        <CobroRapidoPeluqueria servicios={servicios} tema={temaElectron(darkMode)} onCobrar={(concepto, valor) => onFacturar(concepto, valor, 'peluqueria')} />
+      </div>
       {/* Ficha de la cita */}
       <div className={`p-6 rounded-2xl border-2 ${cardCls}`}>
         <h3 className={`font-bold text-lg mb-4 flex items-center gap-2 ${textCls}`}>
-          <Sparkles className="w-5 h-5 text-purple-500" /> Nueva cita
+          <Sparkles className="w-5 h-5 text-purple-500" /> Nueva cita (con agenda)
         </h3>
 
         <div className="grid grid-cols-2 gap-3 mb-3">
@@ -1281,13 +1327,13 @@ function TabEstetica({ darkMode, cardCls, textCls, mutedCls, onFacturar }: {
           {tipoCita === 'grooming' ? (
             <div>
               <label className={labelCls}>Servicio</label>
-              <select value={servicioSeleccionado.nombre}
+              <select value={servicioSeleccionado?.nombre}
                 onChange={(e) => {
-                  const s = SERVICIOS_ESTETICA.find((x) => x.nombre === e.target.value) || SERVICIOS_ESTETICA[0];
+                  const s = servicios.find((x) => x.nombre === e.target.value) || servicios[0];
                   setServicioSeleccionado(s); setPrecioServicio(String(s.precio));
                 }}
                 className={selectCls}>
-                {SERVICIOS_ESTETICA.map((s) => <option key={s.nombre} value={s.nombre}>{s.nombre}</option>)}
+                {servicios.map((s) => <option key={s.nombre} value={s.nombre}>{s.nombre}</option>)}
               </select>
             </div>
           ) : (
@@ -1343,7 +1389,7 @@ function TabEstetica({ darkMode, cardCls, textCls, mutedCls, onFacturar }: {
                       <button onClick={() => actualizarEstadoCita(c.id, 'EN_PROCESO').then(cargarCitas)} className="text-[11px] text-sky-500 underline">Iniciar</button>
                     )}
                     {c.estado === 'EN_PROCESO' && (
-                      <button onClick={() => { actualizarEstadoCita(c.id, 'COMPLETADA').then(cargarCitas); onFacturar(`${c.servicio} — ${c.mascotaNombre}`, c.precio); }} className="text-[11px] text-emerald-500 underline">Completar y facturar</button>
+                      <button onClick={() => { actualizarEstadoCita(c.id, 'COMPLETADA').then(cargarCitas); onFacturar(`${c.servicio} — ${c.mascotaNombre}`, c.precio, c.tipo === 'grooming' ? 'peluqueria' : 'consultas'); }} className="text-[11px] text-emerald-500 underline">Completar y facturar</button>
                     )}
                     {(c.estado === 'PENDIENTE' || c.estado === 'EN_PROCESO') && (
                       <button onClick={() => actualizarEstadoCita(c.id, 'CANCELADA').then(cargarCitas)} className="text-[11px] text-red-500 underline">Cancelar</button>
@@ -1372,7 +1418,9 @@ function EstadoBadge({ estado }: { estado: EstadoCita }) {
 
 // ═══════════════════ TAB: FARMACIA Y SERVICIOS MÉDICOS ═══════════════════
 
-function TabFarmacia({ productos, busqueda, setBusqueda, darkMode, cardCls, textCls, mutedCls, onVender, onFacturarConsulta }: {
+function TabFarmacia({ productos, serviciosConsulta, busqueda, setBusqueda, darkMode, cardCls, textCls, mutedCls, onVender, onFacturarConsulta }: {
+  /** Consultas y procedimientos creados con el "+": un toque y se facturan. */
+  serviciosConsulta: ProductoVet[];
   productos: ProductoVet[]; busqueda: string; setBusqueda: (v: string) => void;
   darkMode: boolean; cardCls: string; textCls: string; mutedCls: string;
   onVender: (producto: ProductoVet, cantidad: number) => void;
@@ -1396,6 +1444,18 @@ function TabFarmacia({ productos, busqueda, setBusqueda, darkMode, cardCls, text
       {/* Honorarios / consulta ad-hoc */}
       <div className={`p-5 rounded-2xl border-2 mb-6 ${cardCls}`}>
         <h3 className={`font-bold mb-3 flex items-center gap-2 ${textCls}`}><Pill className="w-4 h-4 text-sky-500" /> Consulta / procedimiento / honorarios</h3>
+        {serviciosConsulta.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {serviciosConsulta.map((sv) => (
+              <button key={sv.id} type="button" onClick={() => { setNombreConsulta(sv.nombre); setPrecioConsulta(String(sv.precio)); }}
+                className={`h-9 px-3 rounded-full text-xs font-semibold border ${nombreConsulta === sv.nombre
+                  ? (darkMode ? 'bg-sky-500/15 border-sky-500 text-sky-300' : 'bg-sky-50 border-sky-400 text-sky-700')
+                  : (darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-gray-50 border-gray-200 text-gray-700')}`}>
+                {sv.nombre} · ${Math.round(sv.precio).toLocaleString('es-CO')}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[200px]">
             <label className={`text-xs font-bold ${mutedCls}`}>Concepto</label>
@@ -1414,12 +1474,12 @@ function TabFarmacia({ productos, busqueda, setBusqueda, darkMode, cardCls, text
 
       <div className="relative mb-4 max-w-md">
         <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${mutedCls}`} />
-        <Input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar medicamento..."
+        <Input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar producto o medicamento..."
           className={`pl-9 ${darkMode ? 'bg-slate-800 border-slate-700 text-white' : ''}`} />
       </div>
 
       {productos.length === 0 ? (
-        <EmptyHint darkMode={darkMode} icon={Pill} texto="No hay medicamentos registrados todavía. Impórtalos con la plantilla de Veterinaria o créalos en Inventario marcando Lote y Fecha de vencimiento." />
+        <EmptyHint darkMode={darkMode} icon={Pill} texto="Todavía no hay productos aquí. Toca el botón «+ Nuevo» de arriba para crear uno (collar, juguete, champú, medicamento…)." />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {productos.map((p) => (

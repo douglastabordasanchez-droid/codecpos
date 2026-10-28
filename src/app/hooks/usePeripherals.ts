@@ -66,7 +66,10 @@ export function useSerialScale() {
   const conectarBascula = async () => {
     try {
       await conectarBascula_();
-      if (estadoBascula().conectada) toast.success('Báscula conectada correctamente');
+      const { conectada, error } = estadoBascula();
+      // Conectada pero sin peso: el puerto abrió, la báscula no responde.
+      if (conectada && error) toast.warning('La báscula no está mandando el peso', { description: error });
+      else if (conectada) toast.success('Báscula conectada correctamente');
     } catch (error: any) {
       console.error('Error conectando báscula:', error);
       toast.error('No se pudo conectar la báscula', {

@@ -7,6 +7,27 @@
 import { dbManager } from './indexedDB';
 import { logger } from './logger';
 import { costoPorUnidadDeVenta } from './costoGranel';
+import { ModuloPOS, esModuloPermitidoLicenciaDesarrollador } from './permissions';
+import { seVendeSinStock } from '../../pwa/lib/ventasPorArea';
+
+/**
+ * Veterinaria: un servicio (baño, corte, consulta) se cobra sin inventario —
+ * ni se valida ni se descuenta stock. Solo con el módulo Veterinaria activo,
+ * para no cambiar nada en los demás negocios.
+ */
+export function esServicioSinStock(producto: any): boolean {
+  return producto?.tipoProducto === 'servicio' && esModuloPermitidoLicenciaDesarrollador(ModuloPOS.VETERINARIA);
+}
+
+/**
+ * Veterinaria: se puede vender aunque el stock esté en 0 — servicios y lo de
+ * peluquería o consultas/procedimientos creado como producto normal ("BAÑO # 10").
+ * El stock se sigue descontando (sin bajar de 0) salvo en los tipo 'servicio'.
+ */
+export function permiteVenderSinStock(producto: any): boolean {
+  if (!producto || !esModuloPermitidoLicenciaDesarrollador(ModuloPOS.VETERINARIA)) return false;
+  return seVendeSinStock({ nombre: producto.nombre, categoria: producto.categoria, tipoProducto: producto.tipoProducto });
+}
 
 // Tipos del sistema
 export interface Venta {
@@ -1473,6 +1494,7 @@ class ElectronStoreService {
       }
 
       const producto = mapProductos.get(String(item.id));
+      if (esServicioSinStock(producto)) continue;
       const tipoInventario = (item.productoTipo || producto?.tipoInventario || 'directo') as 'directo' | 'receta';
       const recipeId = String(item.recipeId || producto?.recipeId || '');
 
@@ -1772,6 +1794,7 @@ class ElectronStoreService {
       }
 
       const producto = mapProductos.get(String(item.id));
+      if (permiteVenderSinStock(producto)) continue;
       const tipoInventario = (item.productoTipo || producto?.tipoInventario || 'directo') as 'directo' | 'receta';
       const recipeId = String(item.recipeId || producto?.recipeId || '');
 

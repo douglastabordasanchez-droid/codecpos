@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   construirEventoAnulacion, construirEventoCierre, construirEventoDevolucion, construirEventoGasto, esAnulacionPrematura,
-  construirEventoFactura, construirEventoVenta, diaColombia, esRechazoPorCupo, esReintentable, fechaHoraColombia, minutosHastaReintento, nitSoloDigitos,
+  construirEventoFactura, construirEventoNotaFactura, construirEventoVenta, diaColombia, esRechazoPorCupo, esReintentable, fechaHoraColombia, minutosHastaReintento, nitSoloDigitos,
 } from './eventos';
 
 describe('nitSoloDigitos', () => {
@@ -112,5 +112,21 @@ describe('fase 2', () => {
     expect(construirEventoAnulacion('g1', 'gasto')).toEqual({ tipo: 'anulacion', id_origen: 'g1', de: 'gasto' });
     expect(construirEventoAnulacion('v1', null).de).toBe('venta');
     expect(['venta_no_encontrada', 'gasto_no_encontrada', 'xml_invalido'].map(esAnulacionPrematura)).toEqual([true, true, false]);
+  });
+});
+
+describe('construirEventoNotaFactura', () => {
+  const f = {
+    id: 'f1', cufe: 'abc123', prefijo: 'FE', numero_factura: 171, nota_contador: 'Pagó con dos transferencias',
+    nota_contador_actualizada_en: '2026-10-28T02:00:00.000Z', fecha_emision: '2026-10-28T01:00:00.000Z', created_at: '2026-10-28T01:00:00.000Z',
+  };
+  it('lleva el CUFE, el número y la nota', () => {
+    expect(construirEventoNotaFactura(f)).toEqual({
+      tipo: 'nota_factura', id_origen: 'f1', cufe: 'abc123', numero: 'FE171',
+      nota: 'Pagó con dos transferencias', actualizada_en: '2026-10-28T02:00:00.000Z',
+    });
+  });
+  it('nota borrada viaja vacía para que el contador vea que ya no hay nota', () => {
+    expect(construirEventoNotaFactura({ ...f, nota_contador: null }).nota).toBe('');
   });
 });

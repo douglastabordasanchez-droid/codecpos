@@ -155,7 +155,7 @@ function completarConfig(config: ConfigEmpresa): ConfigEmpresa {
 }
 
 /** Carga el logo (data URL o enlace) y lo devuelve como PNG con sus medidas reales, para no deformarlo. */
-async function cargarImagen(src?: string): Promise<{ data: string; w: number; h: number } | null> {
+export async function cargarImagen(src?: string): Promise<{ data: string; w: number; h: number } | null> {
   if (!src) return null;
   try {
     const blob = await (await fetch(src)).blob();
@@ -173,7 +173,7 @@ async function cargarImagen(src?: string): Promise<{ data: string; w: number; h:
 }
 
 /** Ajusta una imagen dentro de una caja sin deformarla. */
-function encajar(img: { w: number; h: number }, maxW: number, maxH: number) {
+export function encajar(img: { w: number; h: number }, maxW: number, maxH: number) {
   const k = Math.min(maxW / img.w, maxH / img.h);
   return { w: img.w * k, h: img.h * k };
 }

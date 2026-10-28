@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client';
 import '../styles/index.css';
 import './theme.css';
 import App from './App';
+import { recargarSiFaltaPantalla } from '../app/lib/recargarSiFaltaPantalla';
+
+recargarSiFaltaPantalla();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

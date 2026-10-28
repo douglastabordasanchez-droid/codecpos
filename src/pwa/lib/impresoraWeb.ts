@@ -14,6 +14,7 @@
  * La configuración es de ESTE dispositivo (localStorage).
  */
 import { ThermalPrinter, type TicketData } from '../../app/lib/thermalPrinter';
+import { htmlRecibos, type LineaRecibo } from './ventasPorArea';
 
 export type TipoConexion = 'usb' | 'serial' | 'bluetooth' | 'sistema';
 
@@ -217,6 +218,19 @@ export async function imprimirTicket(datos: TicketData): Promise<boolean> {
   let ok = true;
   for (let i = 0; i < Math.max(1, cfg.copias); i++) ok = (await p.printTicket(datos)) && ok;
   return ok;
+}
+
+/**
+ * Recibos de líneas (los del cierre por área, ventasPorArea.ts): directo a la
+ * impresora térmica si hay una conectada; si no, el diálogo del sistema.
+ */
+export async function imprimirRecibosLineas(recibos: LineaRecibo[][], ancho?: 58 | 80, logo?: string): Promise<boolean> {
+  const cfg = obtenerDispositivos();
+  if (cfg.impresora.tipo === 'sistema' || !cfg.impresora.tipo) {
+    imprimirHtml(htmlRecibos(recibos, ancho || cfg.impresora.ancho, logo));
+    return true;
+  }
+  return impresora().printLineReceipts(recibos, logo);
 }
 
 // ── Diálogo de impresión del sistema (cualquier impresora, AirPrint en iPhone) ──

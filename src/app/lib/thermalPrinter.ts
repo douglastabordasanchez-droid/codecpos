@@ -175,6 +175,8 @@ export interface CierreCajaTicketInput {
     monto: number;
   }>;
   efectivoEsperado: number;
+  /** Logo del negocio; si no viene, se toma el de la configuración. */
+  logoUrl?: string;
 }
 
 // Comandos ESC/POS estándar
@@ -525,6 +527,17 @@ export class ThermalPrinter {
   // completo el título "FACTURA DE VENTA", el eslogan del encabezado y el
   // mensaje superior, e imprimía "CODEC POS v2.0" suelto en medio del
   // encabezado — ninguna de esas líneas existe en la vista previa.
+  /**
+   * Logo del negocio centrado, listo para ir al comienzo de cualquier tirilla
+   * (venta, cierre, taller, recibos por área). [] si no hay logo o no carga.
+   */
+  private async logoCentrado(logoUrl?: string): Promise<number[]> {
+    if (!logoUrl) return [];
+    const logoBytes = await this.logoToRasterBytes(logoUrl);
+    if (logoBytes.length === 0) return [];
+    return [...this.commands.alignCenter(), ...logoBytes, ...this.commands.feed(1), ...this.commands.alignLeft()];
+  }
+
   async printTicket(data: TicketData): Promise<boolean> {
     try {
       const bytes: number[] = [];
@@ -533,15 +546,7 @@ export class ThermalPrinter {
       bytes.push(...this.commands.init());
 
       // 🖼️ Logo — igual que la vista previa/PDF, antes del nombre comercial.
-      if (data.logoUrl) {
-        const logoBytes = await this.logoToRasterBytes(data.logoUrl);
-        if (logoBytes.length > 0) {
-          bytes.push(...this.commands.alignCenter());
-          bytes.push(...logoBytes);
-          bytes.push(...this.commands.feed(1));
-          bytes.push(...this.commands.alignLeft());
-        }
-      }
+      bytes.push(...await this.logoCentrado(data.logoUrl));
 
       // ── Encabezado del negocio ──────────────────────────────────────
       if (data.header) {
@@ -799,6 +804,7 @@ export class ThermalPrinter {
     try {
       const bytes: number[] = [];
       bytes.push(...this.commands.init());
+      bytes.push(...await this.logoCentrado(cfg.logoUrl));
 
       // ── Encabezado del negocio ─────────────────────────────────────────
       const nombreComercial = (cfg.nombreComercial || cfg.razonSocial || '').trim();
@@ -958,11 +964,48 @@ export class ThermalPrinter {
     }
   }
 
+  /**
+   * Recibos de líneas simples (texto y valor a la derecha), uno tras otro con
+   * corte entre cada uno — p. ej. los recibos por área del cierre de caja
+   * (ventasPorArea.ts). Los textos largos se envuelven en vez de cortarse.
+   */
+  async printLineReceipts(recibos: Array<Array<{ texto: string; valor?: string; negrita?: boolean; centro?: boolean; separador?: boolean }>>, logoUrl?: string): Promise<boolean> {
+    try {
+      const bytes: number[] = [];
+      bytes.push(...this.commands.init());
+      // El logo se convierte una sola vez y va arriba de cada recibo (nunca lanza: sin logo si no carga).
+      const logo = await this.logoCentrado(logoUrl);
+      for (const lineas of recibos) {
+        if (logo.length) bytes.push(...logo);
+        for (const l of lineas) {
+          if (l.separador) { bytes.push(...this.addSeparator()); continue; }
+          if (l.negrita) bytes.push(...this.commands.boldOn());
+          if (l.valor !== undefined) {
+            const ancho = Math.max(1, this.maxChars - String(l.valor).length - 1);
+            const partes = this.wrapText(l.texto, ancho);
+            partes.slice(0, -1).forEach((p) => bytes.push(...this.addLine(p)));
+            bytes.push(...this.addColumns(partes[partes.length - 1] || '', l.valor));
+          } else {
+            this.wrapText(l.texto, this.maxChars).forEach((p) => bytes.push(...this.addLine(p, l.centro ? 'center' : 'left')));
+          }
+          if (l.negrita) bytes.push(...this.commands.boldOff());
+        }
+        bytes.push(...this.commands.feed(3));
+        bytes.push(...this.commands.cut());
+      }
+      return await this.sendToPrinter(bytes);
+    } catch (error) {
+      console.error('Error imprimiendo recibos:', error);
+      return false;
+    }
+  }
+
   async printCashClosureTicket(data: CierreCajaTicketInput): Promise<boolean> {
     try {
       const bytes: number[] = [];
 
       bytes.push(...this.commands.init());
+      bytes.push(...await this.logoCentrado(data.logoUrl));
       bytes.push(...this.commands.boldOn());
       bytes.push(...this.addLine('CIERRE DE CAJA', 'center'));
       bytes.push(...this.commands.boldOff());
@@ -1301,6 +1344,11 @@ export async function printWorkshopReceipt(
   return printer.printWorkshopTicket(data, cfg);
 }
 
+/** Logo del negocio guardado en la configuración (Electron lo baja de la nube como imagen). */
+function logoDeConfiguracion(): string | undefined {
+  try { return JSON.parse(localStorage.getItem('codec_pos_config') || '{}').logoUrl || undefined; } catch { return undefined; }
+}
+
 export async function printComandaReceipt(
   data: ComandaTicketInput,
   ancho: 58 | 80 = 80,
@@ -1316,7 +1364,7 @@ export async function printCashClosureReceipt(
   section: PrintSection = 'cierre_caja'
 ): Promise<boolean> {
   const printer = createPrinter(resolveDefaultPrinterPort(), resolveTicketWidthFromConfig(ancho), resolvePrinterForSection(section) || resolveFacturasPrinterName());
-  return printer.printCashClosureTicket(data);
+  return printer.printCashClosureTicket({ ...data, logoUrl: data.logoUrl ?? logoDeConfiguracion() });
 }
 
 /**

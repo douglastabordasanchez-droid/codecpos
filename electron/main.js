@@ -1131,14 +1131,31 @@ function createSplash() {
 // preguntar.
 const PUERTO_BASCULA_FILE = path.join(app.getPath('userData'), 'bascula-puerto.json');
 
+// Copia en memoria: setDevicePermissionHandler es síncrono y solo debe
+// dejar ver este puerto (si no, getPorts() devuelve todos los COM y
+// Bluetooth del equipo y la reconexión les manda el comando de peso, p. ej.
+// a una impresora serie). Ese handler no recibe el "COM3" sino el
+// device_instance_id de Windows, por eso se guardan los dos.
+let basculaGuardada = null; // { portName, deviceInstanceId }
+try {
+  const g = JSON.parse(fs.readFileSync(PUERTO_BASCULA_FILE, 'utf8'));
+  if (g?.portName) basculaGuardada = { portName: g.portName, deviceInstanceId: g.deviceInstanceId || null };
+} catch { /* aún no se ha elegido */ }
+
 async function leerPuertoBascula() {
-  try { return JSON.parse(await fsPromises.readFile(PUERTO_BASCULA_FILE, 'utf8')).portName || null; }
-  catch { return null; }
+  return basculaGuardada?.portName || null;
 }
 
-async function guardarPuertoBascula(portName) {
+function esPuertoBascula(device) {
+  const id = basculaGuardada?.deviceInstanceId;
+  return !!id && String(device?.device_instance_id || device?.deviceInstanceId || '').toUpperCase() === id.toUpperCase();
+}
+
+/** `puerto`: el de select-serial-port ({ portName, deviceInstanceId }) o null para olvidarlo. */
+async function guardarPuertoBascula(puerto) {
+  basculaGuardada = puerto?.portName ? { portName: puerto.portName, deviceInstanceId: puerto.deviceInstanceId || null } : null;
   try {
-    if (portName) await fsPromises.writeFile(PUERTO_BASCULA_FILE, JSON.stringify({ portName }), 'utf8');
+    if (basculaGuardada) await fsPromises.writeFile(PUERTO_BASCULA_FILE, JSON.stringify(basculaGuardada), 'utf8');
     else await fsPromises.rm(PUERTO_BASCULA_FILE, { force: true });
   } catch (e) {
     console.warn('[Báscula] No se pudo guardar el puerto:', e?.message);
@@ -1196,6 +1213,9 @@ ConvertTo-Json -Compress -InputObject $out
     const lista = JSON.parse(crudo || '[]');
     return (Array.isArray(lista) ? lista : [lista])
       .map((d) => ({ ...d, chip: chipDeDispositivo(d.id) }))
+      // Intel/AMD sin controlador es el chipset (Management Engine, "PCI Serial
+      // Port" de AMT): nunca es la báscula y pnputil no lo arregla.
+      .filter((d) => !['PCI:8086', 'PCI:1022'].includes(d.chip?.clave))
       .filter((d) => d.chip?.nombre || d.clase === 'Ports' || /seri|com\b|ch3[0-9]|pl2303|ft232|cp210|comunicaci|communication/i.test(d.nombre || ''));
   } catch (e) {
     console.warn('[Báscula] Diagnóstico de controladores falló:', e?.message);
@@ -1257,6 +1277,106 @@ async function ofrecerControladorBascula(parent, problemas, hayPuertos) {
 
 ipcMain.handle('bascula:diagnostico', async () => diagnosticarPuertosSerie());
 
+// ── Báscula automática ────────────────────────────────────────────────────
+// Al abrir CodecPOS sin báscula recordada, se busca sola en los COM del
+// equipo: se escucha cada puerto (las que mandan el peso solas) y se le
+// manda ENQ (0x05, el pedido de CAS/Dibal). ENQ es un carácter de control
+// que las impresoras ignoran: nunca se manda texto como "P", así una
+// impresora serie no imprime basura. Las que solo responden a P/W/R/$ se
+// conectan con el botón (el renderer prueba todos los comandos en el puerto
+// que el usuario elige).
+const SERIES_AUTO = [
+  { baudRate: 9600, dataBits: 8, parity: 'none', stopBits: 1 },
+  { baudRate: 9600, dataBits: 7, parity: 'even', stopBits: 1 },
+  { baudRate: 4800, dataBits: 8, parity: 'none', stopBits: 1 },
+  { baudRate: 2400, dataBits: 8, parity: 'none', stopBits: 1 },
+  { baudRate: 19200, dataBits: 8, parity: 'none', stopBits: 1 },
+  { baudRate: 4800, dataBits: 7, parity: 'even', stopBits: 1 },
+  { baudRate: 2400, dataBits: 7, parity: 'even', stopBits: 1 },
+  { baudRate: 1200, dataBits: 8, parity: 'none', stopBits: 1 },
+];
+
+/** Igual criterio que tramaLegible + interpretarTrama de basculaWeb.ts: texto legible con un número. */
+function tramaConPeso(linea) {
+  const l = String(linea).replace(/[\x00-\x1f]/g, ' ').trim();
+  return l.length > 0 && /^[\x20-\x7e]+$/.test(l) && /\d/.test(l);
+}
+
+/** Abre `ruta` con `serie` ~1,6 s. Devuelve { comando } si llegaron dos tramas con peso; si no, los bytes recibidos. */
+function sondearPuertoMain(ruta, serie) {
+  return new Promise((resolve) => {
+    let bytes = 0, validas = 0, enqEnviado = false, buffer = '', listo = false;
+    let comandoDetectado = null, timerEnq = null, timerFin = null, timerEscucha = null;
+    const port = new SerialPort({ path: ruta, ...serie, autoOpen: false });
+    const terminar = (resultado) => {
+      if (listo) return;
+      listo = true;
+      clearInterval(timerEnq); clearTimeout(timerFin); clearTimeout(timerEscucha);
+      port.removeAllListeners('data');
+      if (port.isOpen) port.close(() => resolve(resultado)); else resolve(resultado);
+    };
+    port.on('error', () => terminar({ bytes }));
+    port.on('data', (data) => {
+      bytes += data.length;
+      buffer += data.toString('latin1');
+      const partes = buffer.split(/[\r\n\x03]+/);
+      buffer = (partes.pop() || '').slice(-64);
+      for (const p of partes) {
+        if (!tramaConPeso(p)) continue;
+        if (comandoDetectado === null) comandoDetectado = enqEnviado ? 'ENQ' : '';
+        if (++validas >= 2) terminar({ bytes, comando: comandoDetectado });
+      }
+    });
+    port.open((err) => {
+      if (err) { terminar({ bytes, error: err.message }); return; }
+      // Primero solo se escucha; si en 700 ms no llegó peso, se pide con ENQ.
+      timerEscucha = setTimeout(() => {
+        const pedir = () => { enqEnviado = true; port.write(Buffer.from([0x05]), () => {}); };
+        pedir();
+        timerEnq = setInterval(pedir, 300);
+      }, 700);
+      timerFin = setTimeout(() => terminar({ bytes }), 1600);
+    });
+  });
+}
+
+let busquedaBascula = null;
+async function autodetectarBascula() {
+  if (basculaGuardada) return null;
+  let puertos = [];
+  try { puertos = await SerialPort.list(); } catch { return null; }
+  const candidatos = puertos.filter((p) => {
+    const id = String(p.pnpId || '').toUpperCase();
+    if (id.startsWith('BTHENUM')) return false;                // Bluetooth: impresoras portátiles, no básculas
+    if (/^PCI\\VEN_(8086|1022)/.test(id)) return false;        // puerto de administración de Intel/AMD
+    return true;
+  });
+  console.log('[Báscula] Búsqueda automática en:', candidatos.map((p) => p.path).join(', ') || 'ningún puerto');
+  for (const p of candidatos) {
+    let bytesTotales = 0;
+    for (let i = 0; i < SERIES_AUTO.length; i++) {
+      const r = await sondearPuertoMain(p.path, SERIES_AUTO[i]);
+      if (r.error) break;                                        // ocupado o no abre: siguiente puerto
+      if (r.comando !== undefined) {
+        await guardarPuertoBascula({ portName: p.path, deviceInstanceId: p.pnpId || null });
+        console.log(`[Báscula] Encontrada en ${p.path} a ${SERIES_AUTO[i].baudRate} baudios, comando ${r.comando || 'ninguno'}`);
+        return { portName: p.path, ...SERIES_AUTO[i], comando: r.comando };
+      }
+      bytesTotales += r.bytes;
+      // Mudo a 9600 (8N1 y 7E1): ahí no hay nada que mande peso ni responda a ENQ.
+      if (i === 1 && bytesTotales === 0) break;
+    }
+  }
+  console.log('[Báscula] No se encontró báscula automáticamente');
+  return null;
+}
+
+ipcMain.handle('bascula:autodetectar', async () => {
+  // Varias pantallas lo piden al tiempo: una sola búsqueda.
+  if (!busquedaBascula) busquedaBascula = autodetectarBascula().catch(() => null).finally(() => { busquedaBascula = null; });
+  return busquedaBascula;
+});
+
 let serialConfigurado = false;
 function configurarPuertoSerie(win) {
   const ses = win.webContents.session;
@@ -1270,7 +1390,7 @@ function configurarPuertoSerie(win) {
     console.log('[Báscula] Puertos disponibles:', puertos.map((p) => `${p.portName} (${p.displayName || 'sin nombre'})`).join(', ') || 'ninguno');
     const recordado = await leerPuertoBascula();
     const previo = recordado && puertos.find((p) => p.portName === recordado);
-    if (previo) { callback(previo.portId); return; }
+    if (previo) { await guardarPuertoBascula(previo); callback(previo.portId); return; } // guarda también el id de Windows (archivos viejos solo traían el COM)
 
     // Antes de preguntar el puerto: ¿hay un puerto serie sin controlador?
     const problemas = await diagnosticarPuertosSerie();
@@ -1289,7 +1409,7 @@ function configurarPuertoSerie(win) {
       }).catch(() => {});
       return;
     }
-    if (puertos.length === 1) { await guardarPuertoBascula(puertos[0].portName); callback(puertos[0].portId); return; }
+    if (puertos.length === 1) { await guardarPuertoBascula(puertos[0]); callback(puertos[0].portId); return; }
     const nombre = (p) => `${p.portName || ''}${p.displayName ? ` · ${p.displayName}` : ''}`.trim() || p.portId;
     try {
       const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(webContents) || win, {
@@ -1301,7 +1421,7 @@ function configurarPuertoSerie(win) {
         cancelId: puertos.length,
         noLink: true,
       });
-      if (response < puertos.length) await guardarPuertoBascula(puertos[response].portName);
+      if (response < puertos.length) await guardarPuertoBascula(puertos[response]);
       callback(response < puertos.length ? puertos[response].portId : '');
     } catch {
       callback('');
@@ -1310,7 +1430,8 @@ function configurarPuertoSerie(win) {
 
   // Sin esto getPorts() vuelve vacío tras reiniciar y hay que elegir la báscula cada vez.
   ses.setPermissionCheckHandler(() => true);
-  ses.setDevicePermissionHandler((details) => details.deviceType === 'serial');
+  ses.setDevicePermissionHandler((details) =>
+    details.deviceType === 'serial' && esPuertoBascula(details.device));
 }
 
 function createWindow() {

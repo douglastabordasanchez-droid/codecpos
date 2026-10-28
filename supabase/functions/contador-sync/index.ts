@@ -22,9 +22,9 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { cifrar, descifrar } from '../dian-emision/cifrado.ts';
 import {
   construirEventoAnulacion, construirEventoCierre, construirEventoDevolucion, construirEventoDocumento, construirEventoFactura,
-  construirEventoGasto, construirEventoVenta, esAnulacionPrematura, esRechazoPorCupo, esReintentable, minutosHastaReintento,
+  construirEventoGasto, construirEventoNotaFactura, construirEventoVenta, esAnulacionPrematura, esRechazoPorCupo, esReintentable, minutosHastaReintento,
   nitSoloDigitos, XML_MAXIMO_BYTES,
-  type CierreFila, type DevolucionFila, type DevolucionItemFila, type FacturaFila, type GastoFila, type ItemFila,
+  type CierreFila, type DevolucionFila, type DevolucionItemFila, type FacturaFila, type GastoFila, type ItemFila, type NotaFacturaFila,
   type SoporteGasto, type VentaFila,
 } from './eventos.ts';
 
@@ -301,11 +301,11 @@ type Armado = { evento: unknown } | { motivo: string };
  */
 async function datosFase2(admin: SupabaseClient, clienteId: string, cola: EventoCola[]): Promise<(e: EventoCola) => Armado> {
   const ids = (tipo: string) => cola.filter((e) => e.tipo === tipo).map((e) => e.id_origen);
-  const [idsGastos, idsDevoluciones, idsCierres, idsNC, idsND, idsSoporte] =
-    ['gasto', 'devolucion', 'cierre_caja', 'nota_credito', 'nota_debito', 'documento_soporte'].map(ids);
+  const [idsGastos, idsDevoluciones, idsCierres, idsNC, idsND, idsSoporte, idsNotasFactura] =
+    ['gasto', 'devolucion', 'cierre_caja', 'nota_credito', 'nota_debito', 'documento_soporte', 'nota_factura'].map(ids);
   const vacio = Promise.resolve({ data: [] as any[] });
 
-  const [{ data: gastos }, { data: soportesGasto }, { data: devoluciones }, { data: itemsDev }, { data: cierres }, { data: nc }, { data: nd }, { data: soportes }] = await Promise.all([
+  const [{ data: gastos }, { data: soportesGasto }, { data: devoluciones }, { data: itemsDev }, { data: cierres }, { data: nc }, { data: nd }, { data: soportes }, { data: notasFactura }] = await Promise.all([
     idsGastos.length ? admin.from('gastos').select('id, fecha, created_at, descripcion, categoria, monto, medio_pago, comprobante, registrado_por_nombre, notas').in('id', idsGastos) : vacio,
     idsGastos.length ? admin.from('documentos_electronicos').select('gasto_id, emisor_nombre, emisor_nit, numero_completo, total_iva').in('gasto_id', idsGastos) : vacio,
     idsDevoluciones.length ? admin.from('devoluciones').select('id, venta_id, created_at, total_devolucion, metodo_pago, observaciones, numero_factura').in('id', idsDevoluciones) : vacio,
@@ -314,6 +314,7 @@ async function datosFase2(admin: SupabaseClient, clienteId: string, cola: Evento
     idsNC.length ? admin.from('notas_credito_electronicas').select('id, cude, xml, respuesta_dian, fecha_emision, created_at').in('id', idsNC) : vacio,
     idsND.length ? admin.from('notas_debito_electronicas').select('id, cude, xml, respuesta_dian, fecha_emision, created_at').in('id', idsND) : vacio,
     idsSoporte.length ? admin.from('documentos_electronicos').select('id, cufe, xml, fecha_emision, created_at').in('id', idsSoporte) : vacio,
+    idsNotasFactura.length ? admin.from('facturas_electronicas').select('id, cufe, prefijo, numero_factura, nota_contador, nota_contador_actualizada_en, fecha_emision, created_at').in('id', idsNotasFactura) : vacio,
   ]);
 
   // IVA de los productos devueltos y nota crédito de cada devolución (por la factura de su venta).
@@ -347,6 +348,7 @@ async function datosFase2(admin: SupabaseClient, clienteId: string, cola: Evento
   const ncPorId = porId(nc as any[]);
   const ndPorId = porId(nd as any[]);
   const soportePorId = porId(soportes as any[]);
+  const notaFacturaPorId = porId(notasFactura as NotaFacturaFila[]);
 
   // Va el XML firmado (el AttachedDocument no se guarda en la nube).
   const documento = (tipo: 'nota_credito' | 'nota_debito' | 'documento_soporte', doc: any, cufe: string | null): Armado => {
@@ -379,6 +381,12 @@ async function datosFase2(admin: SupabaseClient, clienteId: string, cola: Evento
       case 'nota_debito': { const n = ndPorId.get(e.id_origen); return documento('nota_debito', n, n?.cude ?? null); }
       case 'documento_soporte': { const s = soportePorId.get(e.id_origen); return documento('documento_soporte', s, s?.cufe ?? null); }
       case 'anulacion': return { evento: construirEventoAnulacion(e.id_origen, e.de) };
+      case 'nota_factura': {
+        const f = notaFacturaPorId.get(e.id_origen);
+        if (!f) return { motivo: 'La factura ya no existe en Codec POS' };
+        if (!f.cufe) return { motivo: 'La factura no tiene CUFE' };
+        return { evento: construirEventoNotaFactura(f) };
+      }
       default: return { motivo: `Tipo de evento sin soporte: ${e.tipo}` };
     }
   };

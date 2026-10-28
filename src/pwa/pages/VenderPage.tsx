@@ -39,7 +39,7 @@ import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
 import { avisoAgenteRetencion, recordarClienteFactura, type ClienteFacturaGuardado } from '../../app/lib/dian/clientesFactura';
 import { registrarClienteDesdeCobro } from '../../app/lib/supabase/clientesFacturacionService';
 import { lineaConIvaIncluido } from '../../app/lib/dian/ivaIncluido';
-import { CONFIG_IVA_APAGADO, leerConfigIva, precioDeVentaConIva, tarifaIvaProducto } from '../../app/lib/dian/configIva';
+import { CONFIG_IVA_APAGADO, avisoProductosSinIva, leerConfigIva, precioDeVentaConIva, tarifaIvaProducto, type ConfigIva } from '../../app/lib/dian/configIva';
 import { codecVerifyPwaActivo } from '../lib/codecVerifyPwa';
 import { EsperandoPagoModal, METODOS_TRANSFERENCIA } from '../components/EsperandoPagoModal';
 import type { NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyService';
@@ -48,6 +48,7 @@ import { armarTicketVenta } from '../lib/ticketVentaWeb';
 import { useMiNegocio } from '../hooks/useMiNegocio';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { ModuloPOS } from '../../app/lib/permissions';
+import { areaDeItem, seVendeSinStock } from '../lib/ventasPorArea';
 import { numeroVentaWeb } from '../../app/lib/numeracionCaja';
 import { ModalPesaje } from '../components/ModalPesaje';
 import { CLAVE_CARRITO_TRANSFERIDO, formatoCantidad } from '../lib/carritoTransferido';
@@ -172,7 +173,14 @@ export default function VenderPage() {
   // Cada venta se pregunta: hay clientes que no quieren factura electrónica.
   // Arranca en «No» y vuelve a «No» después de cobrar.
   const [emitirFE, setEmitirFE] = useState(false);
-  const { tieneModuloDePago } = useModulosActivos();
+  // IVA del negocio: también lo necesitan los ítems que no son productos del inventario (servicios de Veterinaria).
+  const [configIvaNegocio, setConfigIvaNegocio] = useState<ConfigIva>(CONFIG_IVA_APAGADO);
+  const { tieneModuloDePago, tieneModulo, cargando: cargandoModulos } = useModulosActivos();
+  // Veterinaria: los servicios (baño, consulta) se cobran sin stock y cada ítem
+  // lleva su área para el cierre por áreas. Sin el módulo, Vender no cambia.
+  const conVeterinaria = !cargandoModulos && tieneModulo(ModuloPOS.VETERINARIA);
+  const sinControlStock = (p: ProductoFila) => conVeterinaria && seVendeSinStock({ nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipo_producto });
+  const areaVet = (p: ProductoFila) => (conVeterinaria ? areaDeItem({ nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipo_producto }) : undefined);
   const facturacionDisponible = tieneModuloDePago(ModuloPOS.FACTURACION_DIAN);
   const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
   const [retencionesFE, setRetencionesFE] = useState(retencionesIniciales);
@@ -223,6 +231,7 @@ export default function VenderPage() {
     ]);
     // Cada producto queda con la tarifa con la que se vende y, si el IVA se
     // suma encima, con el precio que de verdad paga el cliente.
+    setConfigIvaNegocio(configIva);
     let filas = data.map((p) => {
       const tarifaIva = tarifaIvaProducto(configIva, p.iva);
       return { ...p, tarifaIva, precio_venta: precioDeVentaConIva(configIva, Number(p.precio_venta) || 0, tarifaIva) };
@@ -307,6 +316,11 @@ export default function VenderPage() {
   });
 
   const itemsCarrito = Object.values(carrito);
+  /** Tarifa de IVA de un ítem; lo que no es producto del inventario (servicios de Veterinaria) lleva la del negocio. */
+  const tarifaDeItem = (productoId: string) => productos.find((p) => p.id === productoId)?.tarifaIva ?? tarifaIvaProducto(configIvaNegocio, 0);
+  const avisoSinIva = avisoProductosSinIva(configIvaNegocio, itemsCarrito
+    .filter((it) => { const p = productos.find((x) => x.id === it.productoId); return !!p && !(Number(p.iva) > 0); })
+    .map((it) => it.nombre));
   const totalCarrito = itemsCarrito.reduce((acc, it) => acc + it.cantidad * it.precio, 0);
   const propinaAplicada = configPropina.activa
     ? Math.max(0, propinaManual === null ? Math.round(totalCarrito * (configPropina.porcentaje / 100)) : propinaManual)
@@ -325,7 +339,7 @@ export default function VenderPage() {
       const cantidad = Math.round(((reemplazar ? 0 : actual?.cantidad || 0) + kg) * 1000) / 1000;
       return {
         ...prev,
-        [p.id]: { productoId: p.id, nombre: p.nombre, precio: actual?.precio ?? p.precio_venta, precioOriginal: p.precio_venta, cantidad, unidad: 'kg' },
+        [p.id]: { productoId: p.id, nombre: p.nombre, precio: actual?.precio ?? p.precio_venta, precioOriginal: p.precio_venta, cantidad, unidad: 'kg', area: areaVet(p) },
       };
     });
     setPesando(null);
@@ -341,7 +355,7 @@ export default function VenderPage() {
     setCarrito((prev) => {
       const actual = prev[p.id];
       const cantidad = (actual?.cantidad || 0) + 1;
-      if (cantidad > p.stock) {
+      if (cantidad > p.stock && !sinControlStock(p)) {
         toast.error(`Sin más stock de ${p.nombre}`);
         return prev;
       }
@@ -354,6 +368,9 @@ export default function VenderPage() {
           precio: actual?.precio ?? p.precio_venta,
           precioOriginal: p.precio_venta,
           cantidad,
+          area: areaVet(p),
+          // Sin stock que descontar (servicio, o baño creado como producto en 0): no se toca el inventario.
+          sinInventario: (sinControlStock(p) && (p.tipo_producto === 'servicio' || p.stock <= 0)) || undefined,
         },
       };
     });
@@ -430,7 +447,7 @@ export default function VenderPage() {
         return resto;
       }
       const producto = productos.find((p) => p.id === productoId);
-      if (producto && nuevaCantidad > producto.stock) return prev;
+      if (producto && nuevaCantidad > producto.stock && !sinControlStock(producto)) return prev;
       return { ...prev, [productoId]: { ...actual, cantidad: nuevaCantidad } };
     });
   };
@@ -531,7 +548,7 @@ export default function VenderPage() {
       const lineasFactura = items.map((it) => lineaConIvaIncluido(
         { codigo: productos.find((p) => p.id === it.productoId)?.codigo_barras || undefined, descripcion: it.nombre, cantidad: it.cantidad },
         it.precio,
-        productos.find((p) => p.id === it.productoId)?.tarifaIva || 0,
+        tarifaDeItem(it.productoId),
       ));
       const conFE = facturacionDisponible && emitirFE;
       const ventaId = resultado.ventaId;
@@ -748,7 +765,7 @@ export default function VenderPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5">
           {filtrados.map((p) => {
             const enCarrito = carrito[p.id]?.cantidad || 0;
-            const sinStock = p.stock <= 0;
+            const sinStock = p.stock <= 0 && !sinControlStock(p);
             return (
               <button
                 key={p.id}
@@ -769,8 +786,8 @@ export default function VenderPage() {
                   )}
                   <div className="flex items-center justify-between mt-1">
                     <span className="text-emerald-400 font-black text-sm">{money(p.precio_venta)}{esGranel(p) ? '/kg' : ''}</span>
-                    <span className={`text-[10px] ${p.stock <= 3 ? 'text-red-400' : 'text-slate-500'}`}>
-                      {esGranel(p) ? `${Number(p.stock).toFixed(1)} kg` : `${p.stock} und`}
+                    <span className={`text-[10px] ${p.stock <= 3 && !sinControlStock(p) ? 'text-red-400' : 'text-slate-500'}`}>
+                      {sinControlStock(p) ? 'Servicio' : esGranel(p) ? `${Number(p.stock).toFixed(1)} kg` : `${p.stock} und`}
                     </span>
                   </div>
                   {esGranel(p) && (
@@ -930,6 +947,10 @@ export default function VenderPage() {
         </div>
       )}
 
+      {avisoSinIva && (
+        <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">⚠️ {avisoSinIva}</p>
+      )}
+
       {facturacionDisponible && (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
@@ -960,7 +981,7 @@ export default function VenderPage() {
                 <RetencionesCobro
                   estado={retencionesFE}
                   onChange={setRetencionesFE}
-                  base={itemsCarrito.reduce((acc, it) => acc + it.cantidad * it.precio / (1 + (productos.find((p) => p.id === it.productoId)?.tarifaIva || 0) / 100), 0)}
+                  base={itemsCarrito.reduce((acc, it) => acc + it.cantidad * it.precio / (1 + tarifaDeItem(it.productoId) / 100), 0)}
                   total={totalCarrito}
                 />
               )}

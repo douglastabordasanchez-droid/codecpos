@@ -13,9 +13,15 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { money } from '../lib/nubeConsultas';
 import {
-  TERMINAL_PWA, DENOMINACIONES, METODOS, METODOS_LABEL, totalBilletes, resumirTurno, cargarTurno, armarDetalleCierre,
+  TERMINAL_PWA, DENOMINACIONES, METODOS, METODOS_LABEL, totalBilletes, resumirTurno, cargarTurno, armarDetalleCierre, cargarItemsTurno,
   type Billetes, type MovimientoCaja, type TurnoCaja,
 } from '../lib/cajaNube';
+import { VentasPorArea } from '../components/VentasPorArea';
+import { useModulosActivos } from '../hooks/useModulosActivos';
+import { ModuloPOS } from '../../app/lib/permissions';
+import { imprimirRecibosLineas, obtenerDispositivos } from '../lib/impresoraWeb';
+import type { ItemVendido } from '../lib/ventasPorArea';
+import { obtenerEmpresaWeb } from '../lib/ticketVentaWeb';
 
 interface CierreFila {
   id: string;
@@ -35,9 +41,15 @@ const horaCorta = (iso: string | null) => (iso ? new Date(iso).toLocaleString('e
 
 export default function CierreCajaPage() {
   const { empleado } = usePwaAuth();
+  // Ventas por área solo para negocios con el módulo Veterinaria (en una panadería el cierre no cambia).
+  const { tieneModulo, cargando: cargandoModulos } = useModulosActivos();
+  const conVeterinaria = !cargandoModulos && tieneModulo(ModuloPOS.VETERINARIA);
   const [abierta, setAbierta] = useState<CierreFila | null | undefined>(undefined);
   const [historial, setHistorial] = useState<CierreFila[] | null>(null);
   const [turno, setTurno] = useState<TurnoCaja | null>(null);
+  const [itemsTurno, setItemsTurno] = useState<ItemVendido[]>([]);
+  // Nombre y logo del negocio para los recibos por área (los mismos del ticket de venta).
+  const [empresaRecibo, setEmpresaRecibo] = useState<{ nombre?: string; logo?: string }>({});
   const [procesando, setProcesando] = useState(false);
 
   const [base, setBase] = useState('');
@@ -61,13 +73,18 @@ export default function CierreCajaPage() {
   }, [empleado?.cliente_id]);
 
   const cargarTurnoActual = useCallback(async () => {
-    if (!empleado || !abierta?.fecha_apertura) { setTurno(null); return; }
+    if (!empleado || !abierta?.fecha_apertura) { setTurno(null); setItemsTurno([]); return; }
     try {
       setTurno(await cargarTurno(empleado.cliente_id, abierta.fecha_apertura));
     } catch (e: any) {
       toast.error(`No se pudieron leer las ventas del turno: ${e?.message || e}`);
     }
-  }, [empleado?.cliente_id, abierta?.id, abierta?.fecha_apertura]);
+    // Ventas por área (granel, peluquería, consultas…): si falla, el cierre sigue igual.
+    if (conVeterinaria) {
+      cargarItemsTurno(empleado.cliente_id, abierta.fecha_apertura).then(setItemsTurno).catch(() => setItemsTurno([]));
+      obtenerEmpresaWeb(empleado.cliente_id).then((e) => setEmpresaRecibo({ nombre: e.nombre, logo: e.logoUrl || undefined })).catch(() => {});
+    }
+  }, [empleado?.cliente_id, abierta?.id, abierta?.fecha_apertura, conVeterinaria]);
 
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => { cargarTurnoActual(); }, [cargarTurnoActual]);
@@ -294,6 +311,14 @@ export default function CierreCajaPage() {
                 </div>
               )}
             </div>
+
+            {/* Ventas por área: solo con el módulo Veterinaria */}
+            {conVeterinaria && itemsTurno.length > 0 && (
+              <div className="lg:col-span-2">
+                <VentasPorArea items={itemsTurno} imprimir={imprimirRecibosLineas} anchoPredeterminado={obtenerDispositivos().impresora.ancho}
+                  datos={{ negocio: empresaRecibo.nombre, logo: empresaRecibo.logo, cajero: empleado.nombre_completo, desde: abierta.fecha_apertura || undefined }} />
+              </div>
+            )}
 
             {/* Arqueo y cierre */}
             <div className={`${tarjeta} p-5 space-y-4 lg:col-span-2`}>

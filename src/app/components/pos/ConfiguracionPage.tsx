@@ -4,6 +4,7 @@
  */
 
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { modoFacturacionEfectivo } from '../../lib/dian/modoFacturacion';
 import { toast } from 'sonner';
 import { Save, Building, FileText, Printer, DollarSign, Shield, Settings, MapPin, Phone, Mail, ImageIcon, Upload, Receipt, AlertCircle, Key, Lock, CheckCircle, Monitor, Zap, Crown, Check, X, Infinity, TrendingUp, Users, BarChart3, Smartphone, Database, Copy, ChevronDown, ChevronUp, Store, Webhook, Sparkles, Download, HardDrive, Wrench, Power, Loader2, Wallet } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -292,6 +293,9 @@ export default function ConfiguracionPage() {
       if (!parsed.modoFacturacionElectronica) {
         parsed.modoFacturacionElectronica = parsed.facturacionElectronicaHabilitada ? 'proveedor_externo' : 'ninguna';
       }
+      // Lo que de verdad usa la caja (modoFacturacion.ts): con el módulo
+      // Facturación DIAN contratado y sin proveedor externo, es DIAN directo.
+      parsed.modoFacturacionElectronica = modoFacturacionEfectivo(parsed);
       return parsed;
     }
     return {

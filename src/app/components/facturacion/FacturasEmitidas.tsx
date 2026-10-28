@@ -7,8 +7,8 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Search, RefreshCw, Eye, Download, Send, Mail, FileMinus2, CheckCircle2, Clock, Copy, X, Package, Loader2, FileCheck2 } from 'lucide-react';
-import { listarFacturasDian, marcarCorreoEnviado } from '../../lib/supabase/facturaElectronicaDianService';
+import { Search, RefreshCw, Eye, Download, Send, Mail, FileMinus2, CheckCircle2, Clock, Copy, X, Package, Loader2, FileCheck2, StickyNote } from 'lucide-react';
+import { guardarNotaContador, listarFacturasDian, marcarCorreoEnviado } from '../../lib/supabase/facturaElectronicaDianService';
 import { asegurarNumeracionNota, listarResolucionesPerfil } from '../../lib/supabase/fiscalProfileService';
 import { listarNotasDeFactura, listarNotasDelCliente, type NotaConFactura } from '../../lib/supabase/notaAjusteDianService';
 import { ManualDeliveryProvider } from '../../lib/dian/deliveryProvider';
@@ -74,6 +74,35 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
   const [notasFactura, setNotasFactura] = useState<NotaAjusteDian[]>([]);
   const [formNota, setFormNota] = useState({ tipo: 'credito' as TipoNotaAjuste, resolucionId: '', conceptoCodigo: '', motivo: '', total: '' });
   const [emitiendoNota, setEmitiendoNota] = useState(false);
+
+  // Nota interna para el contador (no confundir con las notas crédito/débito de la DIAN).
+  const [facturaNotaContador, setFacturaNotaContador] = useState<FacturaElectronicaDian | null>(null);
+  const [textoNotaContador, setTextoNotaContador] = useState('');
+  const [guardandoNotaContador, setGuardandoNotaContador] = useState(false);
+
+  const abrirNotaContador = (f: FacturaElectronicaDian) => {
+    setFacturaNotaContador(f);
+    setTextoNotaContador(f.notaContador || '');
+  };
+
+  async function guardarNotaParaContador(texto: string) {
+    const f = facturaNotaContador;
+    if (!f?.id) return;
+    setGuardandoNotaContador(true);
+    try {
+      await guardarNotaContador(f.id, texto);
+      const nota = texto.trim() || undefined;
+      setFacturas((lista) => lista.map((x) => (x.id === f.id ? { ...x, notaContador: nota } : x)));
+      toast.success(nota ? 'Nota guardada para el contador' : 'Nota borrada', {
+        description: nota && f.estado === 'accepted' ? 'Si tienes Mi contador conectado, le llega en unos minutos.' : undefined,
+      });
+      setFacturaNotaContador(null);
+    } catch (e: any) {
+      toast.error('No se pudo guardar la nota', { description: e?.message });
+    } finally {
+      setGuardandoNotaContador(false);
+    }
+  }
 
   async function cargar() {
     setCargando(true);
@@ -323,6 +352,12 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
                     <td className="px-3 py-3">
                       <p className="text-white truncate max-w-[180px]">{f.adquirente.nombreORazonSocial}</p>
                       <p className="text-xs text-slate-500 font-mono">{f.adquirente.numeroDocumento}</p>
+                      {f.notaContador && (
+                        <button onClick={() => abrirNotaContador(f)} title={f.notaContador}
+                          className="mt-1 flex items-center gap-1 max-w-[200px] px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-500 text-[11px] font-semibold">
+                          <StickyNote className="w-3 h-3 shrink-0" /> <span className="truncate">{f.notaContador}</span>
+                        </button>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-right font-mono text-white whitespace-nowrap">{money(f.total)}</td>
                     <td className="px-3 py-3">
@@ -376,6 +411,13 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
                         <button title="Enviar al cliente" onClick={() => abrirEnvio(f)} className="h-8 w-8 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center">
                           <Send className="w-3.5 h-3.5" />
                         </button>
+                        <button
+                          title={f.notaContador ? 'Ver o cambiar la nota para el contador' : 'Escribir una nota para el contador'}
+                          onClick={() => abrirNotaContador(f)}
+                          className={`h-8 w-8 rounded-lg flex items-center justify-center ${f.notaContador ? 'bg-amber-500/20 text-amber-500' : 'bg-slate-800 text-slate-300'}`}
+                        >
+                          <StickyNote className="w-3.5 h-3.5" />
+                        </button>
                         {creditos.length > 0 && anulada && !facturaReemplazada(f) && (
                           <button
                             title="Facturar de nuevo: la venta fue real y su factura quedó anulada"
@@ -410,6 +452,42 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
           </div>
         )}
       </div>
+
+      {facturaNotaContador && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setFacturaNotaContador(null)}>
+          <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-white font-bold flex items-center gap-2"><StickyNote className="w-4 h-4 text-amber-500" /> Nota para el contador</h3>
+              <button onClick={() => setFacturaNotaContador(null)} className="text-slate-400" aria-label="Cerrar"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-slate-400">
+              Factura <span className="font-mono text-slate-200">{facturaNotaContador.numeroFactura}</span> · {facturaNotaContador.adquirente.nombreORazonSocial} · {money(facturaNotaContador.total)}
+            </p>
+            <textarea
+              value={textoNotaContador}
+              onChange={(e) => setTextoNotaContador(e.target.value.slice(0, 1000))}
+              rows={5}
+              autoFocus
+              placeholder="Ej: Esta venta se pagó con dos transferencias. El cliente pidió la factura a nombre de la empresa."
+              className="w-full rounded-lg bg-slate-900 border border-slate-800 text-white text-sm p-3 resize-none outline-none focus:border-amber-500"
+            />
+            <p className="text-[11px] text-slate-500">
+              Solo la ve tu contador (en Codec Document, si tienes Mi contador conectado). El cliente no la ve y no va a la DIAN. Puedes cambiarla cuando quieras.
+            </p>
+            <div className="flex gap-2">
+              {facturaNotaContador.notaContador && (
+                <button onClick={() => guardarNotaParaContador('')} disabled={guardandoNotaContador}
+                  className="h-11 px-3 rounded-lg border border-red-500/40 text-red-400 text-sm font-semibold disabled:opacity-50">Borrar</button>
+              )}
+              <button onClick={() => setFacturaNotaContador(null)} className="flex-1 h-11 rounded-lg border border-slate-800 text-slate-300 text-sm font-semibold">Cancelar</button>
+              <button onClick={() => guardarNotaParaContador(textoNotaContador)} disabled={guardandoNotaContador || !textoNotaContador.trim()}
+                className="flex-1 h-11 rounded-lg bg-amber-500 text-slate-950 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                {guardandoNotaContador && <Loader2 className="w-4 h-4 animate-spin" />} Guardar nota
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* La misma factura carta que se imprime y se le entrega al cliente. */}
       <ModalVistaFactura

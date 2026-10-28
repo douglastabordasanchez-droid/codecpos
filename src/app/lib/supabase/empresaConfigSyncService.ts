@@ -26,6 +26,25 @@ async function signedLogoUrl(path: string | null): Promise<string> {
   const client = getSupabaseClient(); if (!client || !path) return '';
   const { data, error } = await withTimeout(client.storage.from(LOGO_BUCKET).createSignedUrl(path, 60 * 60 * 24), 'No fue posible obtener el logo a tiempo'); if (error) throw error; return data?.signedUrl || '';
 }
+/**
+ * El logo de la nube como imagen dentro de la configuración (PNG de máximo
+ * 600 px): la tirilla, el PDF y la impresora térmica lo usan sin internet. El
+ * enlace firmado vencía a las 24 horas y el logo desaparecía de las tirillas.
+ * '' si no se pudo (queda el enlace firmado de respaldo).
+ */
+async function logoComoImagen(path: string | null): Promise<string> {
+  const client = getSupabaseClient(); if (!client || !path) return '';
+  try {
+    const { data, error } = await withTimeout(client.storage.from(LOGO_BUCKET).download(path), 'El logo tardó demasiado en bajar');
+    if (error || !data) return '';
+    const bmp = await createImageBitmap(data);
+    const escala = Math.min(1, 600 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bmp.width * escala)); canvas.height = Math.max(1, Math.round(bmp.height * escala));
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png');
+  } catch { return ''; }
+}
 export async function guardarConfiguracionEmpresaEnNube(config: Record<string, unknown>): Promise<void> {
   const client = getSupabaseClient(); const clienteId = getLinkedClienteId(); if (!client || !clienteId || !navigator.onLine) return;
   const logoValue = typeof config.logoUrl === 'string' ? config.logoUrl : '';
@@ -39,7 +58,7 @@ export async function guardarConfiguracionEmpresaEnNube(config: Record<string, u
 export async function descargarConfiguracionEmpresaDesdeNube(): Promise<boolean> {
   const client = getSupabaseClient(); const clienteId = getLinkedClienteId(); if (!client || !clienteId || !navigator.onLine) return false;
   const { data, error } = await withTimeout(client.from('empresa_configuraciones').select('datos, logo_path').eq('cliente_id', clienteId).maybeSingle(), 'La consulta de configuración tardó demasiado'); if (error) throw error; if (!data) return false;
-  const local = readLocal(); const logoUrl = await signedLogoUrl(data.logo_path); localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...local, ...(data.datos || {}), ...(logoUrl ? { logoUrl } : {}) })); window.dispatchEvent(new CustomEvent('codecpos:empresa-sincronizada')); return true;
+  const local = readLocal(); const logoUrl = (await logoComoImagen(data.logo_path)) || await signedLogoUrl(data.logo_path); localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...local, ...(data.datos || {}), ...(logoUrl ? { logoUrl } : {}) })); window.dispatchEvent(new CustomEvent('codecpos:empresa-sincronizada')); return true;
 }
 
 export async function sincronizarConfiguracionEmpresaPendiente(): Promise<void> {

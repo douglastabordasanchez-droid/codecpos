@@ -243,6 +243,8 @@ export interface FacturaElectronicaDian {
   retenciones?: Array<{ codigo: '06' | '07'; porcentaje: number; base: number; valor: number }>;
   /** Cuándo y a qué correo se le envió al cliente (migración 0099). Sin valor = pendiente. */
   correoEnviadoAt?: string;
+  /** Nota interna del administrador para el contador (no va a la DIAN ni al cliente). */
+  notaContador?: string;
   correoDestino?: string;
   /** `updated_at` de la fila: la cola de envíos lo usa como candado optimista. */
   actualizadaEn?: string;
