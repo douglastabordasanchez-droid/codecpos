@@ -23,11 +23,21 @@ interface Props {
   stockKg?: number;
   onConfirmar: (pesoKg: number) => void;
   onCerrar: () => void;
+  /** Kilos del bulto cerrado; si se sabe, sale el botón "Vender bulto completo". */
+  pesoBultoKg?: number | null;
   /** Electron en modo claro; la web usa la paleta slate (themeClaro.css la repinta). */
   claro?: boolean;
 }
 
-export function ModalPesaje({ nombre, precioPorKg, stockKg, onConfirmar, onCerrar, claro = false }: Props) {
+/** Kilos del bulto: el guardado, o el que dice el nombre ("X 25K", "x 8 kg"). */
+export function kilosDelBulto(nombre: string, guardado?: number | null): number | null {
+  if (guardado && guardado > 0) return guardado;
+  const m = nombre.match(/x\s*(\d+(?:[.,]\d+)?)\s*k/i);
+  const kg = m ? parseFloat(m[1].replace(',', '.')) : NaN;
+  return kg > 0 ? kg : null;
+}
+
+export function ModalPesaje({ nombre, precioPorKg, stockKg, onConfirmar, onCerrar, pesoBultoKg, claro = false }: Props) {
   const bascula = useBasculaWeb();
   const hayPuerto = soporteBascula();
   const [manual, setManual] = useState(!hayPuerto);
@@ -168,6 +178,20 @@ export function ModalPesaje({ nombre, precioPorKg, stockKg, onConfirmar, onCerra
           <span className={`${t.totalTxt} text-2xl font-black tabular-nums`}>{money(total)}</span>
         </div>
         {excede && <p className="text-red-500 text-sm text-center">No hay tanto en inventario: quedan {formatoPeso(stockKg || 0)}.</p>}
+
+        {(() => {
+          // Bulto cerrado: se vende entero sin pesarlo.
+          const bulto = kilosDelBulto(nombre, pesoBultoKg);
+          if (!bulto) return null;
+          const alcanza = stockKg === undefined || bulto <= stockKg + 0.0000005;
+          return (
+            <button type="button" disabled={!alcanza} onClick={() => onConfirmar(bulto)}
+              className={`w-full h-12 rounded-xl border-2 border-emerald-500/60 font-bold flex items-center justify-between px-4 disabled:opacity-40 ${claro ? 'text-emerald-700 hover:bg-emerald-50' : 'text-emerald-300 hover:bg-emerald-500/10'}`}>
+              <span>Vender bulto completo · {formatoPeso(bulto)}</span>
+              <span className="tabular-nums">{alcanza ? money(bulto * precioPorKg) : 'No alcanza el inventario'}</span>
+            </button>
+          );
+        })()}
 
         <div className="flex gap-3">
           <button onClick={onCerrar} className={`flex-1 h-12 rounded-xl ${t.cancelar} font-semibold`}>Cancelar</button>

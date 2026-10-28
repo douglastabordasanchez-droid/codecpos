@@ -68,7 +68,11 @@ export function soporteBascula(): boolean {
 
 export function obtenerConfigBascula(): ConfigBascula {
   try {
-    return { ...POR_DEFECTO, ...JSON.parse(localStorage.getItem(CLAVE) || '{}') };
+    const cfg: ConfigBascula = { ...POR_DEFECTO, ...JSON.parse(localStorage.getItem(CLAVE) || '{}') };
+    // Ninguna báscula de tienda manda miligramos enteros: marcada en mg, "485"
+    // (gramos) se leía 0,000485 kg (caso Mega Can). Se toma como gramos.
+    if (cfg.unidadSinMarca === 'mg') cfg.unidadSinMarca = 'g';
+    return cfg;
   } catch {
     return POR_DEFECTO;
   }

@@ -3837,6 +3837,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             nombre={productoPesable.nombre}
             precioPorKg={productoPesable.precio}
             stockKg={productoPesable.stock > 0 ? productoPesable.stock : undefined}
+            pesoBultoKg={(productoPesable as any).pesoBultoKg}
             onConfirmar={(kg) => agregarProductoPesable(kg)}
             onCerrar={() => setProductoPesable(null)}
           />

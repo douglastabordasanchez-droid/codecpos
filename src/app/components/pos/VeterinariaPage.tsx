@@ -696,6 +696,7 @@ function TabGranel({ productos, busqueda, setBusqueda, darkMode, cardCls, textCl
           nombre={productoActivo.nombre}
           precioPorKg={productoActivo.precio}
           stockKg={productoActivo.stock > 0 ? productoActivo.stock : undefined}
+          pesoBultoKg={productoActivo.pesoBultoKg}
           onConfirmar={confirmar}
           onCerrar={() => setProductoActivo(null)}
         />

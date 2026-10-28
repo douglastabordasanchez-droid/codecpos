@@ -108,15 +108,15 @@ describe('simulación de básculas', () => {
     await b.desconectarBascula(false);
   }, 60000);
 
-  it('báscula en miligramos sin unidad (configurada en mg)', async () => {
+  it('Mega Can: manda "485" sin unidad y quedó marcada en mg → 485 g, no 0,000485 kg', async () => {
     const b = await cargar();
     b.guardarConfigBascula({ unidadSinMarca: 'mg' });
-    const p = puertoFalso({ baudRate: 9600, dataBits: 8, parity: 'none', comando: null, trama: '  250' });
+    const p = puertoFalso({ baudRate: 9600, dataBits: 8, parity: 'none', comando: null, trama: '  485' });
     Object.defineProperty(globalThis, "navigator", { value: { serial: { requestPort: async () => p, getPorts: async () => [p] } }, configurable: true });
     await b.conectarBascula();
     await new Promise((r) => setTimeout(r, 1500));
-    expect(b.estadoBascula().pesoKg).toBe(0.00025);
-    expect(b.formatoPeso(b.estadoBascula().pesoKg)).toBe('250 mg');
+    expect(b.estadoBascula().pesoKg).toBe(0.485);
+    expect(b.formatoPeso(b.estadoBascula().pesoKg)).toBe('485 g');
     await b.desconectarBascula(false);
   }, 60000);
 

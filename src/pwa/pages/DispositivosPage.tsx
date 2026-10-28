@@ -158,10 +158,10 @@ export function TarjetaBascula({ claro = false }: { claro?: boolean }) {
             <div className="col-span-2">
               <p className={`${t.etiqueta} text-xs mb-1.5`}>Si la báscula manda un número entero sin unidad (ej. 485), está en</p>
               <div className="flex gap-2">
-                {(['kg', 'g', 'mg'] as const).map((u) => (
+                {(['kg', 'g'] as const).map((u) => (
                   <button key={u} onClick={() => cambiar({ unidadSinMarca: u })}
                     className={`flex-1 h-10 rounded-xl text-sm font-bold ${cfg.unidadSinMarca === u ? 'bg-amber-500 text-slate-950' : t.inactivo}`}>
-                    {u === 'kg' ? 'Kilos' : u === 'g' ? 'Gramos' : 'Miligramos'}
+                    {u === 'kg' ? 'Kilos' : 'Gramos'}
                   </button>
                 ))}
               </div>

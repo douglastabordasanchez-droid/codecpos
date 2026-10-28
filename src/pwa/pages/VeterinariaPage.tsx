@@ -444,6 +444,7 @@ function TabGranel({ clienteId, empleadoId, productos, pendientes, onCambio, onV
           nombre={pesando.nombre}
           precioPorKg={pesando.precio_venta}
           stockKg={Math.max(0, pesando.stock - kgPendientes(pesando.id))}
+          pesoBultoKg={pesando.peso_bulto_kg}
           onConfirmar={(kg) => { onVender(pesando, kg); setPesando(null); }}
           onCerrar={() => setPesando(null)}
         />

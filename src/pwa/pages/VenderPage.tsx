@@ -68,6 +68,8 @@ interface ProductoFila {
   talla?: string | null;
   color?: string | null;
   tipo_producto?: string | null;
+  /** Kilos del bulto cerrado (granel). */
+  peso_bulto_kg?: number | null;
   /** Tarifa de IVA del producto (19, 5 o 0). */
   iva?: number | null;
   /** Tarifa con la que se vende según el IVA del negocio (configIva.ts); precio_venta ya la incluye. */
@@ -221,7 +223,7 @@ export default function VenderPage() {
     const [data, configIva] = await Promise.all([
       traerTodo<ProductoFila>((desde, hasta) => client!
         .from('productos')
-        .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto, iva')
+        .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto, iva, peso_bulto_kg')
         .eq('cliente_id', empleado.cliente_id)
         .eq('activo', true)
         .order('nombre')
@@ -1245,6 +1247,7 @@ export default function VenderPage() {
           nombre={pesando.nombre}
           precioPorKg={carrito[pesando.id]?.precio ?? pesando.precio_venta}
           stockKg={Math.max(0, Number(pesando.stock) - (reemplazarPeso ? 0 : carrito[pesando.id]?.cantidad || 0))}
+          pesoBultoKg={pesando.peso_bulto_kg != null ? Number(pesando.peso_bulto_kg) : null}
           onConfirmar={(kg) => agregarPesado(pesando, kg, reemplazarPeso)}
           onCerrar={() => setPesando(null)}
         />
