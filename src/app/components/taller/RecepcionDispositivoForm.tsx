@@ -9,6 +9,7 @@ import { tallerService } from '../../services/tallerService';
 import { TIPOS_DISPOSITIVO, PRIORIDADES, type TipoDispositivo, type Prioridad } from '../../types/taller';
 import { usePOS } from '../../contexts/POSContext';
 import { useLanContext } from '../../contexts/LanContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 const STEPS = [
   { num: 1 as const, label: 'Cliente',     icon: User       },
@@ -25,6 +26,7 @@ interface RecepcionDispositivoFormProps {
 export default function RecepcionDispositivoForm({ onClose, onSuccess }: RecepcionDispositivoFormProps) {
   const { darkMode } = usePOS();
   const { emitLanEvent } = useLanContext();
+  const { usuarios } = useAuth();
 
   const input = darkMode
     ? 'w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm'
@@ -47,24 +49,21 @@ export default function RecepcionDispositivoForm({ onClose, onSuccess }: Recepci
   const [tecnicosList, setTecnicosList] = useState<Array<{ id: string; nombre: string }>>([]);
 
   useEffect(() => {
-    try {
-      const usuarios: any[] = JSON.parse(localStorage.getItem('codecpos_usuarios') || '[]');
-      const aptos = usuarios
-        .filter((u) => (u.rol === 'tecnico' || u.rol === 'super_usuario') && u.activo !== false)
-        .map((u) => ({ id: u.id || u.username || '', nombre: u.nombreCompleto || u.nombre || u.username || '' }))
+    const aptos = usuarios
+      .filter((u) => (u.rol === 'tecnico' || u.rol === 'super_usuario') && u.activo !== false)
+      .map((u) => ({ id: u.id || u.username || '', nombre: u.nombreCompleto || u.username || '' }))
+      .filter((u) => u.id && u.nombre);
+    // Fallback: si no hay técnicos configurados, mostrar todos los usuarios activos
+    if (aptos.length === 0) {
+      const fallback = usuarios
+        .filter((u) => u.activo !== false)
+        .map((u) => ({ id: u.id || u.username || '', nombre: u.nombreCompleto || u.username || '' }))
         .filter((u) => u.id && u.nombre);
-      // Fallback: si no hay técnicos configurados, mostrar todos los usuarios activos
-      if (aptos.length === 0) {
-        const fallback = usuarios
-          .filter((u) => u.activo !== false)
-          .map((u) => ({ id: u.id || u.username || '', nombre: u.nombreCompleto || u.nombre || u.username || '' }))
-          .filter((u) => u.id && u.nombre);
-        setTecnicosList(fallback);
-      } else {
-        setTecnicosList(aptos);
-      }
-    } catch { /* ignore */ }
-  }, []);
+      setTecnicosList(fallback);
+    } else {
+      setTecnicosList(aptos);
+    }
+  }, [usuarios]);
 
   const [clienteData, setClienteData] = useState({
     nombre: '', cedula: '', telefono: '', email: '', direccion: '',

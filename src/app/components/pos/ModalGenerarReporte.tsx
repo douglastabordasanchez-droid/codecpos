@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { ReporteGenerado } from '../../services/reportesService';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface TipoReporte {
   id: string;
@@ -45,6 +46,7 @@ const PERIODOS = [
 function toDate(d: Date) { return d.toISOString().split('T')[0]; }
 
 export default function ModalGenerarReporte({ open, tipo, onClose, onGenerado, darkMode, usuarioActual, generarFn, cajeros: cajerosExternos, categorias: categoriasExternas }: Props) {
+  const { usuarios } = useAuth();
   const [loading, setLoading] = useState(false);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
@@ -92,22 +94,16 @@ export default function ModalGenerarReporte({ open, tipo, onClose, onGenerado, d
   };
 
   const cargarCajeros = () => {
-    try {
-      const raw = localStorage.getItem('codecpos_usuarios') || localStorage.getItem('pos-usuarios');
-      if (raw) {
-        const usuarios = JSON.parse(raw);
-        const lista = usuarios
-          .filter((u: any) => u.activo && (u.rol === 'cajero' || u.rol === 'super_usuario'))
-          .map((u: any) => ({ id: u.id, nombre: u.nombreCompleto || u.nombre || u.username || 'Sin nombre' }));
-        setCajeros(lista);
-        if (usuarioActual?.id) {
-          const existe = lista.some((c: any) => c.id === usuarioActual.id);
-          setCajeroSeleccionado(existe ? usuarioActual.id : lista[0]?.id || '');
-        } else {
-          setCajeroSeleccionado(lista[0]?.id || '');
-        }
-      }
-    } catch { /* no-op */ }
+    const lista = usuarios
+      .filter((u) => u.activo && (u.rol === 'cajero' || u.rol === 'super_usuario'))
+      .map((u) => ({ id: u.id, nombre: u.nombreCompleto || u.username || 'Sin nombre' }));
+    setCajeros(lista);
+    if (usuarioActual?.id) {
+      const existe = lista.some((c) => c.id === usuarioActual.id);
+      setCajeroSeleccionado(existe ? usuarioActual.id : lista[0]?.id || '');
+    } else {
+      setCajeroSeleccionado(lista[0]?.id || '');
+    }
   };
 
   const dias = fechaInicio && fechaFin

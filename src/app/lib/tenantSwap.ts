@@ -23,6 +23,7 @@
 
 import { dbManager } from './indexedDB';
 import { getSupabaseClient } from './supabase/config';
+import { beginTenantSwitch } from './tenantTransition';
 
 const DB_NAME_BASE = 'CodecPOS_DB';
 
@@ -88,13 +89,57 @@ function archivarBajo(clienteId: string): void {
     localStorage.setItem(`${ARCHIVE_PREFIX}${clienteId}__${key}`, valor);
     localStorage.removeItem(key);
   }
-  // El vínculo de sincronización también es parte de "cómo quedó" esta
-  // empresa — así Prioridad 1 (login recordado) puede reautenticarse sin
-  // volver a pedir la contraseña de licencia.
+}
+
+function archivarVinculoBajo(clienteId: string): void {
   const syncEmail = localStorage.getItem(LS_SYNC_EMAIL);
   const syncPassword = localStorage.getItem(LS_SYNC_PASSWORD);
   if (syncEmail) localStorage.setItem(`${ARCHIVE_PREFIX}${clienteId}__sync_email`, syncEmail);
   if (syncPassword) localStorage.setItem(`${ARCHIVE_PREFIX}${clienteId}__sync_password`, syncPassword);
+}
+
+function limpiarVinculoSync(): void {
+  localStorage.removeItem(LS_CLIENTE_ID);
+  localStorage.removeItem(LS_SYNC_EMAIL);
+  localStorage.removeItem(LS_SYNC_PASSWORD);
+}
+
+async function reautenticarVinculoSync(
+  clienteId: string,
+  syncEmail?: string,
+  syncPassword?: string,
+  credenciales?: CredencialesLicencia
+): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) {
+    limpiarVinculoSync();
+    return;
+  }
+
+  if (syncEmail && syncPassword) {
+    const { error } = await client.auth.signInWithPassword({ email: syncEmail, password: syncPassword });
+    if (!error) {
+      const { data: clienteAutenticado, error: scopeError } = await client.rpc('current_cliente_id');
+      if (!scopeError && String(clienteAutenticado) === clienteId) {
+        localStorage.setItem(LS_CLIENTE_ID, clienteId);
+        localStorage.setItem(LS_SYNC_EMAIL, syncEmail);
+        localStorage.setItem(LS_SYNC_PASSWORD, syncPassword);
+        return;
+      }
+      console.error('[TenantSwap] La identidad autenticada no pertenece al negocio local activo:', scopeError?.message || clienteAutenticado);
+    } else {
+      console.error('[TenantSwap] No se pudo reautenticar la sincronización archivada:', error.message);
+    }
+  } else if (credenciales) {
+    const { vincularNegocio } = await import('./supabase/tenantLink');
+    const resultado = await vincularNegocio(clienteId, credenciales.usuario, credenciales.password);
+    if (resultado.ok) return;
+    console.error('[TenantSwap] No se pudo vincular la sincronización al negocio activo:', resultado.error);
+  }
+
+  limpiarVinculoSync();
+  const { error } = await client.auth.signOut();
+  if (error) console.error('[TenantSwap] No se pudo cerrar la sesión de sincronización anterior:', error.message);
 }
 
 /** Restaura (si existen) las claves archivadas de `clienteId` como las claves "vivas". Si nunca se usó esta empresa aquí, no restaura nada — arranca en blanco. */
@@ -113,6 +158,14 @@ function restaurarDesde(clienteId: string): { syncEmail?: string; syncPassword?:
     localStorage.removeItem(claveArchivada);
   }
   return { syncEmail, syncPassword };
+}
+
+function leerVinculoArchivado(clienteId: string): { syncEmail?: string; syncPassword?: string } {
+  const prefijo = `${ARCHIVE_PREFIX}${clienteId}__`;
+  return {
+    syncEmail: localStorage.getItem(`${prefijo}sync_email`) || undefined,
+    syncPassword: localStorage.getItem(`${prefijo}sync_password`) || undefined,
+  };
 }
 
 export interface CredencialesLicencia {
@@ -146,6 +199,18 @@ export async function activarEmpresaLocal(
 ): Promise<boolean> {
   if (!clienteId) return false;
 
+  const finalizarCambioTenant = await beginTenantSwitch();
+  try {
+    return await activarEmpresaLocalConCambio(clienteId, credenciales);
+  } finally {
+    finalizarCambioTenant();
+  }
+}
+
+async function activarEmpresaLocalConCambio(
+  clienteId: string,
+  credenciales?: CredencialesLicencia
+): Promise<boolean> {
   // Primera vez que corre este mecanismo en esta instalación: lo que ya
   // esté cargado (sin ninguna partición) se adopta tal cual como los datos
   // de la empresa actualmente vinculada — cero migración, cero riesgo para
@@ -166,15 +231,27 @@ export async function activarEmpresaLocal(
     await dbManager.cambiarBaseDatos(dbNameParaEmpresa(clienteId));
     localStorage.setItem(KEY_EMPRESA_ACTIVA, clienteId);
 
-    // Excepción: instalación recién nacida que TODAVÍA no tiene identidad de
-    // sincronización (primer login de licencia de la vida de este equipo) —
-    // sin esto, un equipo nuevo nunca quedaba vinculado a la nube.
-    if (credenciales && !localStorage.getItem(LS_SYNC_EMAIL)) {
-      const { vincularNegocio } = await import('./supabase/tenantLink');
-      const resultado = await vincularNegocio(clienteId, credenciales.usuario, credenciales.password);
-      if (!resultado.ok) {
-        console.error('[TenantSwap] No se pudo vincular la sincronización de esta instalación nueva:', resultado.error);
+    const clienteVinculadoAntes = localStorage.getItem(LS_CLIENTE_ID);
+    const vinculoArchivado = leerVinculoArchivado(clienteId);
+    const tieneCredencialesSync =
+      !!localStorage.getItem(LS_SYNC_EMAIL) && !!localStorage.getItem(LS_SYNC_PASSWORD);
+    const vinculoInconsistente =
+      (clienteVinculadoAntes !== null && clienteVinculadoAntes !== clienteId) ||
+      (clienteVinculadoAntes === clienteId && !tieneCredencialesSync) ||
+      (!!localStorage.getItem(LS_SYNC_EMAIL) !== !!localStorage.getItem(LS_SYNC_PASSWORD));
+    if (
+      vinculoInconsistente ||
+      !!credenciales ||
+      (!!vinculoArchivado.syncEmail && !!vinculoArchivado.syncPassword)
+    ) {
+      if (clienteVinculadoAntes && clienteVinculadoAntes !== clienteId) {
+        archivarVinculoBajo(clienteVinculadoAntes);
       }
+      const vinculo = tieneCredencialesSync && clienteVinculadoAntes === clienteId
+        ? { syncEmail: localStorage.getItem(LS_SYNC_EMAIL) || undefined, syncPassword: localStorage.getItem(LS_SYNC_PASSWORD) || undefined }
+        : vinculoArchivado;
+      limpiarVinculoSync();
+      await reautenticarVinculoSync(clienteId, vinculo.syncEmail, vinculo.syncPassword, credenciales);
     }
     return false;
   }
@@ -183,6 +260,12 @@ export async function activarEmpresaLocal(
 
   // 1) Archivar lo que estaba activo (nunca se borra).
   archivarBajo(activaAntes);
+  const clienteVinculadoAntes = localStorage.getItem(LS_CLIENTE_ID);
+  if (clienteVinculadoAntes) archivarVinculoBajo(clienteVinculadoAntes);
+  limpiarVinculoSync();
+  // Bloquear el tenant anterior antes de cambiar IndexedDB, para que ningún
+  // ciclo nuevo pueda operar sobre la base entrante con las credenciales viejas.
+  localStorage.setItem(KEY_EMPRESA_ACTIVA, clienteId);
 
   // 2) Abrir la base IndexedDB de la empresa entrante (independiente de la
   //    anterior — sus productos/ventas/clientes quedan intactos, aparte).
@@ -191,29 +274,9 @@ export async function activarEmpresaLocal(
   // 3) Restaurar (o dejar en blanco, si es la primera vez) sus datos locales.
   const { syncEmail, syncPassword } = restaurarDesde(clienteId);
 
-  // 4) Re-apuntar la identidad de sincronización con la nube a esta empresa.
-  const client = getSupabaseClient();
-  if (client) {
-    if (syncEmail && syncPassword) {
-      const { error } = await client.auth.signInWithPassword({ email: syncEmail, password: syncPassword });
-      if (!error) {
-        localStorage.setItem(LS_CLIENTE_ID, clienteId);
-        localStorage.setItem(LS_SYNC_EMAIL, syncEmail);
-        localStorage.setItem(LS_SYNC_PASSWORD, syncPassword);
-      } else {
-        console.error('[TenantSwap] No se pudo reautenticar la sincronización archivada:', error.message);
-      }
-    } else if (credenciales) {
-      // Primera vez que esta empresa se usa en este equipo: provisionar (o
-      // reutilizar, es idempotente) su identidad de sincronización.
-      const { vincularNegocio } = await import('./supabase/tenantLink');
-      const resultado = await vincularNegocio(clienteId, credenciales.usuario, credenciales.password);
-      if (!resultado.ok) {
-        console.error('[TenantSwap] No se pudo vincular la sincronización para la nueva empresa:', resultado.error);
-      }
-    }
-  }
-
-  localStorage.setItem(KEY_EMPRESA_ACTIVA, clienteId);
+  // 4) Reautenticar solo con la identidad verificada de esta empresa. Si no
+  // hay credenciales propias válidas, el negocio queda local y sin sync: no
+  // se conserva nunca la sesión del tenant anterior.
+  await reautenticarVinculoSync(clienteId, syncEmail, syncPassword, credenciales);
   return true;
 }

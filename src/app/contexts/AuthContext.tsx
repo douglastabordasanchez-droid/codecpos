@@ -150,6 +150,13 @@ const STORAGE_KEY_CONFIG_INICIAL = 'codecpos_config_inicial';
 const STORAGE_KEY_CONFIG_CLIENTE = 'codecpos_config_cliente_completada';
 const MAX_USUARIOS = 5; // Máximo 5 usuarios por terminal
 
+function obtenerClienteIdUsuario(usuario: Usuario | null | undefined): string | undefined {
+  if (!usuario) return undefined;
+  return usuario.clienteSupabaseId ||
+    (usuario.id.startsWith('lic_') ? usuario.id.slice(4) : undefined) ||
+    ((usuario.creadoPor || '').startsWith('lic_') ? usuario.creadoPor.slice(4) : undefined);
+}
+
 // 🚀 FIX rendimiento: AuthContext es el contexto más consumido de toda la
 // app (sesión/permisos, usado en ProtectedLayout, sidebar y casi cada
 // pantalla). Su `value` era un objeto literal inline con ~15 funciones
@@ -280,7 +287,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const sesionActivaCargada = await UsuariosStorage.cargarSesionActiva();
         if (sesionActivaCargada) {
-          setSesionActiva(sesionActivaCargada);
+          const usuarioEnLista = usuariosCargados.find((u) => u.id === sesionActivaCargada.usuarioId) || null;
+          const usuarioEnSesion = sesionActivaCargada.usuario || null;
+          const clienteIdEnLista = obtenerClienteIdUsuario(usuarioEnLista);
+          const clienteIdEnSesion = obtenerClienteIdUsuario(usuarioEnSesion);
+          const negocioInconsistente = !!clienteIdEnLista && !!clienteIdEnSesion && clienteIdEnLista !== clienteIdEnSesion;
+          const usuarioSesion = usuarioEnLista || usuarioEnSesion;
+          const clienteIdSesionGuardada = clienteIdEnLista || clienteIdEnSesion;
+
+          if (negocioInconsistente) {
+            console.error('[Auth] Sesión persistida con afiliaciones de negocio diferentes; se requiere iniciar sesión de nuevo');
+            try { localStorage.removeItem(STORAGE_KEY_SESION_ACTIVA); } catch { /* ignorar */ }
+            await UsuariosStorage.guardarSesionActiva(null).catch((error) => {
+              console.error('[Auth] No se pudo borrar la sesión con negocio inconsistente:', error);
+            });
+          } else if (clienteIdSesionGuardada) {
+            try {
+              const cambioDeEmpresa = await activarEmpresaLocal(clienteIdSesionGuardada);
+              const sesionSegura = { ...sesionActivaCargada, usuario: usuarioSesion || undefined };
+              if (cambioDeEmpresa) {
+                try {
+                  localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(sesionSegura));
+                  await UsuariosStorage.guardarSesionActiva(sesionSegura);
+                } catch (e) {
+                  console.error('[Auth] No se pudo guardar la sesión validada antes de cambiar de negocio:', e);
+                  throw e;
+                }
+                setTimeout(() => {
+                  const el = (window as any).electron;
+                  if (el?.relaunch) el.relaunch();
+                  else window.location.reload();
+                }, 400);
+              } else {
+                try {
+                  localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(sesionSegura));
+                } catch (e) {
+                  console.error('[Auth] No se pudo guardar la sesión validada:', e);
+                }
+                setSesionActiva(sesionSegura);
+              }
+            } catch (e) {
+              console.error('[Auth] No se restauró la sesión porque no se pudo activar su negocio:', e);
+              try { localStorage.removeItem(STORAGE_KEY_SESION_ACTIVA); } catch { /* ignorar */ }
+              await UsuariosStorage.guardarSesionActiva(null).catch((error) => {
+                console.error('[Auth] No se pudo borrar la sesión local desactualizada:', error);
+              });
+            }
+          } else if (
+            localStorage.getItem('codecpos_datos_activos_cliente_id') ||
+            getLinkedClienteId()
+          ) {
+            console.warn('[Auth] Sesión anterior sin negocio verificado; se requiere iniciar sesión de nuevo');
+            try { localStorage.removeItem(STORAGE_KEY_SESION_ACTIVA); } catch { /* ignorar */ }
+            await UsuariosStorage.guardarSesionActiva(null).catch((error) => {
+              console.error('[Auth] No se pudo borrar la sesión local sin negocio:', error);
+            });
+          } else {
+            setSesionActiva(sesionActivaCargada);
+          }
         }
 
         setCargandoDatos(false);
@@ -438,6 +502,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const usuarioActual = sesionActiva 
     ? (sesionActiva.usuario || usuarios.find(u => u.id === sesionActiva.usuarioId) || null)
     : null;
+  const clienteIdSesion = obtenerClienteIdUsuario(usuarioActual);
+  const usuariosVisibles = useMemo(
+    () => usuarios.filter((u) => obtenerClienteIdUsuario(u) === clienteIdSesion),
+    [usuarios, clienteIdSesion]
+  );
 
   // 🔄 Refresco automático de sesión cuando cambian permisos del usuario logueado
   useEffect(() => {
@@ -595,7 +664,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔐 INICIANDO SESIÓN');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📝 Credenciales recibidas:', { username: usernameNormalizado, password: passwordNormalizado });
+    console.log('📝 Usuario recibido:', usernameNormalizado);
 
     // ✅ PRIORIDAD 1: Autenticación local (usuarios del sistema)
     console.log('👥 Intentando autenticación local...');
@@ -644,7 +713,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const usuario = candidato && esActivoEfectivo(candidato) ? candidato : undefined;
+    let usuario = candidato && esActivoEfectivo(candidato) ? candidato : undefined;
+    let clienteIdLicenciaResuelto: string | null = null;
+
+    // El Admin local de fábrica es compartido por instalación y no identifica
+    // a un negocio. Cuando sus credenciales también son las de una licencia,
+    // deja que la autenticación de licencia determine el tenant en vez de
+    // heredar el último negocio que quedó abierto en este equipo.
+    if (
+      usuario?.rol === 'super_usuario' &&
+      !usuario.clienteSupabaseId &&
+      !usuario.id.startsWith('lic_') &&
+      navigator.onLine
+    ) {
+      const client = getSupabaseClient();
+      if (client) {
+        try {
+          const { data, error } = await client.rpc('resolver_login_licencia', {
+            p_usuario: usernameNormalizado,
+            p_password: passwordNormalizado,
+          });
+          if (error) {
+            console.warn('[Auth] No se pudo resolver el negocio de la licencia:', error.message);
+          } else if (data) {
+            clienteIdLicenciaResuelto = String(data);
+            usuario = undefined;
+          }
+        } catch (e) {
+          console.warn('[Auth] Falló la resolución online de la licencia:', e);
+        }
+      }
+    }
 
     console.log('🔍 Resultado búsqueda en usuarios locales:', usuario ? '✅ ENCONTRADO' : '❌ NO ENCONTRADO');
 
@@ -656,14 +755,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // localStorage/IndexedDB, se asegura que los datos activos sean los de
       // la empresa de ESTE usuario — ver tenantSwap.ts. Para instalaciones
       // de una sola empresa (el caso normal) esto no hace nada.
-      const clienteIdDeEsteUsuario =
-        usuario.clienteSupabaseId || (usuario.id.startsWith('lic_') ? usuario.id.slice(4) : undefined);
+      let clienteIdDeEsteUsuario =
+        usuario.clienteSupabaseId ||
+        (usuario.id.startsWith('lic_') ? usuario.id.slice(4) : undefined) ||
+        ((usuario.creadoPor || '').startsWith('lic_') ? usuario.creadoPor.slice(4) : undefined) ||
+        undefined;
+
+      // Las cuentas locales creadas antes de guardar clienteSupabaseId no
+      // tienen una afiliación fiable. Si son también empleados de Supabase,
+      // resolver su perfil con las mismas credenciales permite cambiar al
+      // negocio real del empleado y no al último negocio usado en el equipo.
+      if (!clienteIdDeEsteUsuario && navigator.onLine) {
+        try {
+          const resultadoRemoto = await signInSupabase(usernameNormalizado, passwordNormalizado);
+          if (resultadoRemoto.ok && resultadoRemoto.empleado?.cliente_id) {
+            clienteIdDeEsteUsuario = resultadoRemoto.empleado.cliente_id;
+            const usuarioResuelto = { ...usuario, clienteSupabaseId: clienteIdDeEsteUsuario };
+            usuario = usuarioResuelto;
+            setUsuarios((prev) => prev.map((u) => u.id === usuarioResuelto.id ? usuarioResuelto : u));
+          }
+        } catch (e) {
+          console.warn('[Auth] No se pudo resolver el negocio de la cuenta local en Supabase:', e);
+        }
+      }
+
+      // El vínculo pertenece a la instalación, no prueba a qué negocio
+      // pertenece la cuenta local. Sin una identidad de negocio verificable,
+      // bloquear antes de abrir cualquier base de un cliente.
+      if (!clienteIdDeEsteUsuario) {
+        const hayTenantEnLaInstalacion =
+          !!localStorage.getItem('codecpos_datos_activos_cliente_id') ||
+          !!getLinkedClienteId();
+        if (hayTenantEnLaInstalacion) {
+          console.error('[Auth] Cuenta local sin negocio verificado; se bloquea el acceso para evitar abrir datos de otro cliente');
+          return false;
+        }
+      }
+
       let cambioDeEmpresaActiva = false;
       if (clienteIdDeEsteUsuario) {
-        cambioDeEmpresaActiva = await activarEmpresaLocal(clienteIdDeEsteUsuario).catch((e) => {
+        try {
+          cambioDeEmpresaActiva = await activarEmpresaLocal(clienteIdDeEsteUsuario);
+        } catch (e) {
           console.error('[Auth] No se pudo activar los datos locales de la empresa:', e);
           return false;
-        });
+        }
       }
 
       const permisosUsuario = obtenerPermisosUsuario(usuario.id);
@@ -702,7 +838,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         horaInicio: ahora,
       };
 
-      setSesionActiva(nuevaSesion);
       setRegistrosSesiones(prev => [...prev, nuevoRegistro]);
 
       electronStore.iniciarTurno(usuario.id, usuario.nombreCompleto)
@@ -790,13 +925,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // calculada y relanzar/recargar para que TODA la app arranque limpia
       // leyendo la base recién activada.
       if (cambioDeEmpresaActiva) {
-        try { localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(nuevaSesion)); } catch { /* ignorar */ }
+        try {
+          localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(nuevaSesion));
+          await UsuariosStorage.guardarSesionActiva(nuevaSesion);
+        } catch (e) {
+          console.error('[Auth] No se pudo guardar la sesión antes de cambiar de negocio:', e);
+          return false;
+        }
         console.log('[Auth] Cambio de empresa activa en este equipo — recargando para reflejar los datos locales correctos');
         setTimeout(() => {
           const el = (window as any).electron;
           if (el?.relaunch) el.relaunch();
           else window.location.reload();
         }, 400);
+      } else {
+        setSesionActiva(nuevaSesion);
       }
 
       return true;
@@ -806,7 +949,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('🔄 Buscando en Panel de Desarrollador (localStorage)...');
     const clientesGuardados = localStorage.getItem('codecpos_dev_clientes');
 
-    if (clientesGuardados) {
+    if (!clienteIdLicenciaResuelto && clientesGuardados) {
       let clientes: any[] = [];
       try { clientes = JSON.parse(clientesGuardados); } catch { clientes = []; }
       const clienteEncontrado = clientes.find((c: any) => {
@@ -909,10 +1052,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const client = getSupabaseClient();
         if (client) {
-          const { data: clienteId } = await client.rpc('resolver_login_licencia', {
-            p_usuario: usernameNormalizado,
-            p_password: passwordNormalizado,
-          });
+          const { data: clienteId } = clienteIdLicenciaResuelto
+            ? { data: clienteIdLicenciaResuelto }
+            : await client.rpc('resolver_login_licencia', {
+                p_usuario: usernameNormalizado,
+                p_password: passwordNormalizado,
+              });
 
           if (clienteId) {
             const { data: clienteRow } = await client
@@ -935,13 +1080,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // activo y carga (o inicializa en blanco) los datos propios
               // de esta empresa — ver tenantSwap.ts. Para el caso normal
               // (siempre la misma empresa en este equipo) no cambia nada.
-              const cambioDeEmpresaActiva = await activarEmpresaLocal(clienteId, {
-                usuario: usernameNormalizado,
-                password: passwordNormalizado,
-              }).catch((e) => {
+              let cambioDeEmpresaActiva: boolean;
+              try {
+                cambioDeEmpresaActiva = await activarEmpresaLocal(clienteId, {
+                  usuario: usernameNormalizado,
+                  password: passwordNormalizado,
+                });
+              } catch (e) {
                 console.error('[Auth] No se pudo activar los datos locales de la empresa:', e);
                 return false;
-              });
+              }
 
               const modulosReales = (clienteRow.modulos_activos as ModuloPOS[] | null)?.length
                 ? (clienteRow.modulos_activos as ModuloPOS[])
@@ -997,7 +1145,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ultimaActividad: ahora,
                 usuario: usuarioDesdeLicencia,
               };
-              setSesionActiva(nuevaSesionLicencia);
               setRegistrosSesiones((prev) => [
                 ...prev,
                 { id: 'sesion_' + Date.now(), usuarioId: usuarioDesdeLicencia.id, nombreUsuario: usuarioDesdeLicencia.nombreCompleto, cedula: '', horaInicio: ahora },
@@ -1038,13 +1185,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // los datos de la empresa anterior aunque la base activa ya
               // haya cambiado por debajo.
               if (cambioDeEmpresaActiva) {
-                try { localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(nuevaSesionLicencia)); } catch { /* ignorar */ }
+                try {
+                  localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(nuevaSesionLicencia));
+                  await UsuariosStorage.guardarSesionActiva(nuevaSesionLicencia);
+                } catch (e) {
+                  console.error('[Auth] No se pudo guardar la sesión antes de cambiar de negocio:', e);
+                  return false;
+                }
                 console.log('[Auth] Cambio de empresa activa en este equipo — recargando para reflejar los datos locales correctos');
                 setTimeout(() => {
                   const el = (window as any).electron;
                   if (el?.relaunch) el.relaunch();
                   else window.location.reload();
                 }, 400);
+              } else {
+                setSesionActiva(nuevaSesionLicencia);
               }
 
               return true;
@@ -1087,6 +1242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (resultadoEmpleado.ok && resultadoEmpleado.empleado) {
           const empleadoRemoto = resultadoEmpleado.empleado;
           const esRolAdministrativo = empleadoRemoto.rol === 'admin' || empleadoRemoto.rol === 'super_usuario';
+          let cambioDeEmpresaActiva = false;
 
           // El administrador lo dejó entrar solo desde el celular (migración 0132).
           if (empleadoRemoto.permisos?.soloCelular) {
@@ -1098,21 +1254,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.log('❌ Empleado válido en Supabase pero esta instalación ya está vinculada a otro negocio');
             return false;
           }
+          if (!empleadoRemoto.activo) {
+            console.log('❌ Cuenta de empleado desactivada');
+            return false;
+          }
           if (!isLinked()) {
             if (!esRolAdministrativo) {
               console.log('❌ Esta instalación no está vinculada — solo el dueño/admin puede vincularla, no un empleado operativo');
               return false;
             }
-            await activarEmpresaLocal(empleadoRemoto.cliente_id, {
-              usuario: usernameNormalizado,
-              password: passwordNormalizado,
-            }).catch((e) => {
-              console.error('[Auth] No se pudo vincular esta instalación nueva al negocio del dueño:', e);
-            });
-          }
-          if (!empleadoRemoto.activo) {
-            console.log('❌ Cuenta de empleado desactivada');
-            return false;
+            try {
+              cambioDeEmpresaActiva = await activarEmpresaLocal(empleadoRemoto.cliente_id);
+            } catch (e) {
+              console.error('[Auth] No se pudieron activar los datos locales del negocio del dueño:', e);
+              return false;
+            }
           }
 
           const modulosHabilitados = (
@@ -1180,14 +1336,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           const ahoraEmp = new Date().toISOString();
-          setSesionActiva({
+          const sesionEmpleado: SesionActiva = {
             usuarioId: usuarioDesdeEmpleado.id,
             nombreUsuario: usuarioDesdeEmpleado.nombreCompleto,
             rol: usuarioDesdeEmpleado.rol,
             horaInicio: ahoraEmp,
             ultimaActividad: ahoraEmp,
             usuario: usuarioDesdeEmpleado,
-          });
+          };
           setRegistrosSesiones((prev) => [
             ...prev,
             {
@@ -1200,6 +1356,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ]);
 
           electronStore.iniciarTurno(usuarioDesdeEmpleado.id, usuarioDesdeEmpleado.nombreCompleto).catch(() => {});
+
+          if (cambioDeEmpresaActiva) {
+            try {
+              localStorage.setItem(STORAGE_KEY_SESION_ACTIVA, JSON.stringify(sesionEmpleado));
+              await UsuariosStorage.guardarSesionActiva(sesionEmpleado);
+            } catch (e) {
+              console.error('[Auth] No se pudo guardar la sesión antes de cambiar de negocio:', e);
+              return false;
+            }
+            setTimeout(() => {
+              const el = (window as any).electron;
+              if (el?.relaunch) el.relaunch();
+              else window.location.reload();
+            }, 400);
+          } else {
+            setSesionActiva(sesionEmpleado);
+          }
 
           console.log('✅ AUTENTICACIÓN DE EMPLEADO (SUPABASE) COMPLETADA');
           console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1297,8 +1470,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!el?.lan?.setAuthData) return;
 
     const enviarAuthData = () => {
-      if (usuarios.length === 0) return;
-      const usuariosConPermisosFrescos = usuarios.map((u) => {
+      if (usuariosVisibles.length === 0) return;
+      const usuariosConPermisosFrescos = usuariosVisibles.map((u) => {
         const permisosU = obtenerPermisosUsuario(u.id);
         const modulos = [...permisosU.modulosHabilitados] as ModuloPOS[];
         return {
@@ -1314,7 +1487,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     enviarAuthData();
     window.addEventListener(EVENTO_PERMISOS_ACTUALIZADOS, enviarAuthData);
     return () => window.removeEventListener(EVENTO_PERMISOS_ACTUALIZADOS, enviarAuthData);
-  }, [estaAutenticado, esSuperUsuario, usuarios]);
+  }, [estaAutenticado, esSuperUsuario, usuariosVisibles]);
 
   /** Registra una sesión con datos provenientes del servidor de autenticación en red local */
   const registrarSesionRedLocal = (usuario: Usuario) => {
@@ -1429,7 +1602,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // El límite solo aplica a cajeros/técnicos; los admins (super_usuario) no tienen cupo
-    const usuariosOperativos = usuarios.filter(u => u.rol !== 'super_usuario').length;
+    const usuariosOperativos = usuariosVisibles.filter(u => u.rol !== 'super_usuario').length;
     if (usuario.rol !== 'super_usuario' && usuariosOperativos >= MAX_USUARIOS) {
       return false;
     }
@@ -1441,11 +1614,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
+    const clienteIdDelUsuario =
+      usuario.clienteSupabaseId ||
+      clienteIdSesion;
+    if (usuario.clienteSupabaseId && clienteIdSesion && usuario.clienteSupabaseId !== clienteIdSesion) {
+      return false;
+    }
+    const hayTenantSinVerificar =
+      !clienteIdDelUsuario &&
+      (!!localStorage.getItem('codecpos_datos_activos_cliente_id') || !!getLinkedClienteId());
+    if (hayTenantSinVerificar) {
+      console.error('[Auth] No se puede crear un usuario local sin asociarlo a un negocio verificado');
+      return false;
+    }
+
     const nuevoUsuario: Usuario = {
       ...usuario,
       id: 'user_' + Date.now(),
       fechaCreacion: new Date().toISOString(),
       creadoPor: usuarioActual.id,
+      ...(clienteIdDelUsuario ? { clienteSupabaseId: clienteIdDelUsuario } : {}),
     };
 
     setUsuarios(prev => [...prev, nuevoUsuario]);
@@ -1460,6 +1648,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const base = usuarios.find(u => u.id === id);
+    if (!base || obtenerClienteIdUsuario(base) !== clienteIdSesion) return false;
+    if (
+      Object.prototype.hasOwnProperty.call(datos, 'clienteSupabaseId') &&
+      datos.clienteSupabaseId !== clienteIdSesion
+    ) return false;
     const actualizado = base ? { ...base, ...datos } : datos;
     setUsuarios(prev => prev.map(u => u.id === id ? { ...u, ...datos } : u));
     setSesionActiva((prev) => {
@@ -1486,6 +1679,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // No permitir eliminar al super usuario
     const usuario = usuarios.find(u => u.id === id);
+    if (!usuario || obtenerClienteIdUsuario(usuario) !== clienteIdSesion) return false;
     if (usuario?.rol === 'super_usuario') {
       return false;
     }
@@ -1499,6 +1693,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const usuario = usuarios.find(u => u.id === usuarioId);
 
     if (!usuario || !verificarPassword(passwordAnterior, usuario.password).valido) {
+      return false;
+    }
+    if (obtenerClienteIdUsuario(usuario) !== clienteIdSesion && usuarioId !== usuarioActual?.id) {
       return false;
     }
 
@@ -1588,7 +1785,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: usuarioActual, // Alias para compatibilidad
       usuarioActual,
       sesionActiva,
-      usuarios,
+      usuarios: usuariosVisibles,
       registrosSesiones,
       configuracionInicial,
       configuracionClienteCompletada,
@@ -1614,7 +1811,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completarConfiguracionCliente: stableCompletarConfiguracionCliente,
     }),
     [
-      usuarioActual, sesionActiva, usuarios, registrosSesiones, configuracionInicial,
+      usuarioActual, sesionActiva, usuariosVisibles, registrosSesiones, configuracionInicial,
       configuracionClienteCompletada, estaAutenticado, esSuperUsuario, esDesarrollador,
       modoAdminTemporalActivo, logoutKey,
       stableActivarModoAdminTemporal, stableDesactivarModoAdminTemporal, stableRefrescarPermisosUsuario,

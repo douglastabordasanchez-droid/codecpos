@@ -18,6 +18,7 @@ import { descargarTiendas } from './supabase/tiendasSyncService';
 import { descargarConfiguracionEmpresaDesdeNube, sincronizarConfiguracionEmpresaPendiente } from './supabase/empresaConfigSyncService';
 import { listarCuentasCartera, guardarCuentaCarteraRaw, registrarAbonoEnCierre, CuentaCartera } from './carteraService';
 import { listarClientes, guardarClienteRaw, Cliente } from './fidelizacionService';
+import { enterSyncCycle } from './tenantTransition';
 
 /**
  * Ritmo de la sincronización (antes: los 21 pasos, con todas las descargas, cada 30 s).
@@ -352,7 +353,16 @@ class SyncService {
     if (this.started) return;
     this.started = true;
 
-    await restablecerSesionSync().catch(() => {});
+    const liberarInicioSync = enterSyncCycle();
+    if (liberarInicioSync) {
+      try {
+        await restablecerSesionSync();
+      } catch (error) {
+        console.error('[sync] No se pudo restablecer la sesión de sincronización:', error);
+      } finally {
+        liberarInicioSync();
+      }
+    }
     this.setupRealtime();
     this.startAutoSync();
   }
@@ -480,7 +490,19 @@ class SyncService {
 
   private async ejecutarCiclo(opciones: { bajada: string[] | 'todo'; subida: boolean; silencioso: boolean }): Promise<void> {
     if (this.isSyncing) return;
+    const liberarCiclo = enterSyncCycle();
+    if (!liberarCiclo) return;
 
+    this.isSyncing = true;
+    try {
+      await this.ejecutarCicloProtegido(opciones);
+    } finally {
+      this.isSyncing = false;
+      liberarCiclo();
+    }
+  }
+
+  private async ejecutarCicloProtegido(opciones: { bajada: string[] | 'todo'; subida: boolean; silencioso: boolean }): Promise<void> {
     if (!navigator.onLine) {
       if (!opciones.silencioso) this.notifyListeners({ status: 'offline', message: 'Sin conexión a internet', lastSync: null });
       return;
@@ -502,7 +524,6 @@ class SyncService {
       return;
     }
 
-    this.isSyncing = true;
     // Los ciclos rápidos no avisan "Sincronizando..." para no redibujar la pantalla de venta cada minuto.
     if (!opciones.silencioso) this.notifyListeners({ status: 'syncing', message: 'Sincronizando datos...', lastSync: null });
 
@@ -584,7 +605,6 @@ class SyncService {
       this.notifyListeners({ status: 'success', message: 'Sincronización completada', lastSync });
     }
 
-    this.isSyncing = false;
   }
 
   // ==================== PULL ====================

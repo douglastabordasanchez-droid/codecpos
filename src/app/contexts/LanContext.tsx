@@ -84,6 +84,16 @@ interface LanContextValue {
   setCloudEnabled: (valor: boolean) => void;
 }
 
+function clienteIdDeUsuarioLocal(usuario: Record<string, unknown> | null | undefined): string | undefined {
+  if (!usuario) return undefined;
+  const clienteId = typeof usuario.clienteSupabaseId === 'string' ? usuario.clienteSupabaseId : undefined;
+  const id = typeof usuario.id === 'string' ? usuario.id : '';
+  const creadoPor = typeof usuario.creadoPor === 'string' ? usuario.creadoPor : '';
+  return clienteId ||
+    (id.startsWith('lic_') ? id.slice(4) : undefined) ||
+    (creadoPor.startsWith('lic_') ? creadoPor.slice(4) : undefined);
+}
+
 const LanContext = createContext<LanContextValue>({
   mode: 'none',
   connectionState: 'idle',
@@ -683,6 +693,7 @@ export function LanProvider({ children }: { children: ReactNode }) {
 
   function _handleSyncUsuario(event: LanEvent) {
     const { action, data } = event.payload as { action: string; data: Record<string, unknown> };
+    const clienteIdActual = clienteIdDeUsuarioLocal(usuarioActual);
 
     // 🛡️ FIX: el modal de Permisos NO cambia el objeto Usuario — guarda los
     // módulos habilitados en su propio almacén (permissions.ts) y dispara
@@ -694,6 +705,18 @@ export function LanProvider({ children }: { children: ReactNode }) {
     // AuthContext escucha para refrescar la sesión activa en caliente.
     if (action === 'PERMISSIONS_UPDATE') {
       const { userId, modulosHabilitados } = data as { userId?: string; modulosHabilitados?: ModuloPOS[] };
+      let usuarioObjetivo: Record<string, unknown> | undefined;
+      try {
+        const usuarios: Record<string, unknown>[] = JSON.parse(localStorage.getItem('codecpos_usuarios') || '[]');
+        usuarioObjetivo = usuarios.find((u) => u.id === userId);
+      } catch {
+        console.warn('[LAN][receive] No se pudo validar el negocio del usuario en el evento de permisos');
+        return;
+      }
+      if (!usuarioObjetivo || clienteIdDeUsuarioLocal(usuarioObjetivo) !== clienteIdActual) {
+        console.warn('[LAN][receive] PERMISSIONS_UPDATE de otro negocio descartado', { userId });
+        return;
+      }
       console.log(`[LAN][receive] SINCRONIZAR_USUARIO action=PERMISSIONS_UPDATE en terminal=${terminalIdRef.current} userId=${userId ?? '?'}`, { payload: data });
       if (userId) {
         guardarPermisosUsuario({ userId, modulosHabilitados: modulosHabilitados || [] });
@@ -707,6 +730,19 @@ export function LanProvider({ children }: { children: ReactNode }) {
     try {
       const raw = localStorage.getItem('codecpos_usuarios');
       const lista: Record<string, unknown>[] = raw ? JSON.parse(raw) : [];
+      const usuarioExistente = lista.find((u) => u.id === data.id);
+      const clienteIdEvento = clienteIdDeUsuarioLocal(data);
+      if (action === 'CREATE' && clienteIdEvento !== clienteIdActual) {
+        console.warn('[LAN][receive] CREATE de usuario de otro negocio descartado', { id: data.id });
+        return;
+      }
+      if (
+        (action === 'UPDATE' || action === 'DELETE') &&
+        (!usuarioExistente || clienteIdDeUsuarioLocal(usuarioExistente) !== clienteIdActual)
+      ) {
+        console.warn(`[LAN][receive] ${action} de usuario de otro negocio descartado`, { id: data.id });
+        return;
+      }
       let actualizada: Record<string, unknown>[];
       if (action === 'CREATE') {
         actualizada = lista.some(u => u.id === data.id) ? lista : [...lista, data];

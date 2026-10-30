@@ -1,8 +1,10 @@
 import { getSupabaseClient } from './config';
+import { isTenantSwitchInProgress } from '../tenantTransition';
 
 const LS_CLIENTE_ID = 'codecpos_supabase_cliente_id';
 const LS_SYNC_EMAIL = 'codecpos_supabase_sync_email';
 const LS_SYNC_PASSWORD = 'codecpos_supabase_sync_password';
+const LS_EMPRESA_LOCAL_ACTIVA = 'codecpos_datos_activos_cliente_id';
 
 export interface ClienteDisponible {
   id: string;
@@ -10,7 +12,11 @@ export interface ClienteDisponible {
 }
 
 export function getLinkedClienteId(): string | null {
-  return localStorage.getItem(LS_CLIENTE_ID);
+  if (isTenantSwitchInProgress()) return null;
+  const clienteVinculado = localStorage.getItem(LS_CLIENTE_ID);
+  const empresaActiva = localStorage.getItem(LS_EMPRESA_LOCAL_ACTIVA);
+  if (empresaActiva && clienteVinculado !== empresaActiva) return null;
+  return clienteVinculado;
 }
 
 export function isLinked(): boolean {
@@ -60,6 +66,10 @@ export async function vincularNegocio(
 ): Promise<{ ok: boolean; error?: string }> {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
+  const empresaActiva = localStorage.getItem(LS_EMPRESA_LOCAL_ACTIVA);
+  if (empresaActiva && empresaActiva !== clienteId) {
+    return { ok: false, error: 'El negocio seleccionado no coincide con los datos locales activos' };
+  }
 
   try {
     const syncEmail = `sync+${clienteId}@codecpos.internal`;
@@ -91,6 +101,13 @@ export async function vincularNegocio(
       return { ok: false, error: signInError.message };
     }
 
+    const { data: clienteAutenticado, error: scopeError } = await client.rpc('current_cliente_id');
+    if (scopeError || String(clienteAutenticado) !== clienteId) {
+      const { error: signOutError } = await client.auth.signOut();
+      if (signOutError) console.error('[tenantLink] No se pudo cerrar la sesión de negocio incorrecta:', signOutError.message);
+      return { ok: false, error: scopeError?.message || 'La identidad de sincronización pertenece a otro negocio' };
+    }
+
     localStorage.setItem(LS_CLIENTE_ID, clienteId);
     localStorage.setItem(LS_SYNC_EMAIL, syncEmail);
     localStorage.setItem(LS_SYNC_PASSWORD, syncPassword);
@@ -111,6 +128,12 @@ export async function restablecerSesionSync(): Promise<boolean> {
   const email = localStorage.getItem(LS_SYNC_EMAIL);
   const password = localStorage.getItem(LS_SYNC_PASSWORD);
   if (!client || !email || !password) return false;
+
+  if (!getLinkedClienteId()) {
+    const { error } = await client.auth.signOut();
+    if (error) console.error('[tenantLink] No se pudo cerrar una sesión con tenant desactualizado:', error.message);
+    return false;
+  }
 
   const { error } = await client.auth.signInWithPassword({ email, password });
   return !error;
