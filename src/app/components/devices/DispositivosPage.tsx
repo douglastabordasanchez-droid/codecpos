@@ -64,6 +64,7 @@ import {
   setPrinterForSection,
   type PrintSection,
 } from '../../lib/sectionPrinterConfig';
+import { detectarPapelAutomatico, impresoraDeTirillas, type PapelDelDriver } from '../../lib/papelImpresora';
 import {
   getDrawerConfig,
   setDrawerConfig,
@@ -149,6 +150,7 @@ export default function DispositivosPage() {
   const [globalPrinterName, setGlobalPrinterName] = useState('');
   const [useGlobalPrinterDraft, setUseGlobalPrinterDraft] = useState(false);
   const [papelAngosto, setPapelAngostoState] = useState(isPapelAngosto);
+  const [papelDriver, setPapelDriver] = useState<PapelDelDriver | null>(null);
   const [printerConfigDirty, setPrinterConfigDirty] = useState(false);
   const [showConfirmGlobalPrinter, setShowConfirmGlobalPrinter] = useState(false);
   const [sectionPrintersOpen, setSectionPrintersOpen] = useState(false);
@@ -170,6 +172,24 @@ export default function DispositivosPage() {
     loadDefaultPrinter();
     setLoading(false);
   }, []);
+
+  // Papel que tiene el driver de Windows en la impresora de tirillas. Si es
+  // seguro y el usuario no eligió a mano, «Papel angosto» se ajusta solo.
+  const impresoraTirillas = sectionPrinters.pos_tickets || globalPrinterName || defaultPrinterName;
+  useEffect(() => {
+    let vigente = true;
+    detectarPapelAutomatico().then((r) => {
+      if (!vigente) return;
+      setPapelDriver(r);
+      if (r.cambiado) {
+        setPapelAngostoState(isPapelAngosto());
+        toast.success(r.clase === 'angosto' ? 'Papel angosto activado' : 'Papel angosto desactivado', {
+          description: `El driver de ${r.printer} tiene rollo de ${r.anchoMm} mm.`,
+        });
+      }
+    }).catch(() => {});
+    return () => { vigente = false; };
+  }, [impresoraTirillas]);
 
   useEffect(() => {
     if (defaultPrinterName && scanIntervalRef.current) {
@@ -745,14 +765,28 @@ export default function DispositivosPage() {
                       Papel angosto (58 mm)
                     </p>
                     <p className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                      Actívalo si tu impresora usa rollo pequeño de 57 o 58 mm. La tirilla se ajusta a ese ancho para que salgan completos los precios y el total.
+                      Actívalo si tu impresora usa rollo pequeño de 57 o 58 mm. Al cobrar se muestra e imprime la tirilla pequeña, hecha para ese ancho.
                     </p>
+                    {papelDriver?.anchoMm ? (
+                      <p className={`text-xs mt-1 font-semibold ${
+                        papelDriver.clase !== 'incierto' && (papelDriver.clase === 'angosto') !== papelAngosto
+                          ? 'text-red-500'
+                          : darkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`}>
+                        {papelDriver.clase === 'incierto'
+                          ? `El driver de Windows de ${papelDriver.printer} tiene papel ${papelDriver.papel || `de ${papelDriver.anchoMm} mm`}, que no es un rollo térmico. Elige aquí el ancho real del rollo.`
+                          : (papelDriver.clase === 'angosto') !== papelAngosto
+                            ? `Ojo: el driver de Windows de ${papelDriver.printer} está en rollo de ${papelDriver.anchoMm} mm y aquí está en ${papelAngosto ? '58' : '80'} mm. Deben coincidir.`
+                            : `Coincide con el driver de Windows de ${papelDriver.printer} (rollo de ${papelDriver.anchoMm} mm).`}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <Switch
                   checked={papelAngosto}
                   onCheckedChange={(checked) => {
-                    setPapelAngosto(checked);
+                    // Elección del usuario: la detección automática ya no la cambia para esta impresora.
+                    setPapelAngosto(checked, impresoraDeTirillas());
                     setPapelAngostoState(checked);
                     toast.success(checked ? 'Tirillas ajustadas a papel de 58 mm' : 'Tirillas en papel normal de 80 mm', {
                       description: 'Se aplica desde la próxima impresión.',

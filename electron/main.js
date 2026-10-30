@@ -2972,7 +2972,8 @@ async function renderHtmlToEscPosRaster(htmlPath, widthMm) {
   try {
     // Tope total: capturePage o executeJavaScript pueden no resolver nunca en
     // equipos con la GPU en modo software; así se cae a la impresión HTML.
-    return await conTiempoLimite(capturarTirillaRaster(win, htmlPath, anchoDots, zoom), 20000, 'timeout capturando tirilla');
+    // Una captura normal tarda menos de 1 s, así que el tope ya no es de 20 s.
+    return await conTiempoLimite(capturarTirillaRaster(win, htmlPath, anchoDots, zoom), 8000, 'timeout capturando tirilla');
   } finally {
     try { if (!win.isDestroyed()) win.destroy(); } catch { /* no-op */ }
   }
@@ -3000,20 +3001,44 @@ async function capturarTirillaRaster(win, htmlPath, anchoDots, zoom) {
       return true;
     })()
   `);
-  await new Promise((r) => setTimeout(r, 150));
-
   const altoCss = await win.webContents.executeJavaScript(
     'Math.ceil(Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))'
   );
   const altoTotalDip = Math.max(1, Math.ceil(Number(altoCss || 0) * zoom));
-  const [, altoViewportDip] = win.getContentSize();
 
-  // Se captura por tramos (scroll + capturePage): una ventana no puede ser
-  // más alta que la pantalla en Windows, y un ticket largo sí lo es.
+  // 🖨️ FIX demora de 20 s al imprimir: antes se capturaba por tramos
+  // (scroll + doble requestAnimationFrame). En una ventana oculta Chromium no
+  // siempre pinta frames, así que esa espera a veces no terminaba nunca, el
+  // tope de 20 s saltaba y la tirilla salía después por el driver de Windows.
+  // Medido en el banco de pruebas: la primera tirilla de la sesión se colgaba
+  // ahí 20 s exactos. Ahora la ventana se agranda al alto del ticket (Windows
+  // sí lo permite con setContentSize después de crearla) y se captura de una
+  // sola vez, sin esperar frames.
+  win.setContentSize(anchoDots, altoTotalDip);
+  const [, altoVentanaDip] = win.getContentSize();
+  if (altoVentanaDip >= altoTotalDip) {
+    for (let intento = 0; intento < 25; intento++) {
+      const captura = await win.webContents.capturePage({ x: 0, y: 0, width: anchoDots, height: altoTotalDip });
+      // Si el compositor aún no pintó (imagen vacía o en blanco) o no aplicó
+      // el nuevo tamaño (imagen corta), se reintenta en 40 ms.
+      if (!captura.isEmpty()) {
+        const escala = captura.getSize().width / anchoDots;
+        if (captura.getSize().height >= Math.floor(altoTotalDip * escala * 0.98)) {
+          const parte = nativeImageToEscPosRaster(captura, anchoDots);
+          if (parte.puntosNegros) return parte.buffer;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 40));
+    }
+  }
+
+  // Respaldo para tickets más altos de lo que deja la ventana: por tramos,
+  // esperando con un temporizador en vez de requestAnimationFrame.
+  const [, altoViewportDip] = win.getContentSize();
   const partes = [];
   for (let yDip = 0; yDip < altoTotalDip; yDip += altoViewportDip) {
     const scrollYCss = await win.webContents.executeJavaScript(
-      `window.scrollTo(0, ${yDip / zoom}); new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(window.scrollY))))`
+      `window.scrollTo(0, ${yDip / zoom}); new Promise((r) => setTimeout(() => r(window.scrollY), 60))`
     );
     const offsetReal = Math.round(Number(scrollYCss || 0) * zoom);
     const recorteY = Math.max(0, yDip - offsetReal);
@@ -3052,8 +3077,41 @@ async function printHtmlAsRaster(htmlPath, printerName, widthMm) {
   return { ok: true, reason: '', printer: enviado.printer, mode: 'raster' };
 }
 
+// ── Ancho de papel que tiene configurado el driver de Windows ────────────────
+// Dispositivos lo usa para activar solo «Papel angosto» cuando el driver dice
+// con certeza que el rollo es de 57/58 mm, y para avisar si la app y el driver
+// no coinciden. Se lee el tamaño de papel predeterminado de la impresora
+// (System.Drawing.Printing), que es el mismo que usa el driver al imprimir.
+ipcMain.handle('printer:paper-info', async (_, { printerName = '' } = {}) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'solo-windows' };
+  if (esPuertoSerialImpresora(printerName)) return { ok: false, reason: 'puerto-serial' };
+  try {
+    const resolved = await resolvePrinterTargetByPreference(printerName || undefined);
+    if (!resolved?.found || !resolved.deviceName) return { ok: false, reason: 'printer-not-found' };
+    const nombre = resolved.deviceName.replace(/'/g, "''");
+    const raw = await runPowerShellScript(`
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
+$ps = New-Object System.Drawing.Printing.PrinterSettings
+$ps.PrinterName = '${nombre}'
+if (-not $ps.IsValid) { '{"valida":false}'; exit }
+$d = $ps.DefaultPageSettings
+@{ valida = $true; ancho = $d.PaperSize.Width; alto = $d.PaperSize.Height; papel = $d.PaperSize.PaperName; horizontal = $d.Landscape } | ConvertTo-Json -Compress
+`, 15000);
+    const info = JSON.parse(raw || '{}');
+    if (!info.valida) return { ok: false, reason: 'printer-invalida', printer: resolved.deviceName };
+    // Centésimas de pulgada → mm. En horizontal el ancho del rollo es el alto.
+    const anchoCentesimas = info.horizontal ? Number(info.alto) : Number(info.ancho);
+    const anchoMm = Math.round(anchoCentesimas * 0.254);
+    return { ok: true, printer: resolved.deviceName, anchoMm, papel: String(info.papel || '') };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
+});
+
 ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, widthMm = 80, raster = false }) => {
   const tmpPath = path.join(app.getPath('temp'), `codecpos_print_${Date.now()}.html`);
+  const inicio = Date.now();
   try {
     await fsPromises.writeFile(tmpPath, html, 'utf8');
 
@@ -3066,6 +3124,8 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
         if (res.ok) {
           fsPromises.unlink(tmpPath).catch(() => {});
           refocusMainWindow();
+          // Tiempo desde que llega el HTML hasta que Windows recibe el trabajo, para medir en el equipo del cliente.
+          fileLogger.writeLog('INFO', 'Tirilla impresa', { modo: 'raster', widthMm, ms: Date.now() - inicio, printer: res.printer });
           return res;
         }
         console.warn('⚠️ Impresión raster no disponible, usando impresión HTML:', res.reason);
@@ -3166,6 +3226,7 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
                 }
               }
 
+              fileLogger.writeLog(success ? 'INFO' : 'WARN', 'Tirilla impresa', { modo: 'driver', widthMm, ms: Date.now() - inicio, printer: resolvedDeviceName, error: failureReason || '' });
               finish({ ok: success, reason: failureReason || '' });
             }
           );

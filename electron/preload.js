@@ -242,6 +242,8 @@ contextBridge.exposeInMainWorld('electron', {
    */
   print: {
     printHtml: (data) => ipcRenderer.invoke('print:html', data),
+    // Ancho del papel que tiene el driver de Windows: { ok, anchoMm, papel, printer }
+    paperInfo: (printerName) => ipcRenderer.invoke('printer:paper-info', { printerName }),
   },
 
   /**

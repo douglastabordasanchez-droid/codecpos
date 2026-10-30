@@ -112,6 +112,8 @@ import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL, type FacturaElectronicaDian } from '
 import { obtenerFacturaPorId, obtenerFacturaPorVenta } from '../../lib/supabase/facturaElectronicaDianService';
 import { EVENTO_FACTURA_PENDIENTE_APROBADA } from '../../lib/dian/colaDian';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
+import { isPapelAngosto } from '../../lib/printerConfig';
+import { detectarPapelAutomatico } from '../../lib/papelImpresora';
 import { TirillaFacturaElectronica } from '../factura/TirillaFacturaElectronica';
 import { RetencionesCobro, retencionesDelCliente, retencionesIniciales, retencionesParaEmitir } from '../factura/RetencionesCobro';
 import { ClienteFacturaCobro } from '../factura/ClienteFacturaCobro';
@@ -302,6 +304,9 @@ function listarCarritosRecientes(): CarritoReciente[] {
     return [];
   }
 }
+
+// Ver el efecto de detección de papel dentro del componente.
+let papelDetectadoEnSesion = false;
 
 export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: POSPageNewProps = {}) {
   const navigate = useNavigate();
@@ -589,6 +594,25 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     try { localStorage.setItem(STORAGE_METODOS_PAGO, JSON.stringify(lista)); } catch { /* storage lleno */ }
     window.dispatchEvent(new CustomEvent('codecpos:metodos-pago-cambio', { detail: { config: lista } }));
   };
+
+  // Papel de la impresora de tirillas: una vez por sesión y en segundo plano
+  // (lee el driver de Windows, tarda 1 a 2 s), para que la primera factura ya
+  // salga en la plantilla correcta. Solo cambia algo si el driver lo dice con
+  // certeza y el usuario no lo eligió a mano (ver papelImpresora.ts).
+  useEffect(() => {
+    if (papelDetectadoEnSesion || !(window as any).electron?.print?.paperInfo) return;
+    const t = setTimeout(() => {
+      papelDetectadoEnSesion = true;
+      detectarPapelAutomatico().then((r) => {
+        if (r.cambiado) {
+          toast.info(r.clase === 'angosto' ? 'Tirillas en papel de 58 mm' : 'Tirillas en papel de 80 mm', {
+            description: `La impresora ${r.printer || ''} tiene rollo de ${r.anchoMm} mm. Puedes cambiarlo en Dispositivos.`,
+          });
+        }
+      }).catch(() => {});
+    }, 4000);
+    return () => clearTimeout(t);
+  }, []);
 
   // Diferir el montaje del recibo (ver comentario en ticketContenidoListo):
   // doble rAF asegura que el navegador ya pintó el marco del modal antes de
@@ -4280,7 +4304,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`max-w-2xl w-full rounded-3xl p-8 ${
+            className={`${isPapelAngosto() ? 'max-w-md' : 'max-w-2xl'} w-full rounded-3xl p-8 ${
               darkMode ? 'bg-slate-900 border-2 border-slate-700' : 'bg-white'
             } max-h-[92vh] overflow-y-auto`}
           >

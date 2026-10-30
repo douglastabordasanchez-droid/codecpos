@@ -12,6 +12,7 @@ import { getCached } from '../../lib/cachedLocalStorage';
 import { getConfiguredTicketWidthMm, getDefaultPrinterNameOrUndefined, getFacturasPrinterNameOrUndefined } from '../../lib/printerConfig';
 import { getPrinterForSectionOrUndefined } from '../../lib/sectionPrinterConfig';
 import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
+import { ANCHO_TIRILLA_58_PX, CSS_TIRILLA_58, documentoTirilla58, htmlTirilla58, logoReducidoEnCache, reducirLogoTirilla } from '../../lib/tirilla58';
 
 // Mismas reglas que el <style> del recibo en pantalla (abajo), para que la
 // copia que se imprime se vea idéntica a la vista previa.
@@ -144,9 +145,20 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     return () => cancelAnimationFrame(raf);
   }, [venta?.numeroFactura]);
 
-  if (!venta) return null;
-
   const anchoTicket: 58 | 80 = getConfiguredTicketWidthMm();
+  const angosto = anchoTicket === 58;
+
+  // Papel de 58 mm: el logo se reduce una vez al tamaño de la tirilla y queda
+  // guardado para las ventas siguientes (ver reducirLogoTirilla).
+  const [logo58, setLogo58] = useState<string | null>(() => logoReducidoEnCache(config.logoUrl));
+  useEffect(() => {
+    if (!angosto || !configCargada) return;
+    let vigente = true;
+    reducirLogoTirilla(config.logoUrl).then((l) => { if (vigente) setLogo58(l); });
+    return () => { vigente = false; };
+  }, [angosto, configCargada, config.logoUrl]);
+
+  if (!venta) return null;
 
   // Cajero: usa el campo del objeto venta primero; cae al usuario autenticado como respaldo
   const cajeroDisplay = venta.cajero
@@ -158,6 +170,16 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
   const mesaDisplay = venta.referencia_mesa
     || (venta.mesa && venta.mesa.toLowerCase() !== 'general' ? venta.mesa : null);
 
+  // Tirilla propia de 58 mm, armada directo con los datos de la venta. La
+  // vista previa y la impresión son este mismo HTML.
+  const tirilla58 = angosto
+    ? htmlTirilla58(
+      { ...venta, cajero: cajeroDisplay, ubicacion: mesaDisplay },
+      config,
+      config.logoUrl ? (logo58 || config.logoUrl) : null,
+    )
+    : '';
+
   // 🖨️ FIX tildes/ñ + "no sale igual a la vista previa": se imprime el MISMO
   // recibo que se ve en pantalla, convertido a imagen en Electron (ver
   // 'print:html' con raster en electron/main.js). Antes se armaba aparte un
@@ -167,14 +189,14 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
   const imprimirVistaPrevia = async (): Promise<boolean> => {
     const el = (window as any).electron;
     const ticket = ticketRef.current;
-    if (!el?.print?.printHtml || !ticket) return false;
+    if (!el?.print?.printHtml || (!ticket && !angosto)) return false;
 
-    const widthMm = getConfiguredTicketWidthMm();
+    const widthMm = anchoTicket;
     const printerName = getPrinterForSectionOrUndefined('pos_tickets')
       || getFacturasPrinterNameOrUndefined()
       || getDefaultPrinterNameOrUndefined()
       || '';
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+    const html = angosto ? documentoTirilla58(tirilla58, `Factura ${venta.numeroFactura}`) : `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
       <title>Factura ${venta.numeroFactura}</title>
       <style>
         @page{size:${widthMm}mm auto;margin:0;}
@@ -182,7 +204,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
         body{margin:0;padding:8px 6px;background:#fff;}
         ${TICKET_CSS}
       </style>
-    </head><body><div class="ticket" style="font-family:'Courier New',monospace;font-size:14px;line-height:20px;">${innerHtmlParaImpresion(ticket)}</div></body></html>`;
+    </head><body><div class="ticket" style="font-family:'Courier New',monospace;font-size:14px;line-height:20px;">${innerHtmlParaImpresion(ticket!)}</div></body></html>`;
 
     // Tope por si Electron no contesta: el botón no puede quedar girando.
     const res = await Promise.race([
@@ -522,6 +544,16 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
           que un simple ".ticket td" — sin esto el texto de las columnas
           quedaba gris clarísimo, casi invisible, sobre el fondo blanco del
           recibo (un recibo impreso no debe seguir el tema oscuro de la app). */}
+      {angosto ? (
+        <>
+          {/* Tirilla de 58 mm tal como sale en el rollo (misma plantilla que se imprime), un poco ampliada para leerla en pantalla. */}
+          <style>{CSS_TIRILLA_58}</style>
+          <div className="mx-auto w-fit rounded-xl border-2 border-gray-300 bg-white p-2 shadow-sm" style={{ zoom: 1.35 }}>
+            <div style={{ width: ANCHO_TIRILLA_58_PX }} dangerouslySetInnerHTML={{ __html: tirilla58 }} />
+          </div>
+          <p className={`text-center text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Papel de 58 mm</p>
+        </>
+      ) : (<>
       <style>{TICKET_CSS}</style>
       {/* Ticket Content */}
       <div
@@ -801,6 +833,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
           </div>
         </div>
       </div>
+      </>)}
 
       {/* Botones de acción */}
       <div ref={botonesRef} className="grid grid-cols-2 gap-3 mt-6">

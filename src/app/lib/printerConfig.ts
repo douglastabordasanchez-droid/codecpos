@@ -147,14 +147,31 @@ export function getEtiquetasPrinterNameOrUndefined(): string | undefined {
 // «Papel angosto» de Dispositivos: impresoras de rollo de 57/58 mm. Vive en
 // su propia clave para que guardar Configuración no lo borre.
 const PAPEL_ANGOSTO_KEY = 'codecpos_papel_angosto';
+// Impresora para la que el usuario eligió el papel a mano. Mientras siga
+// siendo la misma, la detección automática no toca su elección.
+const PAPEL_ANGOSTO_MANUAL_KEY = 'codecpos_papel_angosto_manual_para';
 
 export function isPapelAngosto(): boolean {
   return getConfiguredTicketWidthMm() === 58;
 }
 
-export function setPapelAngosto(activo: boolean): void {
+export function getPapelAngostoManualPara(): string | null {
+  try {
+    return localStorage.getItem(PAPEL_ANGOSTO_MANUAL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `manualPara`: nombre de la impresora de tirillas cuando lo elige el usuario
+ * (cadena vacía = la predeterminada). Sin él, el cambio viene de la detección
+ * automática y no se marca como manual.
+ */
+export function setPapelAngosto(activo: boolean, manualPara?: string): void {
   try {
     localStorage.setItem(PAPEL_ANGOSTO_KEY, activo ? 'true' : 'false');
+    if (manualPara !== undefined) localStorage.setItem(PAPEL_ANGOSTO_MANUAL_KEY, manualPara);
   } catch {
     // noop
   }
