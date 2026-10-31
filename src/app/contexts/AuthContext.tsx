@@ -28,6 +28,7 @@ import {
 import { getSupabaseClient } from '../lib/supabase/config';
 import { isLinked, getLinkedClienteId } from '../lib/supabase/tenantLink';
 import { activarEmpresaLocal } from '../lib/tenantSwap';
+import { negocioDeUsuarioLocal } from '../lib/negocioUsuarioLocal';
 
 export type RolUsuario = 'super_usuario' | 'cajero' | 'tecnico';
 
@@ -779,6 +780,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // Admin de fábrica y cajeros antiguos: negocio de quien los creó o el
+      // negocio original del equipo, nunca el último que quedó abierto (ver
+      // negocioUsuarioLocal.ts). Se guarda en la cuenta para no repetirlo.
+      if (!clienteIdDeEsteUsuario) {
+        const negocioOriginal =
+          localStorage.getItem('codecpos_db_legacy_cliente_id') ||
+          localStorage.getItem('codecpos_supabase_cliente_id');
+        clienteIdDeEsteUsuario = negocioDeUsuarioLocal(usuario, usuarios, negocioOriginal);
+        if (clienteIdDeEsteUsuario) {
+          const usuarioResuelto = { ...usuario, clienteSupabaseId: clienteIdDeEsteUsuario };
+          usuario = usuarioResuelto;
+          setUsuarios((prev) => prev.map((u) => u.id === usuarioResuelto.id ? usuarioResuelto : u));
+        }
+      }
+
       // El vínculo pertenece a la instalación, no prueba a qué negocio
       // pertenece la cuenta local. Sin una identidad de negocio verificable,
       // bloquear antes de abrir cualquier base de un cliente.
@@ -949,7 +965,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('🔄 Buscando en Panel de Desarrollador (localStorage)...');
     const clientesGuardados = localStorage.getItem('codecpos_dev_clientes');
 
-    if (!clienteIdLicenciaResuelto && clientesGuardados) {
+    // Esta ruta no cambia los datos activos del equipo: si ya tiene un negocio,
+    // entraría a los datos de ese negocio con la licencia de otro. En ese caso
+    // la licencia se verifica en la nube (Prioridad 3), que sí los cambia.
+    const equipoConNegocio =
+      !!localStorage.getItem('codecpos_datos_activos_cliente_id') || !!getLinkedClienteId();
+    if (!clienteIdLicenciaResuelto && !equipoConNegocio && clientesGuardados) {
       let clientes: any[] = [];
       try { clientes = JSON.parse(clientesGuardados); } catch { clientes = []; }
       const clienteEncontrado = clientes.find((c: any) => {
