@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ReporteGenerado } from '../../services/reportesService';
+import { innerHtmlParaImpresion } from '../../lib/htmlParaImpresion';
 
 interface Props {
   open: boolean;
@@ -16,7 +17,8 @@ interface Props {
   onClose: () => void;
   onPDF: (r: ReporteGenerado) => void;
   onExcel: (r: ReporteGenerado) => void;
-  onTirilla: (r: ReporteGenerado) => void;
+  /** `htmlVista`: HTML de la vista previa, para imprimir exactamente lo que se ve. */
+  onTirilla: (r: ReporteGenerado, htmlVista?: string) => void;
   onDownloadTirilla: (r: ReporteGenerado) => void;
   darkMode: boolean;
 }
@@ -1121,6 +1123,7 @@ export default function ModalExportarReporte({ open, reporte, onClose, onPDF, on
   // ✅ TODOS LOS HOOKS AL INICIO (después de validaciones, antes de lógica)
   const [busy, setBusy] = useState<'pdf' | 'excel' | 'tirilla' | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const ticketRef = useRef<HTMLDivElement>(null);
   const meta = TIPO_META[reporte.tipo] || TIPO_META['ventas'];
   const Icono = meta.icon;
 
@@ -1133,7 +1136,11 @@ export default function ModalExportarReporte({ open, reporte, onClose, onPDF, on
     try {
       if (tipo === 'pdf')            onPDF(reporte);
       if (tipo === 'excel')          onExcel(reporte);
-      if (tipo === 'tirilla')        onTirilla(reporte);
+      if (tipo === 'tirilla') {
+        // Se imprime la MISMA vista previa que está en pantalla (no otra plantilla).
+        const el = ticketRef.current;
+        onTirilla(reporte, el ? innerHtmlParaImpresion(el) : undefined);
+      }
       if (tipo === 'download-tirilla') onDownloadTirilla(reporte);
     } finally {
       setTimeout(() => { setBusy(null); onClose(); }, 300);
@@ -1177,7 +1184,7 @@ export default function ModalExportarReporte({ open, reporte, onClose, onPDF, on
               <p className={`text-xs font-semibold uppercase tracking-widest mb-4 ${sub}`}>
                 Vista previa del reporte
               </p>
-              <PreviewReporte reporte={reporte} />
+              <div ref={ticketRef}><PreviewReporte reporte={reporte} /></div>
             </div>
 
             {/* ── Panel derecho: KPIs + Acciones (scroll invisible) ── */}

@@ -1359,8 +1359,13 @@ class ExportadorReportes {
 
   // ─────────── TIRILLA TERMICA 80mm ───────────
 
-  imprimirTirilla(reporte: ReporteGenerado): boolean {
-    const html = this.htmlTirilla(reporte);
+  /**
+   * `htmlVista`: el HTML de la vista previa que el usuario tiene en pantalla.
+   * Si llega, se imprime ESE documento (se manda como imagen a la térmica), así
+   * el papel sale idéntico a la pantalla. Sin él se usa la plantilla de texto.
+   */
+  imprimirTirilla(reporte: ReporteGenerado, htmlVista?: string): boolean {
+    const html = htmlVista ? this.htmlDesdeVista(reporte, htmlVista) : this.htmlTirilla(reporte);
     const printerName = getPrinterForSectionOrUndefined('reportes')?.trim();
     const silentMode = !!printerName;
     const widthMm = getConfiguredTicketWidthMm();
@@ -1407,6 +1412,21 @@ class ExportadorReportes {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  private htmlDesdeVista(reporte: ReporteGenerado, cuerpo: string): string {
+    const widthMm = getConfiguredTicketWidthMm();
+    return `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8"/>
+<title>${this.labelTipo(reporte.tipo)}</title>
+<style>
+  @page{size:${widthMm}mm auto;margin:2mm}
+  body{margin:0;padding:4mm;font-family:'Courier New',monospace;font-size:12px;color:#000;background:#fff}
+  .print-receipt{max-width:320px;margin:0 auto}
+  /* La sombra y las esquinas redondeadas de la tarjeta en pantalla saldrían como manchas en el papel. */
+  .print-receipt > div{box-shadow:none !important;border-radius:0 !important}
+</style>
+</head><body><div class="print-receipt">${cuerpo}</div></body></html>`;
   }
 
   private htmlTirilla(reporte: ReporteGenerado): string {

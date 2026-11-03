@@ -254,7 +254,7 @@ export default function ReportesPage() {
 
   const ejecutarPDF     = (r: ReporteGenerado) => { try { exportadorReportes.exportarPDF(r);     toast.success('PDF descargado',           { description: r.nombre }); } catch { toast.error('Error al exportar PDF');   } };
   const ejecutarExcel   = (r: ReporteGenerado) => { try { exportadorReportes.exportarExcel(r);   toast.success('Excel descargado',         { description: r.nombre }); } catch { toast.error('Error al exportar Excel'); } };
-  const ejecutarTirilla = (r: ReporteGenerado) => { try { exportadorReportes.imprimirTirilla(r); toast.success('Tirilla enviada a imprimir',{ description: r.nombre }); } catch { toast.error('Error al imprimir');       } };
+  const ejecutarTirilla = (r: ReporteGenerado, htmlVista?: string) => { try { exportadorReportes.imprimirTirilla(r, htmlVista); toast.success('Tirilla enviada a imprimir',{ description: r.nombre }); } catch { toast.error('Error al imprimir');       } };
   const ejecutarDownloadTirilla = (r: ReporteGenerado) => { try { exportadorReportes.descargarTirilla(r); toast.success('Tirilla descargada', { description: r.nombre }); } catch { toast.error('Error al descargar tirilla'); } };
 
   const eliminarReporte = (id: string) => {

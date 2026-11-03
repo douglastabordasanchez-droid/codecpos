@@ -414,7 +414,7 @@ export default function ReportesPage() {
         onClose={() => setReporteParaExportar(null)}
         onPDF={(r) => ejecutar(() => exportadorReportes.exportarPDF(r), 'PDF descargado', 'Error al exportar PDF', r)}
         onExcel={(r) => ejecutar(() => exportadorReportes.exportarExcel(r), 'Excel descargado', 'Error al exportar Excel', r)}
-        onTirilla={(r) => ejecutar(() => exportadorReportes.imprimirTirilla(r), 'Tirilla enviada a imprimir', 'Error al imprimir', r)}
+        onTirilla={(r, htmlVista) => ejecutar(() => exportadorReportes.imprimirTirilla(r, htmlVista), 'Tirilla enviada a imprimir', 'Error al imprimir', r)}
         onDownloadTirilla={(r) => ejecutar(() => exportadorReportes.descargarTirilla(r), 'Tirilla descargada', 'Error al descargar tirilla', r)}
         darkMode={tema === 'dark'}
       />
