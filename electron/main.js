@@ -3129,8 +3129,10 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
           return res;
         }
         console.warn('⚠️ Impresión raster no disponible, usando impresión HTML:', res.reason);
+        fileLogger.writeLog('WARN', 'Tirilla sin imagen, se usa el driver', { motivo: res.reason, widthMm, printer: printerName });
       } catch (rasterError) {
         console.warn('⚠️ Falló la impresión raster, usando impresión HTML:', rasterError.message);
+        fileLogger.writeLog('WARN', 'Tirilla sin imagen, se usa el driver', { motivo: rasterError.message, widthMm, printer: printerName });
       }
     }
 
@@ -3182,6 +3184,26 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
 
       printWin.webContents.once('did-finish-load', () => {
         setTimeout(async () => {
+          // 🖨️ Red de seguridad para tirillas térmicas: si la impresión como
+          // imagen no se pudo hacer, el driver de las térmicas genéricas
+          // convierte cada tilde o ñ en un ideograma chino que además se come
+          // la letra siguiente («INFORMACI靓 DEL TURNO», «AN靓ISIS»). Antes de
+          // pasarle el texto al driver se dejan solo caracteres ASCII: sale
+          // «INFORMACION» y «ANALISIS», legible y con los números intactos.
+          if (raster) {
+            try {
+              await printWin.webContents.executeJavaScript(`(() => {
+                const mapa = { 'ñ': 'n', 'Ñ': 'N', '·': '-', '─': '-', '═': '=', '—': '-', '–': '-', '•': '*', '✓': '', '✔': '', '“': '"', '”': '"', '‘': "'", '’': "'", '¡': '', '¿': '' };
+                const limpiar = (s) => s.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+                  .replace(/[ñÑ·─═—–•✓✔“”‘’¡¿]/g, (c) => mapa[c] ?? '')
+                  .replace(/[^\\x20-\\x7E\\n\\r\\t]/g, '');
+                const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                let n; while ((n = w.nextNode())) n.nodeValue = limpiar(n.nodeValue);
+                return true;
+              })()`);
+            } catch { /* si falla, se imprime tal cual */ }
+          }
+
           // Medir el alto real del documento ya renderizado (en píxeles CSS).
           let alturaPx = 0;
           try {

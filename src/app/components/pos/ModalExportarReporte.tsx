@@ -22,7 +22,7 @@ interface Props {
 }
 
 const fmtCOP = (n: number) =>
-  `$${Number(n || 0).toLocaleString('es-CO', { minimumFractionDigits: 0 })}`;
+  `$${Math.round(Number(n || 0)).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
 
 const pct = (v: number, total: number) =>
   total > 0 ? `${((v / total) * 100).toFixed(1)}%` : '0%';

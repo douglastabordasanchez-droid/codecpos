@@ -148,14 +148,26 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
   const totalPropinas = Math.max(0, Number(data.totalPropinas) || 0);
   const propinasEfectivo = Math.max(0, Number(data.propinas?.efectivo) || 0);
 
+  // Si el turno pasa de medianoche, la hora sola confunde («apertura 15:47,
+  // cierre 00:35, fecha 24 de octubre» parece un turno del 24 cuando casi todo
+  // se vendió el 23). En ese caso cada hora lleva su día.
+  const cruzaMedianoche = (() => {
+    try {
+      const a = new Date(data.fechaApertura);
+      const c = new Date(data.fechaCierre || new Date());
+      return !Number.isNaN(a.getTime()) && !Number.isNaN(c.getTime()) && a.toDateString() !== c.toDateString();
+    } catch { return false; }
+  })();
+  const formatoHora = cruzaMedianoche ? "dd MMM HH:mm" : 'HH:mm';
+
   const horaApertura = (() => {
-    try { return format(new Date(data.fechaApertura), 'HH:mm', { locale: es }); }
+    try { return format(new Date(data.fechaApertura), formatoHora, { locale: es }); }
     catch { return '--:--'; }
   })();
 
   const horaCierre = (() => {
-    try { return format(new Date(data.fechaCierre), 'HH:mm', { locale: es }); }
-    catch { return format(new Date(), 'HH:mm', { locale: es }); }
+    try { return format(new Date(data.fechaCierre), formatoHora, { locale: es }); }
+    catch { return format(new Date(), formatoHora, { locale: es }); }
   })();
 
   const fechaDisplay = (() => {
