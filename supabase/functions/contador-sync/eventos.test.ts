@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   construirEventoAnulacion, construirEventoCierre, construirEventoDevolucion, construirEventoGasto, esAnulacionPrematura,
-  construirEventoFactura, construirEventoNotaFactura, construirEventoVenta, diaColombia, esRechazoPorCupo, esReintentable, fechaHoraColombia, minutosHastaReintento, nitSoloDigitos,
+  construirEventoFactura, construirEventoNotaFactura, construirEventoVenta, medioPagoContador, diaColombia, esRechazoPorCupo, esReintentable, fechaHoraColombia, minutosHastaReintento, nitSoloDigitos,
 } from './eventos';
 
 describe('nitSoloDigitos', () => {
@@ -44,6 +44,34 @@ describe('construirEventoVenta', () => {
 
   it('lleva el CUFE si la venta tuvo factura electrónica', () => {
     expect(construirEventoVenta(venta, items, new Map(), null, 'abc').factura_cufe).toBe('abc');
+  });
+
+  it('con factura lleva el cliente como tercero; sin factura, en null', () => {
+    const cliente = { nit: '900.123.456-7', nombre: ' Comercializadora ABC SAS ', tipoDocumento: '31' };
+    expect(construirEventoVenta(venta, items, new Map(), null, 'abc', cliente)).toMatchObject({
+      cliente_nit: '900123456', cliente_nombre: 'Comercializadora ABC SAS', cliente_tipo_documento: '31',
+    });
+    expect(construirEventoVenta(venta, items, new Map(), null, null, cliente)).toMatchObject({
+      cliente_nit: null, cliente_nombre: null, cliente_tipo_documento: null,
+    });
+    expect(construirEventoVenta(venta, items, new Map(), null, 'abc', { nit: '222222222222', nombre: 'CONSUMIDOR FINAL', tipoDocumento: null }))
+      .toMatchObject({ cliente_nit: '222222222222', cliente_nombre: 'Consumidor final', cliente_tipo_documento: '13' });
+  });
+
+  it('la venta fiada (cartera) va como credito, también dentro del pago mixto', () => {
+    const fiada = { ...venta, metodo_pago: 'cartera', metodos_multiples: [{ metodo: 'cartera', monto: 5000 }, { metodo: 'Efectivo', monto: 12000 }] };
+    const e = construirEventoVenta(fiada, items, new Map(), null, null);
+    expect(e.medio_pago).toBe('credito');
+    expect(e.metodos_multiples).toEqual([{ metodo: 'credito', monto: 5000 }, { metodo: 'efectivo', monto: 12000 }]);
+  });
+});
+
+describe('medioPagoContador', () => {
+  it('traduce los medios del POS a los del contrato', () => {
+    expect(medioPagoContador('Nequi')).toBe('nequi');
+    expect(medioPagoContador('tarjeta_banco')).toBe('tarjeta');
+    expect(medioPagoContador('bancolombia')).toBe('transferencia');
+    expect(medioPagoContador(null)).toBe('efectivo');
   });
 });
 

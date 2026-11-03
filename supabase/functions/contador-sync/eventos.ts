@@ -40,6 +40,24 @@ export function diaColombia(ts: string): string {
 }
 
 /**
+ * Medio de pago con los nombres que entiende Codec Document: la venta fiada
+ * del POS («cartera») va como «credito» (cuenta 130505).
+ */
+export function medioPagoContador(medio: string | null | undefined): string {
+  const m = String(medio ?? '').trim().toLowerCase();
+  if (!m) return 'efectivo';
+  if (['cartera', 'fiado', 'credito', 'crédito', 'a_credito'].includes(m)) return 'credito';
+  if (['tarjeta_banco', 'datafono', 'tarjeta_credito', 'tarjeta_debito'].includes(m)) return 'tarjeta';
+  if (['bancolombia', 'bre_b', 'transferencia_bancaria', 'banco'].includes(m)) return 'transferencia';
+  return m;
+}
+
+/** Cliente de la factura electrónica de la venta (B4 del contrato con Codec Document). */
+export interface ClienteVenta { nit: string | null; nombre: string | null; tipoDocumento: string | null }
+
+export const NIT_CONSUMIDOR_FINAL = '222222222222';
+
+/**
  * Los precios del POS ya traen el IVA incluido (ivaIncluido.ts): de cada
  * ítem se separa la base y el IVA según el porcentaje de su producto.
  */
@@ -49,6 +67,7 @@ export function construirEventoVenta(
   ivaPorProducto: Map<string, number>,
   tienda: string | null,
   facturaCufe: string | null,
+  cliente: ClienteVenta | null = null,
 ) {
   let iva = 0;
   const lineas = items.map((i) => {
@@ -61,7 +80,12 @@ export function construirEventoVenta(
   });
   const brutoItems = lineas.reduce((s, l) => s + l.subtotal, 0);
   iva = redondear(iva);
-  const multiples = Array.isArray(venta.metodos_multiples) ? venta.metodos_multiples : [];
+  const multiples = (Array.isArray(venta.metodos_multiples) ? venta.metodos_multiples : []).map((m: any) =>
+    m && typeof m === 'object' && 'metodo' in m ? { ...m, metodo: medioPagoContador(m.metodo) } : m);
+  // Solo con factura: sin ella el cliente va en null (lo pide el contrato).
+  const conCliente = !!facturaCufe && !!cliente;
+  const nitCliente = conCliente ? nitSoloDigitos(cliente!.nit) || null : null;
+  const esConsumidorFinal = nitCliente === NIT_CONSUMIDOR_FINAL;
   return {
     tipo: 'venta' as const,
     id_origen: venta.id,
@@ -72,11 +96,18 @@ export function construirEventoVenta(
     iva,
     descuento: num(venta.descuento),
     propina: num(venta.propina),
-    medio_pago: venta.metodo_pago || 'efectivo',
+    medio_pago: medioPagoContador(venta.metodo_pago),
     metodos_multiples: multiples,
     cajero: (venta.cajero_nombre || '').trim() || null,
     tienda,
     factura_cufe: facturaCufe,
+    cliente_nit: nitCliente,
+    cliente_nombre: nitCliente
+      ? (esConsumidorFinal ? 'Consumidor final' : String(cliente!.nombre ?? '').trim() || null)
+      : null,
+    cliente_tipo_documento: nitCliente
+      ? (esConsumidorFinal ? '13' : cliente!.tipoDocumento || null)
+      : null,
     items: lineas,
   };
 }
@@ -141,7 +172,7 @@ export function construirEventoGasto(g: GastoFila, soporte: SoporteGasto | null)
     categoria: categoriaLegible(g.categoria),
     valor: num(g.monto),
     iva: num(soporte?.total_iva),
-    medio_pago: (g.medio_pago || 'efectivo').toLowerCase(),
+    medio_pago: medioPagoContador(g.medio_pago),
     proveedor_nombre: soporte?.emisor_nombre || null,
     proveedor_nit: soporte?.emisor_nit ? nitSoloDigitos(soporte.emisor_nit) : null,
     numero_soporte: soporte?.numero_completo || (g.comprobante || '').trim() || null,
@@ -184,7 +215,7 @@ export function construirEventoDevolucion(
     total,
     subtotal: redondear(total - iva),
     iva,
-    medio_pago: (d.metodo_pago || 'efectivo').toLowerCase(),
+    medio_pago: medioPagoContador(d.metodo_pago),
     motivo,
     nota_credito_cufe: notaCreditoCufe,
     items: lineas,

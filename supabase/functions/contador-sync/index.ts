@@ -25,7 +25,7 @@ import {
   construirEventoGasto, construirEventoNotaFactura, construirEventoVenta, esAnulacionPrematura, esRechazoPorCupo, esReintentable, minutosHastaReintento,
   nitSoloDigitos, XML_MAXIMO_BYTES,
   type CierreFila, type DevolucionFila, type DevolucionItemFila, type FacturaFila, type GastoFila, type ItemFila, type NotaFacturaFila,
-  type SoporteGasto, type VentaFila,
+  type ClienteVenta, type SoporteGasto, type VentaFila,
 } from './eventos.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -214,11 +214,34 @@ async function itemsDeVentas(admin: SupabaseClient, idsVentas: string[]): Promis
 async function facturasDeReferencias(admin: SupabaseClient, clienteId: string, refs: string[]): Promise<{ data: any[] }> {
   const todas: any[] = [];
   for (let i = 0; i < refs.length; i += 40) {
-    const { data } = await admin.from('facturas_electronicas').select('venta_referencia, cufe').eq('cliente_id', clienteId)
+    const { data } = await admin.from('facturas_electronicas').select('venta_referencia, cufe, cliente_nit, cliente_nombre').eq('cliente_id', clienteId)
       .eq('estado', 'accepted').eq('issuer_ambiente', 'produccion').in('venta_referencia', refs.slice(i, i + 40));
     todas.push(...(data ?? []));
   }
   return { data: todas };
+}
+
+/**
+ * Cliente de cada factura (B4): NIT y nombre salen de la factura; el tipo de
+ * documento, de la base de clientes del negocio (clientes_facturacion). Si
+ * el cliente no está ahí, un NIT escrito con dígito de verificación es NIT (31).
+ */
+async function clientesDeFacturas(admin: SupabaseClient, clienteId: string, facturas: any[]): Promise<Map<string, ClienteVenta>> {
+  const nits = [...new Set(facturas.map((f) => nitSoloDigitos(f.cliente_nit)).filter(Boolean))];
+  const tipoPorNit = new Map<string, string>();
+  for (let i = 0; i < nits.length; i += 40) {
+    const { data } = await admin.from('clientes_facturacion').select('numero_documento, tipo_documento')
+      .eq('cliente_id', clienteId).in('numero_documento', nits.slice(i, i + 40));
+    for (const c of (data ?? []) as any[]) tipoPorNit.set(nitSoloDigitos(c.numero_documento), String(c.tipo_documento));
+  }
+  const porReferencia = new Map<string, ClienteVenta>();
+  for (const f of facturas) {
+    const nit = nitSoloDigitos(f.cliente_nit);
+    if (!nit) continue;
+    const tipo = tipoPorNit.get(nit) ?? (String(f.cliente_nit ?? '').includes('-') ? '31' : null);
+    porReferencia.set(f.venta_referencia, { nit, nombre: f.cliente_nombre ?? null, tipoDocumento: tipo });
+  }
+  return porReferencia;
 }
 
 /** Arma los eventos del lote. Los que no se pueden armar vuelven como rechazos locales. */
@@ -261,6 +284,7 @@ async function armarLote(admin: SupabaseClient, clienteId: string, cola: EventoC
   const tiendaPorId = new Map<string, string>();
   for (const t of (tiendas ?? []) as any[]) { tiendaPorId.set(String(t.id), t.nombre); if (t.local_id) tiendaPorId.set(String(t.local_id), t.nombre); }
   const cufePorReferencia = new Map((facturasDeVentas ?? []).map((f: any) => [f.venta_referencia, f.cufe]));
+  const clientePorReferencia = await clientesDeFacturas(admin, clienteId, (facturasDeVentas ?? []) as any[]);
   const ventaPorReferencia = new Map((ventasDeFacturas ?? []).map((v: any) => [v.local_id, v.id]));
   const facturaPorId = new Map(((facturasEv ?? []) as FacturaFila[]).map((f) => [f.id, f]));
 
@@ -282,6 +306,7 @@ async function armarLote(admin: SupabaseClient, clienteId: string, cola: EventoC
         v, itemsPorVenta.get(v.id) ?? [], ivaPorProducto,
         v.tienda_id ? tiendaPorId.get(String(v.tienda_id)) ?? null : null,
         (v.local_id ? cufePorReferencia.get(v.local_id) : null) ?? cufePorReferencia.get(v.id) ?? null,
+        (v.local_id ? clientePorReferencia.get(v.local_id) : null) ?? clientePorReferencia.get(v.id) ?? null,
       ));
     } else if (e.tipo === 'factura_electronica') {
       const f = facturaPorId.get(e.id_origen);
