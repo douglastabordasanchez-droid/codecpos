@@ -29,6 +29,7 @@ import { usePlanRestrictions } from '../../hooks/usePlanRestrictions';
 import { TIPOS_NEGOCIO } from '../../../data/tipos-negocio';
 import { descargarPlantillaExcelArtesGraficas } from '../../lib/supabase/artesGraficasService';
 import { PLANTILLAS_PAPELERIA, descargarPlantillaPapeleria } from '../../lib/importers/papeleriaPinateriaTemplates';
+import { leerNumero } from '../../lib/importarProductos';
 
 /**
  * Artes Gráficas y Papelería y Piñatería son MÓDULOS (con sus propias
@@ -238,23 +239,24 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
             continue;
           }
 
-          // Parsear números de forma segura
-          const precio = parseFloat(precioStr.replace(/[,$]/g, '')) || 0;
+          // Números en formato colombiano: un precio pegado como texto "35.000" o "$ 35.000"
+          // es treinta y cinco mil (antes se leía como 35 pesos).
+          const precio = leerNumero(precioStr) || 0;
           if (precio <= 0) {
             parseErrors.push(`Fila ${i + 1}: Precio inválido (${precioStr})`);
             continue;
           }
 
-          const stock = headerMap.stock !== undefined 
-            ? parseInt(values[headerMap.stock]?.replace(/[,$]/g, '') || '0') 
+          const stock = headerMap.stock !== undefined
+            ? leerNumero(values[headerMap.stock]) ?? 0
             : 0;
 
           const costo = headerMap.costo !== undefined
-            ? parseFloat(values[headerMap.costo]?.replace(/[,$]/g, '') || '0')
+            ? leerNumero(values[headerMap.costo]) ?? 0
             : Math.round(precio * 0.65); // 65% del precio si no hay costo
 
           const minStock = headerMap.minStock !== undefined
-            ? parseInt(values[headerMap.minStock]?.replace(/[,$]/g, '') || '10')
+            ? leerNumero(values[headerMap.minStock]) ?? 10
             : 10;
 
           const categoria = headerMap.categoria !== undefined
@@ -381,7 +383,8 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
         const XLSX = await import('xlsx');
         const libro = XLSX.read(await file.arrayBuffer());
         const primeraHoja = libro.Sheets[libro.SheetNames[0]];
-        text = XLSX.utils.sheet_to_csv(primeraHoja);
+        // Números tal cual están guardados, sin el formato de la celda (miles, signo $).
+        text = XLSX.utils.sheet_to_csv(primeraHoja, { rawNumbers: true, blankrows: false });
       }
       console.log('✅ Archivo leído:', text.length, 'caracteres');
       

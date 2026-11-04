@@ -241,7 +241,13 @@ export async function importarProductos(
     if (codigos.length > 0) {
       const { data, error } = await client.from('productos').select('*').eq('cliente_id', clienteId).in('codigo_barras', codigos);
       if (error) throw new Error(error.message);
-      (data || []).forEach((p: any) => { if (p.codigo_barras && !existentes.has(p.codigo_barras)) existentes.set(p.codigo_barras, p); });
+      // Si un código está repetido (un producto activo y otro viejo eliminado que se conserva
+      // por las ventas), se actualiza el activo; revivir el viejo dejaba el producto duplicado.
+      (data || []).forEach((p: any) => {
+        if (!p.codigo_barras) return;
+        const ya = existentes.get(p.codigo_barras) as any;
+        if (!ya || (ya.activo === false && p.activo !== false)) existentes.set(p.codigo_barras, p);
+      });
     }
 
     const nuevos: Record<string, unknown>[] = [];
