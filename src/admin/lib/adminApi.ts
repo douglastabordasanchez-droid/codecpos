@@ -269,6 +269,36 @@ export async function registrarPagoLicencia(clienteId: string) {
   return (data as string | null) ?? null;
 }
 
+/**
+ * Fechas puestas a mano (migración 0140), en días de Colombia "AAAA-MM-DD": el
+ * último día se trabaja completo. Sin fecha final solo para vitalicias.
+ * Devuelve el vencimiento exacto que quedó guardado.
+ */
+export async function fijarFechasLicencia(clienteId: string, inicio: string, fin: string | null) {
+  const { data, error } = await cliente().rpc('fijar_fechas_licencia_admin', {
+    p_cliente_id: clienteId, p_inicio: inicio, p_fin: fin,
+  });
+  if (error) throw new Error(error.message);
+  return (data as string | null) ?? null;
+}
+
+/** Fecha guardada → "AAAA-MM-DD" del día en Colombia, para un <input type="date">. */
+export function diaColombia(valor: string | Date | null | undefined): string {
+  if (!valor) return '';
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+
+/** Suma meses a un día "AAAA-MM-DD" (para proponer la fecha final según la duración). */
+export function sumarMeses(dia: string, meses: number): string {
+  const [a, m, d] = dia.split('-').map(Number);
+  // 31 de enero + 1 mes = 28 (o 29) de febrero, no 3 de marzo.
+  const ultimoDia = new Date(Date.UTC(a, m - 1 + meses + 1, 0)).getUTCDate();
+  const f = new Date(Date.UTC(a, m - 1 + meses, Math.min(d, ultimoDia)));
+  return f.toISOString().slice(0, 10);
+}
+
 /** Suma días de cortesía a la licencia actual sin cambiar el plan (migración 0115). */
 export async function darDiasCortesia(clienteId: string, dias: number) {
   const { data, error } = await cliente().rpc('dar_dias_cortesia_admin', { p_cliente_id: clienteId, p_dias: dias });

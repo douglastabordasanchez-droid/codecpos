@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Search, Plus, X, Loader2, Crown, Zap, Check } from 'lucide-react';
-import { listarClientes, registrarAuditoria } from '../lib/adminApi';
+import { Search, Plus, X, Loader2, Crown, Zap, Check, CalendarDays } from 'lucide-react';
+import { listarClientes, registrarAuditoria, fijarFechasLicencia, diaColombia, sumarMeses } from '../lib/adminApi';
+import type { DuracionCliente } from '../../app/lib/supabase/clientesAdminService';
 import type { PlanCliente } from '../../app/lib/supabase/clientesAdminService';
 import type { ModuloPOS } from '../../app/lib/permissions';
 import { resumenVencimiento } from '../../app/lib/bloqueoLicencia';
@@ -19,6 +20,11 @@ function diasRestantes(fechaFin: string | null | undefined): number | null {
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 }
 
+const MESES_POR_DURACION: Record<DuracionCliente, number> = { '1_MES': 1, '3_MESES': 3, '1_ANO': 12, VITALICIA: 0 };
+
+const fechaCorta = (valor: string | null | undefined) =>
+  valor ? new Date(valor).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric' }) : null;
+
 const inputCls = 'w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-500';
 const labelCls = 'block text-xs text-slate-400 mb-1';
 
@@ -33,6 +39,15 @@ function NuevoClienteForm({ onCreado, onCancelar }: { onCreado: () => void; onCa
   const [modulos, setModulos] = useState<Set<ModuloPOS>>(() => new Set(modulosPorPlan('BASICO')));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fechas, setFechas] = useState(() => {
+    const hoy = diaColombia(new Date());
+    return { inicio: hoy, fin: sumarMeses(hoy, MESES_POR_DURACION[FORM_VACIO.duracion]) };
+  });
+
+  const cambiarDuracion = (duracion: DuracionCliente) => {
+    setForm((f) => ({ ...f, duracion }));
+    if (duracion !== 'VITALICIA') setFechas((f) => ({ ...f, fin: sumarMeses(f.inicio, MESES_POR_DURACION[duracion]) }));
+  };
 
   const campo = (k: Exclude<keyof FormNuevoNegocio, 'plan' | 'duracion'>) => ({
     value: form[k],
@@ -46,11 +61,21 @@ function NuevoClienteForm({ onCreado, onCancelar }: { onCreado: () => void; onCa
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    const vitalicia = form.duracion === 'VITALICIA';
+    if (!fechas.inicio || (!vitalicia && !fechas.fin)) { setError('Pon la fecha de inicio y la fecha final'); return; }
+    if (!vitalicia && fechas.fin < fechas.inicio) { setError('La fecha final no puede ser anterior a la de inicio'); return; }
     setEnviando(true);
     setError(null);
     try {
       const creado = await crearNegocioDesdePanel(form, Array.from(modulos));
       await registrarAuditoria('CREAR_CLIENTE', creado.id, 'EXITO', { usuario: creado.usuario, plan: form.plan, duracion: form.duracion }).catch(() => {});
+      // La licencia se crea contando desde hoy; luego se dejan las fechas elegidas.
+      try {
+        await fijarFechasLicencia(creado.id, fechas.inicio, vitalicia ? null : fechas.fin);
+        await registrarAuditoria('FIJAR_FECHAS_LICENCIA', creado.id, 'EXITO', { inicio: fechas.inicio, fin: vitalicia ? null : fechas.fin }).catch(() => {});
+      } catch (e: any) {
+        alert(`El negocio quedó creado, pero no se pudieron poner las fechas: ${e.message}. Ponlas con el botón Fechas.`);
+      }
       onCreado();
       navigate(`/clientes/${creado.id}`);
     } catch (e: any) {
@@ -105,12 +130,39 @@ function NuevoClienteForm({ onCreado, onCancelar }: { onCreado: () => void; onCa
           <p className={labelCls}>Duración</p>
           <div className="grid grid-cols-4 gap-1.5">
             {DURACIONES.map((d) => (
-              <button key={d.id} type="button" onClick={() => setForm((f) => ({ ...f, duracion: d.id }))} className={boton(form.duracion === d.id)}>
+              <button key={d.id} type="button" onClick={() => cambiarDuracion(d.id)} className={boton(form.duracion === d.id)}>
                 {d.label}
               </button>
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="border-t border-slate-700 pt-4">
+        <p className="flex items-center gap-1.5 text-sky-300 text-xs font-bold uppercase tracking-wide mb-3"><CalendarDays className="w-3.5 h-3.5" /> Fechas de la licencia</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Fecha de inicio</label>
+            <input
+              type="date"
+              className={inputCls}
+              value={fechas.inicio}
+              onChange={(e) => {
+                const inicio = e.target.value;
+                setFechas((f) => ({ inicio, fin: inicio && form.duracion !== 'VITALICIA' ? sumarMeses(inicio, MESES_POR_DURACION[form.duracion]) : f.fin }));
+              }}
+            />
+          </div>
+          {form.duracion !== 'VITALICIA' ? (
+            <div>
+              <label className={labelCls}>Fecha final (último día que puede trabajar)</label>
+              <input type="date" className={inputCls} value={fechas.fin} min={fechas.inicio || undefined} onChange={(e) => setFechas((f) => ({ ...f, fin: e.target.value }))} />
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 self-end pb-2">Vitalicia: no tiene fecha final.</p>
+          )}
+        </div>
+        <p className="text-xs text-slate-500 mt-2">Se propone según la duración; cámbiala si el negocio empezó otro día o pagó hasta otra fecha.</p>
       </div>
 
       <div>
@@ -238,6 +290,16 @@ export function ClientesPage() {
                 <p className="text-xs text-slate-400 mt-0.5">
                   {[c.usuario && `Usuario: ${c.usuario}`, c.email].filter(Boolean).join(' · ')}
                 </p>
+                {(() => {
+                  const inicio = fechaCorta(c.licencia_vigente?.fecha_inicio ?? c.fecha_activacion);
+                  const fin = fechaCorta(c.licencia_vigente?.fecha_fin_periodo_actual ?? c.fecha_expiracion);
+                  if (!inicio && !fin) return null;
+                  return (
+                    <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
+                      <CalendarDays className="w-3 h-3" /> {c.duracion === 'VITALICIA' ? `Desde el ${inicio}` : `Del ${inicio ?? '?'} al ${fin ?? '?'}`}
+                    </p>
+                  );
+                })()}
                 {c.licencia_vigente?.estado === 'TRIAL' ? (
                   <p className="text-xs text-amber-400 mt-0.5">
                     En prueba · {diasRestantes(c.licencia_vigente.fecha_fin_periodo_actual)} días restantes

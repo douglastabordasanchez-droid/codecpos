@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { ShieldCheck, Loader2 } from 'lucide-react';
+import { MarcaCodec, BotonTema } from './MarcaCodec';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 
 /**
@@ -23,14 +24,13 @@ export function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center gap-2 text-white">
-          <ShieldCheck className="w-5 h-5 text-amber-400" />
-          <h1 className="font-bold text-lg">Codec POS — Admin</h1>
-        </div>
-        <p className="text-slate-400 text-xs">
-          Acceso exclusivo de staff Codec Studio. Requiere conexión a internet.
+    <div className="relative min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="absolute top-4 right-4"><BotonTema compacto /></div>
+      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl shadow-black/20">
+        <MarcaCodec grande />
+        <p className="flex items-center gap-1.5 text-slate-400 text-xs">
+          <ShieldCheck className="w-4 h-4 shrink-0 text-amber-400" />
+          Acceso exclusivo del staff de Codec Studio. Requiere internet.
         </p>
 
         <input

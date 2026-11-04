@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X, KeyRound, ReceiptText, Power } from 'lucide-react';
-import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, actualizarModulosCliente, suspenderCliente, darDiasCortesia, registrarPagoLicencia } from '../lib/adminApi';
+import { ArrowLeft, Crown, Sparkles, XCircle, Plus, RefreshCw, Gift, Check, X, KeyRound, ReceiptText, Power, CalendarDays } from 'lucide-react';
+import { obtenerDetalleCliente, cancelarLicencia, crearSucursal, registrarAuditoria, obtenerIdLicenciaVigente, registrarLicencia, listarPlanesConPrecios, activarPruebaAdmin, actualizarModulosCliente, suspenderCliente, darDiasCortesia, registrarPagoLicencia, fijarFechasLicencia, diaColombia, sumarMeses } from '../lib/adminApi';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import {
   PageHeader, SectionCard, LoadingState, ErrorState, EstadoBadge, PlanBadge,
@@ -43,8 +43,13 @@ const EVENTO_LABEL: Record<string, string> = {
   PRUEBA_VENCIDA: 'Prueba vencida',
   DIAS_CORTESIA: 'Días de cortesía',
   LICENCIA_VENCIDA: 'Pausada por falta de pago',
+  PAGO_REGISTRADO: 'Pago registrado',
+  FECHAS_AJUSTADAS: 'Fechas puestas a mano',
   MIGRACION_LEGACY: 'Migración inicial',
 };
+
+const fechaLarga = (dia: string) =>
+  new Date(`${dia}T12:00:00`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
 export function ClienteDetallePage() {
   const { id } = useParams();
@@ -63,6 +68,8 @@ export function ClienteDetallePage() {
   const [mostrarPrueba, setMostrarPrueba] = useState(false);
   const [diasPrueba, setDiasPrueba] = useState('14');
   const [mostrarCredenciales, setMostrarCredenciales] = useState(false);
+  const [mostrarFechas, setMostrarFechas] = useState(false);
+  const [fechas, setFechas] = useState({ inicio: '', fin: '' });
 
   const cargar = () => {
     if (id) obtenerDetalleCliente(id).then((data) => {
@@ -162,6 +169,40 @@ export function ClienteDetallePage() {
     } catch (e: any) {
       await registrarAuditoria('REGISTRAR_PAGO', id, 'ERROR', { error: e.message });
       alert('No se pudo registrar el pago: ' + e.message);
+    } finally { setProcesando(false); }
+  };
+
+  const abrirFechas = () => {
+    if (!detalle) return;
+    const l = detalle.licencia_vigente;
+    setFechas({
+      inicio: diaColombia(l?.fecha_inicio ?? detalle.cliente.fecha_activacion) || diaColombia(new Date()),
+      fin: diaColombia(l?.fecha_fin_periodo_actual ?? detalle.cliente.fecha_expiracion),
+    });
+    setMostrarFechas((v) => !v);
+  };
+
+  const handleGuardarFechas = async () => {
+    if (!id || !detalle) return;
+    const vitalicia = detalle.licencia_vigente?.modalidad === 'VITALICIA';
+    if (!fechas.inicio) { alert('Pon la fecha de inicio'); return; }
+    if (!vitalicia && !fechas.fin) { alert('Pon la fecha final'); return; }
+    if (!vitalicia && fechas.fin < fechas.inicio) { alert('La fecha final no puede ser anterior a la de inicio'); return; }
+    const pasada = !vitalicia && fechas.fin < diaColombia(new Date());
+    const texto = vitalicia
+      ? `¿Poner como inicio de ${detalle.cliente.nombre_negocio} el ${fechaLarga(fechas.inicio)}? Es vitalicia, no vence.`
+      : `¿Dejar a ${detalle.cliente.nombre_negocio} del ${fechaLarga(fechas.inicio)} al ${fechaLarga(fechas.fin)}?` +
+        (pasada ? '\n\nLa fecha final ya pasó: el negocio queda pausado en Electron, la web y la app.' : '\n\nPuede trabajar hasta el final de ese día en Electron, la web y la app.');
+    if (!window.confirm(texto)) return;
+    setProcesando(true);
+    try {
+      const hasta = await fijarFechasLicencia(id, fechas.inicio, vitalicia ? null : fechas.fin);
+      await registrarAuditoria('FIJAR_FECHAS_LICENCIA', id, 'EXITO', { inicio: fechas.inicio, fin: vitalicia ? null : fechas.fin, hasta });
+      setMostrarFechas(false);
+      cargar();
+    } catch (e: any) {
+      await registrarAuditoria('FIJAR_FECHAS_LICENCIA', id, 'ERROR', { error: e.message }).catch(() => {});
+      alert('No se pudieron guardar las fechas: ' + e.message);
     } finally { setProcesando(false); }
   };
 
@@ -269,6 +310,9 @@ export function ClienteDetallePage() {
               </button>
               <button onClick={() => setMostrarPrueba((v) => !v)} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg px-3 py-2 disabled:opacity-50">
                 <Gift className="w-4 h-4" /> Dar días
+              </button>
+              <button onClick={abrirFechas} disabled={procesando} className="flex items-center gap-1.5 text-sm bg-sky-500/15 text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 rounded-lg px-3 py-2 disabled:opacity-50">
+                <CalendarDays className="w-4 h-4" /> Fechas
               </button>
               <button
                 onClick={handleSuspender}
@@ -380,6 +424,74 @@ export function ClienteDetallePage() {
         </SectionCard>
       )}
 
+      {mostrarFechas && (() => {
+        const vitalicia = lic?.modalidad === 'VITALICIA';
+        const hoy = diaColombia(new Date());
+        const atajo = (meses: number, texto: string) => (
+          <button
+            type="button"
+            onClick={() => setFechas((f) => ({ ...f, fin: sumarMeses(f.inicio || hoy, meses) }))}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-sky-500/60"
+          >
+            {texto}
+          </button>
+        );
+        return (
+          <SectionCard title="Fechas de la licencia" className="mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-300 text-xs mb-1">Fecha de inicio</label>
+                <input
+                  type="date"
+                  value={fechas.inicio}
+                  onChange={(e) => setFechas((f) => ({ ...f, inicio: e.target.value }))}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-sky-500"
+                />
+              </div>
+              {!vitalicia && (
+                <div>
+                  <label className="block text-slate-300 text-xs mb-1">Fecha final (último día que puede trabajar)</label>
+                  <input
+                    type="date"
+                    value={fechas.fin}
+                    min={fechas.inicio || undefined}
+                    onChange={(e) => setFechas((f) => ({ ...f, fin: e.target.value }))}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-sky-500"
+                  />
+                </div>
+              )}
+            </div>
+            {!vitalicia && (
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <span className="text-xs text-slate-400">Desde el inicio:</span>
+                {atajo(1, '+1 mes')}
+                {atajo(3, '+3 meses')}
+                {atajo(6, '+6 meses')}
+                {atajo(12, '+1 año')}
+              </div>
+            )}
+            <p className="text-xs text-slate-400 mt-3">
+              {vitalicia
+                ? 'Es vitalicia: solo cambia la fecha de inicio, no vence.'
+                : fechas.inicio && fechas.fin
+                  ? `Queda activa del ${fechaLarga(fechas.inicio)} al ${fechaLarga(fechas.fin)}, hasta las 11:59 de la noche. ${fechas.fin < hoy ? 'Esa fecha ya pasó: quedará pausada.' : `Le quedan ${Math.round((new Date(`${fechas.fin}T12:00:00`).getTime() - new Date(`${hoy}T12:00:00`).getTime()) / 86_400_000) + 1} días.`}`
+                  : 'Elige las dos fechas.'}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Se cumple en Electron, la web y la app del celular. Lo automático sigue igual: avisos 2 días y 1 día antes, pausa al vencer y Registrar pago suma el periodo desde esta fecha final. Una suspensión hecha a mano no se quita aquí.
+            </p>
+            <div className="flex gap-2 mt-4">
+              <button onClick={handleGuardarFechas} disabled={procesando} className="bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-slate-950 font-semibold rounded-lg px-4 py-2 text-sm">
+                Guardar fechas
+              </button>
+              <button onClick={() => setMostrarFechas(false)} disabled={procesando} className="rounded-lg bg-slate-800 hover:bg-slate-700 px-4 py-2 text-sm">
+                Cancelar
+              </button>
+            </div>
+          </SectionCard>
+        );
+      })()}
+
       {MODULOS_CATALOGO.filter((m) => MODULOS_VENTA_APARTE.includes(m.id)).map((modulo) => {
         const activo = (modulosDeLicencia(detalle.cliente.modulos_activos, detalle.cliente.plan) as string[]).includes(modulo.id);
         return (
@@ -447,7 +559,7 @@ export function ClienteDetallePage() {
               <div><p className="text-slate-300 text-xs mb-1">Estado</p><EstadoBadge estado={esVitalicio ? 'VITALICIA' : lic.estado} /></div>
               <div><p className="text-slate-300 text-xs mb-1">Precio efectivo</p><span className="font-semibold">{lic.precio_efectivo != null ? formatoMoneda(lic.precio_efectivo) + '/mes' : 'No configurado'}</span></div>
               <div><p className="text-slate-300 text-xs mb-1">Inicio</p>{formatoFecha(lic.fecha_inicio)}</div>
-              <div><p className="text-slate-300 text-xs mb-1">Próxima renovación</p>{lic.fecha_fin_periodo_actual ? formatoFecha(lic.fecha_fin_periodo_actual) : '—'}</div>
+              <div><p className="text-slate-300 text-xs mb-1">Fecha final</p>{lic.fecha_fin_periodo_actual ? formatoFecha(lic.fecha_fin_periodo_actual) : '—'}</div>
               {(() => {
                 const v = resumenVencimiento(esVitalicio ? 'VITALICIA' : detalle.cliente.estado, lic.modalidad === 'VITALICIA' ? 'VITALICIA' : detalle.cliente.duracion, lic.fecha_fin_periodo_actual);
                 return (

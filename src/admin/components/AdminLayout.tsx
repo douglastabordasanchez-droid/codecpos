@@ -5,6 +5,7 @@ import {
   Headphones, ScrollText, LogOut, TicketPercent, Menu, X,
 } from 'lucide-react';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
+import { MarcaCodec, BotonTema } from './MarcaCodec';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -39,9 +40,8 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
       {menuAbierto && <button aria-label="Cerrar menú" onClick={() => setMenuAbierto(false)} className="fixed inset-0 z-40 bg-black/60 md:hidden" />}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 border-r border-slate-800 bg-slate-900 flex flex-col transform transition-transform md:static md:w-64 md:translate-x-0 ${menuAbierto ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="h-16 flex items-center gap-2.5 px-5 border-b border-slate-800">
-          <img src="/logoapp.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
-          <span className="font-bold text-white">Codec POS Admin</span>
+        <div className="h-[4.5rem] flex items-center gap-2.5 px-5 border-b border-slate-800">
+          <MarcaCodec />
           <button aria-label="Cerrar menú" onClick={() => setMenuAbierto(false)} className="ml-auto p-2 text-slate-400 hover:text-white md:hidden"><X className="w-5 h-5" /></button>
         </div>
         <nav className="flex-1 py-4 px-2 space-y-1">
@@ -69,6 +69,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <p className="text-sm font-medium truncate text-white">{staff?.nombreCompleto}</p>
             <p className="text-xs text-amber-400/90">{staff?.nivelStaff ? NIVEL_LABEL[staff.nivelStaff] ?? staff.nivelStaff : 'Sin nivel asignado'}</p>
           </div>
+          <BotonTema />
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-red-400 transition-colors"
@@ -79,9 +80,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="flex-1 min-w-0 overflow-y-auto">
-        <div className="sticky top-0 z-30 flex h-14 items-center border-b border-slate-800 bg-slate-950/95 px-4 md:hidden">
+        <div className="sticky top-0 z-30 flex h-16 items-center border-b border-slate-800 bg-slate-950/95 px-4 md:hidden">
           <button aria-label="Abrir menú" onClick={() => setMenuAbierto(true)} className="p-2 text-slate-300 hover:text-white"><Menu className="w-5 h-5" /></button>
-          <span className="ml-2 text-sm font-semibold text-white">Codec POS Admin</span>
+          <div className="ml-1 flex-1 min-w-0"><MarcaCodec /></div>
+          <BotonTema compacto />
         </div>
         <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">{children}</div>
       </main>

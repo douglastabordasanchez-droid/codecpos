@@ -1,0 +1,63 @@
+/*
+ * Modo claro del Admin web. Las páginas están escritas con la paleta oscura
+ * (bg-slate-950, text-white, text-slate-300...). Tailwind 4 pinta cada clase
+ * con una variable (--color-slate-900, --color-white...), así que el modo
+ * claro voltea esas variables en un solo lugar en vez de duplicar cada clase
+ * en cada página. Este archivo va fuera de las capas de Tailwind a propósito:
+ * así sus reglas ganan sobre las utilidades.
+ */
+
+html.admin-claro {
+  color-scheme: light;
+
+  /* Superficies: fondo gris muy claro, tarjetas y campos blancos. */
+  --color-slate-950: #eef2f7;
+  --color-slate-900: #ffffff;
+  --color-slate-800: #f8fafc;
+  --color-slate-700: #dde3ec;
+  --color-slate-600: #c5cedb;
+  --color-slate-500: #6b7789;
+
+  /* Textos: de más suave a más fuerte. */
+  --color-slate-400: #566377;
+  --color-slate-300: #3f4b5e;
+  --color-slate-200: #2a3547;
+  --color-slate-100: #172133;
+  --color-white: #0f172a;
+
+  /* Acentos legibles sobre fondo claro. */
+  --color-amber-300: #b45309;
+  --color-amber-400: #b45309;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #047857;
+  --color-red-300: #b91c1c;
+  --color-red-400: #c81e1e;
+  --color-sky-300: #0369a1;
+  --color-violet-300: #6d28d9;
+  --color-orange-400: #c2410c;
+  --color-purple-300: #7e22ce;
+}
+
+html.admin-claro body {
+  background: #eef2f7;
+}
+
+/* Texto oscuro sobre botones de color (Confirmar, Guardar, Entrar). */
+html.admin-claro .text-slate-950 {
+  color: #0f172a;
+}
+
+/* Botones de color sólido con texto blanco: siguen blancos. */
+html.admin-claro :is(.bg-emerald-600, .bg-emerald-500, .bg-sky-600, .bg-red-600).text-white {
+  color: #ffffff;
+}
+
+/* Botones grises sin borde: en claro necesitan un contorno para verse. */
+html.admin-claro button:is(.bg-slate-800, .bg-slate-700) {
+  box-shadow: inset 0 0 0 1px var(--color-slate-700);
+}
+
+/* Campos de fecha: el ícono del calendario del navegador se ve en ambos modos. */
+html:not(.admin-claro) input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+}
