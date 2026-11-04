@@ -162,6 +162,18 @@ export function enviarDocumento(numero: string, xmlFirmado: string, ambiente: Am
   return llamar('SendBillSync', `<wcf:fileName>${fileName}</wcf:fileName><wcf:contentFile>${contentFile}</wcf:contentFile>`, ambiente, credenciales);
 }
 
+/** Evento del ApplicationResponse (acuses RADIAN 030 a 033): solo lleva el ZIP. */
+export function enviarEvento(numero: string, xmlFirmado: string, ambiente: Ambiente, credenciales: Credenciales): Promise<RespuestaDian> {
+  const { contentFile } = empaquetarZip(numero, xmlFirmado);
+  return llamar('SendEventUpdateStatus', `<wcf:contentFile>${contentFile}</wcf:contentFile>`, ambiente, credenciales);
+}
+
+/** Nómina electrónica en producción (en habilitación va por enviarSetDePruebas con su TestSetId). */
+export function enviarNomina(numero: string, xmlFirmado: string, credenciales: Credenciales): Promise<RespuestaDian> {
+  const { contentFile } = empaquetarZip(numero, xmlFirmado);
+  return llamar('SendNominaSync', `<wcf:contentFile>${contentFile}</wcf:contentFile>`, 'produccion', credenciales);
+}
+
 /** Set de pruebas de habilitación: siempre contra el ambiente de habilitación. */
 export function enviarSetDePruebas(numero: string, xmlFirmado: string, testSetId: string, credenciales: Credenciales): Promise<RespuestaDian> {
   const { fileName, contentFile } = empaquetarZip(numero, xmlFirmado);

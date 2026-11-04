@@ -22,10 +22,10 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { cifrar, descifrar } from '../dian-emision/cifrado.ts';
 import {
   construirEventoAnulacion, construirEventoCierre, construirEventoDevolucion, construirEventoDocumento, construirEventoFactura,
-  construirEventoGasto, construirEventoNotaFactura, construirEventoVenta, esAnulacionPrematura, esRechazoPorCupo, esReintentable, minutosHastaReintento,
+  construirEventoAbono, construirEventoGasto, construirEventoIngresoExtra, construirEventoNotaFactura, construirEventoVenta, buscarAbono, esAnulacionPrematura, esRechazoPorCupo, esReintentable, minutosHastaReintento,
   nitSoloDigitos, XML_MAXIMO_BYTES,
   type CierreFila, type DevolucionFila, type DevolucionItemFila, type FacturaFila, type GastoFila, type ItemFila, type NotaFacturaFila,
-  type ClienteVenta, type SoporteGasto, type VentaFila,
+  type ClienteVenta, type CuentaCarteraFila, type IngresoExtraFila, type SoporteGasto, type VentaFila,
 } from './eventos.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -127,6 +127,9 @@ async function vincular(admin: SupabaseClient, clienteId: string, userId: string
     cliente_id: clienteId, estado: 'activo', empresa: datos.empresa ?? null, contador: datos.contador ?? null, nit,
     token_cifrado: tokenCifrado, vinculado_por: userId, vinculado_en: new Date().toISOString(),
     desvinculado_en: null, ultimo_error: null, updated_at: new Date().toISOString(),
+    // Conexión nueva: no tiene copia del certificado y hay que volver a anunciar la firma por encargo.
+    certificado_compartido: false, certificado_compartido_en: null, certificado_compartido_vence: null,
+    certificado_error: null, firma_capacidad: null, firma_capacidad_en: null, firma_error: null,
   });
   if (errorGuardar) throw new ErrorHttp(`Se conectó, pero no se pudo guardar la conexión: ${errorGuardar.message}`, 500);
 
@@ -134,7 +137,9 @@ async function vincular(admin: SupabaseClient, clienteId: string, userId: string
   // de contador que no tiene nada, y Codec Document deduplica por id_origen.
   await admin.from('contador_eventos').update({ estado: 'pendiente', intentos: 0, proximo_intento_en: new Date().toISOString(), motivo: null, enviado_en: null })
     .eq('cliente_id', clienteId).neq('estado', 'pendiente');
-  const { data: encolados } = await admin.rpc('contador_encolar_historial', { p_cliente_id: clienteId });
+  await admin.rpc('contador_encolar_historial', { p_cliente_id: clienteId });
+  // Abonos de cartera, ingresos extra y facturas de compra (0138).
+  const { data: encolados } = await admin.rpc('contador_encolar_historial_fase3', { p_cliente_id: clienteId });
 
   return { empresa: datos.empresa ?? null, contador: datos.contador ?? null, encolados: encolados ?? 0 };
 }
@@ -144,6 +149,8 @@ async function marcarRevocado(admin: SupabaseClient, clienteId: string) {
   const ahora = new Date().toISOString();
   await admin.from('contador_vinculos').update({
     estado: 'revocado', token_cifrado: null, ultimo_error: 'Tu contador desconectó esta empresa', updated_at: ahora,
+    // Codec Document borra solo la copia del certificado al desconectarse.
+    certificado_compartido: false, certificado_compartido_en: null, certificado_compartido_vence: null, firma_capacidad: null, firma_capacidad_en: null,
   }).eq('cliente_id', clienteId);
   await admin.from('contador_eventos').update({ estado: 'cancelado', motivo: 'Tu contador desconectó esta empresa' })
     .eq('cliente_id', clienteId).eq('estado', 'pendiente');
@@ -189,13 +196,14 @@ async function desvincular(admin: SupabaseClient, clienteId: string) {
   }
   await admin.from('contador_vinculos').update({
     estado: 'desvinculado', token_cifrado: null, desvinculado_en: new Date().toISOString(), updated_at: new Date().toISOString(),
+    certificado_compartido: false, certificado_compartido_en: null, certificado_compartido_vence: null, firma_capacidad: null, firma_capacidad_en: null,
   }).eq('cliente_id', clienteId);
   await admin.from('contador_eventos').update({ estado: 'cancelado' }).eq('cliente_id', clienteId).eq('estado', 'pendiente');
   return { ok: true };
 }
 
 // ── Envío por lotes ─────────────────────────────────────────────────────
-interface EventoCola { id: number; tipo: string; id_origen: string; intentos: number; de: string | null }
+interface EventoCola { id: number; tipo: string; id_origen: string; intentos: number; de: string | null; origen_padre?: string | null }
 
 const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -326,13 +334,14 @@ type Armado = { evento: unknown } | { motivo: string };
  */
 async function datosFase2(admin: SupabaseClient, clienteId: string, cola: EventoCola[]): Promise<(e: EventoCola) => Armado> {
   const ids = (tipo: string) => cola.filter((e) => e.tipo === tipo).map((e) => e.id_origen);
-  const [idsGastos, idsDevoluciones, idsCierres, idsNC, idsND, idsSoporte, idsNotasFactura] =
-    ['gasto', 'devolucion', 'cierre_caja', 'nota_credito', 'nota_debito', 'documento_soporte', 'nota_factura'].map(ids);
+  const [idsGastos, idsDevoluciones, idsCierres, idsNC, idsND, idsSoporte, idsNotasFactura, idsIngresos, idsCompras] =
+    ['gasto', 'devolucion', 'cierre_caja', 'nota_credito', 'nota_debito', 'documento_soporte', 'nota_factura', 'ingreso_extra', 'factura_compra'].map(ids);
+  const idsCuentas = [...new Set(cola.filter((e) => e.tipo === 'abono_cartera' && e.origen_padre).map((e) => e.origen_padre!))];
   const vacio = Promise.resolve({ data: [] as any[] });
 
   const [{ data: gastos }, { data: soportesGasto }, { data: devoluciones }, { data: itemsDev }, { data: cierres }, { data: nc }, { data: nd }, { data: soportes }, { data: notasFactura }] = await Promise.all([
     idsGastos.length ? admin.from('gastos').select('id, fecha, created_at, descripcion, categoria, monto, medio_pago, comprobante, registrado_por_nombre, notas').in('id', idsGastos) : vacio,
-    idsGastos.length ? admin.from('documentos_electronicos').select('gasto_id, emisor_nombre, emisor_nit, numero_completo, total_iva').in('gasto_id', idsGastos) : vacio,
+    idsGastos.length ? admin.from('documentos_electronicos').select('gasto_id, emisor_nombre, emisor_nit, numero_completo, total_iva, cufe, tipo, direccion').in('gasto_id', idsGastos) : vacio,
     idsDevoluciones.length ? admin.from('devoluciones').select('id, venta_id, created_at, total_devolucion, metodo_pago, observaciones, numero_factura').in('id', idsDevoluciones) : vacio,
     idsDevoluciones.length ? admin.from('devolucion_items').select('devolucion_id, nombre, cantidad, precio_unitario, producto_id, motivo').in('devolucion_id', idsDevoluciones) : vacio,
     idsCierres.length ? admin.from('cierres_caja').select('id, fecha_apertura, fecha_cierre, created_at, monto_apertura, monto_cierre, ventas_total, diferencia, detalle').in('id', idsCierres) : vacio,
@@ -341,6 +350,18 @@ async function datosFase2(admin: SupabaseClient, clienteId: string, cola: Evento
     idsSoporte.length ? admin.from('documentos_electronicos').select('id, cufe, xml, fecha_emision, created_at').in('id', idsSoporte) : vacio,
     idsNotasFactura.length ? admin.from('facturas_electronicas').select('id, cufe, prefijo, numero_factura, nota_contador, nota_contador_actualizada_en, fecha_emision, created_at').in('id', idsNotasFactura) : vacio,
   ]);
+
+  const [{ data: ingresos }, { data: compras }, { data: cuentas }] = await Promise.all([
+    idsIngresos.length ? admin.from('ingresos_extra').select('id, fecha, concepto, categoria, monto, metodo_pago, registrado_por').in('id', idsIngresos) : vacio,
+    idsCompras.length ? admin.from('documentos_electronicos').select('id, cufe, xml, fecha_emision, created_at').in('id', idsCompras) : vacio,
+    idsCuentas.length ? admin.from('cuentas_cartera').select('id, venta_local_id, numero_factura, cliente_cartera_nombre, cliente_cartera_documento, abonos, created_at').in('id', idsCuentas) : vacio,
+  ]);
+  // La venta fiada de cada cuenta, por su número de caja.
+  const localesVentas = [...new Set((cuentas ?? []).map((c: any) => c.venta_local_id).filter(Boolean))] as string[];
+  const { data: ventasCuentas } = localesVentas.length
+    ? await admin.from('ventas').select('id, local_id').eq('cliente_id', clienteId).in('local_id', localesVentas)
+    : { data: [] as any[] };
+  const ventaPorLocal = new Map((ventasCuentas ?? []).map((v: any) => [v.local_id, v.id]));
 
   // IVA de los productos devueltos y nota crédito de cada devolución (por la factura de su venta).
   const idsProductos = [...new Set((itemsDev ?? []).map((i: any) => i.producto_id).filter(Boolean))] as string[];
@@ -374,9 +395,12 @@ async function datosFase2(admin: SupabaseClient, clienteId: string, cola: Evento
   const ndPorId = porId(nd as any[]);
   const soportePorId = porId(soportes as any[]);
   const notaFacturaPorId = porId(notasFactura as NotaFacturaFila[]);
+  const ingresoPorId = porId(ingresos as IngresoExtraFila[]);
+  const compraPorId = porId(compras as any[]);
+  const cuentaPorId = porId(cuentas as (CuentaCarteraFila & { created_at: string })[]);
 
   // Va el XML firmado (el AttachedDocument no se guarda en la nube).
-  const documento = (tipo: 'nota_credito' | 'nota_debito' | 'documento_soporte', doc: any, cufe: string | null): Armado => {
+  const documento = (tipo: 'nota_credito' | 'nota_debito' | 'documento_soporte' | 'factura_compra', doc: any, cufe: string | null): Armado => {
     const xml: string | null = doc?.xml || null;
     if (!doc) return { motivo: 'El documento ya no existe en Codec POS' };
     if (!xml) return { motivo: 'El documento no tiene XML guardado' };
@@ -412,6 +436,21 @@ async function datosFase2(admin: SupabaseClient, clienteId: string, cola: Evento
         if (!f.cufe) return { motivo: 'La factura no tiene CUFE' };
         return { evento: construirEventoNotaFactura(f) };
       }
+      case 'factura_compra': { const d = compraPorId.get(e.id_origen); return documento('factura_compra', d, d?.cufe ?? null); }
+      case 'ingreso_extra': {
+        const i = ingresoPorId.get(e.id_origen);
+        if (!i) return { motivo: 'El ingreso ya no existe en Codec POS' };
+        if (!(Number(i.monto) > 0)) return { motivo: 'El ingreso tiene valor 0' };
+        return { evento: construirEventoIngresoExtra(i) };
+      }
+      case 'abono_cartera': {
+        const c = e.origen_padre ? cuentaPorId.get(e.origen_padre) : undefined;
+        if (!c) return { motivo: 'La cuenta de cartera ya no existe en Codec POS' };
+        const a = buscarAbono(c, e.id_origen);
+        if (!a) return { motivo: 'El abono ya no existe en la cuenta' };
+        if (!(Number(a.monto) > 0)) return { motivo: 'El abono tiene valor 0' };
+        return { evento: construirEventoAbono(e.id_origen, c, a, c.venta_local_id ? ventaPorLocal.get(c.venta_local_id) ?? null : null, c.created_at) };
+      }
       default: return { motivo: `Tipo de evento sin soporte: ${e.tipo}` };
     }
   };
@@ -433,7 +472,7 @@ async function reprogramar(admin: SupabaseClient, cola: EventoCola[], motivo: st
 
 /** Manda un lote de un negocio. Devuelve false si hay que dejar de enviar a ese negocio en esta corrida. */
 async function enviarLote(admin: SupabaseClient, clienteId: string, token: string): Promise<boolean> {
-  const { data: cola } = await admin.from('contador_eventos').select('id, tipo, id_origen, intentos, de')
+  const { data: cola } = await admin.from('contador_eventos').select('id, tipo, id_origen, intentos, de, origen_padre')
     .eq('cliente_id', clienteId).eq('estado', 'pendiente').lte('proximo_intento_en', new Date().toISOString())
     .order('fecha_origen', { ascending: true }).order('id', { ascending: true }).limit(LOTE);
   if (!cola?.length) return false;

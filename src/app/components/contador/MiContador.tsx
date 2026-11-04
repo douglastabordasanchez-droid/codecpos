@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Link2, Unlink, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { CertificadoContador } from './CertificadoContador';
 import { obtenerEstadoContador, conectarContador, desconectarContador, verificarContador, type EstadoContador } from '../../lib/supabase/contadorService';
 
 const fechaHora = (iso: string | null) =>
@@ -89,8 +90,9 @@ export function MiContador({ oscuro = true }: { oscuro?: boolean }) {
             </div>
           ))}
         </div>
-        <p className={`text-xs ${suave}`}>Último envío: {fechaHora(estado.ultimoEnvioEn)}. Tus ventas, facturas electrónicas, gastos, devoluciones y cierres le llegan solos en un par de minutos.</p>
+        <p className={`text-xs ${suave}`}>Último envío: {fechaHora(estado.ultimoEnvioEn)}. Tus ventas, facturas electrónicas, compras, gastos, devoluciones, abonos de cartera, ingresos extra y cierres le llegan solos en un par de minutos.</p>
         {estado.ultimoError && <p className="text-xs text-amber-400 flex items-start gap-1.5"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{estado.ultimoError}</p>}
+        <CertificadoContador oscuro={oscuro} contador={estado.contador} />
         <button type="button" onClick={desconectar} disabled={trabajando}
           className="w-full h-10 rounded-xl border border-red-800/60 text-red-400 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
           {trabajando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlink className="w-4 h-4" />} Desconectar contador
@@ -106,7 +108,7 @@ export function MiContador({ oscuro = true }: { oscuro?: boolean }) {
       )}
       <p className={`text-sm ${suave}`}>
         Si tu contador usa Codec Document, pídele el <strong className={texto}>código de conexión</strong> de tu empresa y pégalo aquí.
-        Desde ese momento tus ventas, facturas electrónicas, gastos, devoluciones y cierres de caja le llegan solos, con todo tu historial.
+        Desde ese momento tus ventas, facturas electrónicas, compras, gastos, devoluciones, abonos de cartera, ingresos extra y cierres de caja le llegan solos, con todo tu historial.
       </p>
       <input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="CD-XXXX-XXXX" autoComplete="off"
         className={`w-full h-11 rounded-xl border px-3 font-mono tracking-wider ${oscuro ? 'bg-slate-950/60 border-slate-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />

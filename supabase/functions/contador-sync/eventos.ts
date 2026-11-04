@@ -152,7 +152,10 @@ export interface GastoFila {
   monto: number | string; medio_pago: string | null; comprobante: string | null; registrado_por_nombre: string | null; notas: string | null;
 }
 /** Documento de compra causado como este gasto (proveedor, número e IVA). */
-export interface SoporteGasto { emisor_nombre: string | null; emisor_nit: string | null; numero_completo: string | null; total_iva: number | string | null }
+export interface SoporteGasto {
+  emisor_nombre: string | null; emisor_nit: string | null; numero_completo: string | null; total_iva: number | string | null;
+  cufe?: string | null; tipo?: string | null; direccion?: string | null;
+}
 
 /** "servicios_publicos" → "Servicios publicos"; las categorías escritas a mano quedan igual. */
 function categoriaLegible(categoria: string | null): string | null {
@@ -179,6 +182,9 @@ export function construirEventoGasto(g: GastoFila, soporte: SoporteGasto | null)
     cajero: (g.registrado_por_nombre || '').trim() || null,
     tienda: null,
     notas: (g.notas || '').trim() || null,
+    // Gasto que salió de causar una factura de compra: Codec Document no lo
+    // mete al CE del día para no contar la compra dos veces (B10).
+    factura_compra_cufe: soporte?.direccion === 'recibido' && soporte?.tipo === 'factura' && soporte?.cufe ? soporte.cufe : null,
   };
 }
 
@@ -264,7 +270,7 @@ export function construirEventoCierre(c: CierreFila, tienda: string | null) {
 
 /** Nota crédito, nota débito o documento soporte: igual que la factura, con su XML. */
 export function construirEventoDocumento(
-  tipo: 'nota_credito' | 'nota_debito' | 'documento_soporte',
+  tipo: 'nota_credito' | 'nota_debito' | 'documento_soporte' | 'factura_compra',
   id: string, cufe: string | null, fecha: string, xml: string,
 ) {
   return { tipo, id_origen: id, cufe, fecha: diaColombia(fecha), xml };
@@ -302,4 +308,65 @@ export function esRechazoPorCupo(motivo: string | null | undefined): boolean {
 /** 429 y 5xx (o sin respuesta) se reintentan; el resto de 4xx no. */
 export function esReintentable(status: number | null): boolean {
   return status === null || status === 429 || status >= 500;
+}
+
+// ── Fase 3 (B10): abonos de cartera e ingresos extra ────────────────────
+
+export interface CuentaCarteraFila {
+  id: string; venta_local_id: string | null; numero_factura: string | null;
+  cliente_cartera_nombre: string | null; cliente_cartera_documento: string | null; abonos: unknown;
+}
+export interface AbonoFila { id?: string; monto?: number | string; metodoPago?: string; fecha?: string; usuario?: string }
+
+/** Mismo id que le da la migración 0138: el del abono o cuenta:posición (desde 1). */
+export function idAbono(cuentaId: string, abono: AbonoFila, posicion: number): string {
+  const id = String(abono?.id ?? '').trim();
+  return id || `${cuentaId}:${posicion}`;
+}
+
+/** Busca el abono por su id_origen dentro de la cuenta. */
+export function buscarAbono(cuenta: CuentaCarteraFila, idOrigen: string): AbonoFila | null {
+  const abonos = Array.isArray(cuenta.abonos) ? (cuenta.abonos as AbonoFila[]) : [];
+  for (let i = 0; i < abonos.length; i++) {
+    if (idAbono(cuenta.id, abonos[i], i + 1) === idOrigen) return abonos[i];
+  }
+  return null;
+}
+
+export function construirEventoAbono(
+  idOrigen: string, cuenta: CuentaCarteraFila, abono: AbonoFila, ventaIdOrigen: string | null, creadoEn: string,
+) {
+  const fecha = abono.fecha && !Number.isNaN(Date.parse(abono.fecha)) ? abono.fecha : creadoEn;
+  return {
+    tipo: 'abono_cartera' as const,
+    id_origen: idOrigen,
+    venta_id_origen: ventaIdOrigen,
+    numero_factura: (cuenta.numero_factura || '').trim() || null,
+    fecha: fechaHoraColombia(fecha),
+    valor: num(abono.monto),
+    medio_pago: medioPagoContador(abono.metodoPago),
+    cliente_nombre: (cuenta.cliente_cartera_nombre || '').trim() || null,
+    cliente_documento: nitSoloDigitos(cuenta.cliente_cartera_documento) || null,
+    cajero: String(abono.usuario ?? '').trim() || null,
+    tienda: null,
+  };
+}
+
+export interface IngresoExtraFila {
+  id: string; fecha: string; concepto: string | null; categoria: string | null; monto: number | string;
+  metodo_pago: string | null; registrado_por: string | null;
+}
+
+export function construirEventoIngresoExtra(i: IngresoExtraFila) {
+  return {
+    tipo: 'ingreso_extra' as const,
+    id_origen: i.id,
+    fecha: fechaHoraColombia(i.fecha),
+    concepto: (i.concepto || '').trim() || categoriaLegible(i.categoria) || 'Ingreso',
+    categoria: categoriaLegible(i.categoria),
+    valor: num(i.monto),
+    medio_pago: medioPagoContador(i.metodo_pago),
+    cajero: (i.registrado_por || '').trim() || null,
+    tienda: null,
+  };
 }

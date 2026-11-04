@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as fase3 from './eventos';
 import {
   construirEventoAnulacion, construirEventoCierre, construirEventoDevolucion, construirEventoGasto, esAnulacionPrematura,
   construirEventoFactura, construirEventoNotaFactura, construirEventoVenta, medioPagoContador, diaColombia, esRechazoPorCupo, esReintentable, fechaHoraColombia, minutosHastaReintento, nitSoloDigitos,
@@ -156,5 +157,45 @@ describe('construirEventoNotaFactura', () => {
   });
   it('nota borrada viaja vacía para que el contador vea que ya no hay nota', () => {
     expect(construirEventoNotaFactura({ ...f, nota_contador: null }).nota).toBe('');
+  });
+});
+
+describe('fase 3: abonos, ingresos extra y gasto de una compra', () => {
+  const cuenta = {
+    id: 'c-1', venta_local_id: 'V-10', numero_factura: 'FE000123',
+    cliente_cartera_nombre: ' Pedro Pérez ', cliente_cartera_documento: '1.022.925.002',
+    abonos: [{ id: 'AB-1', monto: 50000, metodoPago: 'Efectivo', fecha: '2026-11-03T15:15:00Z', usuario: 'Ana' }, { monto: 10000, metodoPago: 'nequi' }],
+  };
+
+  it('encuentra el abono por su id o por cuenta:posición, como la migración 0138', () => {
+    expect(fase3.buscarAbono(cuenta, 'AB-1')?.monto).toBe(50000);
+    expect(fase3.buscarAbono(cuenta, 'c-1:2')?.monto).toBe(10000);
+    expect(fase3.buscarAbono(cuenta, 'nada')).toBeNull();
+  });
+
+  it('arma el abono con el cliente como tercero', () => {
+    const e = fase3.construirEventoAbono('AB-1', cuenta, cuenta.abonos[0], 'v-uuid', '2026-11-01T00:00:00Z');
+    expect(e).toEqual({
+      tipo: 'abono_cartera', id_origen: 'AB-1', venta_id_origen: 'v-uuid', numero_factura: 'FE000123',
+      fecha: '2026-11-03T10:15:00-05:00', valor: 50000, medio_pago: 'efectivo',
+      cliente_nombre: 'Pedro Pérez', cliente_documento: '1022925002', cajero: 'Ana', tienda: null,
+    });
+  });
+
+  it('arma el ingreso extra', () => {
+    expect(fase3.construirEventoIngresoExtra({
+      id: 'i-1', fecha: '2026-11-03T15:00:00Z', concepto: 'Aporte del dueño', categoria: 'aporte', monto: '200000', metodo_pago: 'efectivo', registrado_por: 'Ana',
+    })).toEqual({
+      tipo: 'ingreso_extra', id_origen: 'i-1', fecha: '2026-11-03T10:00:00-05:00', concepto: 'Aporte del dueño',
+      categoria: 'Aporte', valor: 200000, medio_pago: 'efectivo', cajero: 'Ana', tienda: null,
+    });
+  });
+
+  it('el gasto que salió de causar una factura de compra lleva su CUFE', () => {
+    const g = { id: 'g-1', fecha: '2026-11-03T15:00:00Z', created_at: '2026-11-03T15:00:00Z', descripcion: 'Compra', categoria: null, monto: 119000, medio_pago: 'efectivo', comprobante: null, registrado_por_nombre: null, notas: null };
+    const soporte = { emisor_nombre: 'Proveedor', emisor_nit: '800020706', numero_completo: 'FV1', total_iva: 19000 };
+    expect(construirEventoGasto(g, { ...soporte, cufe: 'cufe-1', tipo: 'factura', direccion: 'recibido' }).factura_compra_cufe).toBe('cufe-1');
+    expect(construirEventoGasto(g, { ...soporte, cufe: 'cufe-2', tipo: 'documento_soporte', direccion: 'emitido' }).factura_compra_cufe).toBeNull();
+    expect(construirEventoGasto(g, null).factura_compra_cufe).toBeNull();
   });
 });

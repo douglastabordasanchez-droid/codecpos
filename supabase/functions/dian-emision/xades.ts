@@ -105,7 +105,7 @@ export const yaFirmado = (xml: string) => /<ds:Signature[\s>]/.test(xml);
  * adicional. Se autoverifica antes de devolver: si algo no cuadra, falla
  * aquí y no en la DIAN.
  */
-export function firmarXades(xml: string, credenciales: Credenciales, ahora = new Date()): string {
+export function firmarXades(xml: string, credenciales: Credenciales, ahora = new Date(), rol: 'supplier' | 'third party' = 'supplier'): string {
   const { llavePrivada, certificado, certDer } = credenciales;
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
   const raiz = doc.documentElement!;
@@ -146,7 +146,7 @@ export function firmarXades(xml: string, credenciales: Credenciales, ahora = new
     `<xades:SigPolicyId><xades:Identifier>${POLICY_URL}</xades:Identifier><xades:Description>${POLICY_DESCRIPTION}</xades:Description></xades:SigPolicyId>` +
     `<xades:SigPolicyHash><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>${POLICY_HASH_SHA256_BASE64}</ds:DigestValue></xades:SigPolicyHash>` +
     `</xades:SignaturePolicyId></xades:SignaturePolicyIdentifier>` +
-    `<xades:SignerRole><xades:ClaimedRoles><xades:ClaimedRole>supplier</xades:ClaimedRole></xades:ClaimedRoles></xades:SignerRole>` +
+    `<xades:SignerRole><xades:ClaimedRoles><xades:ClaimedRole>${rol}</xades:ClaimedRole></xades:ClaimedRoles></xades:SignerRole>` +
     `</xades:SignedSignatureProperties></xades:SignedProperties>`;
 
   const temporal = doc.createElement('TemporalParaDigest');
