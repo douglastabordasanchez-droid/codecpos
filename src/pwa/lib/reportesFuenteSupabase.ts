@@ -54,7 +54,7 @@ export class FuenteReportesSupabase implements FuenteDatosReportes {
         .eq('cliente_id', this.clienteId).gte('fecha', desde).lte('fecha', hasta)
         .order('fecha', { ascending: true }).range(a, b)),
       traerTodo<any>((a, b) => c.from('cierres_caja')
-        .select('id, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia, detalle, empleado_id, cajero_nombre')
+        .select('id, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia, detalle, empleado_id')
         .eq('cliente_id', this.clienteId).not('fecha_cierre', 'is', null).gte('fecha_cierre', desde).lte('fecha_cierre', hasta)
         .order('fecha_cierre', { ascending: true }).range(a, b)),
       traerTodo<any>((a, b) => c.from('devoluciones')
@@ -88,7 +88,7 @@ export class FuenteReportesSupabase implements FuenteDatosReportes {
         totalMixto: Number(d.mixto) || 0,
         totalVentas: Number(ci.ventas_total) || 0,
         diferencia: Number(ci.diferencia) || 0,
-        cajero: ci.cajero_nombre || 'N/A',
+        cajero: ci.detalle?.cajero_nombre || ci.detalle?.cajero || 'N/A',
         cajeroId: ci.empleado_id || undefined,
       };
     });

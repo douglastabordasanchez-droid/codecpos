@@ -1857,3 +1857,9 @@ export function useAuth() {
   }
   return context;
 }
+
+/** Igual que useAuth pero sin lanzar error fuera del AuthProvider (la web
+ *  y el celular reutilizan componentes del POS sin ese proveedor). */
+export function useAuthOpcional() {
+  return useContext(AuthContext);
+}

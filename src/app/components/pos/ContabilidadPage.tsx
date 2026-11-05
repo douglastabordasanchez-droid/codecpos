@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { diaLocal } from '../../lib/diaLocal';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -757,7 +758,7 @@ export default function ContabilidadPage() {
   const datosGrafico = useMemo(() => {
     const porDia: Record<string, { ingresos: number; gastos: number }> = {};
     todosSinFiltroTipoCat.forEach((m) => {
-      const dia = m.fecha.split('T')[0];
+      const dia = diaLocal(m.fecha);
       if (!porDia[dia]) porDia[dia] = { ingresos: 0, gastos: 0 };
       if (m.tipo === 'ingreso') porDia[dia].ingresos += m.monto;
       else porDia[dia].gastos += m.monto;

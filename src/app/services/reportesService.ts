@@ -1,6 +1,7 @@
 // 📊 CODEC POS v2.0 - Servicio de Reportes
 // Gestión completa de reportes con almacenamiento y auto-eliminación a 6 meses
 import { electronStore } from '../lib/electronStore';
+import { diaLocal } from '../lib/diaLocal';
 
 interface Venta {
   id: string;
@@ -255,7 +256,7 @@ class ReportesService {
     const productos = this.obtenerProductos();
     const ingredientes = this.obtenerIngredientes();
     const mermas = this.obtenerMermas();
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = diaLocal(new Date().toISOString());
     const egresosDetalle = this.obtenerGastos(hoy, hoy);
     
     const valorTotal = productos.reduce((sum, p) => sum + (p.precio * p.stock), 0);
@@ -516,7 +517,7 @@ class ReportesService {
         if (!data) return [];
         const ventas = JSON.parse(data);
         return ventas.filter((v: Venta) => {
-          const fecha = v.fecha.split('T')[0];
+          const fecha = diaLocal(v.fecha);
           return fecha >= fechaInicio && fecha <= fechaFin;
         });
       } catch {
@@ -569,7 +570,7 @@ class ReportesService {
 
         const gastos = JSON.parse(data);
         enRango = gastos.filter((g: Gasto) => {
-          const fecha = g.fecha.split('T')[0];
+          const fecha = diaLocal(g.fecha);
           return fecha >= fechaInicio && fecha <= fechaFin;
         });
       }
@@ -599,7 +600,7 @@ class ReportesService {
       
       const cierres = JSON.parse(data);
       return cierres.filter((c: CierreCaja) => {
-        const fecha = c.fecha.split('T')[0];
+        const fecha = diaLocal(c.fecha);
         return fecha >= fechaInicio && fecha <= fechaFin;
       });
     } catch (error) {
@@ -616,7 +617,7 @@ class ReportesService {
 
       const devoluciones = JSON.parse(data);
       return devoluciones.filter((d: Devolucion) => {
-        const fecha = d.fecha.split('T')[0];
+        const fecha = diaLocal(d.fecha);
         return fecha >= fechaInicio && fecha <= fechaFin;
       });
     } catch (error) {
@@ -636,7 +637,7 @@ class ReportesService {
   private agruparPorDia(ventas: Venta[]): Record<string, number> {
     const agrupado: Record<string, number> = {};
     ventas.forEach(v => {
-      const dia = v.fecha.split('T')[0];
+      const dia = diaLocal(v.fecha);
       agrupado[dia] = (agrupado[dia] || 0) + v.total;
     });
     return agrupado;
@@ -692,7 +693,7 @@ class ReportesService {
   private agruparGastosPorDia(gastos: Gasto[]): Record<string, number> {
     const agrupado: Record<string, number> = {};
     gastos.forEach(g => {
-      const dia = g.fecha.split('T')[0];
+      const dia = diaLocal(g.fecha);
       agrupado[dia] = (agrupado[dia] || 0) + g.monto;
     });
     return agrupado;

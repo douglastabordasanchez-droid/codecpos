@@ -2953,7 +2953,7 @@ function nativeImageToEscPosRaster(image, anchoDots) {
   return { buffer: Buffer.concat(chunks), puntosNegros };
 }
 
-async function renderHtmlToEscPosRaster(htmlPath, widthMm) {
+async function renderHtmlToEscPosRaster(htmlPath, widthMm, topeMs = 8000) {
   const esAngosto = Number(widthMm) <= 58;
   const anchoDots = esAngosto ? 384 : 576; // área imprimible a 203 dpi (48mm / 72mm)
   const anchoLayoutCss = esAngosto ? 240 : 320; // ancho en que se diseña la tirilla (max-width 320px)
@@ -2973,7 +2973,7 @@ async function renderHtmlToEscPosRaster(htmlPath, widthMm) {
     // Tope total: capturePage o executeJavaScript pueden no resolver nunca en
     // equipos con la GPU en modo software; así se cae a la impresión HTML.
     // Una captura normal tarda menos de 1 s, así que el tope ya no es de 20 s.
-    return await conTiempoLimite(capturarTirillaRaster(win, htmlPath, anchoDots, zoom), 8000, 'timeout capturando tirilla');
+    return await conTiempoLimite(capturarTirillaRaster(win, htmlPath, anchoDots, zoom), topeMs, 'timeout capturando tirilla');
   } finally {
     try { if (!win.isDestroyed()) win.destroy(); } catch { /* no-op */ }
   }
@@ -2990,9 +2990,25 @@ async function capturarTirillaRaster(win, htmlPath, anchoDots, zoom) {
   win.webContents.setZoomFactor(zoom);
   // Sin barra de scroll (le robaría ancho al layout) y fondo blanco = papel.
   await win.webContents.insertCSS(
-    'html,body{background:#fff !important;overflow-x:hidden !important;}' +
+    'html,body{background:#fff !important;}' +
     '::-webkit-scrollbar{width:0 !important;height:0 !important;display:none !important;}'
   );
+  // 🖨️ Que nada se corte a la derecha: si la tirilla es más ancha que el
+  // rollo (p. ej. un cierre armado a 80 mm que sale por una térmica de
+  // 58 mm), se reduce el zoom hasta que quepa entera, como hacen los POS
+  // comerciales al «ajustar al papel».
+  try {
+    const anchoContenidoCss = Number(await win.webContents.executeJavaScript(
+      'Math.ceil(Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))'
+    )) || 0;
+    const anchoVisibleCss = anchoDots / zoom;
+    if (anchoContenidoCss > anchoVisibleCss + 1) {
+      zoom = anchoDots / anchoContenidoCss;
+      win.webContents.setZoomFactor(zoom);
+      await new Promise((r) => setTimeout(r, 60));
+    }
+  } catch { /* se captura con el zoom original */ }
+  await win.webContents.insertCSS('html,body{overflow-x:hidden !important;}');
   // Esperar imágenes (logo) y fuentes antes de medir/capturar.
   await win.webContents.executeJavaScript(`
     (async () => {
@@ -3062,9 +3078,28 @@ async function printHtmlAsRaster(htmlPath, printerName, widthMm) {
   if (!esSerial) {
     const resolved = await resolvePrinterTargetByPreference(printerName || undefined);
     if (!resolved?.found || !resolved.deviceName) return { ok: false, reason: 'printer-not-found' };
+    // 🖨️ Si la app quedó en 80 mm pero el driver dice con certeza que el
+    // rollo es de 57/58 mm, se imprime a 58: una imagen de 576 puntos en una
+    // cabeza de 384 pierde el tercio derecho (cierre de Papotas, 2026-11-04).
+    if (Number(widthMm) > 58) {
+      const anchoRollo = await anchoRolloDelDriver(resolved.deviceName);
+      if (anchoRollo >= 44 && anchoRollo <= 62) {
+        fileLogger.writeLog('INFO', 'Tirilla ajustada al rollo de 58 mm', { pedido: widthMm, driver: anchoRollo, printer: resolved.deviceName });
+        widthMm = 58;
+      }
+    }
   }
 
-  const raster = await renderHtmlToEscPosRaster(htmlPath, widthMm);
+  let raster;
+  try {
+    raster = await renderHtmlToEscPosRaster(htmlPath, widthMm);
+  } catch (primerError) {
+    // Un PC lento puede tardar más en la primera captura de la sesión: un
+    // segundo intento con más margen antes de caer al driver, que imprime
+    // sin logo y con todo pegado a la izquierda.
+    fileLogger.writeLog('WARN', 'Tirilla: reintento de la imagen', { motivo: primerError.message, widthMm });
+    raster = await renderHtmlToEscPosRaster(htmlPath, widthMm, 20000);
+  }
   if (!raster.length) return { ok: false, reason: 'raster-vacio' };
 
   const ESC = 0x1B, GS = 0x1D;
@@ -3074,7 +3109,7 @@ async function printHtmlAsRaster(htmlPath, printerName, widthMm) {
     Buffer.from([ESC, 0x64, 4, GS, 0x56, 0x41, 0x00]), // avanzar + corte
   ]);
   const enviado = await enviarRawAImpresora(printerName, payload);
-  return { ok: true, reason: '', printer: enviado.printer, mode: 'raster' };
+  return { ok: true, reason: '', printer: enviado.printer, mode: 'raster', widthMm };
 }
 
 // ── Ancho de papel que tiene configurado el driver de Windows ────────────────
@@ -3082,14 +3117,9 @@ async function printHtmlAsRaster(htmlPath, printerName, widthMm) {
 // con certeza que el rollo es de 57/58 mm, y para avisar si la app y el driver
 // no coinciden. Se lee el tamaño de papel predeterminado de la impresora
 // (System.Drawing.Printing), que es el mismo que usa el driver al imprimir.
-ipcMain.handle('printer:paper-info', async (_, { printerName = '' } = {}) => {
-  if (process.platform !== 'win32') return { ok: false, reason: 'solo-windows' };
-  if (esPuertoSerialImpresora(printerName)) return { ok: false, reason: 'puerto-serial' };
-  try {
-    const resolved = await resolvePrinterTargetByPreference(printerName || undefined);
-    if (!resolved?.found || !resolved.deviceName) return { ok: false, reason: 'printer-not-found' };
-    const nombre = resolved.deviceName.replace(/'/g, "''");
-    const raw = await runPowerShellScript(`
+async function leerPapelDelDriverWindows(deviceName) {
+  const nombre = deviceName.replace(/'/g, "''");
+  const raw = await runPowerShellScript(`
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $ps = New-Object System.Drawing.Printing.PrinterSettings
@@ -3098,12 +3128,38 @@ if (-not $ps.IsValid) { '{"valida":false}'; exit }
 $d = $ps.DefaultPageSettings
 @{ valida = $true; ancho = $d.PaperSize.Width; alto = $d.PaperSize.Height; papel = $d.PaperSize.PaperName; horizontal = $d.Landscape } | ConvertTo-Json -Compress
 `, 15000);
-    const info = JSON.parse(raw || '{}');
+  const info = JSON.parse(raw || '{}');
+  if (!info.valida) return { valida: false };
+  // Centésimas de pulgada → mm. En horizontal el ancho del rollo es el alto.
+  const anchoCentesimas = info.horizontal ? Number(info.alto) : Number(info.ancho);
+  return { valida: true, anchoMm: Math.round(anchoCentesimas * 0.254), papel: String(info.papel || '') };
+}
+
+// El tamaño del rollo no cambia entre tirillas: se consulta una vez por
+// impresora (PowerShell tarda 1 o 2 s) y se guarda mientras la app siga abierta.
+const anchoRolloCache = new Map();
+async function anchoRolloDelDriver(deviceName) {
+  if (process.platform !== 'win32' || !deviceName) return 0;
+  if (anchoRolloCache.has(deviceName)) return anchoRolloCache.get(deviceName);
+  let ancho = 0;
+  try {
+    const info = await leerPapelDelDriverWindows(deviceName);
+    ancho = info.valida ? Number(info.anchoMm) || 0 : 0;
+  } catch { /* sin dato: se respeta el ancho elegido en la app */ }
+  anchoRolloCache.set(deviceName, ancho);
+  return ancho;
+}
+
+ipcMain.handle('printer:paper-info', async (_, { printerName = '' } = {}) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'solo-windows' };
+  if (esPuertoSerialImpresora(printerName)) return { ok: false, reason: 'puerto-serial' };
+  try {
+    const resolved = await resolvePrinterTargetByPreference(printerName || undefined);
+    if (!resolved?.found || !resolved.deviceName) return { ok: false, reason: 'printer-not-found' };
+    const info = await leerPapelDelDriverWindows(resolved.deviceName);
     if (!info.valida) return { ok: false, reason: 'printer-invalida', printer: resolved.deviceName };
-    // Centésimas de pulgada → mm. En horizontal el ancho del rollo es el alto.
-    const anchoCentesimas = info.horizontal ? Number(info.alto) : Number(info.ancho);
-    const anchoMm = Math.round(anchoCentesimas * 0.254);
-    return { ok: true, printer: resolved.deviceName, anchoMm, papel: String(info.papel || '') };
+    anchoRolloCache.set(resolved.deviceName, info.anchoMm);
+    return { ok: true, printer: resolved.deviceName, anchoMm: info.anchoMm, papel: info.papel };
   } catch (err) {
     return { ok: false, reason: err.message };
   }
@@ -3125,7 +3181,7 @@ ipcMain.handle('print:html', async (_, { html, printerName = '', silent = true, 
           fsPromises.unlink(tmpPath).catch(() => {});
           refocusMainWindow();
           // Tiempo desde que llega el HTML hasta que Windows recibe el trabajo, para medir en el equipo del cliente.
-          fileLogger.writeLog('INFO', 'Tirilla impresa', { modo: 'raster', widthMm, ms: Date.now() - inicio, printer: res.printer });
+          fileLogger.writeLog('INFO', 'Tirilla impresa', { modo: 'raster', widthMm: res.widthMm || widthMm, ms: Date.now() - inicio, printer: res.printer });
           return res;
         }
         console.warn('⚠️ Impresión raster no disponible, usando impresión HTML:', res.reason);

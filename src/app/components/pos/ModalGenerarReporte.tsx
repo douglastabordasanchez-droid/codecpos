@@ -8,7 +8,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { ReporteGenerado } from '../../services/reportesService';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuthOpcional } from '../../contexts/AuthContext';
 
 interface TipoReporte {
   id: string;
@@ -46,7 +46,7 @@ const PERIODOS = [
 function toDate(d: Date) { return d.toISOString().split('T')[0]; }
 
 export default function ModalGenerarReporte({ open, tipo, onClose, onGenerado, darkMode, usuarioActual, generarFn, cajeros: cajerosExternos, categorias: categoriasExternas }: Props) {
-  const { usuarios } = useAuth();
+  const usuarios = useAuthOpcional()?.usuarios ?? [];
   const [loading, setLoading] = useState(false);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
