@@ -22,6 +22,7 @@ import { ModuloPOS } from '../../app/lib/permissions';
 import { imprimirRecibosLineas, obtenerDispositivos } from '../lib/impresoraWeb';
 import type { ItemVendido } from '../lib/ventasPorArea';
 import { obtenerEmpresaWeb } from '../lib/ticketVentaWeb';
+import { tramoDiaSiguiente } from '../../app/lib/turnoMedianoche';
 
 interface CierreFila {
   id: string;
@@ -216,6 +217,14 @@ export default function CierreCajaPage() {
                 </div>
                 <span className="text-slate-500 text-xs flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> desde {horaCorta(abierta.fecha_apertura)}</span>
               </div>
+              {(() => {
+                const t = tramoDiaSiguiente(abierta.fecha_apertura, new Date());
+                return t.cruza ? (
+                  <p className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-300">
+                    Este turno es del {t.diaTurno} y ya lleva {t.duracion} del {t.diaSiguiente}. Lo que se venda hasta el cierre cuenta en el turno del {t.diaTurno}.
+                  </p>
+                ) : null;
+              })()}
 
               {!resumen ? (
                 <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 text-amber-400 animate-spin" /></div>
@@ -384,6 +393,7 @@ export default function CierreCajaPage() {
               const abiertoEste = expandido === c.id;
               const movs: MovimientoCaja[] = Array.isArray(d.movimientos) ? d.movimientos : [];
               const conteo = d.billetes && typeof d.billetes === 'object' ? DENOMINACIONES.filter((x) => Number(d.billetes[x.clave]) > 0) : [];
+              const tramo = tramoDiaSiguiente(c.fecha_apertura || d.fechaApertura, c.fecha_cierre);
               return (
                 <div key={c.id} className="bg-slate-900/70 border border-slate-800 rounded-xl p-3">
                   <button type="button" onClick={() => setExpandido(abiertoEste ? null : c.id)} className="w-full text-left">
@@ -395,6 +405,11 @@ export default function CierreCajaPage() {
                         {Math.abs(c.diferencia) < 1 ? 'Cuadró' : `${c.diferencia > 0 ? '+' : '−'}${money(Math.abs(c.diferencia))}`}
                       </span>
                     </div>
+                    {tramo.cruza && (
+                      <p className="mb-1 w-fit rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-400">
+                        Turno del {tramo.diaTurno} · tomó {tramo.duracion} del {tramo.diaSiguiente}
+                      </p>
+                    )}
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-slate-500 text-xs truncate">Ventas {money(c.ventas_total)} · Contado {money(c.monto_cierre)}</p>
                       <ChevronDown className={`w-3.5 h-3.5 text-slate-600 shrink-0 transition-transform ${abiertoEste ? 'rotate-180' : ''}`} />

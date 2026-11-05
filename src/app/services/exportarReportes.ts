@@ -2,6 +2,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { avisoTurnoMedianoche } from '../lib/turnoMedianoche';
 import { ReporteGenerado } from './reportesService';
 import { getPrinterForSectionOrUndefined } from '../lib/sectionPrinterConfig';
 import { getConfiguredTicketWidthMm } from '../lib/printerConfig';
@@ -771,12 +772,12 @@ class ExportadorReportes {
         startY: y,
         head: [['Fecha', 'Turno', 'Total Ventas', 'Diferencia', 'Estado']],
         body: cierres.map((c: any) => {
-          const d = new Date(c.fecha);
+          const d = new Date(c.fechaApertura || c.fecha);
           const dif = c.diferencia;
           const estado = dif === 0 ? 'Cuadrado' : dif < 0 ? 'Faltante' : 'Sobrante';
           return [
             d.toLocaleDateString('es-CO'),
-            c.turno || '—',
+            avisoTurnoMedianoche(c.fechaApertura, c.fecha) || c.turno || '—',
             fmtCOP(c.totalVentas || 0),
             `${dif >= 0 ? '+' : ''}${fmtCOP(dif)}`,
             estado,
@@ -1160,13 +1161,13 @@ class ExportadorReportes {
     const { cierres, egresosDetalle } = reporte.datos;
     if (cierres?.length > 0) {
       this.xlsxHoja(wb, 'Cierres',
-        ['Fecha', 'Efectivo', 'Tarjeta', 'Transferencia', 'Nequi', 'Daviplata', 'Mixto', 'Total', 'Diferencia', 'Cajero'],
+        ['Fecha', 'Efectivo', 'Tarjeta', 'Transferencia', 'Nequi', 'Daviplata', 'Mixto', 'Total', 'Diferencia', 'Cajero', 'Turno'],
         cierres.map((c: any) => [
           new Date(c.fecha).toLocaleString('es-CO'),
           c.totalEfectivo, c.totalTarjeta, c.totalTransferencia, c.totalNequi, c.totalDaviplata, c.totalMixto,
-          c.totalVentas, c.diferencia, c.cajero || 'N/A'
+          c.totalVentas, c.diferencia, c.cajero || 'N/A', avisoTurnoMedianoche(c.fechaApertura, c.fecha)
         ]),
-        [22, 14, 14, 16, 12, 14, 12, 14, 14, 20]
+        [22, 14, 14, 16, 12, 14, 12, 14, 14, 20, 48]
       );
     }
 
@@ -1658,10 +1659,11 @@ ${Array.isArray(cierres) && cierres.length > 0 ? `
 <div class="hr"></div>
 <div class="sec">CIERRES (${cierres.length})</div>
 ${cierres.map((c: any) => {
-  const d = new Date(c.fecha);
+  const d = new Date(c.fechaApertura || c.fecha);
   const ds = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit' });
   const dif = c.diferencia >= 0 ? `+${f(c.diferencia)}` : f(c.diferencia);
-  return `<div class="th">${ds}${c.cajero ? ' | ' + c.cajero : ''}</div><div class="row"><span>Total:</span><span>${f(c.totalVentas)}</span></div><div class="row"><span>Diferencia:</span><span>${dif}</span></div><div class="ts"></div>`;
+  const aviso = avisoTurnoMedianoche(c.fechaApertura, c.fecha);
+  return `<div class="th">${ds}${c.cajero ? ' | ' + c.cajero : ''}</div>${aviso ? `<div class="ind"><b>${aviso}</b></div>` : ''}<div class="row"><span>Total:</span><span>${f(c.totalVentas)}</span></div><div class="row"><span>Diferencia:</span><span>${dif}</span></div><div class="ts"></div>`;
 }).join('')}` : ''}
 ${Array.isArray(egresosDetalle) && egresosDetalle.length > 0 ? `
 <div class="hr"></div>

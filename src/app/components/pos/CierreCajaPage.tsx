@@ -9,6 +9,7 @@
  * ✅ Sincronización de ventas pendientes al cajero activo
  */
 
+import { tramoDiaSiguiente } from '../../lib/turnoMedianoche';
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -1497,8 +1498,16 @@ export default function CierreCajaPage() {
                     <div className={`text-sm space-y-1 ${
                       darkMode ? 'text-slate-300' : 'text-emerald-800'
                     }`}>
-                      <p>Apertura: {format(new Date(aperturaActual.fecha), "HH:mm", { locale: es })}</p>
+                      <p>Apertura: {format(new Date(aperturaActual.fecha), "dd MMM HH:mm", { locale: es })}</p>
                       <p>Base: {formatCurrency(aperturaActual.baseInicial)}</p>
+                      {(() => {
+                        const t = tramoDiaSiguiente(aperturaActual.fecha, new Date());
+                        return t.cruza ? (
+                          <p className={`mt-2 rounded-lg px-2 py-1 text-xs font-semibold ${darkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>
+                            Turno del {t.diaTurno}: ya lleva {t.duracion} del {t.diaSiguiente}. Lo que se venda hasta el cierre cuenta en este turno.
+                          </p>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 )}
@@ -1646,8 +1655,16 @@ export default function CierreCajaPage() {
                       <p className={`${darkMode ? 'text-purple-300' : 'text-purple-600'} text-sm font-semibold mb-1`}>CON LO QUE INICIASTE</p>
                       <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-3xl font-black`}>{formatCurrency(aperturaActual.baseInicial)}</p>
                       <p className={`${darkMode ? 'text-slate-400' : 'text-gray-500'} text-xs mt-2`}>
-                        {format(new Date(aperturaActual.fecha), "HH:mm", { locale: es })}
+                        {format(new Date(aperturaActual.fecha), "dd MMM HH:mm", { locale: es })}
                       </p>
+                      {(() => {
+                        const t = tramoDiaSiguiente(aperturaActual.fecha, new Date());
+                        return t.cruza ? (
+                          <p className={`mt-2 rounded-lg px-2 py-1 text-xs font-semibold ${darkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>
+                            Turno del {t.diaTurno}: ya lleva {t.duracion} del {t.diaSiguiente}. Lo que se venda hasta el cierre cuenta en este turno.
+                          </p>
+                        ) : null;
+                      })()}
                     </div>
                   </CardContent>
                 </Card>

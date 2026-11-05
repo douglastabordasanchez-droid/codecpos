@@ -13,6 +13,7 @@ import { Button } from '../ui/button';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { electronStore } from '../../lib/electronStore';
+import { avisoTurnoMedianoche } from '../../lib/turnoMedianoche';
 
 interface VentaDetalle {
   id: string;
@@ -227,6 +228,12 @@ export default function ModalCierreDetallado({
   const LINE = '─'.repeat(48);
   const DLINE = '═'.repeat(48);
   const fechaDisplay = format(new Date(), "dd 'de' MMMM yyyy", { locale: es });
+  // El turno pertenece al día en que se abrió aunque se cierre después de medianoche.
+  const fechaTurno = (() => {
+    try { return fechaApertura ? format(new Date(fechaApertura), "dd 'de' MMMM yyyy", { locale: es }) : fechaDisplay; }
+    catch { return fechaDisplay; }
+  })();
+  const avisoMedianoche = avisoTurnoMedianoche(fechaApertura, new Date());
 
   return (
     <AnimatePresence>
@@ -295,13 +302,18 @@ export default function ModalCierreDetallado({
                     <div style={{ borderTop: '1px solid #000', margin: '2px 0' }} />
                     <table>
                       <tbody>
-                        <tr><td>Fecha:</td><td className="right">{fechaDisplay}</td></tr>
+                        <tr><td>Fecha:</td><td className="right">{fechaTurno}</td></tr>
                         <tr><td>Cajero:</td><td className="right">{cajeroNombre}</td></tr>
                         {fechaApertura && <tr><td>Apertura:</td><td className="right">{fmtHora(fechaApertura)}</td></tr>}
                         <tr><td>Cierre:</td><td className="right">{format(new Date(), 'HH:mm:ss')}</td></tr>
                         <tr><td>Total ventas:</td><td className="right">{ventas.length}</td></tr>
                         <tr><td>Devoluciones:</td><td className="right">{devoluciones.length}</td></tr>
                         <tr><td>Gastos:</td><td className="right">{gastos.length}</td></tr>
+                        {avisoMedianoche && (
+                          <tr><td colSpan={2} style={{ paddingTop: 4 }}>
+                            <div style={{ border: '1px solid #000', padding: '3px 5px', fontWeight: 'bold', textAlign: 'center' }}>{avisoMedianoche}</div>
+                          </td></tr>
+                        )}
                       </tbody>
                     </table>
                     <div style={{ borderTop: '1px solid #000', margin: '2px 0' }} />

@@ -1,3 +1,4 @@
+import { avisoTurnoMedianoche } from '../../lib/turnoMedianoche';
 import { forwardRef, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -170,8 +171,11 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
     catch { return format(new Date(), formatoHora, { locale: es }); }
   })();
 
+  // El turno pertenece al día en que se abrió, aunque cierre pasada la medianoche.
+  const avisoMedianoche = avisoTurnoMedianoche(data.fechaApertura, data.fechaCierre || new Date());
+
   const fechaDisplay = (() => {
-    try { return format(new Date(data.fechaCierre || new Date()), "dd 'de' MMMM yyyy", { locale: es }); }
+    try { return format(new Date(data.fechaApertura || data.fechaCierre || new Date()), "dd 'de' MMMM yyyy", { locale: es }); }
     catch { return format(new Date(), "dd 'de' MMMM yyyy", { locale: es }); }
   })();
 
@@ -222,6 +226,15 @@ const TirillaCierreCaja = forwardRef<HTMLDivElement, Props>(({ data }, ref) => {
             <tr><td>Hora apertura:</td><td style={{ textAlign: 'right' }}>{horaApertura}</td></tr>
             <tr><td>Hora cierre:</td><td style={{ textAlign: 'right' }}>{horaCierre}</td></tr>
             <tr><td>Transacciones:</td><td style={{ textAlign: 'right' }}>{data.cantidadTransacciones}</td></tr>
+            {avisoMedianoche && (
+              <tr>
+                <td colSpan={2} style={{ paddingTop: 4 }}>
+                  <div style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 11, fontWeight: 'bold', textAlign: 'center' }}>
+                    {avisoMedianoche}
+                  </div>
+                </td>
+              </tr>
+            )}
             {data.ticketPromedio > 0 && (
               <tr><td>Ticket promedio:</td><td style={{ textAlign: 'right' }}>{fmt(data.ticketPromedio)}</td></tr>
             )}

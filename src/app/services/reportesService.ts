@@ -61,6 +61,8 @@ interface Gasto {
 interface CierreCaja {
   id: string;
   fecha: string;
+  /** Apertura del turno: el cierre cuenta en ese día aunque pase de medianoche. */
+  fechaApertura?: string;
   totalEfectivo: number;
   totalTarjeta: number;
   totalTransferencia: number;
@@ -600,7 +602,7 @@ class ReportesService {
       
       const cierres = JSON.parse(data);
       return cierres.filter((c: CierreCaja) => {
-        const fecha = diaLocal(c.fecha);
+        const fecha = diaLocal(c.fechaApertura || c.fecha);
         return fecha >= fechaInicio && fecha <= fechaFin;
       });
     } catch (error) {

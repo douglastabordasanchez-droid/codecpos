@@ -54,8 +54,11 @@ export class FuenteReportesSupabase implements FuenteDatosReportes {
         .eq('cliente_id', this.clienteId).gte('fecha', desde).lte('fecha', hasta)
         .order('fecha', { ascending: true }).range(a, b)),
       traerTodo<any>((a, b) => c.from('cierres_caja')
-        .select('id, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia, detalle, empleado_id')
-        .eq('cliente_id', this.clienteId).not('fecha_cierre', 'is', null).gte('fecha_cierre', desde).lte('fecha_cierre', hasta)
+        .select('id, fecha_apertura, fecha_cierre, monto_apertura, monto_cierre, ventas_total, diferencia, detalle, empleado_id')
+        // El turno cuenta en el día en que se abrió, aunque cierre pasada la medianoche.
+        .eq('cliente_id', this.clienteId).not('fecha_cierre', 'is', null)
+        // Los cierres viejos sin apertura guardada siguen saliendo por su fecha de cierre.
+        .or(`and(fecha_apertura.gte.${desde},fecha_apertura.lte.${hasta}),and(fecha_apertura.is.null,fecha_cierre.gte.${desde},fecha_cierre.lte.${hasta})`)
         .order('fecha_cierre', { ascending: true }).range(a, b)),
       traerTodo<any>((a, b) => c.from('devoluciones')
         .select('id, created_at, total_devolucion, metodo_pago, procesado_por_nombre, numero_factura')
@@ -80,6 +83,7 @@ export class FuenteReportesSupabase implements FuenteDatosReportes {
       return {
         id: ci.id,
         fecha: aFechaLocal(ci.fecha_cierre),
+        fechaApertura: aFechaLocal(ci.fecha_apertura || ci.fecha_cierre),
         totalEfectivo: Number(d.efectivo) || 0,
         totalTarjeta: Number(d.tarjeta) || 0,
         totalTransferencia: Number(d.transferencia) || 0,
@@ -178,7 +182,7 @@ export class FuenteReportesSupabase implements FuenteDatosReportes {
   ingredientes(): any[] { return []; }
   mermas(): any[] { return []; }
   gastos(fechaInicio: string, fechaFin: string): any[] { return this.gastosCache.filter((g) => enRango(g.fecha, fechaInicio, fechaFin)); }
-  cierres(fechaInicio: string, fechaFin: string): any[] { return this.cierresCache.filter((x) => enRango(x.fecha, fechaInicio, fechaFin)); }
+  cierres(fechaInicio: string, fechaFin: string): any[] { return this.cierresCache.filter((x) => enRango(x.fechaApertura || x.fecha, fechaInicio, fechaFin)); }
   devoluciones(fechaInicio: string, fechaFin: string): any[] { return this.devolucionesCache.filter((d) => enRango(d.fecha, fechaInicio, fechaFin)); }
 
   /** Categorías reales del inventario, para el filtro del reporte de ventas. */

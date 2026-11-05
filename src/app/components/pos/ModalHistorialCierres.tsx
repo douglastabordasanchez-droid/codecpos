@@ -25,6 +25,8 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ModalDetalleCierre from './ModalDetalleCierre';
 import { obtenerPropinasCierre } from './TirillaCierreCaja';
+import { tramoDiaSiguiente } from '../../lib/turnoMedianoche';
+import { diaLocal } from '../../lib/diaLocal';
 
 interface CierreRaw {
   id: string;
@@ -195,7 +197,8 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
 
   const cierresFiltrados = useMemo(() => {
     return cierres.filter(c => {
-      const fechaCierre = c.fecha.split('T')[0];
+      // El turno cuenta en el día en que se abrió (un cierre a las 12:35 a. m. es del día anterior).
+      const fechaCierre = diaLocal(c.fechaApertura || c.fecha);
       if (filtrosActivos.desde && fechaCierre < filtrosActivos.desde) return false;
       if (filtrosActivos.hasta && fechaCierre > filtrosActivos.hasta) return false;
       if (filtrosActivos.cajero && !c.cajero?.toLowerCase().includes(filtrosActivos.cajero.toLowerCase())) return false;
@@ -427,19 +430,31 @@ export default function ModalHistorialCierres({ open, onClose, darkMode }: Props
                       let turnoLabel = '—';
                       try {
                         const d = new Date(cierre.fecha);
-                        fechaLabel = format(d, "dd/MM/yyyy", { locale: es });
+                        const dTurno = cierre.fechaApertura ? new Date(cierre.fechaApertura) : d;
+                        fechaLabel = format(dTurno, "dd/MM/yyyy", { locale: es });
                         horaLabel  = format(d, "HH:mm", { locale: es });
-                        turnoLabel = format(d, "EEEE", { locale: es });
+                        turnoLabel = format(dTurno, "EEEE", { locale: es });
                         turnoLabel = turnoLabel.charAt(0).toUpperCase() + turnoLabel.slice(1);
                       } catch { /* ignore */ }
                       const propinasCierre = obtenerPropinasCierre(cierre).total;
+                      const tramo = tramoDiaSiguiente(cierre.fechaApertura, cierre.fecha);
 
                       return (
                         <tr
                           key={cierre.id || i}
                           className={`border-b ${border} transition-colors ${row_bg}`}
                         >
-                          <td className={`px-4 py-3.5 text-sm font-medium ${txt}`}>{fechaLabel}</td>
+                          <td className={`px-4 py-3.5 text-sm font-medium ${txt}`}>
+                            {fechaLabel}
+                            {tramo.cruza && (
+                              <span
+                                title={`El turno se abrió el ${tramo.diaTurno} y cerró el ${tramo.diaSiguiente} a las ${tramo.horaCierre}. Esas ventas cuentan en este turno.`}
+                                className="mt-1 block w-fit rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600"
+                              >
+                                Tomó {tramo.duracion} del {tramo.diaSiguiente}
+                              </span>
+                            )}
+                          </td>
                           <td className={`px-4 py-3.5 text-sm ${sub}`}>{horaLabel}</td>
                           <td className={`px-4 py-3.5 text-sm ${txt}`}>
                             <span className="flex items-center gap-2">
