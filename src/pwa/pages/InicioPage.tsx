@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ventaSinPropina } from '../../app/lib/propinas';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { Package, Settings, Users, Circle, ChevronRight, Wallet, RotateCcw, Lock, Calendar, DollarSign, TrendingUp, Receipt, Target } from 'lucide-react';
@@ -128,10 +129,10 @@ export default function InicioPage() {
       };
 
       const [{ data: periodoData }, { data: anteriorData }, { data: stockData }, { data: sesionesData }, { data: gastosData }, { data: devolucionesData }] = await Promise.all([
-        filtrarPorSucursal(client.from('ventas').select('id, total, created_at')
+        filtrarPorSucursal(client.from('ventas').select('id, total, propina, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
           .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString())),
-        filtrarPorSucursal(client.from('ventas').select('id, total, created_at')
+        filtrarPorSucursal(client.from('ventas').select('id, total, propina, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
           .gte('created_at', inicioAnterior.toISOString()).lt('created_at', finAnterior.toISOString())),
         esAdmin
@@ -181,7 +182,7 @@ export default function InicioPage() {
         }
         const costoTotal = items.reduce((a, i) => a + (costosPorProducto.get(i.producto_id || '') || 0) * Number(i.cantidad), 0);
         const gastosDelPeriodo = ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0);
-        const totalVentas = ventasLista.reduce((a, v) => a + Number(v.total), 0);
+        const totalVentas = ventasLista.reduce((a, v) => a + ventaSinPropina(v), 0);
         if (!cancelado) setUtilidadNeta(totalVentas - devTotal - costoTotal - gastosDelPeriodo);
       } else if (esAdmin) {
         setUtilidadNeta(0);
@@ -196,12 +197,12 @@ export default function InicioPage() {
   }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta, sucursalSeleccionada]);
 
   const stats = useMemo(() => {
-    const totalPeriodo = ventasPeriodo.reduce((a, v) => a + Number(v.total), 0);
+    const totalPeriodo = ventasPeriodo.reduce((a, v) => a + ventaSinPropina(v), 0);
     // Neto de devoluciones — así el anillo de "Ventas" coincide con el
     // número que Electron llama "Ingresos Netos" (bruto - devoluciones),
     // en vez de mostrar el bruto sin más.
     const totalPeriodoNeto = totalPeriodo - devolucionesTotal;
-    const totalAnterior = ventasPeriodoAnterior.reduce((a, v) => a + Number(v.total), 0);
+    const totalAnterior = ventasPeriodoAnterior.reduce((a, v) => a + ventaSinPropina(v), 0);
     const ticketProm = ventasPeriodo.length ? totalPeriodo / ventasPeriodo.length : 0;
     const pctVentasVsAnterior = totalAnterior > 0 ? Math.min(100, (totalPeriodo / totalAnterior) * 100) : totalPeriodo > 0 ? 100 : 0;
     const pctTransaccionesVsAnterior = ventasPeriodoAnterior.length > 0 ? Math.min(100, (ventasPeriodo.length / ventasPeriodoAnterior.length) * 100) : ventasPeriodo.length > 0 ? 100 : 0;

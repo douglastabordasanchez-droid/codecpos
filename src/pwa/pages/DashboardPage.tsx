@@ -7,6 +7,7 @@
  * Todo sobre las mismas tablas de Supabase que ya usa el resto de la PWA
  * (ventas, venta_items, productos, gastos, devoluciones) — sin sync nueva.
  */
+import { ventaSinPropina } from '../../app/lib/propinas';
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { TrendingUp, Wallet, RotateCcw, DollarSign, Receipt } from 'lucide-react';
@@ -67,7 +68,7 @@ export default function DashboardPage() {
         // Paginado: PostgREST corta en 1000 filas y un mes movido las supera.
         const [ventasLista, gastosData, devolucionesData] = await Promise.all([
           traerTodo<{ id: string; total: number; created_at: string }>((i, j) => {
-            let q = client.from('ventas').select('id, total, created_at')
+            let q = client.from('ventas').select('id, total, propina, created_at')
               .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
               .gte('created_at', desde).lt('created_at', hasta);
             if (tiendaEfectiva !== undefined) {
@@ -105,7 +106,7 @@ export default function DashboardPage() {
           for (const p of (prodsData as { id: string; costo: number; tipo_producto: string | null; peso_bulto_kg: number | null }[]) || []) costosPorProducto.set(p.id, costoPorUnidadDeVenta(p));
         }
         const costoTotal = items.reduce((a, i) => a + (costosPorProducto.get(i.producto_id || '') || 0) * Number(i.cantidad), 0);
-        const totalVentas = ventasLista.reduce((a, v) => a + Number(v.total), 0);
+        const totalVentas = ventasLista.reduce((a, v) => a + ventaSinPropina(v), 0);
         if (!cancelado) setUtilidad(totalVentas - devolucionesTotalCalc - costoTotal - gastosTotalCalc);
       } catch (e) {
         console.warn('[dashboard] No se pudieron cargar los datos:', e);
@@ -119,7 +120,7 @@ export default function DashboardPage() {
     return () => { cancelado = true; window.clearInterval(interval); };
   }, [empleado?.cliente_id, rango, tiendaEfectiva]);
 
-  const totalVentas = useMemo(() => ventas.reduce((a, v) => a + Number(v.total), 0), [ventas]);
+  const totalVentas = useMemo(() => ventas.reduce((a, v) => a + ventaSinPropina(v), 0), [ventas]);
   const ticketProm = ventas.length ? totalVentas / ventas.length : 0;
 
   // Serie diaria para la tendencia — agrupa por día dentro del rango elegido.
@@ -134,7 +135,7 @@ export default function DashboardPage() {
     for (const v of ventas) {
       // Día LOCAL: con la fecha UTC, lo vendido después de las 7 p.m. caía en el día siguiente.
       const clave = aFechaLocal(v.created_at).slice(0, 10);
-      if (porDia.has(clave)) porDia.set(clave, (porDia.get(clave) || 0) + Number(v.total));
+      if (porDia.has(clave)) porDia.set(clave, (porDia.get(clave) || 0) + ventaSinPropina(v));
     }
     return Array.from(porDia.entries()).map(([fecha, total]) => ({
       fecha: new Date(`${fecha}T00:00:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }),

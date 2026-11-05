@@ -163,6 +163,7 @@ export default function ContabilidadPage() {
       { Concepto: 'Gastos', Valor: -totales.gastos },
       { Concepto: 'Utilidad', Valor: totales.utilidad },
       { Concepto: 'Margen %', Valor: Number(totales.margen.toFixed(2)) },
+      { Concepto: 'Propinas de empleados (no suman)', Valor: totales.propinas },
       { Concepto: 'Por cobrar (hoy)', Valor: porCobrar },
     ]), 'Estado de resultados');
     XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(flujo.map((d) => ({ Día: d.dia, Entradas: d.entradas, Salidas: d.salidas, Neto: d.neto, Acumulado: d.acumulado }))), 'Flujo de caja');
@@ -185,7 +186,7 @@ export default function ContabilidadPage() {
       body: [
         ['Ventas', money(totales.ventas)], ['Ingresos extra', money(totales.ingresosExtra)], ['(−) Devoluciones', money(totales.devoluciones)],
         ['Ingresos netos', money(totales.ingresos)], ['(−) Gastos', money(totales.gastos)], ['Utilidad', money(totales.utilidad)],
-        ['Margen', `${totales.margen.toFixed(1)} %`], ['Cuentas por cobrar (hoy)', money(porCobrar)], ['Flujo de caja disponible', money(totales.utilidad - porCobrar)],
+        ['Margen', `${totales.margen.toFixed(1)} %`], ['Propinas de empleados (no suman)', money(totales.propinas)], ['Cuentas por cobrar (hoy)', money(porCobrar)], ['Flujo de caja disponible', money(totales.utilidad - porCobrar)],
       ],
       styles: { fontSize: 9 }, headStyles: { fillColor: [15, 23, 42] },
     });
@@ -266,6 +267,11 @@ export default function ContabilidadPage() {
               <Kpi icono={PiggyBank} titulo="Utilidad estimada" valor={money(totales.utilidad)} color={totales.utilidad >= 0 ? 'text-sky-400' : 'text-red-400'} pie={<span className="text-slate-500 text-[11px]">Margen {totales.margen.toFixed(1)} %</span>} />
               <Kpi icono={Wallet} titulo="Por cobrar" valor={money(porCobrar)} color="text-amber-400" pie={<span className="text-slate-500 text-[11px]">{vencidas.length} vencidas</span>} />
             </div>
+            {totales.propinas > 0 && (
+              <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                Propinas del período: <b>{money(totales.propinas)}</b>. Son de los empleados: no suman en ingresos ni en utilidad. El detalle por cajero está en Reportes.
+              </p>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div className={`${tarjeta} p-4 lg:col-span-2`}>

@@ -7,6 +7,7 @@
  * Uso: `await fuente.preparar(inicio, fin)` y luego generar el reporte. Todo
  * menos las ventas se sirve desde memoria (el servicio lo pide síncrono).
  */
+import { ventaSinPropina } from '../../app/lib/propinas';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import type { FuenteDatosReportes } from '../../app/services/reportesService';
 import { traerTodo, aFechaLocal, inicioDelDia, finDelDia } from './nubeConsultas';
@@ -208,7 +209,7 @@ export class FuenteReportesSupabase implements FuenteDatosReportes {
 
     const [productos, ventasHoy, gastosMes, cierresMes, ultimo] = await Promise.all([
       this.cargarProductos(true),
-      traerTodo<any>((a, b) => c.from('ventas').select('total')
+      traerTodo<any>((a, b) => c.from('ventas').select('total, propina')
         .eq('cliente_id', this.clienteId).eq('estado', 'completada')
         .gte('created_at', inicioDelDia(hoy)).order('created_at').range(a, b)),
       traerTodo<any>((a, b) => c.from('gastos').select('monto')
@@ -221,7 +222,8 @@ export class FuenteReportesSupabase implements FuenteDatosReportes {
     ]);
 
     return {
-      ventasHoy: ventasHoy.reduce((s, v) => s + (Number(v.total) || 0), 0),
+      // Sin propina: es de los empleados, no venta del negocio.
+      ventasHoy: ventasHoy.reduce((s, v) => s + ventaSinPropina(v), 0),
       gastosMes: gastosMes.reduce((s, g) => s + (Number(g.monto) || 0), 0),
       alertasStock: productos.filter((p) => p.stock <= p.minStock).length,
       ultimoCierre: (ultimo.data as { fecha_cierre: string } | null)?.fecha_cierre || null,

@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { diaLocal } from '../../lib/diaLocal';
+import { propinaDe, ventaSinPropina } from '../../lib/propinas';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -237,6 +238,8 @@ export default function ContabilidadPage() {
   const [movimientos, setMovimientos] = useState<MovimientoContable[]>([]);
   const [categorias, setCategorias] = useState<CategoriaContable[]>(obtenerCategorias());
   const [ventasPOS, setVentasPOS] = useState(0);
+  // Propinas del período: se muestran para saber cuánto pagar, pero no suman como ingreso.
+  const [propinasPeriodo, setPropinasPeriodo] = useState(0);
   const [ingresosTaller, setIngresosTaller] = useState(0);
   const [devolucionesPeriodo, setDevolucionesPeriodo] = useState(0);
 
@@ -557,9 +560,10 @@ export default function ContabilidadPage() {
           const estado = String(v?.estado || '').toLowerCase();
           return estado !== 'devuelto' && estado !== 'anulado';
         });
-        setVentasPOS(validas.reduce((s, v) => s + (Number(v.total) || 0), 0));
+        setVentasPOS(validas.reduce((s, v) => s + ventaSinPropina(v), 0));
+        setPropinasPeriodo(validas.reduce((s, v) => s + propinaDe(v), 0));
       })
-      .catch(() => setVentasPOS(0));
+      .catch(() => { setVentasPOS(0); setPropinasPeriodo(0); });
 
     electronStore.obtenerDevolucionesPorRango(new Date(`${desde}T00:00:00`), new Date(`${hasta}T23:59:59`), { incluirTodosLosCajeros: true })
       .then((devs) => setDevolucionesPeriodo(devs.reduce((s, d) => s + (Number(d.totalDevolucion) || 0), 0)))
@@ -594,7 +598,7 @@ export default function ContabilidadPage() {
       electronStore.obtenerVentasPorRango(inicioAnterior, finAnterior).then((ventas) =>
         ventas
           .filter((v: any) => { const e = String(v?.estado || '').toLowerCase(); return e !== 'devuelto' && e !== 'anulado'; })
-          .reduce((s, v: any) => s + (Number(v.total) || 0), 0)
+          .reduce((s, v: any) => s + ventaSinPropina(v), 0)
       ).catch(() => 0),
       electronStore.obtenerDevolucionesPorRango(inicioAnterior, finAnterior, { incluirTodosLosCajeros: true })
         .then((devs) => devs.reduce((s, d) => s + (Number(d.totalDevolucion) || 0), 0)).catch(() => 0),
@@ -926,10 +930,11 @@ export default function ContabilidadPage() {
         head: [['Indicador', 'Valor']],
         body: [
           [{ content: 'Ingresos Totales', styles: { fontStyle: 'bold' } }, { content: fmt(ingresosTotales), styles: { fontStyle: 'bold' } }],
-          ['   · Ventas POS', fmt(ventasPOS)],
+          ['   · Ventas POS (sin propinas)', fmt(ventasPOS)],
           ...(moduloTallerActivo ? [['   · Pagos de Taller', fmt(ingresosTaller)]] : []),
           ['   · Ingresos Extra', fmt(ingresosExtraTotal)],
           ['   · Devoluciones', `-${fmt(devolucionesPeriodo)}`],
+          ...(propinasPeriodo > 0 ? [['Propinas de empleados (no suman)', fmt(propinasPeriodo)]] : []),
           [{ content: 'Gastos Totales', styles: { fontStyle: 'bold' } }, { content: fmt(gastosTotal), styles: { fontStyle: 'bold', textColor: [239, 68, 68] } }],
           [
             { content: 'Balance / Utilidad Neta', styles: { fontStyle: 'bold' } },
@@ -1070,10 +1075,11 @@ export default function ContabilidadPage() {
         [],
         ['Indicador', 'Valor'],
         ['Ingresos Totales', ingresosTotales],
-        ['   Ventas POS', ventasPOS],
+        ['   Ventas POS (sin propinas)', ventasPOS],
         ...(moduloTallerActivo ? [['   Pagos de Taller', ingresosTaller]] : []),
         ['   Ingresos Extra', ingresosExtraTotal],
         ['   Devoluciones', -devolucionesPeriodo],
+        ...(propinasPeriodo > 0 ? [['Propinas de empleados (no suman)', propinasPeriodo]] : []),
         ['Gastos Totales', gastosTotal],
         ['Balance / Utilidad Neta', balance],
         ['Margen sobre ingresos (%)', Number(margen.toFixed(1))],
@@ -1324,6 +1330,7 @@ export default function ContabilidadPage() {
               gradiente="from-emerald-500 to-teal-600" cambioPct={cambioIngresosPct}
               badges={[
                 { label: 'Ventas', value: fmt(ventasPOS) },
+                ...(propinasPeriodo > 0 ? [{ label: 'Propinas aparte', value: fmt(propinasPeriodo) }] : []),
                 ...(moduloTallerActivo ? [{ label: 'Taller', value: fmt(ingresosTaller) }] : []),
               ]}
             />

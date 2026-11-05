@@ -7,6 +7,7 @@
  * ✅ Modo claro limpio y profesional
  */
 
+import { ventaSinPropina } from '../../lib/propinas';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -1040,7 +1041,8 @@ export default function DashboardPOSPage() {
         });
 
         const { totalCostos: costoVentasDia, sinCostoBase } = await calcularCostoVentas(ventasDiaValidas);
-        const ingresosBrutosDia = ventasDiaValidas.reduce((sum, v: any) => sum + (Number(v?.total) || 0), 0);
+        // La propina es de los empleados: no cuenta como ingreso del negocio.
+        const ingresosBrutosDia = ventasDiaValidas.reduce((sum, v: any) => sum + ventaSinPropina(v), 0);
         setIngresosBrutosPeriodo(ingresosBrutosDia);
 
         // ⚠️ Importante:
@@ -1048,7 +1050,7 @@ export default function DashboardPOSPage() {
         // neteando SOLO devoluciones que realmente aplican (evita doble descuento).
         // Aquí NO debemos volver a descontar `totalDevolucionesMonto` completo
         // porque ese campo incluye devoluciones registradas informativas.
-        const totalIngresosNetosDia = Number(stats.totalIngresos) || 0;
+        const totalIngresosNetosDia = Math.max(0, (Number(stats.totalIngresos) || 0) - (Number(stats.totalPropinas) || 0));
 
         const statsNorm: EstadisticasDia = {
           ...stats,
@@ -1103,7 +1105,7 @@ export default function DashboardPOSPage() {
           return enRango && mismaCaja && valida;
         });
 
-        const totalIngresosBrutos = ventasRango.reduce((sum, v) => sum + (Number(v.total) || 0), 0);
+        const totalIngresosBrutos = ventasRango.reduce((sum, v) => sum + ventaSinPropina(v), 0);
         const { totalCostos: totalCostosRango, sinCostoBase } = await calcularCostoVentas(ventasRango as any[]);
         const totalVentas = ventasRango.length;
         setIngresosBrutosPeriodo(totalIngresosBrutos);
@@ -1232,13 +1234,13 @@ export default function DashboardPOSPage() {
 
       const hm = new Map<number, { ventas: number; ingresos: number }>();
       for (let i = 0; i < 24; i++) hm.set(i, { ventas: 0, ingresos: 0 });
-      ventas.forEach(v => { const h = new Date(v.fecha).getHours(); const ex = hm.get(h)!; ex.ventas++; ex.ingresos += v.total; });
+      ventas.forEach(v => { const h = new Date(v.fecha).getHours(); const ex = hm.get(h)!; ex.ventas++; ex.ingresos += ventaSinPropina(v); });
       setVentasPorHora(Array.from(hm.entries()).map(([h, d]) => ({ hora: `${h.toString().padStart(2, '0')}h`, ventas: d.ventas, ingresos: d.ingresos })).filter(i => i.ventas > 0));
 
       const now = Date.now();
       const ult = ventas.filter(v => new Date(v.fecha).getTime() >= now - 3600000);
       setVentasUltimaHora(ult.length);
-      setIngresoUltimaHora(ult.reduce((s, v) => s + v.total, 0));
+      setIngresoUltimaHora(ult.reduce((s, v) => s + ventaSinPropina(v), 0));
 
       const prods = await electronStore.obtenerProductos();
       setProductosBajoStock(prods.filter(p => p.stock <= (p.stockMinimo || 10)).map(p => ({ id: p.id, nombre: p.nombre, stock: p.stock, stockMinimo: p.stockMinimo || 10 })).sort((a, b) => a.stock - b.stock).slice(0, 8));
@@ -1264,10 +1266,10 @@ export default function DashboardPOSPage() {
       });
       const hS = startOfDay(new Date()), aS = startOfDay(subDays(new Date(), 1)), semS = startOfDay(subDays(new Date(), 7)), mesS = startOfDay(subDays(new Date(), 30));
       setComparativa({
-        hoy:    todas.filter(v => new Date(v.fecha) >= hS).reduce((s, v) => s + v.total, 0),
-        ayer:   todas.filter(v => { const f = new Date(v.fecha); return f >= aS && f < hS; }).reduce((s, v) => s + v.total, 0),
-        semana: todas.filter(v => new Date(v.fecha) >= semS).reduce((s, v) => s + v.total, 0),
-        mes:    todas.filter(v => new Date(v.fecha) >= mesS).reduce((s, v) => s + v.total, 0),
+        hoy:    todas.filter(v => new Date(v.fecha) >= hS).reduce((s, v) => s + ventaSinPropina(v), 0),
+        ayer:   todas.filter(v => { const f = new Date(v.fecha); return f >= aS && f < hS; }).reduce((s, v) => s + ventaSinPropina(v), 0),
+        semana: todas.filter(v => new Date(v.fecha) >= semS).reduce((s, v) => s + ventaSinPropina(v), 0),
+        mes:    todas.filter(v => new Date(v.fecha) >= mesS).reduce((s, v) => s + ventaSinPropina(v), 0),
       });
       setTicketPromedio(stats.totalVentas > 0 ? stats.totalIngresos / stats.totalVentas : 0);
       // El margen se recalcula en cargarDatosConRango con la utilidad consolidada

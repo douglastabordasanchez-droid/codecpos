@@ -53,7 +53,7 @@ beforeEach(() => {
       { id: 'g2', cliente_id: CLIENTE, fecha: local(15, 22), descripcion: 'Compra FE100', categoria: 'inventario', monto: 119000, medio_pago: 'credito', registrado_por: null, registrado_por_nombre: 'Ana', notas: null },
     ],
     cierres_caja: [
-      { id: 'c1', cliente_id: CLIENTE, fecha_cierre: local(12, 20), monto_apertura: 0, monto_cierre: 500000, ventas_total: 500000, diferencia: -2000, empleado_id: 'emp-ana', cajero_nombre: 'Ana', detalle: { desglose: { efectivo: 300000, nequi: 200000 } } },
+      { id: 'c1', cliente_id: CLIENTE, fecha_cierre: local(12, 20), monto_apertura: 0, monto_cierre: 500000, ventas_total: 500000, diferencia: -2000, empleado_id: 'emp-ana', detalle: { cajero_nombre: 'Ana', desglose: { efectivo: 300000, nequi: 200000 } } },
       { id: 'abierto', cliente_id: CLIENTE, fecha_cierre: null, monto_apertura: 0, monto_cierre: 0, ventas_total: 0, diferencia: 0, empleado_id: 'emp-luis', cajero_nombre: 'Luis', detalle: {} },
     ],
     devoluciones: [

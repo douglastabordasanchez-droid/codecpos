@@ -3138,6 +3138,12 @@ $d = $ps.DefaultPageSettings
 // El tamaño del rollo no cambia entre tirillas: se consulta una vez por
 // impresora (PowerShell tarda 1 o 2 s) y se guarda mientras la app siga abierta.
 const anchoRolloCache = new Map();
+function anchoRolloPorNombre(nombre) {
+  const n = String(nombre || '').toUpperCase();
+  if (/(^|[^0-9])(57|58|5890)([^0-9]|$)/.test(n)) return 58;
+  if (/(^|[^0-9])(80|8250|8330)([^0-9]|$)/.test(n)) return 80;
+  return 0;
+}
 async function anchoRolloDelDriver(deviceName) {
   if (process.platform !== 'win32' || !deviceName) return 0;
   if (anchoRolloCache.has(deviceName)) return anchoRolloCache.get(deviceName);
@@ -3146,6 +3152,9 @@ async function anchoRolloDelDriver(deviceName) {
     const info = await leerPapelDelDriverWindows(deviceName);
     ancho = info.valida ? Number(info.anchoMm) || 0 : 0;
   } catch { /* sin dato: se respeta el ancho elegido en la app */ }
+  // Drivers genéricos reportan Carta o A4: el nombre de la impresora
+  // («POS-58», «XP-58IIH», «GP-5890») suele decir el ancho del rollo.
+  if (!(ancho >= 44 && ancho <= 84)) ancho = anchoRolloPorNombre(deviceName);
   anchoRolloCache.set(deviceName, ancho);
   return ancho;
 }

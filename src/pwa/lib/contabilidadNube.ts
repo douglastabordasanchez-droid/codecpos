@@ -10,6 +10,7 @@
  *
  * Las funciones de cálculo son puras (sin red) para poder probarlas.
  */
+import { propinaDe, ventaSinPropina } from '../../app/lib/propinas';
 import { costoPorUnidadDeVenta } from '../../app/lib/costoGranel';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { traerTodo, aFechaLocal, inicioDelDia, finDelDia, fechaLocal } from './nubeConsultas';
@@ -56,7 +57,8 @@ export function rangoAnterior(desde: string, hasta: string): { desde: string; ha
 // ── Movimientos del período ───────────────────────────────────────────────
 
 export interface MovimientosPeriodo {
-  ventas: Array<{ fecha: string; total: number; metodo: string }>;
+  /** `total` es SIN propina (lo que vendió el negocio); la propina va aparte. */
+  ventas: Array<{ fecha: string; total: number; propina?: number; metodo: string }>;
   devoluciones: Array<{ fecha: string; total: number }>;
   gastos: Array<{ fecha: string; monto: number; categoria: string; descripcion: string; medio: string }>;
   ingresosExtra: Array<{ fecha: string; monto: number; concepto: string; categoria: string }>;
@@ -73,7 +75,7 @@ export async function cargarMovimientos(clienteId: string, desde: string, hasta:
   const a = inicioDelDia(desde);
   const b = finDelDia(hasta);
   const [ventas, devoluciones, gastos, ingresos] = await Promise.all([
-    traerTodo<any>((i, j) => c.from('ventas').select('created_at, total, metodo_pago')
+    traerTodo<any>((i, j) => c.from('ventas').select('created_at, total, propina, metodo_pago')
       .eq('cliente_id', clienteId).eq('estado', 'completada').gte('created_at', a).lte('created_at', b).order('created_at').range(i, j)),
     traerTodo<any>((i, j) => c.from('devoluciones').select('created_at, total_devolucion')
       .eq('cliente_id', clienteId).eq('estado', 'completada').gte('created_at', a).lte('created_at', b).order('created_at').range(i, j)),
@@ -83,7 +85,8 @@ export async function cargarMovimientos(clienteId: string, desde: string, hasta:
       .eq('cliente_id', clienteId).gte('fecha', a).lte('fecha', b).order('fecha').range(i, j)),
   ]);
   return {
-    ventas: ventas.map((v) => ({ fecha: aFechaLocal(v.created_at), total: Number(v.total) || 0, metodo: v.metodo_pago || 'otro' })),
+    // La propina viene dentro de `total` pero es de los empleados: no es ingreso del negocio.
+    ventas: ventas.map((v) => ({ fecha: aFechaLocal(v.created_at), total: ventaSinPropina(v), propina: propinaDe(v), metodo: v.metodo_pago || 'otro' })),
     devoluciones: devoluciones.map((d) => ({ fecha: aFechaLocal(d.created_at), total: Number(d.total_devolucion) || 0 })),
     gastos: gastos.map((g) => ({ fecha: aFechaLocal(g.fecha), monto: Number(g.monto) || 0, categoria: g.categoria || 'otros', descripcion: g.descripcion || '', medio: g.medio_pago || 'efectivo' })),
     ingresosExtra: ingresos.map((i) => ({ fecha: aFechaLocal(i.fecha), monto: Number(i.monto) || 0, concepto: i.concepto || '', categoria: i.categoria || 'otros' })),
@@ -101,6 +104,8 @@ export interface Totales {
   margen: number;
   transacciones: number;
   ticketPromedio: number;
+  /** Propinas cobradas en el período: se pagan a los empleados, no suman en ingresos ni utilidad. */
+  propinas: number;
 }
 
 export function calcularTotales(m: MovimientosPeriodo): Totales {
@@ -116,6 +121,7 @@ export function calcularTotales(m: MovimientosPeriodo): Totales {
     margen: ingresos > 0 ? (utilidad / ingresos) * 100 : 0,
     transacciones: m.ventas.length,
     ticketPromedio: m.ventas.length > 0 ? ventas / m.ventas.length : 0,
+    propinas: suma(m.ventas, (v) => v.propina || 0),
   };
 }
 

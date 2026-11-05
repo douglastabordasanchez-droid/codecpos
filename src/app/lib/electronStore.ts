@@ -7,6 +7,7 @@
 import { dbManager } from './indexedDB';
 import { logger } from './logger';
 import { costoPorUnidadDeVenta } from './costoGranel';
+import { diaLocal } from './diaLocal';
 import { ModuloPOS, esModuloPermitidoLicenciaDesarrollador } from './permissions';
 import { seVendeSinStock } from '../../pwa/lib/ventasPorArea';
 
@@ -972,7 +973,7 @@ class ElectronStoreService {
         const gastos = JSON.parse(gastosStr);
         // Filtrar solo los gastos del día actual
         const gastosHoy = gastos.filter((g: any) => {
-          const fechaGasto = g.fecha.split('T')[0];
+          const fechaGasto = diaLocal(g.fecha);
           return fechaGasto === hoy;
         });
         totalGastos = gastosHoy.reduce((sum: number, g: any) => sum + (Number(g.monto) || 0), 0);
@@ -1742,9 +1743,9 @@ class ElectronStoreService {
       .sort((a, b) => Number(a.stockActual) - Number(b.stockActual))
       .slice(0, 10);
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = this.getFechaLocalISO();
     const mermas = this.getLS<MermaItem[]>('codecpos_mermas', [])
-      .filter(m => String(m.fecha || '').split('T')[0] === hoy);
+      .filter(m => diaLocal(String(m.fecha || '')) === hoy);
     const mermaHoy = {
       cantidad: mermas.reduce((s, m) => s + (Number(m.cantidad) || 0), 0),
       costo: mermas.reduce((s, m) => s + ((Number(m.costoUnitario) || 0) * (Number(m.cantidad) || 0)), 0),

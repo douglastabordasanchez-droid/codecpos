@@ -15,6 +15,46 @@ const comparar = (a: any, b: any): number => {
   return a < b ? -1 : a > b ? 1 : 0;
 };
 
+/** Parte «x,and(y,z)» por las comas de primer nivel. */
+function partirNivel(expr: string): string[] {
+  const partes: string[] = [];
+  let nivel = 0;
+  let actual = '';
+  for (const ch of expr) {
+    if (ch === '(') nivel++;
+    if (ch === ')') nivel--;
+    if (ch === ',' && nivel === 0) { partes.push(actual); actual = ''; continue; }
+    actual += ch;
+  }
+  if (actual) partes.push(actual);
+  return partes;
+}
+
+function compilarCondicion(c: string): (f: Fila) => boolean {
+  const t = c.trim();
+  if (t.startsWith('and(') && t.endsWith(')')) {
+    const hijas = partirNivel(t.slice(4, -1)).map(compilarCondicion);
+    return (f) => hijas.every((h) => h(f));
+  }
+  if (t.startsWith('or(') && t.endsWith(')')) return compilarOr(t.slice(3, -1));
+  const [col, op, ...resto] = t.split('.');
+  const v = resto.join('.');
+  switch (op) {
+    case 'eq': return (f) => String(f[col]) === v;
+    case 'gt': return (f) => f[col] != null && comparar(f[col], v) > 0;
+    case 'gte': return (f) => f[col] != null && comparar(f[col], v) >= 0;
+    case 'lt': return (f) => f[col] != null && comparar(f[col], v) < 0;
+    case 'lte': return (f) => f[col] != null && comparar(f[col], v) <= 0;
+    case 'is': return (f) => v === 'null' ? (f[col] ?? null) === null : String(f[col]) === v;
+    default: throw new Error(`SupabaseFalso: operador .or() no soportado: ${op}`);
+  }
+}
+
+function compilarOr(expr: string): (f: Fila) => boolean {
+  const opciones = partirNivel(expr).map(compilarCondicion);
+  return (f) => opciones.some((o) => o(f));
+}
+
 class Consulta implements PromiseLike<{ data: any; error: any; count?: number }> {
   private filtros: Array<(f: Fila) => boolean> = [];
   private orden: Array<{ col: string; asc: boolean }> = [];
@@ -44,6 +84,8 @@ class Consulta implements PromiseLike<{ data: any; error: any; count?: number }>
   lt(col: string, v: any) { this.filtros.push((f) => f[col] != null && comparar(f[col], v) < 0); return this; }
   is(col: string, v: null) { this.filtros.push((f) => (f[col] ?? null) === v); return this; }
   not(col: string, _op: 'is', v: null) { this.filtros.push((f) => (f[col] ?? null) !== v); return this; }
+  /** `.or()` de PostgREST: «a.gte.x,and(b.is.null,c.lte.y)». Operadores eq, gt, gte, lt, lte, is.null. */
+  or(expr: string) { this.filtros.push(compilarOr(expr)); return this; }
   order(col: string, opciones?: { ascending?: boolean }) { this.orden.push({ col, asc: opciones?.ascending !== false }); return this; }
   range(a: number, b: number) { this.rango = [a, b]; return this; }
   limit(n: number) { this.tope = n; return this; }

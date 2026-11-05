@@ -42,15 +42,31 @@ export function clasificarAnchoPapel(anchoMm: number | undefined): ClasePapel {
   return 'incierto';
 }
 
+/**
+ * Cuando el driver es genérico (reporta Carta o A4), el nombre de la
+ * impresora suele decir el rollo: «POS-58», «XP-58IIH», «GP-5890», «POS-80».
+ */
+export function clasificarPorNombre(nombre: string | undefined): ClasePapel {
+  const n = String(nombre || '').toUpperCase();
+  if (/(^|[^0-9])(57|58|5890)([^0-9]|$)/.test(n)) return 'angosto';
+  if (/(^|[^0-9])(80|8250|8330)([^0-9]|$)/.test(n)) return 'normal';
+  return 'incierto';
+}
+
 export async function leerPapelDelDriver(printerName = impresoraDeTirillas()): Promise<PapelDelDriver> {
   const paperInfo = (window as any).electron?.print?.paperInfo;
-  if (!paperInfo) return { clase: 'incierto' };
+  if (!paperInfo) return { clase: clasificarPorNombre(printerName), printer: printerName || undefined };
   try {
     const res = await paperInfo(printerName);
-    if (!res?.ok) return { clase: 'incierto', printer: res?.printer };
-    return { clase: clasificarAnchoPapel(res.anchoMm), anchoMm: res.anchoMm, papel: res.papel, printer: res.printer };
+    const nombre = res?.printer || printerName;
+    if (!res?.ok) return { clase: clasificarPorNombre(nombre), printer: nombre };
+    const clase = clasificarAnchoPapel(res.anchoMm);
+    return {
+      clase: clase === 'incierto' ? clasificarPorNombre(nombre) : clase,
+      anchoMm: res.anchoMm, papel: res.papel, printer: nombre,
+    };
   } catch {
-    return { clase: 'incierto' };
+    return { clase: clasificarPorNombre(printerName), printer: printerName || undefined };
   }
 }
 
