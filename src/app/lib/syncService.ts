@@ -9,6 +9,7 @@
  * un error claro y no rompe nada del flujo offline existente.
  */
 
+import { esOtraVenta } from './ventasPisadas';
 import { dbManager, Producto, Venta } from './indexedDB';
 import { getSupabaseClient } from './supabase/config';
 import { numeroVentaWeb } from './numeracionCaja';
@@ -118,6 +119,9 @@ function indiceProductos(productos: Producto[]): Map<string, number> {
 }
 
 const STEP_TIMEOUT_MS = 20_000;
+/** Ventas que sube cada ciclo (cabe en el tope de 20 s del paso). */
+const LOTE_SUBIDA_VENTAS = 60;
+
 
 /**
  * 🛡️ Lápidas de productos eliminados — cierra una condición de carrera que el
@@ -569,6 +573,7 @@ class SyncService {
       ['push_productos', () => this.pushProductosPendientes(client, clienteId)],
       ['push_productos_localstorage', () => this.pushProductosLocalStorage(client, clienteId)],
       ['push_gastos', () => this.pushGastosLocalStorage(client, clienteId)],
+      ['reparar_ventas_pisadas', () => this.repararVentasPisadas(client, clienteId)],
       ['push_ventas', () => this.pushVentasPendientes(client, clienteId)],
       ['push_tiendas_stock', () => this.pushTiendasStock(client, clienteId)],
       ['push_cierres', () => this.pushCierresPendientes(client, clienteId)],
@@ -1604,8 +1609,28 @@ class SyncService {
   private async pushVentasPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
     // ⚡ Mismo fix que pushProductosPendientes: usa el índice 'syncStatus'
     // en vez de escanear todo el historial de ventas cada ciclo.
-    const pendientes = await dbManager.getVentasPendientes();
-    if (pendientes.length === 0) return;
+    const todasPendientes = await dbManager.getVentasPendientes();
+    if (todasPendientes.length === 0) return;
+    // Por tandas: cada paso tiene un tope de 20 s y la recuperación de ventas
+    // pisadas puede dejar cientos en cola. Lo que no alcance sube en el
+    // siguiente ciclo.
+    const pendientes = todasPendientes.slice(0, LOTE_SUBIDA_VENTAS);
+
+    // 🛡️ Números de venta repetidos entre cajas: dos computadores del mismo
+    // negocio sin letra de caja numeran igual (FE000541 en los dos). Como la
+    // nube identifica la venta por (cliente_id, local_id), la segunda en
+    // subir REEMPLAZABA a la primera: Papotas perdió así 683 ventas en la
+    // nube (sep a nov 2026). Si ya existe una venta con esa clave y es otra
+    // (otra hora), esta se sube con el sufijo de este computador.
+    const sufijo = await this.sufijoEquipo();
+    const claves = pendientes.map((v) => v.localIdNube || v.id);
+    const existentes = new Map<string, string>();
+    for (let i = 0; i < claves.length; i += 200) {
+      const { data, error: errorConsulta } = await client.from('ventas').select('local_id, created_at')
+        .eq('cliente_id', clienteId).in('local_id', claves.slice(i, i + 200));
+      if (errorConsulta) throw new Error(errorConsulta.message);
+      for (const r of (data || []) as Array<{ local_id: string; created_at: string }>) existentes.set(r.local_id, r.created_at);
+    }
 
     // Fuente principal: el mapa que `pushProductosLocalStorage` acaba de
     // llenar/actualizar en este mismo ciclo (local_id de `pos-productos` →
@@ -1619,12 +1644,18 @@ class SyncService {
     }
 
     for (const v of pendientes) {
+      let localIdNube = v.localIdNube || v.id;
+      const creadaNube = existentes.get(localIdNube);
+      if (creadaNube && esOtraVenta(creadaNube, v.createdAt)) {
+        localIdNube = `${v.id}-${sufijo}`;
+        console.warn(`[sync] La venta ${v.id} ya existe en la nube desde otra caja; se sube como ${localIdNube}`);
+      }
       const { data: ventaRow, error } = await client
         .from('ventas')
         .upsert(
           {
             cliente_id: clienteId,
-            local_id: v.id,
+            local_id: localIdNube,
             terminal_id: v.puntoVentaId,
             numero: v.numero,
             cajero_nombre: v.cajero,
@@ -1682,10 +1713,58 @@ class SyncService {
         await client.from('venta_items').insert(items);
       }
 
-      await dbManager.updateVenta({ ...v, supabaseId: ventaRow.id });
+      await dbManager.updateVenta({ ...v, supabaseId: ventaRow.id, localIdNube });
     }
 
     await dbManager.addLog('push_ventas', `${pendientes.length} ventas subidas`);
+  }
+
+  /** Sufijo corto y fijo de este computador (4 caracteres), para desempatar números repetidos entre cajas. */
+  private async sufijoEquipo(): Promise<string> {
+    const guardado = String((await dbManager.getConfig('sufijoVentasNube')) || '');
+    if (guardado) return guardado;
+    const equipo = String((await dbManager.getConfig('puntoVentaId')) || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const sufijo = equipo && equipo !== 'POS001'
+      ? equipo.slice(0, 4)
+      : Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, '0');
+    await dbManager.setConfig('sufijoVentasNube', sufijo);
+    return sufijo;
+  }
+
+  /**
+   * 🩹 Recupera las ventas de este computador que otra caja pisó en la nube
+   * (mismo número, ver pushVentasPendientes). La fila de la nube conserva su
+   * id al ser reemplazada, así que la venta local sigue apuntando a ella: si
+   * esa fila tiene otra hora, ya no es esta venta. Se vuelve a poner en cola
+   * y la subida la manda con el sufijo de este computador.
+   *
+   * Corre una vez por computador. No corre con multitienda en la nube: ahí
+   * subir de nuevo las líneas descontaría stock otra vez.
+   */
+  private async repararVentasPisadas(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const HECHO = 'reparacionVentasPisadasV1';
+    if (await dbManager.getConfig(HECHO)) return;
+    if (multitiendaEnNube()) { await dbManager.setConfig(HECHO, 'omitida-multitienda'); return; }
+
+    const subidas = (await dbManager.getAllVentas()).filter((v) => v.supabaseId);
+    const enNube = new Map<string, string>();
+    for (let i = 0; i < subidas.length; i += 200) {
+      const ids = subidas.slice(i, i + 200).map((v) => v.supabaseId as string);
+      const { data, error } = await client.from('ventas').select('id, created_at').eq('cliente_id', clienteId).in('id', ids);
+      if (error) throw new Error(error.message); // se reintenta en el próximo ciclo
+      for (const r of (data || []) as Array<{ id: string; created_at: string }>) enNube.set(r.id, r.created_at);
+    }
+
+    let pisadas = 0;
+    for (const v of subidas) {
+      const creadaNube = enNube.get(v.supabaseId as string);
+      if (creadaNube && !esOtraVenta(creadaNube, v.createdAt)) continue;
+      await dbManager.marcarVentaPendiente({ ...v, supabaseId: undefined });
+      pisadas++;
+    }
+    await dbManager.setConfig(HECHO, new Date().toISOString());
+    await dbManager.addLog('reparar_ventas_pisadas', `${pisadas} de ${subidas.length} ventas estaban pisadas en la nube por otra caja; quedan en cola para subir de nuevo`);
+    if (pisadas > 0) console.warn(`[sync] ${pisadas} ventas de esta caja estaban pisadas en la nube; se vuelven a subir`);
   }
 
   /**

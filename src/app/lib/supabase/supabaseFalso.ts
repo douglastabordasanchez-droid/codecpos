@@ -45,6 +45,10 @@ function compilarCondicion(c: string): (f: Fila) => boolean {
     case 'gte': return (f) => f[col] != null && comparar(f[col], v) >= 0;
     case 'lt': return (f) => f[col] != null && comparar(f[col], v) < 0;
     case 'lte': return (f) => f[col] != null && comparar(f[col], v) <= 0;
+    case 'like': {
+      const re = new RegExp('^' + v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$');
+      return (f) => re.test(String(f[col] ?? ''));
+    }
     case 'is': return (f) => v === 'null' ? (f[col] ?? null) === null : String(f[col]) === v;
     default: throw new Error(`SupabaseFalso: operador .or() no soportado: ${op}`);
   }

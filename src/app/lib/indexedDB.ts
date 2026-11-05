@@ -189,6 +189,12 @@ export interface Venta {
   sincronizado?: boolean;
   /** id real en la tabla ventas de Supabase, una vez sincronizada */
   supabaseId?: string;
+  /**
+   * Clave con la que quedó en la nube (ventas.local_id). Normalmente es el
+   * número de la venta; lleva un sufijo de este computador si otra caja ya
+   * había subido una venta con el mismo número (ver syncService).
+   */
+  localIdNube?: string;
 
   // ── Facturación electrónica (stub de proveedor externo — ver ConfiguracionPage.tsx) ──
   facturacionElectronica?: boolean;
@@ -733,6 +739,18 @@ class IndexedDBManager {
         syncStatus: 'pending'
       });
 
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /** Vuelve a dejar una venta en la cola de subida (sin cambiar sus datos). */
+  async marcarVentaPendiente(venta: Venta): Promise<void> {
+    const db = await this.ensureDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.VENTAS], 'readwrite');
+      const store = transaction.objectStore(STORES.VENTAS);
+      const request = store.put({ ...venta, syncStatus: 'pending' });
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });

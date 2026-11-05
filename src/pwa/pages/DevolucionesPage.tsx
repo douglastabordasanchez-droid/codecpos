@@ -110,8 +110,12 @@ export default function DevolucionesPage() {
       .select('id, numero, local_id, total, metodo_pago, created_at')
       .eq('cliente_id', empleado.cliente_id);
     const web = texto.match(/^W?0*(\d+)$/);
-    consulta = web ? consulta.eq('terminal_id', 'PWA').eq('numero', Number(web[1])) : consulta.eq('local_id', texto);
-    const { data: ventaData } = await consulta.limit(1).maybeSingle();
+    // «FE000541-0DB6»: misma venta subida con el sufijo de su caja porque otra caja ya usaba ese número.
+    const textoSeguro = texto.replace(/[^A-Z0-9-]/g, '');
+    consulta = web
+      ? consulta.eq('terminal_id', 'PWA').eq('numero', Number(web[1]))
+      : consulta.or(`local_id.eq.${textoSeguro},local_id.like.${textoSeguro}-%`);
+    const { data: ventaData } = await consulta.order('created_at', { ascending: false }).limit(1).maybeSingle();
 
     if (!ventaData) {
       setBuscando(false);

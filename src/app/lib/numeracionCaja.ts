@@ -74,6 +74,9 @@ export function numeroVentaWeb(consecutivo: number): string {
  * el celular, W más su consecutivo.
  */
 export function numeroVisibleVenta(venta: { local_id?: string | null; numero?: number | null; id?: string }): string {
+  // «FE000541-0DB6»: el sufijo solo desempata en la nube números repetidos entre cajas.
+  const conSufijo = typeof venta.local_id === 'string' ? venta.local_id.match(/^([A-Za-z]*\d+)-[A-Za-z0-9]{1,8}$/) : null;
+  if (conSufijo) return conSufijo[1];
   if (typeof venta.local_id === 'string' && /^[A-Za-z]*\d+$/.test(venta.local_id)) return venta.local_id;
   if (venta.numero) return numeroVentaWeb(Number(venta.numero));
   return (venta.id || '').slice(0, 8).toUpperCase();
