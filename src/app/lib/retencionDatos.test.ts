@@ -55,14 +55,14 @@ beforeEach(() => {
   borradas.length = 0;
   guardarFalla = false;
   ventas = [
-    { id: 'v1', numero: 10, fecha: haceDias(60), supabaseId: 's1', items: [], total: 1000, subtotal: 1000, metodoPago: 'efectivo', cajero: 'Ana' },
-    { id: 'v2', numero: 11, fecha: haceDias(45), syncStatus: 'pending', items: [], total: 2000, subtotal: 2000, metodoPago: 'nequi', cajero: 'Ana' },
-    { id: 'v3', numero: 12, fecha: haceDias(40), supabaseId: 's3', facturaEstado: 'PENDIENTE_ENVIO', items: [], total: 3000, subtotal: 3000, metodoPago: 'efectivo', cajero: 'Ana' },
+    { id: 'v1', numero: 10, fecha: haceDias(260), supabaseId: 's1', items: [], total: 1000, subtotal: 1000, metodoPago: 'efectivo', cajero: 'Ana' },
+    { id: 'v2', numero: 11, fecha: haceDias(245), syncStatus: 'pending', items: [], total: 2000, subtotal: 2000, metodoPago: 'nequi', cajero: 'Ana' },
+    { id: 'v3', numero: 12, fecha: haceDias(240), supabaseId: 's3', facturaEstado: 'PENDIENTE_ENVIO', items: [], total: 3000, subtotal: 3000, metodoPago: 'efectivo', cajero: 'Ana' },
     { id: 'v4', numero: 13, fecha: haceDias(5), supabaseId: 's4', items: [], total: 4000, subtotal: 4000, metodoPago: 'efectivo', cajero: 'Ana' },
   ];
   almacen.set('pos-gastos', JSON.stringify([
-    { id: 'g1', fecha: haceDias(50), monto: 500, _supabaseSynced: true },
-    { id: 'g2', fecha: haceDias(50), monto: 600 },
+    { id: 'g1', fecha: haceDias(250), monto: 500, _supabaseSynced: true },
+    { id: 'g2', fecha: haceDias(250), monto: 600 },
     { id: 'g3', fecha: haceDias(2), monto: 700, _supabaseSynced: true },
   ]));
 });
@@ -86,6 +86,21 @@ describe('retención de la caja', () => {
     expect(JSON.parse(almacen.get('codecpos_retencion_bitacora_pendiente')!)).toHaveLength(1);
   });
 
+  it('conserva el mes actual y los 5 anteriores completos', () => {
+    expect(r.fechaCorte(new Date(2026, 11, 15))).toEqual(new Date(2026, 6, 1)); // diciembre → 1 de julio
+    expect(r.fechaCorte(new Date(2027, 1, 1))).toEqual(new Date(2026, 8, 1)); // cruza el año
+  });
+
+  it('avisa de las facturas electrónicas a los 6 meses, una vez al día, y guardar copia reinicia la cuenta', () => {
+    const base = { carpeta: null, proximaLimpieza: haceDias(0), avisosMostrados: [] };
+    expect(r.debeAvisarFacturas({ ...base, facturasDesde: haceDias(100) })).toBe(false);
+    expect(r.debeAvisarFacturas({ ...base, facturasDesde: haceDias(190) })).toBe(true);
+    expect(r.debeAvisarFacturas({ ...base, facturasDesde: haceDias(400), ultimaDescargaFacturas: haceDias(10) })).toBe(false);
+    const hoy = new Date();
+    const dia = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    expect(r.debeAvisarFacturas({ ...base, facturasDesde: haceDias(190), avisoFacturasDia: dia }, hoy)).toBe(false);
+  });
+
   it('las franjas cubren mañana, tarde y noche', () => {
     const a = (h: number) => r.franjaActual(new Date(2026, 9, 5, h));
     expect([a(8), a(14), a(20)]).toEqual(['mañana', 'tarde', 'noche']);
@@ -107,7 +122,8 @@ describe('retención de la caja', () => {
     expect(borradas).toEqual(['v1']);
     expect(JSON.parse(almacen.get('pos-gastos')!).map((g: any) => g.id)).toEqual(['g2', 'g3']);
     expect(Number(almacen.get('pos-ultima-factura'))).toBeGreaterThanOrEqual(13);
-    expect(r.diasParaLimpieza()).toBe(r.DIAS_EN_CAJA);
+    expect(new Date(r.leerConfigRetencion().proximaLimpieza).getDate()).toBe(1);
+    expect(r.diasParaLimpieza()).toBeGreaterThanOrEqual(r.DIAS_AVISO);
     expect(r.leerBitacoraLocal()[0].tipo).toBe('limpieza');
   });
 

@@ -1,6 +1,7 @@
 /**
- * Caja liviana: Electron guarda en el computador solo el ÚLTIMO MES de
- * ventas, gastos, cierres y devoluciones. Lo más viejo:
+ * Se conservan el mes actual y los 5 anteriores completos de ventas, gastos,
+ * cierres y devoluciones (en diciembre se borra lo anterior al 1 de julio).
+ * Lo más viejo:
  *
  *   1. Se avisa 5 días antes, todos los días, en la mañana, la tarde y la
  *      noche (AvisoRetencionDatos.tsx). Cada aviso queda en la bitácora de la
@@ -11,7 +12,8 @@
  *      solo si se guardó bien se borra de la caja.
  *   3. Se borra de la caja únicamente lo que YA está en la nube: una venta
  *      sin subir, una factura electrónica pendiente o un gasto sin
- *      sincronizar nunca se borran. En la nube sigue todo (web y celular).
+ *      sincronizar nunca se borran. La nube aplica el mismo corte por su
+ *      cuenta (migraciones 0142 y 0143).
  *
  * Productos, precios, clientes, cartera abierta y configuración NO se tocan.
  */
@@ -20,7 +22,7 @@ import { historicoService } from './historicoService';
 import { getSupabaseClient } from './supabase/config';
 import { getLinkedClienteId } from './supabase/tenantLink';
 
-export const DIAS_EN_CAJA = 30;
+export const MESES_EN_CAJA = 5;
 export const DIAS_AVISO = 5;
 /** La primera limpieza da al menos esta ventana completa de avisos. */
 const DIAS_PRIMERA_LIMPIEZA = 7;
@@ -29,6 +31,14 @@ const CLAVE_CONFIG = 'codecpos_retencion';
 const CLAVE_BITACORA = 'codecpos_retencion_bitacora';
 const CLAVE_BITACORA_PENDIENTE = 'codecpos_retencion_bitacora_pendiente';
 const DIA = 24 * 60 * 60 * 1000;
+const LOTE_BORRADO = 200;
+
+/** La limpieza es el día 1 de cada mes, siempre con la ventana completa de avisos. */
+function siguienteLimpieza(desde = new Date()): Date {
+  const primero = new Date(desde.getFullYear(), desde.getMonth() + 1, 1, 3);
+  if (primero.getTime() - desde.getTime() >= DIAS_PRIMERA_LIMPIEZA * DIA) return primero;
+  return new Date(desde.getFullYear(), desde.getMonth() + 2, 1, 3);
+}
 
 export type Franja = 'mañana' | 'tarde' | 'noche';
 export type TipoBitacora = 'aviso' | 'descarga' | 'limpieza' | 'carpeta_autorizada' | 'carpeta_retirada' | 'error';
@@ -43,6 +53,11 @@ export interface ConfigRetencion {
   ultimaDescarga?: string;
   /** Franjas en que ya se mostró el aviso: '2026-10-05|mañana'. */
   avisosMostrados: string[];
+  /** Desde cuándo se cuentan los 6 meses del primer aviso de facturas electrónicas. */
+  facturasDesde?: string;
+  ultimaDescargaFacturas?: string;
+  /** Día del último aviso de facturas: se avisa máximo una vez al día. */
+  avisoFacturasDia?: string;
 }
 
 export interface EntradaBitacora {
@@ -69,7 +84,7 @@ export function leerConfigRetencion(): ConfigRetencion {
   let c: Partial<ConfigRetencion> = {};
   try { c = JSON.parse(localStorage.getItem(CLAVE_CONFIG) || '{}') || {}; } catch { /* config dañada: se rehace */ }
   if (!c.proximaLimpieza || Number.isNaN(Date.parse(c.proximaLimpieza))) {
-    c.proximaLimpieza = new Date(Date.now() + DIAS_PRIMERA_LIMPIEZA * DIA).toISOString();
+    c.proximaLimpieza = siguienteLimpieza().toISOString();
     c.avisosMostrados = [];
     guardarConfig(c as ConfigRetencion);
   }
@@ -97,7 +112,7 @@ function claveFranja(fecha = new Date()): string {
 
 /** Fecha hasta la que se borra (lo anterior a esto) si la limpieza fuera hoy. */
 export function fechaCorte(limpieza = new Date()): Date {
-  return new Date(limpieza.getTime() - DIAS_EN_CAJA * DIA);
+  return new Date(limpieza.getFullYear(), limpieza.getMonth() - MESES_EN_CAJA, 1);
 }
 
 export function diasParaLimpieza(c = leerConfigRetencion()): number {
@@ -317,7 +332,7 @@ async function guardarEnCarpeta(carpeta: string, d: DatosAntiguos): Promise<{ ar
 
 /**
  * "Guardar ahora": guarda en la carpeta (la autorizada o una que se elige en
- * el momento) todo lo que tiene más de un mes. No borra nada.
+ * el momento) todo lo anterior al corte. No borra nada.
  */
 export async function guardarHistorialAhora(): Promise<{ carpeta: string; registros: number } | null> {
   const api = window.electron?.archivo;
@@ -340,9 +355,113 @@ export async function guardarHistorialAhora(): Promise<{ carpeta: string; regist
   return { carpeta, registros };
 }
 
+// ── Facturas electrónicas: 1 año en la nube, copia cada 6 meses ────────────
+
+export const MESES_FACTURAS_NUBE = 12;
+const DIAS_ENTRE_COPIAS_FACTURAS = 182;
+
+const diaLocal = (f: Date) => `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+
+/** ¿Pasaron 6 meses sin guardar copia y hoy aún no se ha avisado? */
+export function debeAvisarFacturas(c: ConfigRetencion, ahora = new Date()): boolean {
+  const base = Date.parse(c.ultimaDescargaFacturas || c.facturasDesde || '');
+  if (Number.isNaN(base) || ahora.getTime() - base < DIAS_ENTRE_COPIAS_FACTURAS * DIA) return false;
+  return c.avisoFacturasDia !== diaLocal(ahora);
+}
+
+async function leerDocumentos(tabla: string, columnas: string): Promise<any[]> {
+  const client = getSupabaseClient();
+  const clienteId = getLinkedClienteId();
+  if (!client || !clienteId) throw new Error('Esta caja no está conectada a la nube');
+  const filas: any[] = [];
+  for (let desde = 0; ; desde += 200) {
+    const { data, error } = await client.from(tabla).select(columnas).eq('cliente_id', clienteId)
+      .order('id', { ascending: true }).range(desde, desde + 199);
+    if (error) throw new Error(error.message);
+    filas.push(...(data || []));
+    if (!data || data.length < 200) return filas;
+  }
+}
+
+/**
+ * Guarda el XML de todas las facturas, notas y documentos de compra que siguen
+ * en la nube, con un índice para Excel. Si un archivo falla, lanza error y la
+ * copia no cuenta como hecha.
+ */
+export async function guardarFacturasElectronicas(): Promise<{ carpeta: string; documentos: number } | null> {
+  const api = window.electron?.archivo;
+  if (!api) throw new Error('Solo disponible en la caja (programa de escritorio)');
+  let carpeta = leerConfigRetencion().carpeta;
+  if (!carpeta) {
+    const r = await api.elegirCarpeta();
+    if (!r.ok || !r.carpeta) {
+      if (r.error) throw new Error(r.error);
+      return null;
+    }
+    carpeta = r.carpeta;
+  }
+  const notas = 'id, prefijo, numero_nota, cude, estado, fecha_emision, total, xml';
+  const [facturas, credito, debito, compras] = await Promise.all([
+    leerDocumentos('facturas_electronicas', 'id, numero_factura, cufe, estado, fecha_emision, cliente_nombre, total, xml'),
+    leerDocumentos('notas_credito_electronicas', notas),
+    leerDocumentos('notas_debito_electronicas', notas),
+    leerDocumentos('documentos_electronicos', 'id, numero_completo, cufe, estado, fecha_emision, emisor_nombre, total, xml'),
+  ]);
+  const todos = [
+    ...facturas.map((d) => ({ tipo: 'Factura', numero: d.numero_factura, codigo: d.cufe, tercero: d.cliente_nombre, ...d })),
+    ...credito.map((d) => ({ tipo: 'Nota credito', numero: `${d.prefijo || ''}${d.numero_nota}`, codigo: d.cude, tercero: '', ...d })),
+    ...debito.map((d) => ({ tipo: 'Nota debito', numero: `${d.prefijo || ''}${d.numero_nota}`, codigo: d.cude, tercero: '', ...d })),
+    ...compras.map((d) => ({ tipo: 'Compra', numero: d.numero_completo, codigo: d.cufe, tercero: d.emisor_nombre, ...d })),
+  ];
+  const subcarpeta = `Facturas electronicas ${diaLocal(new Date())}`;
+  const escribir = async (nombre: string, contenido: string) => {
+    const r = await api.guardar({ carpeta: carpeta as string, subcarpeta, nombre, contenido });
+    if (!r.ok) throw new Error(r.error || `No se pudo guardar ${nombre}`);
+  };
+  for (const d of todos) {
+    if (d.xml) await escribir(`${d.tipo} ${d.numero} ${String(d.id).slice(0, 8)}.xml`, d.xml);
+  }
+  await escribir('Indice.csv', csv([
+    ['Tipo', 'Número', 'Fecha', 'Tercero', 'Total', 'Estado', 'CUFE/CUDE'],
+    ...todos.map((d) => [d.tipo, d.numero, fechaCorta(d.fecha_emision), d.tercero, d.total, d.estado, d.codigo]),
+  ]));
+  guardarConfig({ ...leerConfigRetencion(), ultimaDescargaFacturas: new Date().toISOString() });
+  await registrarEnBitacora('descarga', { tipo: 'facturas_electronicas', carpeta, documentos: todos.length, subcarpeta });
+  return { carpeta, documentos: todos.length };
+}
+
+/**
+ * Cada 6 meses: con carpeta autorizada guarda la copia sola; sin carpeta (o si
+ * falla) avisa, una vez al día, hasta que se guarde.
+ */
+export async function revisarFacturasElectronicas(onAviso: (cantidad: number) => void): Promise<void> {
+  const c = leerConfigRetencion();
+  if (!c.facturasDesde) {
+    guardarConfig({ ...c, facturasDesde: new Date().toISOString() });
+    return;
+  }
+  if (!debeAvisarFacturas(c)) return;
+  const client = getSupabaseClient();
+  const clienteId = getLinkedClienteId();
+  if (!client || !clienteId || !navigator.onLine) return;
+  const { count, error } = await client.from('facturas_electronicas').select('id', { count: 'exact', head: true }).eq('cliente_id', clienteId);
+  if (error || !count) return;
+  if (c.carpeta) {
+    try {
+      await guardarFacturasElectronicas();
+      return;
+    } catch (e) {
+      await registrarEnBitacora('error', { motivo: 'No se pudo guardar la copia de facturas electrónicas', error: String((e as Error)?.message || e), carpeta: c.carpeta });
+    }
+  }
+  guardarConfig({ ...leerConfigRetencion(), avisoFacturasDia: diaLocal(new Date()) });
+  await registrarEnBitacora('aviso', { tipo: 'facturas_electronicas', documentos: count });
+  onAviso(count);
+}
+
 let limpiando = false;
 
-/** Guarda (si hay carpeta) y borra de la caja lo que tiene más de un mes. */
+/** Guarda (si hay carpeta) y borra de la caja lo anterior al corte. */
 export async function ejecutarLimpieza(): Promise<{ borrados: number; sinSubir: number } | null> {
   if (limpiando) return null;
   limpiando = true;
@@ -368,7 +487,12 @@ export async function ejecutarLimpieza(): Promise<{ borrados: number; sinSubir: 
       const actual = parseInt(localStorage.getItem('pos-ultima-factura') || '0') || 0;
       if (maxNumero > actual) localStorage.setItem('pos-ultima-factura', String(maxNumero));
 
-      await dbManager.deleteVentas(d.ventas.map((v) => v.id));
+      // Por tandas con pausas: la caja sigue atendiendo mientras se limpia.
+      const ids = d.ventas.map((v) => v.id);
+      for (let i = 0; i < ids.length; i += LOTE_BORRADO) {
+        await dbManager.deleteVentas(ids.slice(i, i + LOTE_BORRADO));
+        await new Promise((listo) => setTimeout(listo, 50));
+      }
       const fuera = (clave: string, borrar: any[]) => {
         if (borrar.length === 0) return;
         const ids = new Set(borrar.map((x) => x.id));
@@ -378,13 +502,13 @@ export async function ejecutarLimpieza(): Promise<{ borrados: number; sinSubir: 
       fuera('pos-cierres-caja', d.cierres);
       fuera('codecpos_devoluciones', d.devoluciones);
     }
-    await historicoService.limpiarDatosAntiguos(DIAS_EN_CAJA).catch(() => {});
+    await historicoService.limpiarDatosAntiguos(Math.ceil((Date.now() - Date.parse(d.corte)) / DIA)).catch(() => {});
 
     const ahora = new Date();
     guardarConfig({
       ...leerConfigRetencion(),
       ultimaLimpieza: ahora.toISOString(),
-      proximaLimpieza: new Date(ahora.getTime() + DIAS_EN_CAJA * DIA).toISOString(),
+      proximaLimpieza: siguienteLimpieza(ahora).toISOString(),
       avisosMostrados: [],
     });
     await registrarEnBitacora('limpieza', {
@@ -415,7 +539,11 @@ export function iniciarRetencionDatos(onAviso: () => void): () => void {
         await ejecutarLimpieza();
         return;
       }
-      if (debeAvisar(c)) onAviso();
+      if (debeAvisar(c)) {
+        // Sin nada que borrar no se interrumpe al cajero.
+        const d = await recolectarDatosAntiguos(fechaCorte(new Date(c.proximaLimpieza)));
+        if (d.ventas.length + d.gastos.length + d.cierres.length + d.devoluciones.length > 0) onAviso();
+      }
     } catch (e) {
       console.warn('[retención] revisión falló:', e);
     }

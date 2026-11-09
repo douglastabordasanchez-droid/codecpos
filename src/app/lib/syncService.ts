@@ -10,6 +10,7 @@
  */
 
 import { esOtraVenta } from './ventasPisadas';
+import { fechaCorte } from './retencionDatos';
 import { dbManager, Producto, Venta } from './indexedDB';
 import { getSupabaseClient } from './supabase/config';
 import { numeroVentaWeb } from './numeracionCaja';
@@ -1942,6 +1943,8 @@ class SyncService {
     for (const v of subidas) {
       const creadaNube = enNube.get(v.supabaseId as string);
       if (creadaNube && !esOtraVenta(creadaNube, v.createdAt)) continue;
+      // Más vieja que el corte y ya no está: la limpieza la borró, no otra caja.
+      if (!creadaNube && new Date(v.createdAt).getTime() < fechaCorte().getTime()) continue;
       await dbManager.marcarVentaPendiente({ ...v, supabaseId: undefined });
       pisadas++;
     }
@@ -2356,6 +2359,42 @@ export async function desactivarProductoEnNube(localId: string): Promise<void> {
   } catch (e) {
     console.warn('[sync] No se pudo desactivar el producto en la nube (quedará desactualizado hasta reconectar):', e);
   }
+}
+
+export interface ProductoSinMovimiento {
+  id: string;
+  local_id: string | null;
+  nombre: string;
+  codigo_barras: string | null;
+  stock: number;
+  precio_venta: number;
+  creado: string;
+}
+
+/** Productos sin ventas en todo el periodo guardado. Solo los lista. */
+export async function listarProductosSinMovimiento(): Promise<ProductoSinMovimiento[]> {
+  const client = getSupabaseClient();
+  if (!client || !getLinkedClienteId()) throw new Error('Esta caja no está conectada a la nube');
+  const { data, error } = await client.rpc('productos_sin_movimiento');
+  if (error) throw new Error(error.message);
+  return (data || []) as ProductoSinMovimiento[];
+}
+
+/** Elimina los que el dueño marcó. Primero la nube: si falla, no se quita nada de la caja. */
+export async function eliminarProductosSinMovimiento(productos: ProductoSinMovimiento[]): Promise<void> {
+  const client = getSupabaseClient();
+  const clienteId = getLinkedClienteId();
+  if (!client || !clienteId) throw new Error('Esta caja no está conectada a la nube');
+  const idsNube = productos.map((p) => p.id);
+  for (let i = 0; i < idsNube.length; i += 100) {
+    const { error } = await client.from('productos').update({ activo: false, updated_at: new Date().toISOString() })
+      .eq('cliente_id', clienteId).in('id', idsNube.slice(i, i + 100));
+    if (error) throw new Error(error.message);
+  }
+  await quitarProductosLocales(
+    new Set(productos.map((p) => p.local_id).filter(Boolean) as string[]),
+    new Set(idsNube),
+  );
 }
 
 /**

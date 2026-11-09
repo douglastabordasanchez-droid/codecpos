@@ -1285,7 +1285,7 @@ export default function CierreCajaPage() {
                 ⚠️ Aviso importante de contabilidad
               </p>
               <p className={`text-sm ${darkMode ? 'text-amber-200' : 'text-amber-700'}`}>
-                Este computador guarda el último mes (lo anterior sigue en la nube). En Configuración › Respaldo puedes autorizar una carpeta para guardar una copia cada mes.
+                El sistema guarda el mes actual y los 5 anteriores; lo más viejo se borra definitivamente. En Configuración › Respaldo puedes autorizar una carpeta para guardar una copia cada mes.
               </p>
             </div>
             <Button

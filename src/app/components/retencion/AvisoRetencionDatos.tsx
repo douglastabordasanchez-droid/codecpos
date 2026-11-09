@@ -7,9 +7,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CalendarClock, FolderCheck, FolderDown, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { sugerirProductosSinMovimiento } from './ProductosSinMovimiento';
 import {
-  autorizarCarpeta, diasParaLimpieza, fechaCorte, guardarHistorialAhora, iniciarRetencionDatos,
-  leerConfigRetencion, marcarAvisoMostrado, DIAS_EN_CAJA,
+  autorizarCarpeta, diasParaLimpieza, fechaCorte, guardarFacturasElectronicas, guardarHistorialAhora, iniciarRetencionDatos,
+  leerConfigRetencion, marcarAvisoMostrado, revisarFacturasElectronicas, MESES_EN_CAJA, MESES_FACTURAS_NUBE,
 } from '../../lib/retencionDatos';
 
 const fechaLarga = (d: Date) => d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -20,6 +21,25 @@ export function AvisoRetencionDatos() {
   const [config, setConfig] = useState(leerConfigRetencion);
 
   useEffect(() => iniciarRetencionDatos(() => setVisible(true)), []);
+  useEffect(() => sugerirProductosSinMovimiento(), []);
+
+  // Facturas electrónicas: aviso discreto, sin interrumpir la venta.
+  useEffect(() => {
+    const revisar = () => revisarFacturasElectronicas((cantidad) => {
+      toast.warning('Guarda una copia de tus facturas electrónicas', {
+        description: `Tienes ${cantidad}. En la nube duran ${MESES_FACTURAS_NUBE} meses y luego se borran; guárdalas en una carpeta o una memoria cada 6 meses.`,
+        duration: 30000,
+        action: { label: 'Guardar ahora', onClick: () => {
+          guardarFacturasElectronicas()
+            .then((r) => { if (r) toast.success('Facturas guardadas', { description: `${r.documentos} documentos en ${r.carpeta}` }); })
+            .catch((e) => toast.error('No se pudieron guardar las facturas', { description: e?.message }));
+        } },
+      });
+    }).catch((e) => console.warn('[retención] revisión de facturas falló:', e));
+    const primera = window.setTimeout(revisar, 240_000);
+    const intervalo = window.setInterval(revisar, 6 * 60 * 60_000);
+    return () => { clearTimeout(primera); clearInterval(intervalo); };
+  }, []);
 
   useEffect(() => {
     const alCambiar = () => setConfig(leerConfigRetencion());
@@ -82,12 +102,12 @@ export function AvisoRetencionDatos() {
 
         <div className="p-5 space-y-3 text-sm text-slate-300">
           <p>
-            Para que la caja siga rápida, CODEC POS guarda en este computador solo el último mes. Ese día se borrarán de aquí
-            las <strong className="text-white">ventas, facturas, gastos, cierres y devoluciones anteriores al {corte.toLocaleDateString('es-CO')}</strong>.
+            Para que el sistema siga rápido, CODEC POS guarda el mes actual y los {MESES_EN_CAJA} meses anteriores. Se borrarán definitivamente,
+            de este computador y de la nube, las <strong className="text-white">ventas, gastos, cierres y devoluciones anteriores al {corte.toLocaleDateString('es-CO')}</strong>.
           </p>
           <p>
-            Tus productos, precios, clientes y configuración <strong className="text-white">no se borran</strong>. Lo que tenga más de {DIAS_EN_CAJA} días
-            sigue guardado en la nube y lo puedes consultar desde la web. Lo que aún no se haya subido a la nube no se borra.
+            Tus usuarios, contraseñas, productos, precios, clientes, configuración y cartera abierta <strong className="text-white">no se borran</strong>.
+            Las facturas electrónicas duran {MESES_FACTURAS_NUBE} meses en la nube: guárdalas en una carpeta cada 6 meses. Lo que aún no se haya subido a la nube se queda en esta caja.
           </p>
           {config.carpeta ? (
             <div className="flex items-start gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 text-emerald-300">

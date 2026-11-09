@@ -8,8 +8,9 @@ import { CalendarClock, FolderCheck, FolderDown, FolderOpen, FolderX, Loader2 } 
 import { toast } from 'sonner';
 import {
   abrirCarpeta, autorizarCarpeta, diasParaLimpieza, fechaCorte, guardarHistorialAhora, hayCarpetaDisponible,
-  leerBitacoraLocal, leerConfigRetencion, retirarCarpeta, DIAS_AVISO, DIAS_EN_CAJA, type EntradaBitacora,
+  guardarFacturasElectronicas, leerBitacoraLocal, leerConfigRetencion, retirarCarpeta, DIAS_AVISO, MESES_EN_CAJA, MESES_FACTURAS_NUBE, type EntradaBitacora,
 } from '../../lib/retencionDatos';
+import { ProductosSinMovimientoCard } from './ProductosSinMovimiento';
 
 const ETIQUETA: Record<EntradaBitacora['tipo'], string> = {
   aviso: 'Aviso mostrado',
@@ -57,8 +58,9 @@ export function ArchivoHistorialCard({ darkMode = true }: { darkMode?: boolean }
       <div>
         <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Historial en este computador</h3>
         <p className={`text-sm ${texto}`}>
-          Para que la caja sea rápida, aquí se guarda solo el último mes de ventas, gastos, cierres y devoluciones ({DIAS_EN_CAJA} días).
-          Lo anterior sigue en la nube. Se avisa {DIAS_AVISO} días antes, tres veces al día.
+          Para que el sistema sea rápido se guardan el mes actual y los {MESES_EN_CAJA} anteriores de ventas, gastos, cierres y devoluciones.
+          Lo anterior se borra definitivamente, de aquí y de la nube. Se avisa {DIAS_AVISO} días antes, tres veces al día.
+          Las facturas electrónicas duran {MESES_FACTURAS_NUBE} meses en la nube: guarda una copia cada 6 meses.
         </p>
       </div>
 
@@ -75,7 +77,7 @@ export function ArchivoHistorialCard({ darkMode = true }: { darkMode?: boolean }
           <>Cada mes se guarda una copia antes de borrar en <strong className="break-all">{config.carpeta}</strong>
             {config.autorizadaEn && <> (autorizada por {config.autorizadaPor} el {new Date(config.autorizadaEn).toLocaleDateString('es-CO')})</>}.</>
         ) : (
-          <>No hay carpeta autorizada: la limpieza borra de la caja sin guardar copia en el computador (la nube conserva todo).</>
+          <>No hay carpeta autorizada: la limpieza borra lo viejo sin guardar ninguna copia.</>
         )}
       </div>
 
@@ -85,6 +87,10 @@ export function ArchivoHistorialCard({ darkMode = true }: { darkMode?: boolean }
         </button>
         <button onClick={() => accion('guardar', guardarHistorialAhora, 'Copia guardada')} disabled={!!ocupado} className={`${boton} bg-amber-500 hover:bg-amber-600 text-slate-950`}>
           {ocupado === 'guardar' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderDown className="w-4 h-4" />} Guardar copia ahora
+        </button>
+        <button onClick={() => accion('facturas', guardarFacturasElectronicas, 'Facturas electrónicas guardadas')} disabled={!!ocupado} className={`${boton} col-span-2 bg-sky-600 hover:bg-sky-700 text-white`}>
+          {ocupado === 'facturas' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderDown className="w-4 h-4" />} Guardar facturas electrónicas
+          {config.ultimaDescargaFacturas && <span className="font-normal opacity-80">(última: {new Date(config.ultimaDescargaFacturas).toLocaleDateString('es-CO')})</span>}
         </button>
         {config.carpeta && (
           <>
@@ -97,6 +103,8 @@ export function ArchivoHistorialCard({ darkMode = true }: { darkMode?: boolean }
           </>
         )}
       </div>
+
+      <ProductosSinMovimientoCard darkMode={darkMode} />
 
       {bitacora.length > 0 && (
         <div>
