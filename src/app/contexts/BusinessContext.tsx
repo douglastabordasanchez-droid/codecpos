@@ -83,14 +83,27 @@ function hayCambioPorSubir(clienteId: string): boolean {
   try { return localStorage.getItem(POR_SUBIR_KEY) === clienteId; } catch { return false; }
 }
 
-async function subirANube(c: BusinessConfig): Promise<boolean> {
+/**
+ * La propina y el cambio de precio son de cada Electron: se activan aquí y no
+ * viajan a la web ni bajan de ella (en la web se activan a mano). La función
+ * de la nube los pide, así que se le devuelven los que ya tiene.
+ */
+async function subirANube(c: BusinessConfig, clienteId: string): Promise<boolean> {
   try {
-    const { error } = await getSupabaseClient()!.rpc('actualizar_mi_negocio', {
+    const client = getSupabaseClient()!;
+    const { data: nube, error: errorLectura } = await client
+      .from('clientes_pos')
+      .select('propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio')
+      .eq('id', clienteId)
+      .single();
+    if (errorLectura) throw new Error(errorLectura.message);
+    const d = nube as Record<string, any>;
+    const { error } = await client.rpc('actualizar_mi_negocio', {
       p_tipo_negocio: c.tipoNegocio,
       p_nombre_negocio: c.nombreNegocio || 'Mi Negocio',
-      p_propina_activa: c.propinaActiva,
-      p_porcentaje_propina: c.porcentajePropinaPredeterminado,
-      p_permitir_modificar_precio: c.permitirModificarPrecio,
+      p_propina_activa: d.propina_activa === true,
+      p_porcentaje_propina: Math.max(0, Number(d.porcentaje_propina_predeterminado) || 0),
+      p_permitir_modificar_precio: d.permitir_modificar_precio === true,
     });
     if (error) console.warn('[BusinessContext] No se pudo sincronizar Mi negocio a la nube:', error.message);
     return !error;
@@ -115,14 +128,14 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       if (!isLinked() || !clienteId) return;
       const edicion = edicionRef.current;
       if (hayCambioPorSubir(clienteId)) {
-        if (!(await subirANube(configRef.current))) return;
+        if (!(await subirANube(configRef.current, clienteId))) return;
         if (edicionRef.current !== edicion) return;
         localStorage.removeItem(POR_SUBIR_KEY);
       }
       const client = getSupabaseClient();
       const { data, error } = await client!
         .from('clientes_pos')
-        .select('tipo_negocio, nombre_negocio, propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio, modulos_ocultos')
+        .select('tipo_negocio, nombre_negocio, modulos_ocultos')
         .eq('id', clienteId)
         .maybeSingle();
       if (error || !data || edicionRef.current !== edicion) return;
@@ -131,9 +144,9 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       const nube: BusinessConfig = {
         tipoNegocio: d.tipo_negocio ? normalizarTipoNegocio(d.tipo_negocio) : actual.tipoNegocio,
         nombreNegocio: d.nombre_negocio || actual.nombreNegocio,
-        propinaActiva: d.propina_activa === true,
-        porcentajePropinaPredeterminado: Math.max(0, Number(d.porcentaje_propina_predeterminado) || 0),
-        permitirModificarPrecio: d.permitir_modificar_precio === true,
+        propinaActiva: actual.propinaActiva,
+        porcentajePropinaPredeterminado: actual.porcentajePropinaPredeterminado,
+        permitirModificarPrecio: actual.permitirModificarPrecio,
         modulosOcultos: Array.isArray(d.modulos_ocultos) ? d.modulos_ocultos : [],
       };
       if (JSON.stringify(nube) !== JSON.stringify(actual)) {
@@ -163,7 +176,7 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     if (cambio && isLinked() && clienteId) {
       const edicion = edicionRef.current;
       try { localStorage.setItem(POR_SUBIR_KEY, clienteId); } catch { /* storage full */ }
-      subirANube(newConfig).then((ok) => {
+      subirANube(newConfig, clienteId).then((ok) => {
         if (ok && edicionRef.current === edicion) localStorage.removeItem(POR_SUBIR_KEY);
       });
     }
