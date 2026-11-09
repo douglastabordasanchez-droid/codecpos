@@ -169,6 +169,82 @@ function productoFueEliminadoRecientemente(localId: string | undefined | null): 
   return localId in leerTombstonesProductos();
 }
 
+/** Para el importador: un id que se acaba de eliminar no se reutiliza (el producto entra como nuevo). */
+export function idProductoEliminado(localId: string | undefined | null): boolean {
+  return productoFueEliminadoRecientemente(localId);
+}
+
+function marcarProductosComoEliminados(ids: Iterable<string>): void {
+  try {
+    const mapa = leerTombstonesProductos();
+    const ahora = Date.now();
+    for (const id of ids) if (id) mapa[id] = ahora;
+    localStorage.setItem(LS_TOMBSTONES_PRODUCTOS, JSON.stringify(mapa));
+  } catch { /* no crítico */ }
+}
+
+/**
+ * 🗑️ "Borrar todo el inventario" tiene que borrar de verdad (Coman
+ * Streetwear, 2026-11-05: lo borrado volvía a aparecer a los minutos).
+ *
+ *  - LS_VACIADO_EN: cuándo se vació en este computador. Ninguna fila de la
+ *    nube anterior a ese momento vuelve a bajar, aunque pasen las 24 h de
+ *    las lápidas.
+ *  - LS_VACIADO_NUBE: trabajo pendiente en la nube; se reintenta en cada
+ *    ciclo hasta que termina (antes era un UPDATE sin revisar el error: si
+ *    fallaba, todo seguía activo allá y bajaba otra vez).
+ *    Fase 1: desactiva todo (los otros computadores y la web lo quitan).
+ *    Fase 2 (10 min después, para que los demás alcancen a enterarse): borra
+ *    del todo las filas que ninguna venta o devolución usa. Las que sí se
+ *    usaron quedan inactivas, con stock 0, solo para el historial.
+ */
+const LS_VACIADO_EN = 'codecpos_inventario_vaciado_en';
+const LS_VACIADO_NUBE = 'codecpos_vaciado_nube_pendiente';
+const ESPERA_BORRADO_FISICO_MS = 10 * 60 * 1000;
+
+interface VaciadoNube { en: string; desactivadoEn?: string; /** ids locales borrados: una subida que estaba en vuelo pudo dejar alguno activo */ ids?: string[] }
+
+function inventarioVaciadoEn(): number {
+  try { return Date.parse(localStorage.getItem(LS_VACIADO_EN) || '') || 0; } catch { return 0; }
+}
+
+function leerVaciadoNube(): VaciadoNube | null {
+  try { const raw = localStorage.getItem(LS_VACIADO_NUBE); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+
+/** Quita productos de este computador (caja e IndexedDB) por id local o id de la nube, y les pone lápida. */
+async function quitarProductosLocales(ids: Set<string>, idsNube: Set<string>): Promise<void> {
+  if (ids.size === 0 && idsNube.size === 0) return;
+  const quitados = new Set<string>(ids);
+  let cambio = false;
+  try {
+    const lista: any[] = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+    if (Array.isArray(lista)) {
+      const mapa: Record<string, string> = (await dbManager.getConfig('productosIdMap')) || {};
+      const quedan = lista.filter((p) => {
+        const fuera = ids.has(p?.id) || (p?.supabaseId && idsNube.has(p.supabaseId)) || (mapa[p?.id] && idsNube.has(mapa[p.id]));
+        if (fuera) quitados.add(p.id);
+        return !fuera;
+      });
+      if (quedan.length !== lista.length) { localStorage.setItem('pos-productos', JSON.stringify(quedan)); cambio = true; }
+    }
+  } catch { /* no crítico */ }
+  try {
+    for (const p of await dbManager.getAllProductos()) {
+      if (quitados.has(p.id) || (p.supabaseId && idsNube.has(p.supabaseId))) {
+        quitados.add(p.id);
+        cambio = true;
+        await dbManager.deleteProducto(p.id).catch(() => {});
+      }
+    }
+  } catch { /* no crítico */ }
+  marcarProductosComoEliminados(quitados);
+  quitados.forEach((id) => quitarDeAlimentosBebidas(id));
+  if (cambio) {
+    window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
+  }
+}
+
 /**
  * 🛡️ Hallazgo (verificado en vivo con stack trace): el módulo "Alimentos y
  * Bebidas" guarda su PROPIO catálogo aparte en `codecpos_panaderia_prods` —
@@ -445,6 +521,12 @@ class SyncService {
         (payload) => {
           // Pocos cambios (una edición en la web) se aplican uno por uno al instante; una
           // importación de miles se baja en lote con el paso normal (una sola escritura).
+          // Fila borrada del todo en la nube (vaciado de inventario): se quita aquí también.
+          if ((payload as any).eventType === 'DELETE') {
+            const idNube = (payload.old as any)?.id;
+            if (idNube) quitarProductosLocales(new Set(), new Set([idNube])).catch(() => {});
+            return;
+          }
           this.cambiosProductos.push((payload.new ?? payload.old) as any);
           if (this.esperaCambiosProductos) return;
           this.esperaCambiosProductos = window.setTimeout(() => {
@@ -581,7 +663,8 @@ class SyncService {
       ['push_cartera', () => this.pushCarteraPendiente(client, clienteId)],
       ['push_heartbeat', () => this.pushSesionActivaHeartbeat(client, clienteId)],
     ];
-    const pasos = [
+    const pasos: Array<[string, () => Promise<void>]> = [
+      ['vaciar_inventario_nube', () => this.vaciarInventarioNube(client, clienteId)],
       ...(opciones.bajada === 'todo' ? pasosBajada : pasosBajada.filter(([nombre]) => (opciones.bajada as string[]).includes(nombre))),
       ...(opciones.subida ? pasosSubida : []),
     ];
@@ -641,10 +724,12 @@ class SyncService {
     // lecturas del inventario entero).
     const productosLocales = (data || []).length > 0 ? await dbManager.getAllProductos() : [];
     const indice = indiceProductos(productosLocales);
+    const quitar = { ids: new Set<string>(), idsNube: new Set<string>() };
     for (const remote of data || []) {
-      const actualizado = await this.aplicarCambioRemotoProducto(remote, { skipLocalStorageSync: true, productosLocales, indice });
+      const actualizado = await this.aplicarCambioRemotoProducto(remote, { skipLocalStorageSync: true, productosLocales, indice, quitar });
       if (actualizado) actualizados.push(actualizado);
     }
+    await quitarProductosLocales(quitar.ids, quitar.idsNube);
     if (actualizados.length > 0) {
       sincronizarProductosEnLocalStorageBatch(actualizados);
       console.log('[SYNC] productos-sincronizados dispatch (pull batch)', actualizados.length, performance.now());
@@ -656,9 +741,24 @@ class SyncService {
 
   private async aplicarCambioRemotoProducto(
     remote: any,
-    opts?: { skipLocalStorageSync?: boolean; productosLocales?: Producto[]; indice?: Map<string, number> }
+    opts?: { skipLocalStorageSync?: boolean; productosLocales?: Producto[]; indice?: Map<string, number>; quitar?: { ids: Set<string>; idsNube: Set<string> } }
   ): Promise<Producto | null> {
-    if (!remote) return null;
+    if (!remote || !remote.id) return null;
+
+    // 🗑️ Desactivado en la nube = eliminado (así borra la web, y así vacía el
+    // inventario la caja). Antes el producto se quedaba aquí con activo:false
+    // y la pantalla de inventario lo seguía mostrando.
+    if (remote.activo === false) {
+      const ids = new Set<string>(remote.local_id ? [remote.local_id] : []);
+      const idsNube = new Set<string>([remote.id]);
+      if (opts?.quitar) {
+        ids.forEach((id) => opts.quitar!.ids.add(id));
+        opts.quitar.idsNube.add(remote.id);
+      } else {
+        await quitarProductosLocales(ids, idsNube);
+      }
+      return null;
+    }
 
     const productos = opts?.productosLocales ?? await dbManager.getAllProductos();
     // Con índice (lotes grandes) se busca directo; recorrer 20.000 productos por cada uno era cuadrático.
@@ -752,7 +852,10 @@ class SyncService {
       // carrera donde el pull/Realtime llega ANTES de que el UPDATE remoto
       // termine de aplicarse -- en ese instante `remote.activo` todavía es
       // `true`, así que solo el check de `remote.activo` no bastaba.
-      if (remote.activo === false || productoFueEliminadoRecientemente(nuevoId)) return null;
+      if (productoFueEliminadoRecientemente(nuevoId)) return null;
+      // Lo que ya estaba en la nube cuando se vació el inventario aquí no vuelve a bajar.
+      const vaciadoEn = inventarioVaciadoEn();
+      if (vaciadoEn && remoteUpdatedAt <= vaciadoEn) return null;
       const producto: Producto = {
         id: nuevoId,
         codigo: remote.codigo_barras || '',
@@ -1313,7 +1416,7 @@ class SyncService {
   private async pushProductosPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
     // ⚡ Antes escaneaba TODA la tabla (getAllProductos) para filtrar
     // 'pending' en JS, cada 30s — el índice 'syncStatus' ya existe, úsalo.
-    const pendientes = await dbManager.getProductosPendientes();
+    const pendientes = (await dbManager.getProductosPendientes()).filter((p) => !productoFueEliminadoRecientemente(p.id));
     if (pendientes.length === 0) return;
 
     await subirAjustesManualesStock(client, pendientes as any);
@@ -1404,7 +1507,8 @@ class SyncService {
       ]);
 
     const hashesPrevios: Record<string, string> = (await dbManager.getConfig('productosPushHash')) || {};
-    const pendientes = productos.filter((p) => p?.id && firma(p) !== hashesPrevios[p.id]);
+    const vaciadoAlEmpezar = inventarioVaciadoEn();
+    const pendientes = productos.filter((p) => p?.id && firma(p) !== hashesPrevios[p.id] && !productoFueEliminadoRecientemente(p.id));
     if (pendientes.length === 0) {
       this.ultimoRawProductosSinPendientes = rawProductos;
       return;
@@ -1425,6 +1529,11 @@ class SyncService {
     await subirAjustesManualesStock(client, pendientes.map((p: any) => ({ ...p, supabaseId: p.supabaseId || mapaIdSupabase[p.id] })));
 
     for (const p of pendientes) {
+      // 🛡️ Se vació el inventario o se eliminó este producto mientras se
+      // subía la lista (100 productos tardan varios segundos): no se sube
+      // más nada de esta foto vieja.
+      if (inventarioVaciadoEn() !== vaciadoAlEmpezar) return;
+      if (productoFueEliminadoRecientemente(p.id)) continue;
       // Un producto bajado de la nube (creado en la web o importado allá) no
       // tiene local_id en Supabase: el upsert por (cliente_id, local_id)
       // creaba una fila duplicada en vez de actualizar la suya.
@@ -1493,7 +1602,17 @@ class SyncService {
       if (filaSubida?.id) mapaIdSupabase[p.id] = filaSubida.id;
     }
 
-    localStorage.setItem('pos-productos', JSON.stringify(productos));
+    // 🛡️ Antes se escribía de vuelta la lista leída al EMPEZAR: si en esos
+    // segundos se borraba todo (o se vendía), la foto vieja lo revivía. Ahora
+    // solo se marca como subido lo que sigue existiendo en la lista actual.
+    if (inventarioVaciadoEn() !== vaciadoAlEmpezar) return;
+    try {
+      const actuales: any[] = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+      const subidos = new Set(pendientes.filter((p: any) => p._supabaseSynced).map((p: any) => p.id));
+      let cambio = false;
+      for (const a of actuales) if (a && subidos.has(a.id) && !a._supabaseSynced) { a._supabaseSynced = true; cambio = true; }
+      if (cambio) localStorage.setItem('pos-productos', JSON.stringify(actuales));
+    } catch { /* no crítico */ }
     await dbManager.setConfig('productosPushHash', hashesNuevos);
     await dbManager.setConfig('productosIdMap', mapaIdSupabase);
     await dbManager.addLog('push_productos_local', `${pendientes.length} productos (inventario local) subidos`);
@@ -1604,6 +1723,70 @@ class SyncService {
 
     localStorage.setItem('codecpos_devoluciones', JSON.stringify(devoluciones));
     await dbManager.addLog('push_devoluciones_local', `${pendientes.length} devoluciones subidas`);
+  }
+
+  /** Trabajo pendiente de "Borrar todo el inventario" en la nube (ver LS_VACIADO_NUBE). */
+  async vaciarInventarioNube(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
+    const trabajo = leerVaciadoNube();
+    if (!trabajo) return;
+
+    if (!trabajo.desactivadoEn) {
+      const marca = new Date().toISOString();
+      const { error } = await client.from('productos').update({ activo: false, stock: 0, updated_at: marca })
+        .eq('cliente_id', clienteId).lte('updated_at', trabajo.en);
+      if (error) throw new Error(`No se pudo vaciar el inventario en la nube: ${error.message}`);
+      // Lo que estaba activo y ya tenía una fecha posterior (reloj de otra caja adelantado) también sale.
+      const r2 = await client.from('productos').update({ activo: false, stock: 0, updated_at: marca })
+        .eq('cliente_id', clienteId).eq('activo', true).lte('created_at', trabajo.en);
+      if (r2.error) throw new Error(`No se pudo vaciar el inventario en la nube: ${r2.error.message}`);
+      localStorage.setItem(LS_VACIADO_NUBE, JSON.stringify({ ...trabajo, desactivadoEn: marca }));
+      await dbManager.addLog('vaciar_inventario', 'Inventario desactivado en la nube');
+      return;
+    }
+
+    if (Date.now() - Date.parse(trabajo.desactivadoEn) < ESPERA_BORRADO_FISICO_MS) return;
+
+    // Una subida que iba en vuelo al borrar pudo dejar alguno activo: se desactiva por su id local.
+    const idsLocales = trabajo.ids || [];
+    for (let i = 0; i < idsLocales.length; i += 200) {
+      const { error } = await client.from('productos').update({ activo: false, stock: 0, updated_at: trabajo.desactivadoEn })
+        .eq('cliente_id', clienteId).eq('activo', true).in('local_id', idsLocales.slice(i, i + 200));
+      if (error) throw new Error(error.message);
+    }
+
+    // Fase 2: borrar del todo lo que ninguna venta ni devolución usa.
+    const ids: string[] = [];
+    for (let desde = 0; ; desde += 1000) {
+      const { data, error } = await client.from('productos').select('id').eq('cliente_id', clienteId)
+        .eq('activo', false).lte('updated_at', trabajo.desactivadoEn).order('id', { ascending: true }).range(desde, desde + 999);
+      if (error) throw new Error(error.message);
+      ids.push(...((data || []) as Array<{ id: string }>).map((r) => r.id));
+      if (!data || data.length < 1000) break;
+    }
+    let borrados = 0;
+    let conservados = 0;
+    for (let i = 0; i < ids.length; i += 100) {
+      const lote = ids.slice(i, i + 100);
+      const usados = new Set<string>();
+      for (const tabla of ['venta_items', 'devolucion_items']) {
+        const { data, error } = await client.from(tabla).select('producto_id').in('producto_id', lote);
+        if (error) throw new Error(error.message);
+        for (const r of (data || []) as Array<{ producto_id: string }>) usados.add(r.producto_id);
+      }
+      const libres = lote.filter((id) => !usados.has(id));
+      conservados += lote.length - libres.length;
+      if (libres.length === 0) continue;
+      const { error } = await client.from('productos').delete().eq('cliente_id', clienteId).in('id', libres);
+      if (error) {
+        // Alguna tabla nueva que apunte al producto: esas filas quedan inactivas, no se bloquea el resto.
+        console.warn('[sync] No se pudieron borrar del todo algunos productos (quedan inactivos):', error.message);
+        conservados += libres.length;
+        continue;
+      }
+      borrados += libres.length;
+    }
+    localStorage.removeItem(LS_VACIADO_NUBE);
+    await dbManager.addLog('vaciar_inventario', `Nube: ${borrados} productos borrados del todo; ${conservados} quedan inactivos porque tienen ventas o devoluciones`);
   }
 
   private async pushVentasPendientes(client: NonNullable<ReturnType<typeof getSupabaseClient>>, clienteId: string): Promise<void> {
@@ -2175,25 +2358,41 @@ export async function desactivarProductoEnNube(localId: string): Promise<void> {
   }
 }
 
-/** "Vaciar inventario" — desactiva TODO lo del negocio en Supabase de una vez. */
+/**
+ * "Borrar todo el inventario": se borra de este computador al instante y
+ * queda un trabajo en la nube que se reintenta hasta terminar (ver
+ * LS_VACIADO_NUBE). Las ventas, cierres y devoluciones NO se tocan.
+ */
 export async function desactivarTodosLosProductosEnNube(): Promise<void> {
+  const en = new Date().toISOString();
+  // Primero la marca: cualquier subida que esté en curso se detiene (ver pushProductosLocalStorage).
+  localStorage.setItem(LS_VACIADO_EN, en);
   vaciarCatalogoAlimentosBebidas();
 
+  const ids = new Set<string>();
+  try {
+    const lista = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+    if (Array.isArray(lista)) lista.forEach((p: any) => p?.id && ids.add(p.id));
+  } catch { /* no crítico */ }
   try {
     const locales = await dbManager.getAllProductos();
-    locales.forEach((p) => marcarProductoComoEliminado(p.id));
+    locales.forEach((p) => ids.add(p.id));
     await Promise.all(locales.map((p) => dbManager.deleteProducto(p.id).catch(() => {})));
   } catch { /* no crítico */ }
+  marcarProductosComoEliminados(ids);
+  localStorage.setItem(LS_VACIADO_NUBE, JSON.stringify({ en, ids: [...ids] } satisfies VaciadoNube));
+  localStorage.removeItem('pos-productos');
+  // Sin huella: las firmas de subida y los ids de la nube de lo borrado.
+  await dbManager.setConfig('productosPushHash', {}).catch(() => {});
+  await dbManager.setConfig('productosIdMap', {}).catch(() => {});
 
   const client = getSupabaseClient();
   const clienteId = getLinkedClienteId();
   if (!client || !clienteId) return;
-
   try {
-    await client.from('productos').update({ activo: false, updated_at: new Date().toISOString() })
-      .eq('cliente_id', clienteId);
+    await syncService.vaciarInventarioNube(client, clienteId);
   } catch (e) {
-    console.warn('[sync] No se pudo vaciar el inventario en la nube (quedará desactualizado hasta reconectar):', e);
+    console.warn('[sync] El vaciado en la nube queda pendiente; se reintenta en la próxima sincronización:', e);
   }
 }
 

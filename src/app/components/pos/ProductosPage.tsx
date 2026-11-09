@@ -290,16 +290,16 @@ export default function ProductosPage() {
     }
   };
 
-  const handleDeleteAll = () => {
+  const handleDeleteAll = async () => {
     try {
       console.log('🗑️ Eliminando todos los productos...');
+      setShowDeleteAllModal(false);
+      // Borra de este computador (caja, IndexedDB, Alimentos y Bebidas) y de
+      // la nube; si no hay internet, la nube se termina de borrar al volver.
+      await desactivarTodosLosProductosEnNube().catch(() => { localStorage.removeItem('pos-productos'); });
       localStorage.removeItem('pos-productos');
       setProductos([]);
       window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
-      setShowDeleteAllModal(false);
-
-      // 🛡️ Mismo fix que arriba, para el vaciado masivo.
-      desactivarTodosLosProductosEnNube().catch(() => {});
 
       toast.success('✅ Inventario vaciado');
       triggerRefresh();

@@ -30,6 +30,7 @@ import { TIPOS_NEGOCIO } from '../../../data/tipos-negocio';
 import { descargarPlantillaExcelArtesGraficas } from '../../lib/supabase/artesGraficasService';
 import { PLANTILLAS_PAPELERIA, descargarPlantillaPapeleria } from '../../lib/importers/papeleriaPinateriaTemplates';
 import { leerNumero } from '../../lib/importarProductos';
+import { idProductoEliminado } from '../../lib/syncService';
 
 /**
  * Artes Gráficas y Papelería y Piñatería son MÓDULOS (con sus propias
@@ -183,7 +184,14 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
         // DESPUÉS de Stock en todas las plantillas) pisaba headerMap.stock,
         // haciendo que el importador leyera el mínimo como si fuera el stock
         // real. Mismo patrón que el fix de nombre/tipoProducto arriba.
-        if ((normalized.includes('stock') || normalized.includes('cantidad') || normalized.includes('inventario')) && !normalized.includes('min')) headerMap.stock = index;
+        // 🛡️ FIX: "tipoInventario" contiene "inventario" y viene DESPUÉS de
+        // Stock en la plantilla exportada: pisaba headerMap.stock y el stock
+        // se leía de la columna con "directo" (NaN, luego 0). Coman
+        // Streetwear, 2026-11-05. Además una columna llamada exactamente
+        // "stock" gana siempre.
+        if ((normalized.includes('stock') || normalized.includes('cantidad') || normalized.includes('inventario'))
+          && !normalized.includes('min') && !normalized.includes('tipo')
+          && !(headerMap.stock !== undefined && headers[headerMap.stock].toLowerCase().trim() === 'stock')) headerMap.stock = index;
         if (normalized.includes('costo') || normalized.includes('cost')) headerMap.costo = index;
         if ((normalized.includes('precio') || normalized.includes('price') || normalized.includes('valor')) && !normalized.includes('porkilo') && !normalized.includes('porgramo')) headerMap.precio = index;
         if (normalized.includes('categoriaid') || normalized.includes('categoryid')) headerMap.categoriaId = index;
@@ -309,7 +317,11 @@ export function ImportMasivaCSV({ isOpen, onClose, onImportComplete }: ImportMas
 
           // Crear producto
           const producto = {
-            id: headerMap.id !== undefined ? values[headerMap.id]?.trim() || `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}` : `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`,
+            // Un id de un producto recién eliminado (Excel exportado antes de borrar) no se reutiliza: entra como nuevo.
+            id: (() => {
+              const delArchivo = headerMap.id !== undefined ? values[headerMap.id]?.trim() : '';
+              return delArchivo && !idProductoEliminado(delArchivo) ? delArchivo : `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+            })(),
             codigo,
             nombre,
             precio: precioFinal,
