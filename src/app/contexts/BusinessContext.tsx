@@ -71,10 +71,41 @@ function guardarLocal(c: BusinessConfig) {
   window.dispatchEvent(new CustomEvent('codec-business-changed', { detail: c }));
 }
 
+/**
+ * Cambio guardado en este computador que la nube todavía no aceptó (valor: el
+ * negocio al que pertenece). Mientras exista, lo de la nube no se aplica:
+ * antes la nube rechazaba o no recibía el cambio y, al volver a leerla, la
+ * propina y el cambio de precio se apagaban solos.
+ */
+const POR_SUBIR_KEY = 'codec_pos_config_negocio_por_subir';
+
+function hayCambioPorSubir(clienteId: string): boolean {
+  try { return localStorage.getItem(POR_SUBIR_KEY) === clienteId; } catch { return false; }
+}
+
+async function subirANube(c: BusinessConfig): Promise<boolean> {
+  try {
+    const { error } = await getSupabaseClient()!.rpc('actualizar_mi_negocio', {
+      p_tipo_negocio: c.tipoNegocio,
+      p_nombre_negocio: c.nombreNegocio || 'Mi Negocio',
+      p_propina_activa: c.propinaActiva,
+      p_porcentaje_propina: c.porcentajePropinaPredeterminado,
+      p_permitir_modificar_precio: c.permitirModificarPrecio,
+    });
+    if (error) console.warn('[BusinessContext] No se pudo sincronizar Mi negocio a la nube:', error.message);
+    return !error;
+  } catch (e) {
+    console.warn('[BusinessContext] No se pudo sincronizar Mi negocio a la nube:', e);
+    return false;
+  }
+}
+
 export function BusinessProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<BusinessConfig>(loadConfig);
   const configRef = useRef(config);
   configRef.current = config;
+  // Cada guardado local suma uno: una lectura o subida que empezó antes ya no vale.
+  const edicionRef = useRef(0);
 
   // "Mi negocio" también se puede configurar desde la web/celular: Electron lo
   // trae de la nube al abrir, al volver a la ventana y cada 2 minutos.
@@ -82,13 +113,19 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     const traer = async () => {
       const clienteId = getLinkedClienteId();
       if (!isLinked() || !clienteId) return;
+      const edicion = edicionRef.current;
+      if (hayCambioPorSubir(clienteId)) {
+        if (!(await subirANube(configRef.current))) return;
+        if (edicionRef.current !== edicion) return;
+        localStorage.removeItem(POR_SUBIR_KEY);
+      }
       const client = getSupabaseClient();
       const { data, error } = await client!
         .from('clientes_pos')
         .select('tipo_negocio, nombre_negocio, propina_activa, porcentaje_propina_predeterminado, permitir_modificar_precio, modulos_ocultos')
         .eq('id', clienteId)
         .maybeSingle();
-      if (error || !data) return;
+      if (error || !data || edicionRef.current !== edicion) return;
       const d = data as Record<string, any>;
       const actual = configRef.current;
       const nube: BusinessConfig = {
@@ -121,16 +158,13 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     // Se sube todo de una vez (misma función que usa la web/celular) para que
     // "Mi negocio" quede igual en todo el sistema. Best-effort: sin internet o
     // sin vincular, el cambio local igual queda.
-    if (cambio && isLinked()) {
-      const client = getSupabaseClient();
-      client?.rpc('actualizar_mi_negocio', {
-        p_tipo_negocio: newConfig.tipoNegocio,
-        p_nombre_negocio: newConfig.nombreNegocio || 'Mi Negocio',
-        p_propina_activa: newConfig.propinaActiva,
-        p_porcentaje_propina: newConfig.porcentajePropinaPredeterminado,
-        p_permitir_modificar_precio: newConfig.permitirModificarPrecio,
-      }).then(({ error }) => {
-        if (error) console.warn('[BusinessContext] No se pudo sincronizar Mi negocio a la nube:', error.message);
+    edicionRef.current += 1;
+    const clienteId = getLinkedClienteId();
+    if (cambio && isLinked() && clienteId) {
+      const edicion = edicionRef.current;
+      try { localStorage.setItem(POR_SUBIR_KEY, clienteId); } catch { /* storage full */ }
+      subirANube(newConfig).then((ok) => {
+        if (ok && edicionRef.current === edicion) localStorage.removeItem(POR_SUBIR_KEY);
       });
     }
   }, [config]);
