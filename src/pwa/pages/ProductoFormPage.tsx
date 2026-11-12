@@ -12,6 +12,7 @@ import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { soloAgregar } from '../lib/restriccionesEmpleado';
 import { obtenerCategoriasPorTipo, obtenerAtributosPorTipo, normalizarTipoNegocio } from '../../data/tipos-negocio';
 import { leerConfigIva } from '../../app/lib/dian/configIva';
+import { getSucursalActiva } from '../lib/sucursalActiva';
 
 const UNIDADES = ['unidad', 'kg', 'g', 'lb', 'l', 'ml', 'paquete'];
 const MAX_FOTOS = 6;
@@ -94,6 +95,13 @@ export default function ProductoFormPage() {
   const { empleado } = usePwaAuth();
   const esNuevo = id === 'nuevo';
   const sinPermisoDeEditar = !esNuevo && soloAgregar(empleado);
+  // 🏪 Misma sede que muestra Inventario: el stock que se ve y se edita es el de esa sede.
+  const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
+  const sede = (esAdmin ? getSucursalActiva()?.id : empleado?.tienda_id) || 'tienda_principal';
+  const enOtraSede = sede !== 'tienda_principal';
+  // Stock que tenía el producto al abrirlo: al guardar se manda la diferencia, así lo que
+  // se vendió mientras el formulario estaba abierto no se borra.
+  const stockAlAbrir = useRef(0);
 
   useEffect(() => {
     if (!sinPermisoDeEditar) return;
@@ -140,8 +148,15 @@ export default function ProductoFormPage() {
       .select('*')
       .eq('id', id)
       .single()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (data) {
+          let stock = Number(data.stock) || 0;
+          if (enOtraSede) {
+            const { data: fila } = await client!.from('tiendas_stock').select('cantidad')
+              .eq('cliente_id', data.cliente_id).eq('tienda_id', sede).eq('producto_id', data.id).maybeSingle();
+            stock = Number(fila?.cantidad) || 0;
+          }
+          stockAlAbrir.current = stock;
           const fotos: string[] = Array.isArray(data.fotos_urls) && data.fotos_urls.length > 0
             ? data.fotos_urls
             : (data.foto_url ? [data.foto_url] : []);
@@ -151,7 +166,7 @@ export default function ProductoFormPage() {
             categoria: data.categoria || '',
             precio_venta: String(data.precio_venta ?? ''),
             costo: String(data.costo ?? ''),
-            stock: String(data.stock ?? ''),
+            stock: String(stock),
             stock_minimo: String(data.stock_minimo ?? ''),
             unidad: data.unidad || 'unidad',
             iva: String(data.iva ?? '0'),
@@ -298,7 +313,6 @@ export default function ProductoFormPage() {
       categoria: form.categoria.trim() || null,
       precio_venta: Number(form.precio_venta) || 0,
       costo: Number(form.costo) || 0,
-      stock: Number(form.stock) || 0,
       stock_minimo: form.stock_minimo ? Number(form.stock_minimo) : null,
       unidad: form.unidad,
       iva: Number(form.iva) || 0,
@@ -309,16 +323,31 @@ export default function ProductoFormPage() {
       updated_by: empleado.id,
     };
 
-    const { error } = esNuevo
-      ? await client.from('productos').insert(payload)
-      : await client.from('productos').update(payload).eq('id', id);
-
-    setGuardando(false);
+    const stockNuevo = Number(form.stock) || 0;
+    // Producto nuevo: nace con su stock en la principal; en otra sede nace en 0 y se le carga a ella.
+    const { data: guardado, error } = esNuevo
+      ? await client.from('productos').insert({ ...payload, stock: enOtraSede ? 0 : stockNuevo }).select('id').single()
+      : await client.from('productos').update(payload).eq('id', id).select('id').single();
 
     if (error) {
+      setGuardando(false);
       toast.error('No se pudo guardar', { description: error.message });
       return;
     }
+
+    // El stock va aparte, como diferencia y con su constancia en el kardex.
+    const diferencia = esNuevo ? (enOtraSede ? stockNuevo : 0) : stockNuevo - stockAlAbrir.current;
+    if (Math.abs(diferencia) > 0.0001 && guardado?.id) {
+      const { error: errorStock } = await client.rpc('ajustar_stock_producto', {
+        p_producto: guardado.id, p_tienda: sede, p_delta: diferencia, p_referencia: 'ajuste en la web',
+      });
+      if (errorStock) {
+        setGuardando(false);
+        toast.error('El producto se guardó pero el stock no', { description: errorStock.message });
+        return;
+      }
+    }
+    setGuardando(false);
 
     toast.success(esNuevo ? 'Producto creado' : 'Producto actualizado');
     navigate('/inventario', { replace: true });
@@ -453,7 +482,7 @@ export default function ProductoFormPage() {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-slate-400 text-xs">Stock</Label>
+            <Label className="text-slate-400 text-xs">{enOtraSede ? `Stock en ${getSucursalActiva()?.nombre || 'esta sede'}` : 'Stock'}</Label>
             <Input type="number" inputMode="numeric" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="h-12 bg-slate-900/70 border-slate-800 text-white" />
           </div>
           <div className="space-y-1.5">

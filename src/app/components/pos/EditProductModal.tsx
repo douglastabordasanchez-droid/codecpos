@@ -8,6 +8,8 @@ import { Label } from '../ui/label';
 import { toast } from 'sonner';
 import { TIPOS_NEGOCIO, obtenerCategoriasPorTipo, obtenerAtributosPorTipo, obtenerSugerenciaIVA } from '../../../data/tipos-negocio';
 import { useBusinessContext } from '../../contexts/BusinessContext';
+import { getTiendaActivaId, listarTiendas, getStockEnTienda, setStockEnTienda } from '../../lib/multitiendaService';
+import { ajustarStockSedeEnNube, multitiendaEnNube } from '../../lib/syncService';
 
 interface Producto {
   id: string;
@@ -77,8 +79,29 @@ export function EditProductModal({ darkMode, isOpen, product, onClose, onProduct
         }
         const index = productos.findIndex((p: Producto) => p.id === formData.id);
         if (index !== -1) {
-          productos[index] = { ...formData, codigo: codigoNuevo };
-          localStorage.setItem('pos-productos', JSON.stringify(productos));
+          // La lista de Productos trae el stock de la sede activa. Si no es la principal, lo
+          // escrito aquí es el stock de ESA sede: va a su mapa (y a la nube), y el de la
+          // principal se deja como estaba. Antes se guardaba encima del de la principal y
+          // la pantalla volvía a mostrar el de la sede: «lo cargo y me aparece en 0».
+          const { _stockOriginal, ...datos } = formData as Producto & { _stockOriginal?: number };
+          const sede = getTiendaActivaId();
+          const enOtraSede = !!sede && sede !== 'tienda_principal' && !listarTiendas().find((t) => t.id === sede)?.esPrincipal;
+          if (enOtraSede) {
+            const anteriorSede = getStockEnTienda(formData.id, sede);
+            const nuevoSede = Number(formData.stock) || 0;
+            productos[index] = { ...datos, codigo: codigoNuevo, stock: productos[index].stock };
+            localStorage.setItem('pos-productos', JSON.stringify(productos));
+            if (Math.abs(nuevoSede - anteriorSede) > 0.0001) {
+              setStockEnTienda(formData.id, sede, nuevoSede);
+              const enNube = await ajustarStockSedeEnNube(formData.id, sede, nuevoSede - anteriorSede);
+              if (multitiendaEnNube() && !enNube) {
+                toast.warning('El stock quedó solo en este computador', { description: 'No se pudo subir a la nube; revisa el internet y vuelve a guardarlo.' });
+              }
+            }
+          } else {
+            productos[index] = { ...datos, codigo: codigoNuevo };
+            localStorage.setItem('pos-productos', JSON.stringify(productos));
+          }
         }
       }
 

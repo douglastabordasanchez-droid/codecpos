@@ -270,9 +270,12 @@ export default function ProductosPage() {
       setDeletingId(productoId);
       console.log('🗑️ Eliminando producto:', productoId);
 
-      const updated = productos.filter(p => p.id !== productoId);
-      localStorage.setItem('pos-productos', JSON.stringify(updated));
-      setProductos(updated);
+      // Se borra sobre el catálogo guardado, no sobre la lista de la pantalla: con
+      // otra sede activa esa lista trae el stock de la sede y guardarla dejaba
+      // todo el inventario de la principal con esas cantidades (casi siempre 0).
+      const guardados: any[] = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+      localStorage.setItem('pos-productos', JSON.stringify(guardados.filter((p: any) => p.id !== productoId)));
+      setProductos(productos.filter(p => p.id !== productoId));
       window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
 
       // 🛡️ FIX: esto solo tocaba localStorage — la fila en Supabase se

@@ -103,11 +103,77 @@ async function subirAjustesManualesStock(
     const vendido = pendiente.get(p.id) || 0;
     const esperado = p.stockNube - vendido;
     const local = Number(p.stock) || 0;
-    return Math.abs(local - esperado) > 0.0001 ? [{ producto_id: p.supabaseId, cantidad: local + vendido }] : [];
+    const diferencia = local - esperado;
+    return Math.abs(diferencia) > 0.0001 ? [{ localId: p.id, producto_id: p.supabaseId, diferencia }] : [];
   });
   if (ajustes.length === 0) return;
-  const { error } = await client.rpc('cargar_stock_sede', { p_tienda: 'tienda_principal', p_items: ajustes, p_modo: 'fijar' });
+  // Se manda la DIFERENCIA, no la cantidad final: si mientras tanto otra caja, la web o
+  // el celular vendieron o cargaron, eso se conserva. Con la cantidad final ('fijar'),
+  // una caja que no se había puesto al día pisaba lo de las demás.
+  const { error } = await client.rpc('cargar_stock_sede', {
+    p_tienda: 'tienda_principal',
+    p_items: ajustes.map((a) => ({ producto_id: a.producto_id, cantidad: a.diferencia })),
+    p_modo: 'sumar',
+  });
   if (error) throw error;
+  await sumarAStockNubeLocal(new Map(ajustes.map((a) => [a.localId, a.diferencia])));
+}
+
+/**
+ * Tras subir un ajuste, el último stock conocido de la nube ya incluye esa diferencia:
+ * se anota en las dos copias del catálogo para no volver a mandarla en el siguiente ciclo.
+ */
+async function sumarAStockNubeLocal(diferencias: Map<string, number>): Promise<void> {
+  try {
+    const lista: any[] = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+    let cambio = false;
+    for (const p of Array.isArray(lista) ? lista : []) {
+      const d = p?.id ? diferencias.get(p.id) : undefined;
+      if (d !== undefined && typeof p.stockNube === 'number') { p.stockNube += d; cambio = true; }
+    }
+    if (cambio) localStorage.setItem('pos-productos', JSON.stringify(lista));
+  } catch { /* catálogo ilegible: el siguiente pull lo corrige */ }
+  for (const [id, d] of diferencias) {
+    try {
+      const p = await dbManager.getProducto(id);
+      if (p && typeof (p as any).stockNube === 'number') await dbManager.putProductoRaw({ ...p, stockNube: (p as any).stockNube + d } as Producto);
+    } catch { /* sin base local */ }
+  }
+}
+
+/** Id de la nube de un producto de la caja (lo guarda el catálogo, el mapa de subida o el prefijo remote-). */
+async function idNubeDeProducto(localId: string): Promise<string | null> {
+  try {
+    const lista: any[] = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+    const p = Array.isArray(lista) ? lista.find((x) => x?.id === localId) : null;
+    if (p?.supabaseId) return p.supabaseId;
+  } catch { /* sigue */ }
+  const mapa = (await dbManager.getConfig('productosIdMap')) as Record<string, string> | null;
+  if (mapa?.[localId]) return mapa[localId];
+  const enBase = await dbManager.getProducto(localId).catch(() => null);
+  if (enBase?.supabaseId) return enBase.supabaseId;
+  return localId.startsWith('remote-') ? localId.slice(7) : null;
+}
+
+/**
+ * Multitienda en la nube: cambia a mano el stock de un producto en una sede (la que no es
+ * la principal) sumando o restando la diferencia, con su constancia en el kardex. Devuelve
+ * false si no se pudo (sin internet, producto aún sin subir): el cambio queda solo en la caja.
+ */
+export async function ajustarStockSedeEnNube(localId: string, tiendaId: string, diferencia: number): Promise<boolean> {
+  if (!multitiendaEnNube() || Math.abs(diferencia) < 0.0001) return true;
+  const client = getSupabaseClient();
+  if (!client || !navigator.onLine) return false;
+  const idNube = await idNubeDeProducto(localId);
+  if (!idNube) return false;
+  const { error } = await client.rpc('ajustar_stock_producto', {
+    p_producto: idNube, p_tienda: tiendaId, p_delta: diferencia, p_referencia: 'ajuste en la caja',
+  });
+  if (error) {
+    console.error('[sync] No se pudo ajustar el stock de la sede en la nube:', error.message);
+    return false;
+  }
+  return true;
 }
 /** Posición de cada producto local por su id de la nube ("s:…") y su id local ("l:…"). */
 function indiceProductos(productos: Producto[]): Map<string, number> {

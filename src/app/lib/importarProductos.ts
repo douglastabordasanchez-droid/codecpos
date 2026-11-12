@@ -233,6 +233,9 @@ export async function importarProductos(
   const resultado: ResultadoImportacion = { nuevos: 0, actualizados: 0, omitidos: 0, errores: [] };
   const LOTE = 500;
   const ahora = new Date().toISOString();
+  // Con inventario por sedes en la nube el stock de los existentes se carga por conteo (ver abajo).
+  const { data: cfgSedes } = await client.rpc('obtener_config_multitienda');
+  const stockPorConteo = !!(cfgSedes as any)?.nube;
 
   for (let i = 0; i < validas.length; i += LOTE) {
     const lote = validas.slice(i, i + LOTE);
@@ -250,6 +253,7 @@ export async function importarProductos(
       });
     }
 
+    const existentesPorId = new Map([...existentes.values()].map((p: any) => [String(p.id), p]));
     const nuevos: Record<string, unknown>[] = [];
     const cambios: Record<string, unknown>[] = [];
     for (const f of lote) {
@@ -276,9 +280,21 @@ export async function importarProductos(
       else resultado.nuevos += nuevos.length;
     }
     if (cambios.length > 0) {
+      // El stock de los que ya existen va aparte, como conteo («lo que tienes hoy») y con
+      // constancia en el kardex. Escrito directo, la nube lo ignora en los negocios con
+      // inventario por sedes para que una caja vieja no pueda pisarlo.
+      const conteos = cambios
+        .filter((c) => typeof c.stock === 'number' && c.stock !== (existentesPorId.get(String(c.id)) as any)?.stock)
+        .map((c) => ({ producto_id: c.id, cantidad: c.stock }));
       const { error } = await client.from('productos').upsert(cambios, { onConflict: 'id' });
       if (error) resultado.errores.push(`Actualizando filas ${lote[0].fila} a ${lote[lote.length - 1].fila}: ${error.message}`);
-      else resultado.actualizados += cambios.length;
+      else {
+        resultado.actualizados += cambios.length;
+        if (stockPorConteo && conteos.length > 0) {
+          const { error: e } = await client.rpc('cargar_stock_sede', { p_tienda: 'tienda_principal', p_items: conteos, p_modo: 'fijar' });
+          if (e) resultado.errores.push(`Stock de las filas ${lote[0].fila} a ${lote[lote.length - 1].fila}: ${e.message}`);
+        }
+      }
     }
     progreso?.(Math.min(i + LOTE, validas.length), validas.length);
   }

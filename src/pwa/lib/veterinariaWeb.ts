@@ -184,10 +184,23 @@ export async function guardarBulto(clienteId: string, empleadoId: string, datos:
     updated_by: empleadoId,
   };
   const c = cliente();
-  const { error } = id
-    ? await c.from('productos').update(payload).eq('id', id)
-    : await c.from('productos').insert(payload);
+  if (!id) {
+    const { error } = await c.from('productos').insert(payload);
+    if (error) throw new Error(error.message);
+    return;
+  }
+  // Al editar, el stock va como diferencia (con constancia en el kardex): así lo vendido
+  // desde otra caja mientras tanto no se borra, y la nube no rechaza el cambio.
+  const { stock: stockNuevo, ...resto } = payload;
+  const { data: actual, error: e1 } = await c.from('productos').select('stock').eq('id', id).single();
+  if (e1) throw new Error(e1.message);
+  const { error } = await c.from('productos').update(resto).eq('id', id);
   if (error) throw new Error(error.message);
+  const diferencia = stockNuevo - (Number(actual?.stock) || 0);
+  if (Math.abs(diferencia) > 0.0001) {
+    const { error: e2 } = await c.rpc('ajustar_stock_producto', { p_producto: id, p_tienda: 'tienda_principal', p_delta: diferencia, p_referencia: 'ajuste en Veterinaria web' });
+    if (e2) throw new Error(e2.message);
+  }
 }
 
 // ── "+" de Veterinaria: producto o servicio nuevo ─────────────────────────
