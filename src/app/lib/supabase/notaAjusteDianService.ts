@@ -197,6 +197,15 @@ export async function listarNotasDelCliente(
   ].sort((a, b) => new Date(b.fechaEmision).getTime() - new Date(a.fechaEmision).getTime());
 }
 
+/** Nota completa, con su XML firmado y la respuesta de la DIAN. */
+export async function obtenerNotaPorId(tipo: TipoNotaAjuste, id: string): Promise<NotaAjusteDian | null> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { data, error } = await client.from(tabla(tipo)).select('*').eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? filaANota(data as NotaRow, tipo) : null;
+}
+
 /** XML firmado de una nota, para descargarlo. */
 export async function obtenerXmlNota(tipo: TipoNotaAjuste, id: string): Promise<string | null> {
   const client = getSupabaseClient();

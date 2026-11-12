@@ -181,7 +181,7 @@ export function datosPdfFacturaDian(
  */
 const empresaNubeCache = new Map<string, { hasta: number; promesa: Promise<Partial<ConfigEmpresa>> }>();
 
-function empresaEnLaNube(clienteId: string): Promise<Partial<ConfigEmpresa>> {
+export function empresaEnLaNube(clienteId: string): Promise<Partial<ConfigEmpresa>> {
   const guardada = empresaNubeCache.get(clienteId);
   if (guardada && guardada.hasta > Date.now()) return guardada.promesa;
   const promesa = (async () => {

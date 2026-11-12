@@ -6,13 +6,27 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Search, RefreshCw, X, Copy, Download, Eye, FileMinus2, FilePlus2, Loader2 } from 'lucide-react';
+import { Search, RefreshCw, X, Copy, Download, Eye, FileMinus2, FilePlus2, Loader2, FileText, Mail, AlertTriangle, Archive } from 'lucide-react';
 import { listarNotasDelCliente, obtenerXmlNota, type NotaConFactura } from '../../lib/supabase/notaAjusteDianService';
 import { obtenerFacturaPorId } from '../../lib/supabase/facturaElectronicaDianService';
 import { CONCEPTOS_NOTA_CREDITO, CONCEPTOS_NOTA_DEBITO, type FacturaElectronicaDian, type TipoNotaAjuste } from '../../lib/dian/types';
 import { datosPdfFacturaDianCompletos } from '../../lib/dian/representacionGrafica';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
 import { ESTADO_DIAN_UI, descargarTexto, money } from './comunes';
+import { cargarNotaYFactura, enviarNotaPorCorreo, generarNotaPDF, notaConCompradorDistinto, prepararPaqueteNota } from '../../lib/dian/entregaNota';
+import { emitirNotaAjuste } from '../../lib/dian/emitirNotaAjuste';
+import { asegurarNumeracionNota } from '../../lib/supabase/fiscalProfileService';
+import { buscarClienteFacturacion } from '../../lib/supabase/clientesFacturacionService';
+import type { NotaAjusteDian } from '../../lib/dian/types';
+
+function descargarBlob(blob: Blob, nombre: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombre;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
 
 const campo = 'h-10 px-3 rounded-lg bg-slate-900 border border-slate-800 text-white text-sm';
 
@@ -69,6 +83,103 @@ export function NotasAjuste({ clienteId, recarga = 0, textoInicial = '' }: Props
   const [notaVista, setNotaVista] = useState<NotaConFactura | null>(null);
   const [facturaVista, setFacturaVista] = useState<FacturaElectronicaDian | null>(null);
   const [abriendoFactura, setAbriendoFactura] = useState(false);
+  // Detalle completo de la nota abierta (XML, respuesta DIAN y factura) para el PDF, el correo y la revisión del comprador.
+  const [detalle, setDetalle] = useState<{ nota: NotaAjusteDian; factura: FacturaElectronicaDian } | null>(null);
+  const [correoDestino, setCorreoDestino] = useState('');
+  const [ocupado, setOcupado] = useState<'' | 'pdf' | 'zip' | 'correo' | 'corregir'>('');
+  const [confirmarCorreccion, setConfirmarCorreccion] = useState(false);
+
+  useEffect(() => {
+    setDetalle(null);
+    setCorreoDestino('');
+    setConfirmarCorreccion(false);
+    if (!notaVista?.id) return;
+    let vigente = true;
+    cargarNotaYFactura(notaVista).then(async (d) => {
+      if (!vigente) return;
+      setDetalle(d);
+      // El correo que el negocio puso para ese cliente: el del cobro y, si no, el de su ficha.
+      let correo = d.factura.adquirente.email?.trim() || '';
+      if (!correo && d.factura.adquirente.numeroDocumento) {
+        correo = (await buscarClienteFacturacion(d.factura.clienteId, d.factura.adquirente.numeroDocumento).catch(() => null))?.email || '';
+      }
+      if (vigente) setCorreoDestino(correo);
+    }).catch(() => undefined);
+    return () => { vigente = false; };
+  }, [notaVista]);
+
+  const compradorDistinto = !!detalle && detalle.nota.estado === 'accepted' && notaConCompradorDistinto(detalle.nota.xml, detalle.factura.xml);
+  // Ya se corrigió si hay otra nota crédito aprobada, posterior, sobre la misma factura.
+  const yaCorregida = !!notaVista && notas.some((n) => n.tipo === 'credito' && n.estado === 'accepted' && n.facturaId === notaVista.facturaId
+    && n.id !== notaVista.id && new Date(n.fechaEmision).getTime() > new Date(notaVista.fechaEmision).getTime());
+
+  async function descargarPdfNota() {
+    if (!detalle) return;
+    setOcupado('pdf');
+    try {
+      descargarBlob(await generarNotaPDF(detalle.nota, detalle.factura), `${detalle.nota.numeroNota}.pdf`);
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo generar el PDF');
+    } finally { setOcupado(''); }
+  }
+
+  async function descargarZipNota() {
+    if (!detalle) return;
+    setOcupado('zip');
+    try {
+      const p = await prepararPaqueteNota(detalle.nota, detalle.factura);
+      descargarBlob(p.zip, p.nombreZip);
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo armar el paquete');
+    } finally { setOcupado(''); }
+  }
+
+  async function enviarCorreoNota() {
+    if (!detalle) return;
+    const destino = correoDestino.trim();
+    if (!destino.includes('@')) { toast.error('Escribe el correo del cliente'); return; }
+    setOcupado('correo');
+    const id = toast.loading(`Enviando la nota ${detalle.nota.numeroNota} a ${destino}...`);
+    try {
+      await enviarNotaPorCorreo(detalle.nota, detalle.factura, destino);
+      toast.success(`Nota ${detalle.nota.numeroNota} enviada a ${destino}`, { id });
+    } catch (e: any) {
+      toast.error(`No se envió la nota ${detalle.nota.numeroNota}`, { id, description: e?.message, duration: 20000 });
+    } finally { setOcupado(''); }
+  }
+
+  async function emitirCorregida() {
+    if (!detalle) return;
+    const { nota, factura } = detalle;
+    setOcupado('corregir');
+    try {
+      const resolucion = await asegurarNumeracionNota(factura.clienteId, factura.perfilFiscalId, 'nota_credito');
+      const nueva = await emitirNotaAjuste({
+        clienteId: factura.clienteId,
+        perfilFiscalId: factura.perfilFiscalId,
+        facturaId: factura.id!,
+        resolucionId: resolucion.id!,
+        tipo: 'credito',
+        conceptoCodigo: nota.conceptoCodigo || '2',
+        motivo: `Reemplaza la nota ${nota.numeroNota}, que salió con el comprador mal identificado. ${nota.motivo}`.slice(0, 250),
+        items: nota.items && nota.items.length > 0 ? nota.items : undefined,
+        total: nota.total,
+      });
+      if (nueva.estado === 'accepted') {
+        toast.success(`Nota ${nueva.numeroNota} aprobada por la DIAN a nombre del NIT del cliente. Ábrela para enviarla por correo.`, { duration: 15000 });
+      } else {
+        toast.warning(`La nota ${nueva.numeroNota} quedó en estado «${ESTADO_DIAN_UI[nueva.estado]?.label || nueva.estado}». Revisa la respuesta de la DIAN.`, { duration: 15000 });
+      }
+      setNotaVista(null);
+      await cargar();
+      setFiltros((f) => ({ ...f, texto: nueva.numeroNota }));
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo emitir la nota corregida');
+    } finally {
+      setOcupado('');
+      setConfirmarCorreccion(false);
+    }
+  }
 
   async function cargar() {
     setCargando(true);
@@ -311,6 +422,52 @@ export function NotasAjuste({ clienteId, recarga = 0, textoInicial = '' }: Props
                   {mensajesDian(notaVista.respuestaDian).map((m) => (
                     <p key={m} className={`text-xs ${/rechazo/i.test(m) ? 'text-red-400' : 'text-slate-400'}`}>{m}</p>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {compradorDistinto && !yaCorregida && (
+              <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 space-y-2">
+                <p className="text-amber-300 text-sm font-bold flex items-center gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /> El cliente no ve esta nota en la DIAN</p>
+                <p className="text-xs text-slate-300">
+                  Salió a nombre de una cédula y no del NIT de la factura {detalle?.factura.numeroFactura}. La DIAN la aceptó, pero quedó a nombre de otra persona.
+                  Emite una nota corregida por el mismo valor y envíasela al cliente. Avísale a tu contador: esta nota ya rebaja tus ventas.
+                </p>
+                {confirmarCorreccion ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={emitirCorregida} disabled={!!ocupado} className="flex-1 min-w-[140px] h-10 rounded-lg bg-amber-500 text-slate-950 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                      {ocupado === 'corregir' ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Sí, emitir por {money(notaVista.total)}
+                    </button>
+                    <button onClick={() => setConfirmarCorreccion(false)} disabled={!!ocupado} className="h-10 px-4 rounded-lg bg-slate-800 text-slate-300 text-sm font-semibold">Cancelar</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirmarCorreccion(true)} className="w-full h-10 rounded-lg bg-amber-500 text-slate-950 text-sm font-bold">Emitir nota corregida</button>
+                )}
+              </div>
+            )}
+
+            {notaVista.estado === 'accepted' && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+                <p className="text-xs text-slate-500 uppercase tracking-wide font-bold">Enviar al cliente</p>
+                <input
+                  type="email"
+                  multiple
+                  value={correoDestino}
+                  onChange={(e) => setCorreoDestino(e.target.value)}
+                  placeholder="correo@cliente.com"
+                  className={`${campo} w-full`}
+                />
+                <p className="text-[11px] text-slate-500">Puedes poner varios separados por coma. Va con el PDF y el XML validado por la DIAN, desde el correo conectado del negocio.</p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={enviarCorreoNota} disabled={!detalle || !!ocupado} className="flex-1 min-w-[120px] h-10 rounded-lg bg-sky-500 text-slate-950 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                    {ocupado === 'correo' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Enviar por correo
+                  </button>
+                  <button onClick={descargarPdfNota} disabled={!detalle || !!ocupado} className="flex-1 min-w-[120px] h-10 rounded-lg bg-slate-800 text-slate-300 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+                    {ocupado === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF
+                  </button>
+                  <button onClick={descargarZipNota} disabled={!detalle || !!ocupado} className="flex-1 min-w-[120px] h-10 rounded-lg bg-slate-800 text-slate-300 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+                    {ocupado === 'zip' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />} ZIP DIAN
+                  </button>
                 </div>
               </div>
             )}

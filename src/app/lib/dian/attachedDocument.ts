@@ -25,6 +25,8 @@ export interface DatosAttachedDocument {
   cufe: string;
   ambiente: AmbienteDian;
   ahora?: Date;
+  /** Las notas crédito y débito se identifican con CUDE, la factura con CUFE. */
+  esquemaUuid?: 'CUFE-SHA384' | 'CUDE-SHA384';
 }
 
 const sinDeclaracion = (xml: string) => xml.replace(/^﻿?\s*<\?xml[^>]*\?>\s*/, '');
@@ -91,7 +93,7 @@ export function construirAttachedDocument(datos: DatosAttachedDocument): string 
     '<cbc:LineID>1</cbc:LineID>' +
     '<cac:DocumentReference>' +
     `<cbc:ID>${escapeXml(numero)}</cbc:ID>` +
-    `<cbc:UUID schemeName="CUFE-SHA384">${escapeXml(cufe)}</cbc:UUID>` +
+    `<cbc:UUID schemeName="${datos.esquemaUuid ?? 'CUFE-SHA384'}">${escapeXml(cufe)}</cbc:UUID>` +
     `<cbc:IssueDate>${escapeXml(fechaFactura)}</cbc:IssueDate>` +
     '<cbc:DocumentType>ApplicationResponse</cbc:DocumentType>' +
     '<cac:Attachment><cac:ExternalReference>' +

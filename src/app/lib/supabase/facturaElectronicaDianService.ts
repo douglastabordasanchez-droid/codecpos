@@ -50,7 +50,25 @@ interface FacturaRow {
   updated_at?: string;
 }
 
+/**
+ * Tipo de documento y DV del comprador tal como salieron en el XML de la
+ * factura. La tabla solo guarda el número: sin esto una nota crédito sobre
+ * una factura a NIT (31, con DV) salía a nombre de una cédula (13) con ese
+ * número, la DIAN la aceptaba igual y el comprador nunca la veía en su
+ * cuenta ni la factura quedaba ligada a su anulación.
+ */
+export function identificacionCompradorDelXml(xml: string | null | undefined): { tipoDocumento: string; digitoVerificacion?: string } | null {
+  const parte = xml?.match(/<cac:AccountingCustomerParty>[\s\S]*?<\/cac:AccountingCustomerParty>/)?.[0];
+  const id = parte?.match(/<cac:PartyIdentification>\s*<cbc:ID([^>]*)>/)?.[1]
+    ?? parte?.match(/<cbc:CompanyID([^>]*)>/)?.[1];
+  const tipo = id?.match(/schemeName="([^"]+)"/)?.[1];
+  if (!tipo) return null;
+  const dv = id?.match(/schemeID="([^"]+)"/)?.[1];
+  return { tipoDocumento: tipo, digitoVerificacion: tipo === '31' ? dv : undefined };
+}
+
 function filaAFactura(fila: FacturaRow): FacturaElectronicaDian {
+  const comprador = identificacionCompradorDelXml(fila.xml);
   const emisor: EmisorSnapshot = {
     nit: fila.issuer_nit ?? undefined,
     digitoVerificacion: fila.issuer_dv ?? undefined,
@@ -82,7 +100,8 @@ function filaAFactura(fila: FacturaRow): FacturaElectronicaDian {
     contingencia: fila.contingencia,
     emisor,
     adquirente: {
-      tipoDocumento: '13',
+      tipoDocumento: comprador?.tipoDocumento || '13',
+      digitoVerificacion: comprador?.digitoVerificacion,
       numeroDocumento: fila.cliente_nit || '222222222222',
       nombreORazonSocial: fila.cliente_nombre || 'Consumidor final',
       email: fila.cliente_email ?? undefined,
