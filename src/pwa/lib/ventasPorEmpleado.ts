@@ -26,7 +26,8 @@ export interface ResumenEmpleado {
 export const SIN_CAJERO = '__sin_cajero__';
 
 export function claveEmpleado(nombre: string | null | undefined): string {
-  const limpio = (nombre || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  // Sin tildes: un PC escribe «González» y el otro «Gonzalez».
+  const limpio = (nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
   return limpio || SIN_CAJERO;
 }
 
@@ -62,3 +63,27 @@ export function resumirPorEmpleado(ventas: VentaConCajero[]): ResumenEmpleado[] 
  * Antes solo se buscaba el vacío y se escondían las otras.
  */
 export const FILTRO_TIENDA_PRINCIPAL = 'tienda_id.is.null,tienda_id.eq.tienda_principal';
+
+/**
+ * Suma a la lista los empleados de la tienda que aún no venden en el periodo
+ * (los creados en la nube). Los de Electron salen de sus ventas.
+ */
+export function completarConEmpleados(resumen: ResumenEmpleado[], nombres: string[]): ResumenEmpleado[] {
+  const claves = new Set(resumen.map((r) => r.clave));
+  const extra: ResumenEmpleado[] = [];
+  for (const n of nombres) {
+    const clave = claveEmpleado(n);
+    if (clave === SIN_CAJERO || claves.has(clave)) continue;
+    claves.add(clave);
+    extra.push({ clave, nombre: nombreVisibleEmpleado(n), cantidad: 0, total: 0, propinas: 0 });
+  }
+  extra.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return [...resumen, ...extra];
+}
+
+/** ¿El empleado de la nube trabaja en la tienda elegida? Sin tienda = la principal. */
+export function empleadoEnTienda(tiendaEmpleado: string | null | undefined, tienda: string | null | undefined): boolean {
+  if (tienda === undefined || tienda === null) return true;
+  const suya = tiendaEmpleado || 'tienda_principal';
+  return suya === tienda;
+}

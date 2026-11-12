@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
+import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { UserRound, ChevronRight } from 'lucide-react';
 import type { ResumenEmpleado } from '../lib/ventasPorEmpleado';
 
@@ -74,4 +76,22 @@ export function ResumenEmpleados({ resumen, onSeleccionar }: {
       ))}
     </div>
   );
+}
+
+/** Empleados activos del negocio en la nube, con su tienda (para la lista aunque no hayan vendido). */
+export function useEmpleadosNube(clienteId: string | undefined, activo: boolean) {
+  const [empleados, setEmpleados] = useState<Array<{ nombre: string; tienda_id: string | null }>>([]);
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client || !clienteId || !activo) { setEmpleados([]); return; }
+    let cancelado = false;
+    client.from('empleados').select('nombre_completo, tienda_id')
+      .eq('cliente_id', clienteId).eq('activo', true).or('es_staff_codec.is.null,es_staff_codec.eq.false')
+      .then(({ data }) => {
+        if (cancelado) return;
+        setEmpleados(((data as any[]) || []).map((e) => ({ nombre: e.nombre_completo || '', tienda_id: e.tienda_id ?? null })));
+      });
+    return () => { cancelado = true; };
+  }, [clienteId, activo]);
+  return empleados;
 }

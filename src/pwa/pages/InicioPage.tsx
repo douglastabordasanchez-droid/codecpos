@@ -12,8 +12,10 @@ import { ModuloPOS } from '../../app/lib/permissions';
 import { RingStat } from '../components/RingStat';
 import { SucursalSelector } from '../components/SucursalSelector';
 import { machineIdsDeSucursal } from '../../app/lib/supabase/sucursalesService';
-import { EmpleadoSelector, ResumenEmpleados } from '../components/EmpleadoFiltro';
-import { filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
+import { EmpleadoSelector, ResumenEmpleados, useEmpleadosNube } from '../components/EmpleadoFiltro';
+import { FILTRO_TIENDA_PRINCIPAL, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
+import { SucursalFiltro } from '../components/SucursalFiltro';
+import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
 interface VentaFila {
   id: string;
@@ -107,6 +109,12 @@ export default function InicioPage() {
 
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
   const { tieneModulo } = useModulosActivos();
+  // Tienda elegida (la misma preferencia de Ventas, Vender e Inventario).
+  const [tiendaActiva, setTiendaActiva] = useState(getSucursalActiva());
+  useEffect(() => suscribirSucursalActiva(() => setTiendaActiva(getSucursalActiva())), []);
+  const tiendaFiltro = esAdmin ? (tiendaActiva?.id ?? undefined) : undefined;
+  useEffect(() => { setEmpleadoSel(null); }, [tiendaFiltro]);
+  const empleadosNube = useEmpleadosNube(empleado?.cliente_id, esAdmin);
 
   useEffect(() => {
     if (!empleado) return;
@@ -134,11 +142,18 @@ export default function InicioPage() {
         return (query as any).in('terminal_id', ids);
       };
 
+      const filtrarPorTienda = <T,>(query: T): T => {
+        if (tiendaFiltro === undefined) return query;
+        return tiendaFiltro === 'tienda_principal'
+          ? (query as any).or(FILTRO_TIENDA_PRINCIPAL)
+          : (query as any).eq('tienda_id', tiendaFiltro);
+      };
+
       // Paginado: con 1000 filas por consulta, 7 días de un negocio movido salían cortados.
       const ventasEntre = (desde: Date, hasta: Date) => traerTodo<VentaFila>((a, b) =>
-        filtrarPorSucursal(client.from('ventas').select('id, total, propina, cajero_nombre, created_at')
+        filtrarPorTienda(filtrarPorSucursal(client.from('ventas').select('id, total, propina, cajero_nombre, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString()))
+          .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString())))
           .order('id').range(a, b))
         .then((data) => ({ data }), () => ({ data: [] as VentaFila[] }));
 
@@ -209,9 +224,12 @@ export default function InicioPage() {
     cargar();
     const interval = window.setInterval(cargar, 30000);
     return () => { cancelado = true; window.clearInterval(interval); };
-  }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta, sucursalSeleccionada]);
+  }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta, sucursalSeleccionada, tiendaFiltro]);
 
-  const resumenEmpleados = useMemo(() => resumirPorEmpleado(ventasPeriodo), [ventasPeriodo]);
+  const resumenEmpleados = useMemo(() => completarConEmpleados(
+    resumirPorEmpleado(ventasPeriodo),
+    empleadosNube.filter((e) => empleadoEnTienda(e.tienda_id, tiendaFiltro)).map((e) => e.nombre),
+  ), [ventasPeriodo, empleadosNube, tiendaFiltro]);
   const ventasDelFiltro = useMemo(() => filtrarPorEmpleado(ventasPeriodo, empleadoSel), [ventasPeriodo, empleadoSel]);
   const ventasAnterioresDelFiltro = useMemo(() => filtrarPorEmpleado(ventasPeriodoAnterior, empleadoSel), [ventasPeriodoAnterior, empleadoSel]);
 
@@ -220,13 +238,14 @@ export default function InicioPage() {
   const utilidadNeta = useMemo(() => {
     const ventasBase = ventasDelFiltro.reduce((a, v) => a + ventaSinPropina(v), 0);
     const costo = ventasDelFiltro.reduce((a, v) => a + (costoPorVenta.get(v.id) || 0), 0);
-    return empleadoSel ? ventasBase - costo : ventasBase - devolucionesTotal - costo - gastosTotal;
-  }, [ventasDelFiltro, costoPorVenta, empleadoSel, devolucionesTotal, gastosTotal]);
+    // Gastos y devoluciones no tienen tienda: con una tienda elegida tampoco se restan.
+    return empleadoSel || tiendaFiltro ? ventasBase - costo : ventasBase - devolucionesTotal - costo - gastosTotal;
+  }, [ventasDelFiltro, costoPorVenta, empleadoSel, tiendaFiltro, devolucionesTotal, gastosTotal]);
 
   const stats = useMemo(() => {
     const ventasPeriodo = ventasDelFiltro;
     const ventasPeriodoAnterior = ventasAnterioresDelFiltro;
-    const devolucionesTotalFiltro = empleadoSel ? 0 : devolucionesTotal;
+    const devolucionesTotalFiltro = empleadoSel || tiendaFiltro ? 0 : devolucionesTotal;
     const totalPeriodo = ventasPeriodo.reduce((a, v) => a + ventaSinPropina(v), 0);
     // Neto de devoluciones — así el anillo de "Ventas" coincide con el
     // número que Electron llama "Ingresos Netos" (bruto - devoluciones),
@@ -244,7 +263,7 @@ export default function InicioPage() {
     const horasTranscurridas = Math.max(ahora.getHours() + ahora.getMinutes() / 60, 0.25);
     const proyeccionCierre = rango === 'hoy' ? (totalPeriodo / horasTranscurridas) * 24 : totalPeriodo;
     return { totalPeriodo, totalPeriodoNeto, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano, proyeccionCierre };
-  }, [ventasDelFiltro, ventasAnterioresDelFiltro, empleadoSel, productosConMinimo, alertasCount, devolucionesTotal, rango]);
+  }, [ventasDelFiltro, ventasAnterioresDelFiltro, empleadoSel, tiendaFiltro, productosConMinimo, alertasCount, devolucionesTotal, rango]);
   const nombreEmpleadoSel = resumenEmpleados.find((r) => r.clave === empleadoSel)?.nombre;
   const irAVentas = () => navigate(`/ventas?periodo=${rango === 'hoy' ? 'hoy' : rango === 'custom' ? '30d' : '7d'}${empleadoSel ? `&cajero=${encodeURIComponent(empleadoSel)}` : ''}`);
 
@@ -267,6 +286,8 @@ export default function InicioPage() {
         <p className="text-slate-400 text-sm">{saludo},</p>
         <h1 className="text-white text-2xl font-black">{primerNombre || 'bienvenido'} 👋</h1>
       </div>
+
+      {esAdmin && <SucursalFiltro />}
 
       {esAdmin && (
         <motion.div
@@ -326,7 +347,7 @@ export default function InicioPage() {
 
           <div className="grid grid-cols-2 gap-3 px-4">
             <RingStat
-              label={nombreEmpleadoSel ? `Ganancia de ${nombreEmpleadoSel.split(' ')[0]}` : 'Utilidad neta'}
+              label={nombreEmpleadoSel ? `Ganancia de ${nombreEmpleadoSel.split(' ')[0]}` : tiendaFiltro ? 'Ganancia de la tienda' : 'Utilidad neta'}
               value={`$${Math.round(utilidadNeta).toLocaleString('es-CO')}`}
               pct={100}
               colorFrom={utilidadNeta >= 0 ? '#34d399' : '#f87171'}

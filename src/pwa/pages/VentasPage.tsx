@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Search, Share2, Loader2, Receipt, Eye, RotateCcw } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -15,8 +15,8 @@ import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiv
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 import { traerTodo } from '../lib/nubeConsultas';
 import { ventaSinPropina } from '../../app/lib/propinas';
-import { EmpleadoSelector, ResumenEmpleados } from '../components/EmpleadoFiltro';
-import { FILTRO_TIENDA_PRINCIPAL, claveEmpleado, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
+import { EmpleadoSelector, ResumenEmpleados, useEmpleadosNube } from '../components/EmpleadoFiltro';
+import { FILTRO_TIENDA_PRINCIPAL, claveEmpleado, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 
 interface VentaFila {
   id: string;
@@ -104,7 +104,8 @@ export default function VentasPage() {
       if (tiendaEfectiva !== undefined) {
         query = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal')
           ? query.or(FILTRO_TIENDA_PRINCIPAL)
-          : query.or(`tienda_id.eq.${tiendaEfectiva},tienda_id.is.null`);
+          // Solo esa sede: las ventas sin tienda son de la principal y metían a sus empleados aquí.
+          : query.eq('tienda_id', tiendaEfectiva);
       }
       return query.order('created_at', { ascending: false }).order('id').range(a, b);
     }).then((data) => {
@@ -121,7 +122,19 @@ export default function VentasPage() {
     return () => { cancelado = true; };
   }, [empleado?.cliente_id, tiendaEfectiva, periodo]);
 
-  const resumen = useMemo(() => resumirPorEmpleado(ventas), [ventas]);
+  const empleadosNube = useEmpleadosNube(empleado?.cliente_id, esAdmin);
+  // Tienda primero, empleado después: la lista solo trae a los de la tienda elegida.
+  const resumen = useMemo(() => completarConEmpleados(
+    resumirPorEmpleado(ventas),
+    empleadosNube.filter((e) => empleadoEnTienda(e.tienda_id, tiendaEfectiva)).map((e) => e.nombre),
+  ), [ventas, empleadosNube, tiendaEfectiva]);
+  const tiendaAnterior = useRef(tiendaEfectiva);
+  useEffect(() => {
+    if (tiendaAnterior.current === tiendaEfectiva) return;
+    tiendaAnterior.current = tiendaEfectiva;
+    setEmpleadoSel(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiendaEfectiva]);
   const delEmpleado = useMemo(() => filtrarPorEmpleado(ventas, empleadoSel), [ventas, empleadoSel]);
 
   const filtradas = useMemo(() => delEmpleado.filter((v) => {

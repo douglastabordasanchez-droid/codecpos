@@ -13,6 +13,7 @@ describe('ventas por empleado', () => {
   it('une el mismo nombre con espacios o mayúsculas distintas', () => {
     expect(claveEmpleado('Michell ')).toBe(claveEmpleado('michell'));
     expect(claveEmpleado('  ')).toBe(SIN_CAJERO);
+    expect(claveEmpleado('Luisa González')).toBe(claveEmpleado('Luisa Gonzalez'));
   });
 
   it('suma cada empleado sin la propina y ordena de mayor a menor', () => {
@@ -27,5 +28,19 @@ describe('ventas por empleado', () => {
   it('filtra las ventas de un solo empleado', () => {
     expect(filtrarPorEmpleado(ventas, claveEmpleado('MICHELL'))).toHaveLength(2);
     expect(filtrarPorEmpleado(ventas, null)).toHaveLength(5);
+  });
+});
+
+describe('empleados sin ventas', () => {
+  it('agrega a los de la tienda que no han vendido, sin repetir', async () => {
+    const { completarConEmpleados, empleadoEnTienda } = await import('./ventasPorEmpleado');
+    const r = completarConEmpleados(resumirPorEmpleado(ventas), ['Jorge Ruiz', 'MICHELL', '']);
+    expect(r.map((x) => [x.nombre, x.cantidad])).toEqual([
+      ['Diana Pérez', 2], ['Michell', 2], ['Sin cajero', 1], ['Jorge Ruiz', 0],
+    ]);
+    expect(empleadoEnTienda(null, 'tienda_principal')).toBe(true);
+    expect(empleadoEnTienda('tid_76', 'tienda_principal')).toBe(false);
+    expect(empleadoEnTienda('tid_76', 'tid_76')).toBe(true);
+    expect(empleadoEnTienda('tid_76', undefined)).toBe(true);
   });
 });
