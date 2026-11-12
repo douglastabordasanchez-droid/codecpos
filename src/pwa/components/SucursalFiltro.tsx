@@ -40,7 +40,13 @@ export function SucursalFiltro() {
       .eq('activo', true)
       .neq('local_id', 'tienda_principal')
       .order('nombre')
-      .then(({ data }) => setTiendas((data as TiendaOpcion[]) || []));
+      .then(({ data, error }) => {
+        const lista = (data as TiendaOpcion[]) || [];
+        setTiendas(lista);
+        // Sin sedes el filtro no se ve: una tienda guardada de antes seguía
+        // filtrando a escondidas (y Inicio decía «Ganancia de la tienda»).
+        if (!error && lista.length === 0 && getSucursalActiva()) setSucursalActiva(null);
+      });
   }, [empleado?.cliente_id, esAdmin]);
 
   if (!esAdmin || tiendas.length === 0) return null;
