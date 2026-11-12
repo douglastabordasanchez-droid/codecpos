@@ -13,6 +13,30 @@
     <meta name="apple-mobile-web-app-title" content="Codec POS" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>CODEC POS</title>
+    <script>
+      // Tras publicar una versión, el celular podía abrir la página vieja
+      // guardada, que pedía archivos que ya no existen: pantalla en blanco.
+      // Si un archivo de la app no carga, se limpia la caché y se recarga
+      // una sola vez (la marca evita recargar en bucle sin internet).
+      (function () {
+        var MARCA = 'codec_pwa_recargada';
+        function recuperar() {
+          try { if (sessionStorage.getItem(MARCA)) return; sessionStorage.setItem(MARCA, '1'); } catch (e) { return; }
+          var tareas = [];
+          if (navigator.serviceWorker) tareas.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+          if (window.caches) tareas.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+          Promise.all(tareas).catch(function () {}).then(function () { location.reload(); });
+        }
+        window.addEventListener('error', function (e) {
+          var t = e && e.target;
+          if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK') && /\/assets\//.test(t.src || t.href || '')) recuperar();
+        }, true);
+        window.addEventListener('vite:preloadError', function () { recuperar(); });
+        window.addEventListener('load', function () {
+          setTimeout(function () { try { sessionStorage.removeItem(MARCA); } catch (e) {} }, 15000);
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
