@@ -18,6 +18,7 @@ import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { traerTodo, aFechaLocal, fechaLocal } from '../lib/nubeConsultas';
+import { FILTRO_TIENDA_PRINCIPAL } from '../lib/ventasPorEmpleado';
 
 type RangoFiltro = 'hoy' | '7d' | '30d';
 
@@ -72,7 +73,7 @@ export default function DashboardPage() {
               .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
               .gte('created_at', desde).lt('created_at', hasta);
             if (tiendaEfectiva !== undefined) {
-              q = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal') ? q.is('tienda_id', null) : q.eq('tienda_id', tiendaEfectiva);
+              q = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal') ? q.or(FILTRO_TIENDA_PRINCIPAL) : q.eq('tienda_id', tiendaEfectiva);
             }
             return q.order('created_at').range(i, j);
           }),

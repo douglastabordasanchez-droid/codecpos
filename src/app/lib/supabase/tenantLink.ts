@@ -127,7 +127,8 @@ export async function restablecerSesionSync(): Promise<boolean> {
   const client = getSupabaseClient();
   const email = localStorage.getItem(LS_SYNC_EMAIL);
   const password = localStorage.getItem(LS_SYNC_PASSWORD);
-  if (!client || !email || !password) return false;
+  if (!client) return false;
+  if (!email || !password) return recuperarVinculoDesdeSesion();
 
   if (!getLinkedClienteId()) {
     const { error } = await client.auth.signOut();
@@ -137,6 +138,40 @@ export async function restablecerSesionSync(): Promise<boolean> {
 
   const { error } = await client.auth.signInWithPassword({ email, password });
   return !error;
+}
+
+/**
+ * La caja perdió las claves del vínculo pero conserva una sesión válida con
+ * la nube (Boniexpress, desde el 28 oct 2026): registraba su licencia todos
+ * los días, pero la sincronización la veía «sin vincular» y no subía ventas.
+ * Si esa sesión es del mismo negocio cuyos datos están cargados aquí, se
+ * recupera el vínculo. Nunca une datos locales de un negocio con otro.
+ */
+async function recuperarVinculoDesdeSesion(): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  try {
+    const { data: s } = await client.auth.getSession();
+    if (!s.session) return false;
+    const { data, error } = await client.rpc('current_cliente_id');
+    const clienteSesion = data ? String(data) : '';
+    if (error || !clienteSesion) return false;
+    const datosLocales = localStorage.getItem(LS_EMPRESA_LOCAL_ACTIVA)
+      || localStorage.getItem('codecpos_db_legacy_cliente_id');
+    const vinculado = localStorage.getItem(LS_CLIENTE_ID);
+    const coincide = datosLocales ? datosLocales === clienteSesion : vinculado === clienteSesion;
+    if (!coincide || (vinculado && vinculado !== clienteSesion)) {
+      console.warn('[tenantLink] Hay sesión en la nube de otro negocio; no se vincula sola esta caja.');
+      return false;
+    }
+    if (vinculado !== clienteSesion) {
+      localStorage.setItem(LS_CLIENTE_ID, clienteSesion);
+      console.warn('[tenantLink] Vínculo con la nube recuperado desde la sesión guardada.');
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function desvincularNegocio(): void {

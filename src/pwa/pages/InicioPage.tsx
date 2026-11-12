@@ -12,10 +12,14 @@ import { ModuloPOS } from '../../app/lib/permissions';
 import { RingStat } from '../components/RingStat';
 import { SucursalSelector } from '../components/SucursalSelector';
 import { machineIdsDeSucursal } from '../../app/lib/supabase/sucursalesService';
+import { EmpleadoSelector, ResumenEmpleados } from '../components/EmpleadoFiltro';
+import { filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 
 interface VentaFila {
   id: string;
   total: number;
+  propina?: number | null;
+  cajero_nombre?: string | null;
   created_at: string;
 }
 
@@ -86,7 +90,9 @@ export default function InicioPage() {
   const navigate = useNavigate();
   const [ventasPeriodo, setVentasPeriodo] = useState<VentaFila[]>([]);
   const [ventasPeriodoAnterior, setVentasPeriodoAnterior] = useState<VentaFila[]>([]);
-  const [utilidadNeta, setUtilidadNeta] = useState(0);
+  // Costo de lo vendido en cada venta: así la utilidad también sale por empleado.
+  const [costoPorVenta, setCostoPorVenta] = useState<Map<string, number>>(new Map());
+  const [empleadoSel, setEmpleadoSel] = useState<string | null>(null);
   const [devolucionesTotal, setDevolucionesTotal] = useState(0);
   const [devolucionesCount, setDevolucionesCount] = useState(0);
   const [gastosTotal, setGastosTotal] = useState(0);
@@ -128,13 +134,17 @@ export default function InicioPage() {
         return (query as any).in('terminal_id', ids);
       };
 
+      // Paginado: con 1000 filas por consulta, 7 días de un negocio movido salían cortados.
+      const ventasEntre = (desde: Date, hasta: Date) => traerTodo<VentaFila>((a, b) =>
+        filtrarPorSucursal(client.from('ventas').select('id, total, propina, cajero_nombre, created_at')
+          .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
+          .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString()))
+          .order('id').range(a, b))
+        .then((data) => ({ data }), () => ({ data: [] as VentaFila[] }));
+
       const [{ data: periodoData }, { data: anteriorData }, { data: stockData }, { data: sesionesData }, { data: gastosData }, { data: devolucionesData }] = await Promise.all([
-        filtrarPorSucursal(client.from('ventas').select('id, total, propina, created_at')
-          .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString())),
-        filtrarPorSucursal(client.from('ventas').select('id, total, propina, created_at')
-          .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', inicioAnterior.toISOString()).lt('created_at', finAnterior.toISOString())),
+        ventasEntre(inicio, fin),
+        ventasEntre(inicioAnterior, finAnterior),
         esAdmin
           ? traerTodo<any>((desde, hasta) => client.from('productos').select('id, stock, stock_minimo').eq('cliente_id', empleado.cliente_id).eq('activo', true).order('id').range(desde, hasta))
               .then((data) => ({ data }), () => ({ data: [] as any[] }))
@@ -171,21 +181,26 @@ export default function InicioPage() {
       // pantalla omitía ambas restas, así que los números nunca cuadraban
       // con Electron aunque fueran el mismo negocio y el mismo período.
       if (esAdmin && ventasLista.length > 0) {
+        // De a 200 ids: con cientos de ventas la URL de una sola consulta se pasaba del límite.
         const ventaIds = ventasLista.map((v) => v.id);
-        const { data: itemsData } = await client.from('venta_items').select('producto_id, cantidad').in('venta_id', ventaIds);
-        const items = (itemsData as { producto_id: string | null; cantidad: number }[]) || [];
+        const items: { venta_id: string; producto_id: string | null; cantidad: number }[] = [];
+        for (let i = 0; i < ventaIds.length; i += 200) {
+          const { data: itemsData } = await client.from('venta_items').select('venta_id, producto_id, cantidad').in('venta_id', ventaIds.slice(i, i + 200));
+          items.push(...((itemsData as typeof items) || []));
+        }
         const productoIds = Array.from(new Set(items.map((i) => i.producto_id).filter(Boolean))) as string[];
         const costosPorProducto = new Map<string, number>();
-        if (productoIds.length > 0) {
-          const { data: prodsData } = await client.from('productos').select('id, costo, tipo_producto, peso_bulto_kg').in('id', productoIds);
+        for (let i = 0; i < productoIds.length; i += 200) {
+          const { data: prodsData } = await client.from('productos').select('id, costo, tipo_producto, peso_bulto_kg').in('id', productoIds.slice(i, i + 200));
           for (const p of (prodsData as { id: string; costo: number; tipo_producto: string | null; peso_bulto_kg: number | null }[]) || []) costosPorProducto.set(p.id, costoPorUnidadDeVenta(p));
         }
-        const costoTotal = items.reduce((a, i) => a + (costosPorProducto.get(i.producto_id || '') || 0) * Number(i.cantidad), 0);
-        const gastosDelPeriodo = ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0);
-        const totalVentas = ventasLista.reduce((a, v) => a + ventaSinPropina(v), 0);
-        if (!cancelado) setUtilidadNeta(totalVentas - devTotal - costoTotal - gastosDelPeriodo);
+        const porVenta = new Map<string, number>();
+        for (const it of items) {
+          porVenta.set(it.venta_id, (porVenta.get(it.venta_id) || 0) + (costosPorProducto.get(it.producto_id || '') || 0) * Number(it.cantidad));
+        }
+        if (!cancelado) setCostoPorVenta(porVenta);
       } else if (esAdmin) {
-        setUtilidadNeta(0);
+        setCostoPorVenta(new Map());
       }
 
       setCargando(false);
@@ -196,12 +211,27 @@ export default function InicioPage() {
     return () => { cancelado = true; window.clearInterval(interval); };
   }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta, sucursalSeleccionada]);
 
+  const resumenEmpleados = useMemo(() => resumirPorEmpleado(ventasPeriodo), [ventasPeriodo]);
+  const ventasDelFiltro = useMemo(() => filtrarPorEmpleado(ventasPeriodo, empleadoSel), [ventasPeriodo, empleadoSel]);
+  const ventasAnterioresDelFiltro = useMemo(() => filtrarPorEmpleado(ventasPeriodoAnterior, empleadoSel), [ventasPeriodoAnterior, empleadoSel]);
+
+  // Con un empleado elegido: lo que dejaron sus ventas (venta menos costo). Los
+  // gastos y devoluciones son del negocio, así que solo se restan en «Todos».
+  const utilidadNeta = useMemo(() => {
+    const ventasBase = ventasDelFiltro.reduce((a, v) => a + ventaSinPropina(v), 0);
+    const costo = ventasDelFiltro.reduce((a, v) => a + (costoPorVenta.get(v.id) || 0), 0);
+    return empleadoSel ? ventasBase - costo : ventasBase - devolucionesTotal - costo - gastosTotal;
+  }, [ventasDelFiltro, costoPorVenta, empleadoSel, devolucionesTotal, gastosTotal]);
+
   const stats = useMemo(() => {
+    const ventasPeriodo = ventasDelFiltro;
+    const ventasPeriodoAnterior = ventasAnterioresDelFiltro;
+    const devolucionesTotalFiltro = empleadoSel ? 0 : devolucionesTotal;
     const totalPeriodo = ventasPeriodo.reduce((a, v) => a + ventaSinPropina(v), 0);
     // Neto de devoluciones — así el anillo de "Ventas" coincide con el
     // número que Electron llama "Ingresos Netos" (bruto - devoluciones),
     // en vez de mostrar el bruto sin más.
-    const totalPeriodoNeto = totalPeriodo - devolucionesTotal;
+    const totalPeriodoNeto = totalPeriodo - devolucionesTotalFiltro;
     const totalAnterior = ventasPeriodoAnterior.reduce((a, v) => a + ventaSinPropina(v), 0);
     const ticketProm = ventasPeriodo.length ? totalPeriodo / ventasPeriodo.length : 0;
     const pctVentasVsAnterior = totalAnterior > 0 ? Math.min(100, (totalPeriodo / totalAnterior) * 100) : totalPeriodo > 0 ? 100 : 0;
@@ -214,7 +244,9 @@ export default function InicioPage() {
     const horasTranscurridas = Math.max(ahora.getHours() + ahora.getMinutes() / 60, 0.25);
     const proyeccionCierre = rango === 'hoy' ? (totalPeriodo / horasTranscurridas) * 24 : totalPeriodo;
     return { totalPeriodo, totalPeriodoNeto, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano, proyeccionCierre };
-  }, [ventasPeriodo, ventasPeriodoAnterior, productosConMinimo, alertasCount, devolucionesTotal, rango]);
+  }, [ventasDelFiltro, ventasAnterioresDelFiltro, empleadoSel, productosConMinimo, alertasCount, devolucionesTotal, rango]);
+  const nombreEmpleadoSel = resumenEmpleados.find((r) => r.clave === empleadoSel)?.nombre;
+  const irAVentas = () => navigate(`/ventas?periodo=${rango === 'hoy' ? 'hoy' : rango === 'custom' ? '30d' : '7d'}${empleadoSel ? `&cajero=${encodeURIComponent(empleadoSel)}` : ''}`);
 
   // 🛡️ Paridad con Electron (DashboardPOSPage): allá "Total Ventas Netas" es
   // la CANTIDAD de ventas (KpiCard con estadisticas.totalVentas) y el monto
@@ -259,6 +291,12 @@ export default function InicioPage() {
             ))}
           </div>
 
+          {resumenEmpleados.length > 0 && (
+            <div className="px-4 mb-4">
+              <EmpleadoSelector resumen={resumenEmpleados} seleccionado={empleadoSel} onSeleccionar={setEmpleadoSel} />
+            </div>
+          )}
+
           {rango === 'custom' && (
             <div className="flex items-center gap-2 px-4 mb-4">
               <div className="flex-1 flex items-center gap-1.5 bg-slate-950/60 border border-slate-700 rounded-xl px-2.5 h-9">
@@ -288,7 +326,7 @@ export default function InicioPage() {
 
           <div className="grid grid-cols-2 gap-3 px-4">
             <RingStat
-              label="Utilidad neta"
+              label={nombreEmpleadoSel ? `Ganancia de ${nombreEmpleadoSel.split(' ')[0]}` : 'Utilidad neta'}
               value={`$${Math.round(utilidadNeta).toLocaleString('es-CO')}`}
               pct={100}
               colorFrom={utilidadNeta >= 0 ? '#34d399' : '#f87171'}
@@ -303,7 +341,7 @@ export default function InicioPage() {
               colorFrom="#38bdf8"
               colorTo="#0284c7"
               size={108}
-              onClick={() => navigate('/ventas')}
+              onClick={irAVentas}
             />
             <RingStat
               label={etiquetaVentas}
@@ -312,7 +350,7 @@ export default function InicioPage() {
               colorFrom="#a78bfa"
               colorTo="#7c3aed"
               size={108}
-              onClick={() => navigate('/ventas')}
+              onClick={irAVentas}
             />
             <RingStat
               label="Alertas de stock"
@@ -351,6 +389,16 @@ export default function InicioPage() {
             <KpiCardDesktop icon={Wallet} label="Gastos" value={`$${Math.round(gastosTotal).toLocaleString('es-CO')}`} color="amber" />
           </div>
         </motion.div>
+      )}
+
+      {esAdmin && !empleadoSel && resumenEmpleados.length > 0 && (
+        <div className="px-5 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-4 h-4 text-amber-400" />
+            <h2 className="text-slate-400 text-xs font-bold uppercase tracking-wide">Ventas por empleado</h2>
+          </div>
+          <ResumenEmpleados resumen={resumenEmpleados} onSeleccionar={setEmpleadoSel} />
+        </div>
       )}
 
       {/* Accesos rápidos */}

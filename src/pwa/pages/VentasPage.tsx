@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Search, Share2, Loader2, Receipt, Eye, RotateCcw } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { Input } from '../../app/components/ui/input';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
@@ -13,6 +13,10 @@ import { precargarVisorPdf } from '../../app/lib/pdfVista';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
+import { traerTodo } from '../lib/nubeConsultas';
+import { ventaSinPropina } from '../../app/lib/propinas';
+import { EmpleadoSelector, ResumenEmpleados } from '../components/EmpleadoFiltro';
+import { FILTRO_TIENDA_PRINCIPAL, claveEmpleado, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 
 interface VentaFila {
   id: string;
@@ -21,7 +25,22 @@ interface VentaFila {
   total: number;
   metodo_pago: string | null;
   cajero_nombre: string | null;
+  propina: number | null;
   created_at: string;
+}
+
+type Periodo = 'hoy' | '7d' | '30d';
+const PERIODOS: { id: Periodo; label: string; dias: number }[] = [
+  { id: 'hoy', label: 'Hoy', dias: 1 },
+  { id: '7d', label: '7 días', dias: 7 },
+  { id: '30d', label: '30 días', dias: 30 },
+];
+const MOSTRAR = 150;
+
+function desdePeriodo(p: Periodo): Date {
+  const hoy = new Date();
+  const dias = (PERIODOS.find((x) => x.id === p) ?? PERIODOS[0]).dias;
+  return new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - (dias - 1));
 }
 
 const BADGE_METODO: Record<string, string> = {
@@ -50,6 +69,21 @@ export default function VentasPage() {
   const [compartiendoId, setCompartiendoId] = useState<string | null>(null);
   const [viendo, setViendo] = useState<VentaFila | null>(null);
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const [periodo, setPeriodo] = useState<Periodo>(() => {
+    const p = params.get('periodo');
+    return p === '7d' || p === '30d' ? p : 'hoy';
+  });
+  const [empleadoSel, setEmpleadoSelState] = useState<string | null>(() => {
+    const c = params.get('cajero');
+    return c ? claveEmpleado(c) : null;
+  });
+  const setEmpleadoSel = (clave: string | null) => {
+    setEmpleadoSelState(clave);
+    const p = new URLSearchParams(params);
+    if (clave) p.set('cajero', clave); else p.delete('cajero');
+    setParams(p, { replace: true });
+  };
 
   useEffect(() => {
     if (!empleado) return;
@@ -57,41 +91,49 @@ export default function VentasPage() {
     if (!client) return;
     setCargando(true);
     setErrorCarga(null);
-    let query = client
-      .from('ventas')
-      .select('id, numero, local_id, total, metodo_pago, cajero_nombre, created_at')
-      .eq('cliente_id', empleado.cliente_id)
-      .eq('estado', 'completada');
-    if (tiendaEfectiva !== undefined) {
-      query = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal')
-        ? query.is('tienda_id', null)
-        : query.or(`tienda_id.eq.${tiendaEfectiva},tienda_id.is.null`);
-    }
-    query
-      .order('created_at', { ascending: false })
-      .limit(100)
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('[ventas] Error cargando ventas:', error);
-          setVentas([]);
-          setErrorCarga('No se pudieron cargar las ventas. Cierra sesión y vuelve a entrar.');
-          setCargando(false);
-          return;
-        }
-        setVentas((data as VentaFila[]) || []);
-        setCargando(false);
-      });
-  }, [empleado?.cliente_id, tiendaEfectiva]);
+    let cancelado = false;
+    const desde = desdePeriodo(periodo).toISOString();
+    // Todo el periodo, no solo las últimas 100: los totales por empleado deben cuadrar.
+    traerTodo<VentaFila>((a, b) => {
+      let query = client
+        .from('ventas')
+        .select('id, numero, local_id, total, propina, metodo_pago, cajero_nombre, created_at')
+        .eq('cliente_id', empleado.cliente_id)
+        .eq('estado', 'completada')
+        .gte('created_at', desde);
+      if (tiendaEfectiva !== undefined) {
+        query = (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal')
+          ? query.or(FILTRO_TIENDA_PRINCIPAL)
+          : query.or(`tienda_id.eq.${tiendaEfectiva},tienda_id.is.null`);
+      }
+      return query.order('created_at', { ascending: false }).order('id').range(a, b);
+    }).then((data) => {
+      if (cancelado) return;
+      setVentas(data);
+      setCargando(false);
+    }, (error) => {
+      if (cancelado) return;
+      console.error('[ventas] Error cargando ventas:', error);
+      setVentas([]);
+      setErrorCarga('No se pudieron cargar las ventas. Cierra sesión y vuelve a entrar.');
+      setCargando(false);
+    });
+    return () => { cancelado = true; };
+  }, [empleado?.cliente_id, tiendaEfectiva, periodo]);
 
-  const filtradas = ventas.filter((v) => {
+  const resumen = useMemo(() => resumirPorEmpleado(ventas), [ventas]);
+  const delEmpleado = useMemo(() => filtrarPorEmpleado(ventas, empleadoSel), [ventas, empleadoSel]);
+
+  const filtradas = useMemo(() => delEmpleado.filter((v) => {
     if (!busqueda.trim()) return true;
     const q = busqueda.toLowerCase();
     return numeroVisibleVenta(v).toLowerCase().includes(q) || (v.cajero_nombre || '').toLowerCase().includes(q);
-  });
+  }), [delEmpleado, busqueda]);
 
   const stats = useMemo(() => {
-    const total = filtradas.reduce((a, v) => a + Number(v.total), 0);
-    return { total, iva: total - total / 1.19, cantidad: filtradas.length };
+    const total = filtradas.reduce((a, v) => a + ventaSinPropina(v), 0);
+    const propinas = filtradas.reduce((a, v) => a + Math.max(0, Number(v.propina) || 0), 0);
+    return { total, propinas, promedio: filtradas.length ? total / filtradas.length : 0, cantidad: filtradas.length };
   }, [filtradas]);
 
   const handleCompartir = async (v: VentaFila) => {
@@ -106,10 +148,32 @@ export default function VentasPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
       <div className="px-5 pt-8 pb-4">
         <h1 className="text-white text-xl font-black">Ventas</h1>
-        <p className="text-slate-400 text-sm">{stats.cantidad} transacciones registradas</p>
+        <p className="text-slate-400 text-sm">{stats.cantidad} {stats.cantidad === 1 ? 'venta' : 'ventas'} en el periodo</p>
       </div>
 
       <SucursalFiltro />
+
+      <div className="px-5 mb-3 flex items-center gap-1.5">
+        {PERIODOS.map((op) => (
+          <button
+            key={op.id}
+            onClick={() => setPeriodo(op.id)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+              periodo === op.id
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30'
+                : 'bg-slate-800/80 text-slate-400 border border-slate-700'
+            }`}
+          >
+            {op.label}
+          </button>
+        ))}
+      </div>
+
+      {esAdmin && (
+        <div className="px-5 mb-4">
+          <EmpleadoSelector resumen={resumen} seleccionado={empleadoSel} onSeleccionar={setEmpleadoSel} />
+        </div>
+      )}
 
       <div className="px-5 mb-4 grid grid-cols-3 gap-2">
         <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3">
@@ -117,14 +181,21 @@ export default function VentasPage() {
           <p className="text-white text-base font-black">${stats.total.toLocaleString('es-CO')}</p>
         </div>
         <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3">
-          <p className="text-slate-500 text-[10px] uppercase tracking-wide font-bold">IVA</p>
-          <p className="text-white text-base font-black">${Math.round(stats.iva).toLocaleString('es-CO')}</p>
+          <p className="text-slate-500 text-[10px] uppercase tracking-wide font-bold">{stats.propinas > 0 ? 'Propinas' : 'Promedio'}</p>
+          <p className="text-white text-base font-black">${Math.round(stats.propinas > 0 ? stats.propinas : stats.promedio).toLocaleString('es-CO')}</p>
         </div>
         <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-3">
           <p className="text-slate-500 text-[10px] uppercase tracking-wide font-bold">Ventas</p>
           <p className="text-white text-base font-black">{stats.cantidad}</p>
         </div>
       </div>
+
+      {esAdmin && !empleadoSel && resumen.length > 1 && !busqueda.trim() && (
+        <div className="px-5 mb-5">
+          <h2 className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-2">Por empleado</h2>
+          <ResumenEmpleados resumen={resumen} onSeleccionar={setEmpleadoSel} />
+        </div>
+      )}
 
       <div className="px-5 mb-4 relative">
         <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -142,7 +213,7 @@ export default function VentasPage() {
         {!cargando && !errorCarga && filtradas.length === 0 && (
           <p className="text-slate-500 text-sm text-center py-8">Sin ventas registradas</p>
         )}
-        {filtradas.map((v, i) => (
+        {filtradas.slice(0, MOSTRAR).map((v, i) => (
           <motion.div
             key={v.id}
             custom={i}
@@ -197,6 +268,11 @@ export default function VentasPage() {
             </div>
           </motion.div>
         ))}
+        {filtradas.length > MOSTRAR && (
+          <p className="text-slate-500 text-xs text-center py-3">
+            Se muestran las {MOSTRAR} más recientes de {filtradas.length}. Los totales de arriba incluyen todas.
+          </p>
+        )}
       </div>
 
       {!cargando && filtradas.length === 0 && ventas.length === 0 && (
