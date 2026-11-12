@@ -27,7 +27,7 @@ export const SIN_CAJERO = '__sin_cajero__';
 
 export function claveEmpleado(nombre: string | null | undefined): string {
   // Sin tildes: un PC escribe «González» y el otro «Gonzalez».
-  const limpio = (nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const limpio = (nombre || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().replace(/\s+/g, ' ').toLowerCase();
   return limpio || SIN_CAJERO;
 }
 
