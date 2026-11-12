@@ -10,8 +10,6 @@ import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
 import { ModuloPOS } from '../../app/lib/permissions';
 import { RingStat } from '../components/RingStat';
-import { SucursalSelector } from '../components/SucursalSelector';
-import { machineIdsDeSucursal } from '../../app/lib/supabase/sucursalesService';
 import { EmpleadoSelector, ResumenEmpleados, useEmpleadosNube } from '../components/EmpleadoFiltro';
 import { FILTRO_TIENDA_PRINCIPAL, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 import { SucursalFiltro } from '../components/SucursalFiltro';
@@ -105,7 +103,6 @@ export default function InicioPage() {
   const [rango, setRango] = useState<RangoFiltro>('hoy');
   const [customDesde, setCustomDesde] = useState(() => formatoFechaInput(inicioDeHoy()));
   const [customHasta, setCustomHasta] = useState(() => formatoFechaInput(inicioDeHoy()));
-  const [sucursalSeleccionada, setSucursalSeleccionada] = useState<string | null>(null);
 
   const esAdmin = !!empleado && ['admin', 'super_usuario'].includes(empleado.rol);
   const { tieneModulo } = useModulosActivos();
@@ -126,22 +123,6 @@ export default function InicioPage() {
 
       const { inicio, fin, inicioAnterior, finAnterior } = calcularRangos(rango, customDesde, customHasta);
 
-      // 🏬 Filtro por sucursal: cada caja física sube sus ventas con
-      // terminal_id = su propio machine_id (ver useRegistrarInstalacion.ts).
-      // Al elegir una sucursal, se traducen sus cajas asignadas a esa lista
-      // de machine_id y se filtra por ahí -- "Todas" no aplica ningún filtro.
-      // Un array vacío (sucursal elegida sin ninguna caja asignada todavía)
-      // se resuelve con un terminal_id imposible en vez de mandar `.in([])`
-      // a PostgREST, para no depender de cómo maneje esa librería el caso.
-      const machineIdsSucursal = sucursalSeleccionada
-        ? await machineIdsDeSucursal(empleado.cliente_id, sucursalSeleccionada)
-        : null;
-      const filtrarPorSucursal = <T,>(query: T): T => {
-        if (!machineIdsSucursal) return query;
-        const ids = machineIdsSucursal.length > 0 ? machineIdsSucursal : ['__sin_instalaciones_asignadas__'];
-        return (query as any).in('terminal_id', ids);
-      };
-
       const filtrarPorTienda = <T,>(query: T): T => {
         if (tiendaFiltro === undefined) return query;
         return tiendaFiltro === 'tienda_principal'
@@ -151,9 +132,9 @@ export default function InicioPage() {
 
       // Paginado: con 1000 filas por consulta, 7 días de un negocio movido salían cortados.
       const ventasEntre = (desde: Date, hasta: Date) => traerTodo<VentaFila>((a, b) =>
-        filtrarPorTienda(filtrarPorSucursal(client.from('ventas').select('id, total, propina, cajero_nombre, created_at')
+        filtrarPorTienda(client.from('ventas').select('id, total, propina, cajero_nombre, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
-          .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString())))
+          .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString()))
           .order('id').range(a, b))
         .then((data) => ({ data }), () => ({ data: [] as VentaFila[] }));
 
@@ -224,7 +205,7 @@ export default function InicioPage() {
     cargar();
     const interval = window.setInterval(cargar, 30000);
     return () => { cancelado = true; window.clearInterval(interval); };
-  }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta, sucursalSeleccionada, tiendaFiltro]);
+  }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta, tiendaFiltro]);
 
   const resumenEmpleados = useMemo(() => completarConEmpleados(
     resumirPorEmpleado(ventasPeriodo),
@@ -383,15 +364,6 @@ export default function InicioPage() {
               onClick={() => navigate('/alertas')}
             />
           </div>
-
-          {empleado && (
-            <SucursalSelector
-              clienteId={empleado.cliente_id}
-              esAdmin={esAdmin}
-              sucursalSeleccionada={sucursalSeleccionada}
-              onSeleccionar={setSucursalSeleccionada}
-            />
-          )}
 
           {/* 🖥️ Solo escritorio (lg+): el "control total" que pidió el dueño
               del negocio — mismos números que ya calcula Electron, en
