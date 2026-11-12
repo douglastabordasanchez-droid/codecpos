@@ -345,6 +345,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, mainFileExists: boolean, backupFileExists: boolean}>}
    */
   verificarUsuarios: () => ipcRenderer.invoke('verificar-usuarios'),
+
+  /** Propina, porcentaje y cambio de precio de este equipo, copia en disco por negocio. */
+  guardarConfigNegocio: (clienteId, config) => ipcRenderer.invoke('config-negocio:guardar', { clienteId, config }),
+  cargarConfigNegocio: (clienteId) => ipcRenderer.invoke('config-negocio:cargar', clienteId),
 });
 
 console.log('✅ CODEC POS Preload Script cargado correctamente');

@@ -44,6 +44,29 @@ export function ConfiguracionTipoNegocio() {
     setCambiosPendientes(true);
   };
 
+  // Propina y cambio de precio se guardan apenas se tocan: antes había que
+  // bajar hasta «Guardar» y, si no, al salir quedaban como estaban (apagados).
+  const guardarAjuste = (cambio: Partial<{ propinaActiva: boolean; porcentajePropinaPredeterminado: number; permitirModificarPrecio: boolean }>) => {
+    setBusinessConfig({
+      tipoNegocio: tipoActual,
+      nombreNegocio: nombreActual,
+      propinaActiva: propinaActivaActual,
+      porcentajePropinaPredeterminado: porcentajePropinaActual,
+      permitirModificarPrecio: permitirModificarPrecioActual,
+      ...cambio,
+    });
+    toast.success('Guardado en este computador');
+  };
+
+  const guardarPorcentaje = () => {
+    const porcentaje = Number(porcentajePropina);
+    if (!Number.isFinite(porcentaje) || porcentaje < 0) {
+      toast.error('El porcentaje de propina debe ser un valor numérico no negativo');
+      return;
+    }
+    if (porcentaje !== porcentajePropinaActual) guardarAjuste({ porcentajePropinaPredeterminado: porcentaje });
+  };
+
   const handleGuardar = () => {
     if (!nombreNegocio.trim()) {
       toast.error('Por favor ingresa el nombre de tu negocio');
@@ -180,7 +203,7 @@ export function ConfiguracionTipoNegocio() {
             <input
               type="checkbox"
               checked={propinaActiva}
-              onChange={(e) => { setPropinaActiva(e.target.checked); setCambiosPendientes(true); }}
+              onChange={(e) => { setPropinaActiva(e.target.checked); guardarAjuste({ propinaActiva: e.target.checked }); }}
               className="h-5 w-5 accent-blue-600"
             />
           </label>
@@ -190,9 +213,12 @@ export function ConfiguracionTipoNegocio() {
               <input
                 type="number"
                 min="0"
-                step="0.01"
+                step="any"
                 value={porcentajePropina}
-                onChange={(e) => { setPorcentajePropina(e.target.value); setCambiosPendientes(true); }}
+                onChange={(e) => setPorcentajePropina(e.target.value)}
+                onBlur={guardarPorcentaje}
+                onKeyDown={(e) => { if (e.key === 'Enter') guardarPorcentaje(); if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
+                onWheel={(e) => (e.target as HTMLInputElement).blur()}
                 className={`w-full px-4 py-3 rounded-xl border-2 ${darkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
               />
             </div>
@@ -212,7 +238,7 @@ export function ConfiguracionTipoNegocio() {
             <input
               type="checkbox"
               checked={permitirModificarPrecio}
-              onChange={(e) => { setPermitirModificarPrecio(e.target.checked); setCambiosPendientes(true); }}
+              onChange={(e) => { setPermitirModificarPrecio(e.target.checked); guardarAjuste({ permitirModificarPrecio: e.target.checked }); }}
               className="h-5 w-5 accent-blue-600"
             />
           </label>

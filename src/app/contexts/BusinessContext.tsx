@@ -63,11 +63,34 @@ function loadConfig(): BusinessConfig {
 
 const BusinessContext = createContext<BusinessContextType | undefined>(undefined);
 
+/** Negocio cuyos datos están cargados en este equipo (ver tenantSwap.ts). */
+function negocioActivo(): string {
+  try { return localStorage.getItem('codecpos_datos_activos_cliente_id') || getLinkedClienteId() || 'local'; }
+  catch { return 'local'; }
+}
+
+/**
+ * Copia en disco (Electron) de lo que es propio de este equipo. «Reparar base
+ * de datos», un PC que queda vacío o restaurar un respaldo borraban el
+ * localStorage y la propina y el cambio de precio volvían apagados.
+ */
+function guardarEnDisco(c: BusinessConfig) {
+  const api = typeof window !== 'undefined' ? window.electronAPI : undefined;
+  if (!api?.guardarConfigNegocio) return;
+  api.guardarConfigNegocio(negocioActivo(), {
+    propinaActiva: c.propinaActiva,
+    porcentajePropinaPredeterminado: c.porcentajePropinaPredeterminado,
+    permitirModificarPrecio: c.permitirModificarPrecio,
+    guardadoEn: new Date().toISOString(),
+  }).catch(() => { /* best-effort */ });
+}
+
 function guardarLocal(c: BusinessConfig) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(c));
     localStorage.setItem(LEGACY_KEY, c.tipoNegocio);
   } catch { /* storage full */ }
+  guardarEnDisco(c);
   window.dispatchEvent(new CustomEvent('codec-business-changed', { detail: c }));
 }
 
@@ -119,6 +142,33 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
   configRef.current = config;
   // Cada guardado local suma uno: una lectura o subida que empezó antes ya no vale.
   const edicionRef = useRef(0);
+
+  // Si el localStorage quedó sin «Mi negocio» (reparación, PC vacío), se
+  // recupera la copia en disco; si es la primera vez, se crea la copia.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.cargarConfigNegocio) return;
+    let habiaLocal = false;
+    try { habiaLocal = localStorage.getItem(STORAGE_KEY) !== null; } catch { /* sin storage */ }
+    if (habiaLocal) { guardarEnDisco(configRef.current); return; }
+    const edicion = edicionRef.current;
+    api.cargarConfigNegocio(negocioActivo()).then((r) => {
+      const d = r?.config;
+      if (!d || edicionRef.current !== edicion) return;
+      const actual = configRef.current;
+      const recuperado: BusinessConfig = {
+        ...actual,
+        propinaActiva: d.propinaActiva === true,
+        porcentajePropinaPredeterminado: Math.max(0, Number(d.porcentajePropinaPredeterminado) || 0),
+        permitirModificarPrecio: d.permitirModificarPrecio === true,
+      };
+      // Una lectura de la nube que ya iba en camino se descarta: traía lo de antes.
+      edicionRef.current += 1;
+      configRef.current = recuperado;
+      setConfig(recuperado);
+      guardarLocal(recuperado);
+    }).catch(() => { /* best-effort */ });
+  }, []);
 
   // "Mi negocio" también se puede configurar desde la web/celular: Electron lo
   // trae de la nube al abrir, al volver a la ventana y cada 2 minutos.

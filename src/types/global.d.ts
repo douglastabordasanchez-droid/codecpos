@@ -114,6 +114,8 @@ interface Window {
       source: 'main' | 'backup' | 'none';
       error?: string;
     }>;
+    guardarConfigNegocio?: (clienteId: string, config: any) => Promise<{ success: boolean; error?: string }>;
+    cargarConfigNegocio?: (clienteId: string) => Promise<{ success: boolean; config: any | null; error?: string }>;
     verificarUsuarios: () => Promise<{
       success: boolean;
       mainFileExists: boolean;

@@ -2455,6 +2455,37 @@ ipcMain.handle('cargar-usuarios', async () => {
 });
 
 // ✅ Verificar integridad de archivos de usuarios
+// ── Mi negocio de este equipo (propina, porcentaje, cambio de precio) ────────
+// Copia en disco, una por negocio: «Reparar base de datos» o un PC que queda
+// vacío borran el localStorage y esas opciones volvían apagadas.
+function rutaConfigNegocio(clienteId) {
+  const id = String(clienteId || 'local').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'local';
+  return path.join(app.getPath('userData'), 'CODEC_POS_Data', `mi-negocio-${id}.json`);
+}
+
+ipcMain.handle('config-negocio:guardar', async (_, { clienteId, config }) => {
+  try {
+    const ruta = rutaConfigNegocio(clienteId);
+    await fsPromises.mkdir(path.dirname(ruta), { recursive: true });
+    const tmp = `${ruta}.tmp`;
+    await fsPromises.writeFile(tmp, JSON.stringify(config ?? {}, null, 2), 'utf8');
+    await fsPromises.rename(tmp, ruta);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('config-negocio:cargar', async (_, clienteId) => {
+  try {
+    const ruta = rutaConfigNegocio(clienteId);
+    if (!fs.existsSync(ruta)) return { success: true, config: null };
+    return { success: true, config: JSON.parse(await fsPromises.readFile(ruta, 'utf8')) };
+  } catch (e) {
+    return { success: false, config: null, error: e.message };
+  }
+});
+
 ipcMain.handle('verificar-usuarios', async () => {
   try {
     const userDataPath = app.getPath('userData');

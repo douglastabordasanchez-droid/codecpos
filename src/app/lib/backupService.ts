@@ -61,6 +61,9 @@ interface BackupData {
     // del POS táctil): vive en su propio localStorage y ningún respaldo lo
     // guardaba (Boniexpress, 21 oct 2026).
     alimentosBebidas?: { categorias: any[]; productos: any[] };
+    // «Mi negocio» de este equipo (propina, porcentaje, cambio de precio):
+    // ya no baja de la nube, así que sin esto se apagaba al restaurar.
+    configNegocio?: any;
   };
   stats: {
     totalProductos: number;
@@ -174,6 +177,7 @@ class BackupService {
         }
       } catch { /* no crítico */ }
       const permisosUsuariosAdmin = this.getFromLocalStorage('codec_pos_permisos_usuarios', null);
+      const configNegocio = this.getFromLocalStorage('codec_pos_config_negocio', null);
       const categoriasAlimentos = this.getFromLocalStorage('codecpos_panaderia_cats', null);
       const productosAlimentos = this.getFromLocalStorage('codecpos_panaderia_prods', null);
       const alimentosBebidas = Array.isArray(categoriasAlimentos) && Array.isArray(productosAlimentos)
@@ -209,6 +213,7 @@ class BackupService {
           modulosClientesAdmin,
           permisosUsuariosAdmin,
           alimentosBebidas,
+          configNegocio,
         },
         stats: {
           totalProductos: productos.length,
@@ -403,6 +408,25 @@ class BackupService {
     }
   }
 
+  /**
+   * «Mi negocio» del respaldo. Lo que ya esté activo en este equipo no se
+   * apaga: un respaldo viejo sin propina no debe quitarla si hoy está puesta.
+   */
+  private restaurarConfigNegocio(datos: BackupData['datos']): void {
+    const r = datos.configNegocio;
+    if (!r || typeof r !== 'object') return;
+    let actual: any = null;
+    try { actual = JSON.parse(localStorage.getItem('codec_pos_config_negocio') || 'null'); } catch { actual = null; }
+    if (!actual || typeof actual !== 'object') { this.saveToLocalStorage('codec_pos_config_negocio', r); return; }
+    const propinaActiva = actual.propinaActiva === true || r.propinaActiva === true;
+    this.saveToLocalStorage('codec_pos_config_negocio', {
+      ...actual,
+      propinaActiva,
+      porcentajePropinaPredeterminado: actual.propinaActiva === true ? actual.porcentajePropinaPredeterminado : r.porcentajePropinaPredeterminado,
+      permitirModificarPrecio: actual.permitirModificarPrecio === true || r.permitirModificarPrecio === true,
+    });
+  }
+
   /** Menú de Alimentos y Bebidas. Un respaldo sin él deja el menú como esté: la página lo rearma desde el inventario si quedó vacío. */
   private restaurarMenuAlimentos(datos: BackupData['datos']): void {
     const menu = datos.alimentosBebidas;
@@ -469,6 +493,7 @@ class BackupService {
       this.saveToLocalStorage('codecpos_presupuestos_categorias', datos.presupuestosCategorias || []);
       this.saveToLocalStorage('codecpos_gastos_recurrentes', datos.gastosRecurrentes || []);
       if (datos.metaMensualGanancia != null) this.saveToLocalStorage('codecpos_meta_mensual_ganancia', datos.metaMensualGanancia);
+      this.restaurarConfigNegocio(datos);
 
       // 🛡️ FIX: los usuarios (empleados/cajeros) tienen TRES capas de
       // persistencia redundante (ver src/app/lib/usuariosStorage.ts):
@@ -771,6 +796,7 @@ class BackupService {
       if (datos.presupuestosCategorias) this.saveToLocalStorage('codecpos_presupuestos_categorias', datos.presupuestosCategorias);
       if (datos.gastosRecurrentes) this.saveToLocalStorage('codecpos_gastos_recurrentes', datos.gastosRecurrentes);
       if (datos.metaMensualGanancia != null) this.saveToLocalStorage('codecpos_meta_mensual_ganancia', datos.metaMensualGanancia);
+      this.restaurarConfigNegocio(datos);
 
       logger.info('✅ Backup restaurado exitosamente');
       
