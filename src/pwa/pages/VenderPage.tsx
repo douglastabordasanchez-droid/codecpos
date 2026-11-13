@@ -182,7 +182,11 @@ export default function VenderPage() {
   // Veterinaria: los servicios (baño, consulta) se cobran sin stock y cada ítem
   // lleva su área para el cierre por áreas. Sin el módulo, Vender no cambia.
   const conVeterinaria = !cargandoModulos && tieneModulo(ModuloPOS.VETERINARIA);
-  const sinControlStock = (p: ProductoFila) => conVeterinaria && seVendeSinStock({ nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipo_producto });
+  // Un producto marcado como servicio se factura sin stock en cualquier negocio y para
+  // cualquier usuario (antes dependía del módulo Veterinaria del empleado: Gabriela,
+  // MEGA CAN, 2026-11-13). Con Veterinaria además cuentan peluquería y consultas.
+  const sinControlStock = (p: ProductoFila) => p.tipo_producto === 'servicio'
+    || (conVeterinaria && seVendeSinStock({ nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipo_producto }));
   const areaVet = (p: ProductoFila) => (conVeterinaria ? areaDeItem({ nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipo_producto }) : undefined);
   const facturacionDisponible = tieneModuloDePago(ModuloPOS.FACTURACION_DIAN);
   const [avisoRetencionFE, setAvisoRetencionFE] = useState('');

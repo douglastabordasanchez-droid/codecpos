@@ -32,6 +32,8 @@ interface FormState {
   talla: string;
   color: string;
   marca: string;
+  /** Servicio (baño, consulta, instalación): se factura sin stock y no lleva inventario. */
+  servicio: boolean;
 }
 
 /** Datos extra que la nube guarda por producto y su etiqueta. */
@@ -43,7 +45,7 @@ const ATRIBUTOS_GUARDABLES: Array<{ clave: 'talla' | 'color' | 'marca'; etiqueta
 
 const VACIO: FormState = {
   nombre: '', codigo_barras: '', categoria: '', precio_venta: '', costo: '',
-  stock: '', stock_minimo: '', unidad: 'unidad', iva: '0', fotos: [], talla: '', color: '', marca: '',
+  stock: '', stock_minimo: '', unidad: 'unidad', iva: '0', fotos: [], talla: '', color: '', marca: '', servicio: false,
 };
 
 function createImage(url: string): Promise<HTMLImageElement> {
@@ -102,6 +104,7 @@ export default function ProductoFormPage() {
   // Stock que tenía el producto al abrirlo: al guardar se manda la diferencia, así lo que
   // se vendió mientras el formulario estaba abierto no se borra.
   const stockAlAbrir = useRef(0);
+  const eraServicio = useRef(false);
 
   useEffect(() => {
     if (!sinPermisoDeEditar) return;
@@ -157,6 +160,7 @@ export default function ProductoFormPage() {
             stock = Number(fila?.cantidad) || 0;
           }
           stockAlAbrir.current = stock;
+          eraServicio.current = data.tipo_producto === 'servicio';
           const fotos: string[] = Array.isArray(data.fotos_urls) && data.fotos_urls.length > 0
             ? data.fotos_urls
             : (data.foto_url ? [data.foto_url] : []);
@@ -168,6 +172,7 @@ export default function ProductoFormPage() {
             costo: String(data.costo ?? ''),
             stock: String(stock),
             stock_minimo: String(data.stock_minimo ?? ''),
+            servicio: data.tipo_producto === 'servicio',
             unidad: data.unidad || 'unidad',
             iva: String(data.iva ?? '0'),
             fotos,
@@ -321,9 +326,12 @@ export default function ProductoFormPage() {
       // Solo se envían los datos extra que usa este tipo de negocio, para no borrar los que vengan de Electron.
       ...Object.fromEntries(ATRIBUTOS_GUARDABLES.filter((a) => atributosNegocio.includes(a.clave)).map((a) => [a.clave, form[a.clave].trim() || null])),
       updated_by: empleado.id,
+      // Solo se toca el tipo si es o deja de ser servicio: así no se pierde «granel» ni lo que venga de Electron.
+      ...(form.servicio ? { tipo_producto: 'servicio' } : eraServicio.current ? { tipo_producto: 'fisico' } : {}),
     };
 
-    const stockNuevo = Number(form.stock) || 0;
+    // Un servicio no lleva inventario: su stock no se toca.
+    const stockNuevo = form.servicio ? stockAlAbrir.current : Number(form.stock) || 0;
     // Producto nuevo: nace con su stock en la principal; en otra sede nace en 0 y se le carga a ella.
     const { data: guardado, error } = esNuevo
       ? await client.from('productos').insert({ ...payload, stock: enOtraSede ? 0 : stockNuevo }).select('id').single()
@@ -480,7 +488,20 @@ export default function ProductoFormPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <label className="flex items-center justify-between gap-3 bg-slate-900/70 border border-slate-800 rounded-xl px-4 py-3 cursor-pointer">
+          <span>
+            <span className="block text-white text-sm font-semibold">Es un servicio</span>
+            <span className="block text-slate-500 text-xs">Baño, consulta, instalación... Se factura aunque no haya stock.</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={form.servicio}
+            onChange={(e) => setForm({ ...form, servicio: e.target.checked })}
+            className="h-5 w-5 accent-amber-500 shrink-0"
+          />
+        </label>
+
+        {!form.servicio && <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label className="text-slate-400 text-xs">{enOtraSede ? `Stock en ${getSucursalActiva()?.nombre || 'esta sede'}` : 'Stock'}</Label>
             <Input type="number" inputMode="numeric" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="h-12 bg-slate-900/70 border-slate-800 text-white" />
@@ -489,7 +510,7 @@ export default function ProductoFormPage() {
             <Label className="text-slate-400 text-xs">Stock mínimo</Label>
             <Input type="number" inputMode="numeric" value={form.stock_minimo} onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })} className="h-12 bg-slate-900/70 border-slate-800 text-white" />
           </div>
-        </div>
+        </div>}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
