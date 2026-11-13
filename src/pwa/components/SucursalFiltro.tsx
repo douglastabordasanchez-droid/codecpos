@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Store } from 'lucide-react';
+import { Store, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { getSucursalActiva, setSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
@@ -40,16 +41,16 @@ export function SucursalFiltro() {
       .eq('activo', true)
       .neq('local_id', 'tienda_principal')
       .order('nombre')
-      .then(({ data, error }) => {
+      .then(({ data }) => {
         const lista = (data as TiendaOpcion[]) || [];
         setTiendas(lista);
-        // Sin sedes el filtro no se ve: una tienda guardada de antes seguía
-        // filtrando a escondidas (y Inicio decía «Ganancia de la tienda»).
-        if (!error && lista.length === 0 && getSucursalActiva()) setSucursalActiva(null);
       });
   }, [empleado?.cliente_id, esAdmin]);
 
-  if (!esAdmin || tiendas.length === 0) return null;
+  const navigate = useNavigate();
+  // Siempre visible para el administrador: la sede separa inventario, ventas y
+  // empleados. Sin sedes creadas queda «Tienda Principal» y el acceso para crear una.
+  if (!esAdmin) return null;
 
   const valorActual = sucursal?.id || '';
 
@@ -74,12 +75,21 @@ export function SucursalFiltro() {
         onChange={(e) => onChange(e.target.value)}
         className="flex-1 h-10 bg-slate-900 border border-slate-700 rounded-xl px-3 text-white text-sm"
       >
-        <option value="">Todas las sucursales</option>
+        <option value="">Todas las sedes</option>
         <option value="tienda_principal">Tienda Principal</option>
         {tiendas.map((t) => (
           <option key={t.local_id} value={t.local_id}>{t.nombre}</option>
         ))}
       </select>
+      {tiendas.length === 0 && (
+        <button
+          type="button"
+          onClick={() => navigate('/multitienda')}
+          className="shrink-0 h-10 px-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1"
+        >
+          <Plus className="w-3.5 h-3.5" /> Sede
+        </button>
+      )}
     </div>
   );
 }
