@@ -10,7 +10,7 @@
 import {
   Home, ShoppingCart, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
   DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee, Palette, PartyPopper, CreditCard,
-  FileBarChart, ReceiptText, LayoutDashboard, Calculator, Barcode, Tag, Truck, Users, Award, Store, PawPrint, User, Printer,
+  FileBarChart, ReceiptText, LayoutDashboard, Calculator, Barcode, Tag, Truck, Users, Award, Store, PawPrint, User, Printer, ChefHat,
 } from 'lucide-react';
 import { ModuloPOS } from '../../app/lib/permissions';
 
@@ -52,6 +52,7 @@ export const NAV_TODOS: ItemNavSidebar[] = [
 
   // Módulos completos del negocio: para el mesero o el técnico, ESTA es su pantalla de trabajo.
   { grupo: 'modulos', icon: Coffee, label: 'Alimentos y Bebidas', subtitulo: 'Mesas, comandas y pedidos del salón', path: '/panaderia', modulo: ModuloPOS.PANADERIA_ONCES },
+  { grupo: 'modulos', icon: ChefHat, label: 'Estaciones', subtitulo: 'Tablets de cocina, greca y comidas rápidas', path: '/estaciones', modulo: ModuloPOS.PANADERIA_ONCES },
   { grupo: 'modulos', icon: PawPrint, label: 'Veterinaria y Mascotas', subtitulo: 'Granel con báscula, estética y farmacia', path: '/veterinaria', modulo: ModuloPOS.VETERINARIA },
   { grupo: 'modulos', icon: Wrench, label: 'Taller', subtitulo: 'Órdenes de reparación y estados', path: '/taller', modulo: ModuloPOS.TALLER_REPARACIONES },
   { grupo: 'modulos', icon: Palette, label: 'Artes Gráficas', subtitulo: 'Catálogo por escalas y facturas dinámicas', path: '/artes-graficas', modulo: ModuloPOS.ARTES_GRAFICAS },

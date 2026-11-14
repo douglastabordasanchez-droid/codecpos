@@ -114,6 +114,32 @@ export function convertirDegradadosYAlturas(css: string): string {
     .replace(/(\d)(?:dvh|svh|lvh)\b/g, '$1vh');
 }
 
+/**
+ * Filtros: Tailwind 4 arma `filter:var(--tw-blur,)var(--tw-brightness,)…`
+ * (variables con respaldo vacío). Chrome 101 deja el filtro inválido y el
+ * brillo desenfocado detrás del total se ve como una caja sólida. En cada regla
+ * que define el desenfoque se pone el filtro directo.
+ * Texto con degradado (bg-clip-text + text-transparent): se refuerza con
+ * -webkit-text-fill-color, que Chrome 101 respeta, para que el número del total
+ * salga verde y no negro.
+ */
+export function convertirFiltrosYTextoDegradado(css: string): string {
+  const conFiltros = css.replace(/\{([^{}]*)\}/g, (bloque, cuerpo: string) => {
+    let c = cuerpo;
+    const blur = c.match(/--tw-blur:([^;}]+)/)?.[1];
+    if (blur) c = c.replace(/(^|;)filter:var\(--tw-blur,\)[^;}]*/, `$1filter:${blur}`);
+    const bblur = c.match(/--tw-backdrop-blur:([^;}]+)/)?.[1];
+    if (bblur) {
+      c = c.replace(/(^|;)-webkit-backdrop-filter:var\(--tw-backdrop-blur,\)[^;}]*/, `$1-webkit-backdrop-filter:${bblur}`);
+      c = c.replace(/(^|;)backdrop-filter:var\(--tw-backdrop-blur,\)[^;}]*/, `$1backdrop-filter:${bblur}`);
+    }
+    return c === cuerpo ? bloque : `{${c}}`;
+  });
+  return css.includes('.bg-clip-text{')
+    ? `${conFiltros}\n.bg-clip-text.text-transparent{-webkit-text-fill-color:transparent}`
+    : conFiltros;
+}
+
 export function compatAndroid(): Plugin {
   const diag = process.env.CODEC_DIAG_URL;
   return {
@@ -128,7 +154,7 @@ ${scriptDiagnostico(diag)}`) : html;
       for (const archivo of Object.values(bundle)) {
         if (archivo.type === 'asset' && archivo.fileName.endsWith('.css')) {
           const css = typeof archivo.source === 'string' ? archivo.source : new TextDecoder().decode(archivo.source);
-          archivo.source = convertirDegradadosYAlturas(convertirTransformSueltos(convertirOklch(css)));
+          archivo.source = convertirFiltrosYTextoDegradado(convertirDegradadosYAlturas(convertirTransformSueltos(convertirOklch(css))));
         }
       }
     },

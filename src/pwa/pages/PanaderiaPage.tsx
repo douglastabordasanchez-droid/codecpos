@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router';
 import {
   Coffee, X, Loader2, Plus, Minus, Users, Search, Check,
   Trash2, AlertCircle, ChefHat, BellRing, Settings2, Vibrate, Volume2, VolumeX, QrCode,
@@ -58,6 +59,9 @@ import {
 } from '../lib/comandasAutorizadas';
 import { EscanerTiendaQR, type QRPayloadTienda } from '../components/EscanerTiendaQR';
 import { SucursalFiltro } from '../components/SucursalFiltro';
+import {
+  type Estacion, listarEstaciones, suscribirEstaciones, estacionesAprendidas, recordarEstaciones,
+} from '../../app/lib/supabase/estacionesService';
 
 const ESTADO_COMANDA_LABEL: Record<string, string> = {
   pendiente: '🕓 En cola',
@@ -72,6 +76,7 @@ const totalDeItems = (items: ItemCuenta[]) =>
 
 export default function PanaderiaPage() {
   const { empleado } = usePwaAuth();
+  const navigate = useNavigate();
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,6 +121,21 @@ export default function PanaderiaPage() {
   };
 
   const [mesaAbierta, setMesaAbierta] = useState<PanaderiaMesa | null>(null);
+
+  // 🍽️ Estaciones (Cocina, Greca, Comidas rápidas…) y la estación aprendida de cada producto.
+  const [estaciones, setEstaciones] = useState<Estacion[]>([]);
+  const [aprendidas, setAprendidas] = useState<Record<string, string | null>>({});
+  useEffect(() => {
+    if (!empleado) return;
+    let activo = true;
+    const traer = () => {
+      listarEstaciones(empleado.cliente_id).then((l) => { if (activo) setEstaciones(l); }).catch(() => {});
+    };
+    traer();
+    estacionesAprendidas(empleado.cliente_id).then((a) => { if (activo) setAprendidas(a); }).catch(() => {});
+    const quitar = suscribirEstaciones(empleado.cliente_id, traer);
+    return () => { activo = false; quitar(); };
+  }, [empleado?.cliente_id]);
   // 🍳 Comanda más reciente por mesa — para que el mesero vea sin preguntar
   // si cocina/bar ya la está preparando o ya está lista para servir.
   const [comandasPorMesa, setComandasPorMesa] = useState<Record<string, Comanda>>({});
@@ -226,11 +246,11 @@ export default function PanaderiaPage() {
     return () => { cancelado = true; unsubscribe?.(); };
   }, [empleado?.cliente_id, mostrarAlertaComanda, tiendaEfectiva]);
 
-  const guardar = async (mesa: PanaderiaMesa, items: ItemCuenta[]) => {
+  const guardar = async (mesa: PanaderiaMesa, items: ItemCuenta[], destinos: Record<string, string | null>) => {
     if (!empleado) return;
     // El delta de comanda se calcula ANTES de sobrescribir `cuentas` con el
     // estado optimista, porque compara contra lo que ya estaba guardado.
-    const enviarComandaPromise = enviarComandaMesa(mesa, items);
+    const enviarComandaPromise = enviarComandaMesa(mesa, items, destinos);
 
     // Optimista: la comandera debe sentirse instantánea aunque la red esté lenta.
     setCuentas((prev) => ({
@@ -258,17 +278,47 @@ export default function PanaderiaPage() {
 
   // 🍳 Delta de ítems nuevos/aumentados desde la última cuenta conocida de la
   // mesa — así "Enviar a Cocina" no vuelve a mandar lo que ya se preparó.
-  const enviarComandaMesa = async (mesa: PanaderiaMesa, nuevos: ItemCuenta[]) => {
+  // 🍽️ Con estaciones (migración 0148) lo nuevo se reparte: una comanda por
+  // estación con solo sus productos; lo marcado "solo cuenta" no se envía.
+  // La elección queda aprendida para el próximo pedido de cualquier mesero.
+  const enviarComandaMesa = async (mesa: PanaderiaMesa, nuevos: ItemCuenta[], destinos: Record<string, string | null>) => {
     if (!empleado) return;
     const anteriores = cuentas[mesa.id]?.items ?? [];
-    const delta: ItemComanda[] = nuevos.reduce<ItemComanda[]>((acc, it) => {
+    const delta: Array<ItemComanda & { productoId: string }> = nuevos.reduce<Array<ItemComanda & { productoId: string }>>((acc, it) => {
       const previo = anteriores.find((p) => p.producto.id === it.producto.id);
       const diferencia = it.cantidad - (previo?.cantidad || 0);
-      if (diferencia > 0) acc.push({ nombre: it.producto.nombre, cantidad: diferencia });
+      if (diferencia > 0) acc.push({ productoId: it.producto.id, nombre: it.producto.nombre, cantidad: diferencia });
       return acc;
     }, []);
     if (delta.length === 0) return;
-    await enviarComanda(empleado.cliente_id, mesa.id, mesa.nombre, delta, empleado.nombre_completo, undefined, mesa.tiendaId).catch(() => {});
+
+    const activas = estaciones.filter((e) => e.activa);
+    if (activas.length === 0) {
+      await enviarComanda(empleado.cliente_id, mesa.id, mesa.nombre, delta.map(({ productoId: _p, ...i }) => i), empleado.nombre_completo, undefined, mesa.tiendaId).catch(() => {});
+      return;
+    }
+
+    const porEstacion = new Map<string, ItemComanda[]>();
+    const elecciones: Record<string, string | null> = {};
+    for (const d of delta) {
+      const destino = destinos[d.productoId] ?? null;
+      elecciones[d.productoId] = destino;
+      if (!destino) continue;
+      porEstacion.set(destino, [...(porEstacion.get(destino) || []), { nombre: d.nombre, cantidad: d.cantidad }]);
+    }
+    setAprendidas((prev) => ({ ...prev, ...elecciones }));
+    await Promise.all([
+      recordarEstaciones(empleado.cliente_id, elecciones).catch(() => {}),
+      ...[...porEstacion.entries()].map(([estacionId, itemsEstacion]) => {
+        const est = activas.find((e) => e.id === estacionId);
+        return enviarComanda(
+          empleado.cliente_id, mesa.id, mesa.nombre, itemsEstacion, empleado.nombre_completo, undefined, mesa.tiendaId,
+          est ? { id: est.id, nombre: est.nombre } : null,
+        ).catch(() => toast.error(`No se pudo enviar a ${est?.nombre || 'la estación'}`));
+      }),
+    ]);
+    const resumen = [...porEstacion.keys()].map((id) => activas.find((e) => e.id === id)?.nombre).filter(Boolean);
+    if (resumen.length > 0) toast.success(`Pedido enviado a ${resumen.join(', ')}`);
   };
 
   const mesasOcupadas = mesas.filter((m) => (cuentas[m.id]?.items?.length ?? 0) > 0).length;
@@ -322,6 +372,14 @@ export default function PanaderiaPage() {
           </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/estaciones')}
+              className="shrink-0 h-[46px] rounded-xl border border-orange-500/50 bg-orange-500/10 px-3 text-orange-300 text-sm font-bold flex items-center gap-1.5 active:scale-95 transition-transform"
+              title="Pantalla de Cocina, Greca, Comidas rápidas…"
+            >
+              <ChefHat className="w-5 h-5" />Estaciones
+            </button>
             <button
               type="button"
               onClick={() => setMostrarAjustesAvisos((visible) => !visible)}
@@ -531,7 +589,9 @@ export default function PanaderiaPage() {
                 categorias={categorias}
                 productos={productos}
                 onCerrar={() => setMesaAbierta(null)}
-                onGuardar={(items) => guardar(mesaAbierta, items)}
+                estaciones={estaciones.filter((e) => e.activa)}
+                aprendidas={aprendidas}
+                onGuardar={(items, destinos) => guardar(mesaAbierta, items, destinos)}
               />
             </motion.div>
           </motion.div>
@@ -544,16 +604,32 @@ export default function PanaderiaPage() {
 // ── Cuenta de una mesa ───────────────────────────────────────────────────────
 
 function CuentaDeMesa({
-  mesa, items: itemsIniciales, categorias, productos, onCerrar, onGuardar,
+  mesa, items: itemsIniciales, categorias, productos, estaciones, aprendidas, onCerrar, onGuardar,
 }: {
   mesa: PanaderiaMesa;
   items: ItemCuenta[];
   categorias: PanaderiaCategoria[];
   productos: PanaderiaProducto[];
+  estaciones: Estacion[];
+  aprendidas: Record<string, string | null>;
   onCerrar: () => void;
-  onGuardar: (items: ItemCuenta[]) => void;
+  onGuardar: (items: ItemCuenta[], destinos: Record<string, string | null>) => void;
 }) {
   const [items, setItems] = useState<ItemCuenta[]>(itemsIniciales);
+  // Estación elegida para cada producto nuevo en este envío (null = solo cuenta).
+  const [destinos, setDestinos] = useState<Record<string, string | null>>({});
+  const hayEstaciones = estaciones.length > 0;
+  const destinoDe = (productoId: string): string | null | undefined => {
+    if (productoId in destinos) return destinos[productoId];
+    const aprendida = aprendidas[productoId];
+    if (aprendida === null) return null;
+    return aprendida && estaciones.some((e) => e.id === aprendida) ? aprendida : undefined;
+  };
+  // Lo que se va a enviar: productos nuevos o con más cantidad que lo guardado.
+  const nuevos = useMemo(() => new Set(items
+    .filter((it) => it.cantidad > (itemsIniciales.find((p) => p.producto.id === it.producto.id)?.cantidad || 0))
+    .map((it) => it.producto.id)), [items, itemsIniciales]);
+  const sinDestino = hayEstaciones ? [...nuevos].filter((id) => destinoDe(id) === undefined).length : 0;
   const [catActiva, setCatActiva] = useState<string>(categorias[0]?.id ?? '');
   const [busqueda, setBusqueda] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -605,7 +681,9 @@ function CuentaDeMesa({
 
   const enviar = async () => {
     setEnviando(true);
-    await onGuardar(items);
+    const elegidos: Record<string, string | null> = {};
+    for (const id of nuevos) { const d = destinoDe(id); if (d !== undefined) elegidos[id] = d; }
+    await onGuardar(items, elegidos);
     setEnviando(false);
     onCerrar();
   };
@@ -638,7 +716,7 @@ function CuentaDeMesa({
             {items.map((it) => (
               <div
                 key={it.producto.id}
-                className="flex items-center gap-2 bg-slate-900/70 border border-slate-800 rounded-xl p-2"
+                className={`flex flex-wrap items-center gap-2 bg-slate-900/70 border rounded-xl p-2 ${hayEstaciones && nuevos.has(it.producto.id) && destinoDe(it.producto.id) === undefined ? 'border-amber-500/70' : 'border-slate-800'}`}
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-white text-sm font-semibold truncate">{it.producto.nombre}</p>
@@ -665,6 +743,29 @@ function CuentaDeMesa({
                 <button onClick={() => quitar(it.producto.id)} className="text-slate-600 p-1 shrink-0">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
+                {hayEstaciones && nuevos.has(it.producto.id) && (
+                  <div className="basis-full flex gap-1.5 overflow-x-auto pt-1 [scrollbar-width:none]">
+                    {estaciones.map((e) => {
+                      const activo = destinoDe(it.producto.id) === e.id;
+                      return (
+                        <button
+                          key={e.id}
+                          onClick={() => setDestinos((prev) => ({ ...prev, [it.producto.id]: e.id }))}
+                          className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border transition-all ${activo ? 'text-white border-transparent' : 'bg-slate-950 border-slate-700 text-slate-300'}`}
+                          style={activo ? { background: e.color } : undefined}
+                        >
+                          {e.nombre}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setDestinos((prev) => ({ ...prev, [it.producto.id]: null }))}
+                      className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border transition-all ${destinoDe(it.producto.id) === null ? 'bg-slate-200 text-slate-900 border-transparent' : 'bg-slate-950 border-slate-700 text-slate-400'}`}
+                    >
+                      Solo cuenta
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -749,14 +850,22 @@ function CuentaDeMesa({
         </div>
         <Button
           onClick={enviar}
-          disabled={enviando || !sucio}
+          disabled={enviando || !sucio || sinDestino > 0}
           className="w-full h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50"
         >
           {enviando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
-          {enviando ? 'Enviando…' : sucio ? 'Enviar a caja y cocina' : 'Sin cambios'}
+          {enviando
+            ? 'Enviando…'
+            : !sucio
+              ? 'Sin cambios'
+              : sinDestino > 0
+                ? `Elige a dónde va ${sinDestino === 1 ? '1 producto' : `${sinDestino} productos`}`
+                : hayEstaciones ? 'Enviar pedido' : 'Enviar a caja y cocina'}
         </Button>
         <p className="text-slate-600 text-[11px] text-center mt-2">
-          La caja ve el pedido al instante y Cocina/Bar recibe lo nuevo para preparar.
+          {hayEstaciones
+            ? 'Cada estación recibe solo lo suyo; todo queda en la misma cuenta de la mesa.'
+            : 'La caja ve el pedido al instante y Cocina/Bar recibe lo nuevo para preparar.'}
         </p>
       </div>
     </>

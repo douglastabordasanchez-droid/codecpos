@@ -7,6 +7,7 @@ import {
   UsersRound, GlassWater, CirclePlus, PackageOpen, Drumstick, Wheat, Salad, CookingPot,
   Martini, Milk, Donut, CakeSlice, Sandwich, Popcorn, Beef, Shrimp, Shell, ChefHat, PackageCheck, PackagePlus,
   GripVertical, ChevronDown, ChevronLeft, ChevronRight, AlertTriangle, ShoppingCart, BarChart3, TrendingUp,
+  Maximize2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePOS } from '../../contexts/POSContext';
@@ -19,6 +20,8 @@ import {
   marcarEsteEquipoComoPrincipal, nombreSugeridoEsteEquipo, publicarMesasCompletas, descargarTodasLasMesas, suscribirMesasNube,
 } from '../../lib/supabase/terminalPrincipalService';
 import { TerminalPrincipalMesas } from './TerminalPrincipalMesas';
+import { PantallaEstaciones } from '../estaciones/PantallaEstaciones';
+import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { rearmarMenuAlimentos } from '../../lib/menuAlimentosDesdeInventario';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -659,6 +662,8 @@ export default function PanaderiaOncesPage() {
   // todo sigue como antes.
   const [terminalPrincipal, setTerminalPrincipal] = useState<TerminalPrincipal | null>(() => principalEnCache());
   const rolMesas = rolMesasDe(terminalPrincipal);
+  // Pantalla de estación (Cocina, Greca...) a pantalla completa — migración 0148.
+  const [pantallaEstacionAbierta, setPantallaEstacionAbierta] = useState(false);
 
   const publicarMesasPrincipal = (lista: MesaConfig[]) => {
     publicarMesasCompletas(lista)
@@ -1855,9 +1860,20 @@ export default function PanaderiaOncesPage() {
 
         return (
           <div className="space-y-4">
-            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-              Pedidos enviados desde las mesas — envía uno con el botón "Enviar a Cocina" en el detalle de una mesa.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className={`text-sm flex-1 min-w-[220px] ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Todos los pedidos de las mesas. Para una tablet o pantalla de Cocina, Greca o Comidas rápidas, abre la pantalla de estación y elige cuál es: solo le llegará lo suyo.
+              </p>
+              <Button
+                onClick={() => {
+                  if (!getLinkedClienteId()) { toast.error('Esta caja no está vinculada a la nube: las estaciones necesitan conexión.'); return; }
+                  setPantallaEstacionAbierta(true);
+                }}
+                className="h-12 px-5 rounded-2xl font-black bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white shadow-lg"
+              >
+                <Maximize2 className="w-5 h-5 mr-2" />Pantalla de estación
+              </Button>
+            </div>
             {comandas.length === 0 ? (
               <div className={`rounded-2xl border p-10 text-center ${darkMode ? 'border-slate-700 bg-slate-800/40 text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-400'}`}>
                 <Flame className="w-10 h-10 mx-auto mb-2 opacity-50" />
@@ -1868,7 +1884,12 @@ export default function PanaderiaOncesPage() {
                 {comandas.map((c) => (
                   <div key={c.id} className={`rounded-2xl border-2 p-4 space-y-2.5 ${ESTADO_INFO[c.estado].color}`}>
                     <div className="flex items-center justify-between">
-                      <p className="font-black text-base">{c.mesaNombre || c.mesaLocalId}</p>
+                      <p className="font-black text-base">
+                        {c.mesaNombre || c.mesaLocalId}
+                        {c.estacionNombre && (
+                          <span className="ml-2 align-middle text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-500 text-white">{c.estacionNombre}</span>
+                        )}
+                      </p>
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-600'}`}>
                         {ESTADO_INFO[c.estado].label}
                       </span>
@@ -2097,6 +2118,16 @@ export default function PanaderiaOncesPage() {
   // ── JSX principal ─────────────────────────────────────────────────────────────
   return (
     <div className={`h-full overflow-y-auto p-5 ${darkMode ? 'bg-transparent text-white' : 'bg-slate-50 text-slate-900'}`}>
+      {pantallaEstacionAbierta && getLinkedClienteId() && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950">
+          <PantallaEstaciones
+            clienteId={getLinkedClienteId()!}
+            esAdmin={puedeAdministrarPanaderia}
+            tienda={tiendaActivaId}
+            onSalir={() => setPantallaEstacionAbierta(false)}
+          />
+        </div>
+      )}
       <div className="max-w-5xl mx-auto space-y-4">
 
         {/* Header premium */}

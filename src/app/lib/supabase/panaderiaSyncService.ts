@@ -418,6 +418,9 @@ export interface Comanda {
   updatedAt: string;
   /** Sucursal (tiendas.local_id) de la mesa que originó la comanda — undefined/null = Tienda Principal. */
   tiendaId?: string | null;
+  /** Estación que la prepara (migración 0148). null = comanda sin estación (todas las cocinas la ven). */
+  estacionId?: string | null;
+  estacionNombre?: string;
 }
 
 function mapComanda(r: any): Comanda {
@@ -432,6 +435,8 @@ function mapComanda(r: any): Comanda {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     tiendaId: r.tienda_id || null,
+    estacionId: r.estacion_id || null,
+    estacionNombre: r.estacion_nombre || undefined,
   };
 }
 
@@ -443,7 +448,8 @@ export async function enviarComanda(
   items: ItemComanda[],
   meseroNombre?: string,
   nota?: string,
-  tiendaId?: string | null
+  tiendaId?: string | null,
+  estacion?: { id: string; nombre: string } | null
 ): Promise<void> {
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
@@ -458,6 +464,7 @@ export async function enviarComanda(
     mesero_nombre: meseroNombre || null,
     nota: nota || null,
     tienda_id: tiendaId || null,
+    ...(estacion ? { estacion_id: estacion.id, estacion_nombre: estacion.nombre } : {}),
   });
   if (error) throw new Error(error.message);
 }
