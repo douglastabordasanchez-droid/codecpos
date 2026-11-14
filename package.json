@@ -43,7 +43,10 @@
     "dev:admin": "vite --config vite.config.admin.ts",
     "build:admin": "vite build --config vite.config.admin.ts",
     "dev:landing": "npx serve landing -l 4174",
-    "dev:trial-flow": "concurrently \"npm run dev:pwa\" \"npm run dev:landing\""
+    "dev:trial-flow": "concurrently \"npm run dev:pwa\" \"npm run dev:landing\"",
+    "android:sync": "cross-env CODEC_ANDROID=1 vite build && npx cap sync android",
+    "android:apk": "npm run android:sync && node scripts/android-gradle.mjs assembleDebug",
+    "android:desplegar": "node scripts/android-desplegar.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -131,6 +134,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/cli": "^7.4.4",
+    "@capacitor/core": "^7.4.4",
     "@tailwindcss/vite": "4.1.12",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.2",

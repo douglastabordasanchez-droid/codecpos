@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { compatAndroid } from './scripts/vitePluginCompatAndroid'
 
 
 function figmaAssetResolver() {
@@ -21,6 +22,8 @@ export default defineConfig({
     figmaAssetResolver(),
     react(), // ✅ SIN configuración de Babel (Vite ya optimiza todo)
     tailwindcss(),
+    // APK de Android (npm run android:apk): CSS compatible con WebView viejos.
+    ...(process.env.CODEC_ANDROID === '1' ? [compatAndroid()] : []),
   ],
   resolve: {
     alias: {

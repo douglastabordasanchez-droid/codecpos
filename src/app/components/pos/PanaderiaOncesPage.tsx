@@ -14,6 +14,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useMultitienda } from '../../contexts/MultitiendaContext';
 import { electronStore, IngredienteInventarioItem, RecetaItem, RecetaIngredienteItem, ComboOncesItem, InventarioProductoItem } from '../../lib/electronStore';
 import type { Comanda, EstadoComanda } from '../../lib/supabase/panaderiaSyncService';
+import {
+  type TerminalPrincipal, principalEnCache, rolMesasDe, obtenerTerminalPrincipal, suscribirTerminalPrincipal,
+  marcarEsteEquipoComoPrincipal, nombreSugeridoEsteEquipo, publicarMesasCompletas, descargarTodasLasMesas, suscribirMesasNube,
+} from '../../lib/supabase/terminalPrincipalService';
+import { TerminalPrincipalMesas } from './TerminalPrincipalMesas';
 import { rearmarMenuAlimentos } from '../../lib/menuAlimentosDesdeInventario';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -648,21 +653,91 @@ export default function PanaderiaOncesPage() {
   // guardarse en localStorage) — así el celular que escanee el QR de esta
   // sucursal ve la mesa nueva o deja de ver la borrada sin depender de que
   // alguien recuerde tocar "Publicar datos ahora" en Configuración.
+  // 🖥️ Terminal principal (migración 0147): si el negocio marcó una, SUS mesas
+  // son las correctas. Ella publica la lista completa (con el orden) y las
+  // demás cajas la copian y no pueden crear ni borrar mesas. Sin principal,
+  // todo sigue como antes.
+  const [terminalPrincipal, setTerminalPrincipal] = useState<TerminalPrincipal | null>(() => principalEnCache());
+  const rolMesas = rolMesasDe(terminalPrincipal);
+
+  const publicarMesasPrincipal = (lista: MesaConfig[]) => {
+    publicarMesasCompletas(lista)
+      .then(({ conservadas }) => {
+        if (conservadas.length > 0) {
+          toast.info(`Se dejaron en la nube ${conservadas.join(', ')} porque tienen una cuenta abierta. Ciérrala y vuelve a guardar.`);
+        }
+      })
+      .catch((e) => toast.error(`No se pudieron publicar las mesas: ${(e as Error)?.message || e}`));
+  };
+
+  const avisarMesasDeLaPrincipal = () => {
+    toast.info(`Las mesas se administran en la terminal principal${terminalPrincipal?.nombre ? `: ${terminalPrincipal.nombre}` : ''}.`);
+  };
+
   const agregarMesa = () => {
-    const nueva: MesaConfig = { id: `mesa-${Date.now()}`, nombre: `Mesa ${mesas.length + 1}`, activa: true, tiendaId: tiendaActivaId };
-    persistirMesas([...mesas, nueva]);
+    if (rolMesas === 'copia') { avisarMesasDeLaPrincipal(); return; }
+    // Siguiente número libre: si hay Mesa 1, 2 y 5, la nueva es Mesa 6.
+    const mayor = mesas.reduce((max, m) => Math.max(max, Number(m.nombre.match(/(\d+)\s*$/)?.[1]) || 0), 0);
+    const nueva: MesaConfig = { id: `mesa-${Date.now()}`, nombre: `Mesa ${mayor + 1}`, activa: true, tiendaId: tiendaActivaId };
+    const lista = [...mesas, nueva];
+    persistirMesas(lista);
     toast.success('Mesa agregada');
+    if (rolMesas === 'principal') { publicarMesasPrincipal(lista); return; }
+    // Sin principal: se publica la lista entera para que cada mesa quede con su
+    // posición (antes la nueva subía sola con orden 0 y el celular la mostraba
+    // revuelta).
     import('../../lib/supabase/panaderiaSyncService')
-      .then(({ pushCatalogoPanaderia }) => pushCatalogoPanaderia({ categorias: [], productos: [], mesas: [nueva] }))
+      .then(({ pushCatalogoPanaderia }) => pushCatalogoPanaderia({ categorias: [], productos: [], mesas: lista }))
       .catch(() => {});
   };
   const quitarMesa = (id: string) => {
     if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
-    persistirMesas(mesas.filter(m => m.id !== id));
+    if (rolMesas === 'copia') { avisarMesasDeLaPrincipal(); return; }
+    const lista = mesas.filter(m => m.id !== id);
+    persistirMesas(lista);
     toast.success('Mesa eliminada');
+    if (rolMesas === 'principal') { publicarMesasPrincipal(lista); return; }
     import('../../lib/supabase/panaderiaSyncService')
       .then(({ eliminarMesaEnNube }) => eliminarMesaEnNube(id))
       .catch(() => {});
+  };
+
+  // Conoce la principal al abrir y se entera si otra caja la cambia.
+  useEffect(() => {
+    let activo = true;
+    obtenerTerminalPrincipal().then((p) => { if (activo) setTerminalPrincipal(p); }).catch(() => {});
+    const quitar = suscribirTerminalPrincipal((p) => { if (activo) setTerminalPrincipal(p); });
+    return () => { activo = false; quitar(); };
+  }, []);
+
+  // Caja que copia: baja las mesas de la nube al abrir, al volver a la
+  // ventana y cada vez que la principal las cambia.
+  useEffect(() => {
+    if (rolMesas !== 'copia') return;
+    let activo = true;
+    const traer = () => {
+      descargarTodasLasMesas().then((lista) => {
+        if (!activo || !lista || lista.length === 0) return;
+        persistirMesas(lista.map((m) => ({ id: m.id, nombre: m.nombre, activa: m.activa, tiendaId: m.tiendaId ?? undefined })));
+      }).catch(() => {});
+    };
+    traer();
+    const quitar = suscribirMesasNube(traer);
+    const alVolver = () => { if (document.visibilityState === 'visible') traer(); };
+    document.addEventListener('visibilitychange', alVolver);
+    return () => { activo = false; quitar(); document.removeEventListener('visibilitychange', alVolver); };
+  }, [rolMesas]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hacerEstaLaPrincipal = async (nombre: string) => {
+    try {
+      const p = await marcarEsteEquipoComoPrincipal(nombre);
+      setTerminalPrincipal(p);
+      toast.success(`${p.nombre} es ahora la terminal principal. Sus mesas quedan en todos los equipos.`);
+      publicarMesasPrincipal(mesas);
+    } catch (e) {
+      toast.error(`No se pudo marcar como principal: ${(e as Error)?.message || e}`);
+      throw e;
+    }
   };
   // Solo las mesas de la sucursal activa — mismo criterio que la RLS del lado
   // servidor (migración 0093): sin sucursal asignada = mesas de tienda_principal.
@@ -1699,6 +1774,15 @@ export default function PanaderiaOncesPage() {
               </div>
             </div>
 
+            <TerminalPrincipalMesas
+              rol={rolMesas}
+              principal={terminalPrincipal}
+              mesasEsteEquipo={mesas.length}
+              puedeAdministrar={puedeAdministrarPanaderia}
+              oscuro={darkMode}
+              onMarcar={hacerEstaLaPrincipal}
+            />
+
             <div className="max-h-[280px] overflow-y-auto scrollbar-thin pr-1">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pb-2">
                 {mesasVisibles.map((m) => (
@@ -1712,13 +1796,13 @@ export default function PanaderiaOncesPage() {
                     )}
                   </button>
                 ))}
-                <Button onClick={agregarMesa} className="rounded-2xl text-sm font-black flex flex-col gap-1.5 bg-gradient-to-br from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg min-h-[100px]">
+                {rolMesas !== 'copia' && <Button onClick={agregarMesa} className="rounded-2xl text-sm font-black flex flex-col gap-1.5 bg-gradient-to-br from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg min-h-[100px]">
                   <Plus className="w-8 h-8" />Nueva Mesa
-                </Button>
+                </Button>}
               </div>
             </div>
 
-            {mesasVisibles.length > 0 && puedeAdministrarPanaderia && (
+            {mesasVisibles.length > 0 && puedeAdministrarPanaderia && rolMesas !== 'copia' && (
               <div className="flex flex-wrap gap-2 pt-1">
                 <span className={`text-xs font-semibold self-center ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Eliminar:</span>
                 {mesasVisibles.map((m) => (

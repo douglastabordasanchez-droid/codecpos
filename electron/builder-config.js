@@ -89,6 +89,9 @@ const config = {
         '!**/{example,examples,docs,doc}/**',
         '!**/tsconfig.json',
         '!**/.git*',
+        // Capacitor solo sirve para el APK de Android; Vite ya empaqueta
+        // @capacitor/core dentro de dist/, aquí sobraría.
+        '!@capacitor/**',
       ],
     },
   ],

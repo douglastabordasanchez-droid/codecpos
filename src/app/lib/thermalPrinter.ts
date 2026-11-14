@@ -28,6 +28,7 @@ import {
   getConfiguredTicketWidthMm,
 } from './printerConfig';
 import { getPrinterForSectionOrUndefined, type PrintSection } from './sectionPrinterConfig';
+import { esAndroidNativo, imprimirBytesAndroid } from './impresoraAndroid';
 import { getDrawerConfig } from './drawerConfig';
 
 const PRINTER_WINDOWS_FALLBACK_PORT = 'USB008';
@@ -1076,6 +1077,8 @@ export class ThermalPrinter {
    */
   private async sendToPrinter(bytes: number[]): Promise<boolean> {
     if (this.transporte) return this.transporte(new Uint8Array(bytes));
+    // Terminal POS Android (APK): la impresora integrada va por el plugin nativo.
+    if (esAndroidNativo()) return imprimirBytesAndroid(new Uint8Array(bytes));
     try {
       if (!(window as any).electron) {
         console.error('❌ API de Electron no disponible');

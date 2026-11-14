@@ -1,0 +1,13 @@
+{
+  "appId": "com.codecstudio.pos",
+  "appName": "Codec POS",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

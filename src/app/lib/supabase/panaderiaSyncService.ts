@@ -19,6 +19,7 @@
  */
 import { getSupabaseClient } from './config';
 import { getLinkedClienteId } from './tenantLink';
+import { principalEnCache, rolMesasDe } from './terminalPrincipalService';
 
 export interface PanaderiaCategoria {
   id: string;
@@ -201,7 +202,9 @@ export async function sincronizarPanaderiaDesdeLocal(): Promise<{
 
   const categorias = leer<PanaderiaCategoria[]>('codecpos_panaderia_cats', []);
   const productos = leer<PanaderiaProducto[]>('codecpos_panaderia_prods', []);
-  const mesas = leer<PanaderiaMesa[]>('codecpos_mesas_config', []);
+  // Una caja que copia a la terminal principal no publica mesas: las suyas
+  // vienen de la nube y subirlas podría revivir una mesa ya borrada.
+  const mesas = rolMesasDe(principalEnCache()) === 'copia' ? [] : leer<PanaderiaMesa[]>('codecpos_mesas_config', []);
 
   await pushCatalogoPanaderia({
     categorias: Array.isArray(categorias) ? categorias : [],
@@ -267,6 +270,10 @@ export async function obtenerCatalogoPanaderia(clienteId: string, tiendaId?: str
     })),
     mesas: (mesas.data || [])
       .filter((r: any) => r.activa !== false)
+      // Mismo orden que la caja; si dos quedaron con la misma posición (mesas
+      // viejas subidas una por una con orden 0), "Mesa 2" va antes que "Mesa 10".
+      .sort((a: any, b: any) => (Number(a.orden) || 0) - (Number(b.orden) || 0)
+        || String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { numeric: true, sensitivity: 'base' }))
       .map((r: any) => ({ id: r.local_id, nombre: r.nombre, activa: r.activa !== false, tiendaId: r.tienda_id || null })),
   };
 }

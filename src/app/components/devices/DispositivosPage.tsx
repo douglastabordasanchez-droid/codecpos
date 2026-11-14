@@ -42,6 +42,7 @@ import { usePOS } from '../../contexts/POSContext';
 import { toast } from 'sonner';
 import { DeviceCard } from './DeviceCard';
 import { DeviceConfigModal } from './DeviceConfigModal';
+import { ImpresoraTerminalAndroid } from './ImpresoraTerminalAndroid';
 import { deviceManager, nombreImpresoraParaGuardar, type DispositivoDetectado } from '../../lib/deviceManager';
 import { useDevices } from '../../contexts/DeviceContext';
 import { type TipoDispositivo } from '../../lib/deviceRoles';
@@ -616,6 +617,9 @@ export default function DispositivosPage() {
             </Button>
           </div>
         </div>
+
+        {/* Terminal POS Android (APK): impresora integrada, se prueba y se elige aquí */}
+        <ImpresoraTerminalAndroid oscuro={darkMode} />
 
         {/* Báscula: elegir puerto, velocidad y comando de lectura (basculaWeb.ts) */}
         <TarjetaBascula claro={!darkMode} />
