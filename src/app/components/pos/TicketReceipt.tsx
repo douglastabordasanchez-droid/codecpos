@@ -320,7 +320,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     // Logo
     if (logo) {
       try {
-        const t = encajar(logo, 50, 22); // ajustado al papel: máx. 50 mm de ancho y 22 de alto
+        const t = encajar(logo, 25, 11); // la mitad de antes: máx. 25 mm de ancho y 11 de alto
         doc.addImage(logo.data, 'PNG', (W - t.w) / 2, y, t.w, t.h, 'logo', 'FAST');
         y += t.h + 3;
       } catch { /* skip logo if error */ }
@@ -571,8 +571,8 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
             src={config.logoUrl || logoImage}
             alt="Logo"
             style={{
-              maxWidth: '120px',
-              maxHeight: '80px',
+              maxWidth: '60px',
+              maxHeight: '40px',
               margin: '0 auto',
               display: 'block'
             }}

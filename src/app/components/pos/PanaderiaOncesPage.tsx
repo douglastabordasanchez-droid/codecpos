@@ -7,11 +7,12 @@ import {
   UsersRound, GlassWater, CirclePlus, PackageOpen, Drumstick, Wheat, Salad, CookingPot,
   Martini, Milk, Donut, CakeSlice, Sandwich, Popcorn, Beef, Shrimp, Shell, ChefHat, PackageCheck, PackagePlus,
   GripVertical, ChevronDown, ChevronLeft, ChevronRight, AlertTriangle, ShoppingCart, BarChart3, TrendingUp,
-  Maximize2,
+  Maximize2, Printer,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBusinessContext } from '../../contexts/BusinessContext';
 import { useMultitienda } from '../../contexts/MultitiendaContext';
 import { electronStore, IngredienteInventarioItem, RecetaItem, RecetaIngredienteItem, ComboOncesItem, InventarioProductoItem } from '../../lib/electronStore';
 import type { Comanda, EstadoComanda } from '../../lib/supabase/panaderiaSyncService';
@@ -355,8 +356,12 @@ export default function PanaderiaOncesPage() {
   const tiendaActivaId = tiendaActual && tiendaActual.id !== 'tienda_principal' ? tiendaActual.id : null;
   const STORAGE_MODULO_PANADERIA_ONCES = 'codecpos_panaderia_onces_activo';
   const MENSAJE_ACCESO_DENEGADO = 'Acceso Denegado: No tienes permisos de administrador para modificar o eliminar elementos del sistema.';
+  // Administrador (o dueño) siempre puede crear, editar y eliminar; cajeros y
+  // demás trabajadores solo si se les dio el permiso de categorías.
   const puedeAdministrarPanaderia =
-    usuarioActual?.rol === 'super_usuario' || usuarioActual?.permisos?.panaderiaCategorias === true;
+    usuarioActual?.rol === 'super_usuario'
+    || ['admin', 'administrador'].includes(String(usuarioActual?.rol || '').toLowerCase())
+    || usuarioActual?.permisos?.panaderiaCategorias === true;
   const notificarAccesoDenegado = useCallback(() => {
     toast.error(MENSAJE_ACCESO_DENEGADO);
   }, [MENSAJE_ACCESO_DENEGADO]);
@@ -788,6 +793,49 @@ export default function PanaderiaOncesPage() {
   // diferencia de persistirCuentas() (que solo espeja el estado de la
   // cuenta), esto crea un tiquete de comanda nuevo con su propio estado
   // (pendiente → preparando → listo) para que cocina sepa qué preparar.
+  // 🧾 Cuenta impresa y pendiente de pago: el cliente pidió la cuenta, se le
+  // imprimió (con la propina sugerida) y la mesa sigue abierta hasta que pague.
+  const { propinaActiva, porcentajePropinaPredeterminado } = useBusinessContext();
+  const STORAGE_CUENTA_IMPRESA = 'codecpos_mesas_cuenta_impresa';
+  const [cuentasImpresas, setCuentasImpresas] = useState<Record<string, { fecha: string; total: number }>>(() => {
+    try { const v = JSON.parse(localStorage.getItem(STORAGE_CUENTA_IMPRESA) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+  });
+  const guardarCuentasImpresas = (v: Record<string, { fecha: string; total: number }>) => {
+    setCuentasImpresas(v);
+    try { localStorage.setItem(STORAGE_CUENTA_IMPRESA, JSON.stringify(v)); } catch { /* ignorar */ }
+  };
+  const imprimirCuentaMesa = async (mesa: MesaConfig) => {
+    const items = cuentasMesas[mesa.id] || [];
+    if (items.length === 0) { toast.error('La mesa no tiene productos'); return; }
+    const subtotal = totalMesa(mesa.id);
+    const porcentaje = propinaActiva ? Math.max(0, Number(porcentajePropinaPredeterminado) || 0) : 0;
+    const propina = Math.round(subtotal * porcentaje / 100);
+    try {
+      const { printCuentaPendiente } = await import('../../lib/thermalPrinter');
+      const ok = await printCuentaPendiente({
+        mesaNombre: mesa.nombre,
+        meseroNombre: usuarioActual?.nombreCompleto || usuarioActual?.username,
+        items: items.map((it) => ({ nombre: it.producto.nombre, cantidad: Number(it.cantidad) || 0, precio: Number(it.producto.precio) || 0 })),
+        subtotal, propina, porcentajePropina: porcentaje,
+      });
+      if (!ok) { toast.error('No se pudo imprimir la cuenta. Revisa la impresora.'); return; }
+      guardarCuentasImpresas({ ...cuentasImpresas, [mesa.id]: { fecha: new Date().toISOString(), total: subtotal } });
+      toast.success(`Cuenta de ${mesa.nombre} impresa`, { description: 'La mesa queda pendiente de pago.' });
+    } catch (error) {
+      console.error('Error imprimiendo cuenta:', error);
+      toast.error('Error al imprimir la cuenta');
+    }
+  };
+  // Mesa cobrada o vaciada: deja de estar pendiente de pago.
+  useEffect(() => {
+    const pendientes = Object.keys(cuentasImpresas).filter((id) => !(cuentasMesas[id] || []).length);
+    if (pendientes.length) {
+      const v = { ...cuentasImpresas };
+      pendientes.forEach((id) => delete v[id]);
+      guardarCuentasImpresas(v);
+    }
+  }, [cuentasMesas]);
+
   // Lo que ya se envió de cada mesa desde esta caja ({ mesa: { producto: cantidad } }):
   // así el botón solo manda lo nuevo, igual que el celular.
   const STORAGE_ENVIADO = 'codecpos_mesas_enviado';
@@ -1579,10 +1627,14 @@ export default function PanaderiaOncesPage() {
                           <span className={light ? 'text-slate-900' : 'text-white'}>{renderIcon(cat.icono, 'w-5 h-5')}</span>
                         </span>
                         <span className={`truncate ${light ? 'text-slate-900' : 'text-white'}`}>{cat.nombre}</span>
-                        <div className="absolute right-2 top-2 hidden items-center gap-1 group-hover:flex">
-                          <button type="button" draggable={false} disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); abrirEdicionCategoria(cat); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Edit className="w-3 h-3" /></button>
-                          <button type="button" draggable={false} disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); confirmarEliminarCategoria(cat.id); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Trash2 className="w-3 h-3" /></button>
-                        </div>
+                        {/* Editar y eliminar: visibles en la categoría seleccionada (en pantalla
+                            táctil no hay mouse para el hover); solo administradores. */}
+                        {puedeAdministrarPanaderia && (
+                          <div className={`absolute -right-1 -top-2 items-center gap-1 ${catSeleccionada === cat.id ? 'flex' : 'hidden group-hover:flex'}`}>
+                            <button type="button" draggable={false} aria-label="Editar categoría" onClick={(e) => { e.stopPropagation(); abrirEdicionCategoria(cat); }} className="w-8 h-8 rounded-full bg-slate-900/80 text-[#fff] flex items-center justify-center shadow-lg active:scale-90"><Edit className="w-4 h-4" /></button>
+                            <button type="button" draggable={false} aria-label="Eliminar categoría" onClick={(e) => { e.stopPropagation(); void confirmarEliminarCategoria(cat.id); }} className="w-8 h-8 rounded-full bg-red-600 text-[#fff] flex items-center justify-center shadow-lg active:scale-90"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1673,10 +1725,12 @@ export default function PanaderiaOncesPage() {
                           </div>
                           <div className={`text-sm font-black leading-tight ${light ? 'text-slate-900' : 'text-white'}`}>{prod.nombre}</div>
                           <div className={`text-sm font-semibold ${light ? 'text-amber-700' : 'text-white/90'}`}>${prod.precio.toLocaleString('es-CO')}</div>
-                          <div className="absolute right-2.5 top-2.5 hidden gap-1.5 group-hover:flex">
-                            <button type="button" draggable={false} disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); abrirEdicionProducto(prod); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Edit className="w-3.5 h-3.5" /></button>
-                            <button type="button" draggable={false} disabled={!puedeAdministrarPanaderia} onClick={(e) => { e.stopPropagation(); confirmarEliminarProducto(prod.id); }} className={`rounded-full bg-white/15 p-1 text-white transition ${puedeAdministrarPanaderia ? 'hover:bg-white/25' : 'opacity-40 cursor-not-allowed'}`}><Trash2 className="w-3.5 h-3.5" /></button>
-                          </div>
+                          {puedeAdministrarPanaderia && (
+                            <div className="absolute right-2 top-2 flex gap-1.5">
+                              <button type="button" draggable={false} aria-label="Editar producto" onClick={(e) => { e.stopPropagation(); abrirEdicionProducto(prod); }} className="w-8 h-8 rounded-full bg-slate-900/60 text-[#fff] flex items-center justify-center active:scale-90"><Edit className="w-4 h-4" /></button>
+                              <button type="button" draggable={false} aria-label="Eliminar producto" onClick={(e) => { e.stopPropagation(); void confirmarEliminarProducto(prod.id); }} className="w-8 h-8 rounded-full bg-red-600/90 text-[#fff] flex items-center justify-center active:scale-90"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1858,6 +1912,11 @@ export default function PanaderiaOncesPage() {
                     <span className="text-sm font-black leading-tight">{m.nombre}</span>
                     {totalMesa(m.id) > 0 && (
                       <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">${totalMesa(m.id).toLocaleString('es-CO')}</span>
+                    )}
+                    {cuentasImpresas[m.id] && totalMesa(m.id) > 0 && (
+                      <span className={`absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full text-[#fff] shadow ${cuentasImpresas[m.id].total === totalMesa(m.id) ? 'bg-amber-500' : 'bg-red-500'}`}>
+                        {cuentasImpresas[m.id].total === totalMesa(m.id) ? 'Por pagar' : 'Cuenta cambió'}
+                      </span>
                     )}
                   </button>
                 ))}
@@ -2326,13 +2385,25 @@ export default function PanaderiaOncesPage() {
             </div>
 
             <div className="flex items-center justify-between gap-3 pt-1">
-              <p className="text-lg font-black">Total: <span className="text-emerald-600">${totalMesa(mesaSeleccionada.id).toLocaleString('es-CO')}</span></p>
+              <div>
+                <p className="text-lg font-black">Total: <span className="text-emerald-600">${totalMesa(mesaSeleccionada.id).toLocaleString('es-CO')}</span></p>
+                {cuentasImpresas[mesaSeleccionada.id] && (
+                  <p className={`text-xs font-bold ${cuentasImpresas[mesaSeleccionada.id].total === totalMesa(mesaSeleccionada.id) ? 'text-amber-600' : 'text-red-500'}`}>
+                    {cuentasImpresas[mesaSeleccionada.id].total === totalMesa(mesaSeleccionada.id)
+                      ? `Cuenta impresa a las ${new Date(cuentasImpresas[mesaSeleccionada.id].fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })} · pendiente de pago`
+                      : 'La cuenta cambió después de imprimirla: reimprímela'}
+                  </p>
+                )}
+              </div>
               <div className="flex gap-2">
                 <Button variant="outline" className="h-11 font-bold px-6 border-orange-400 text-orange-600 hover:bg-orange-50" onClick={() => enviarMesaACocina(mesaSeleccionada)}>
                   <Flame className="w-4 h-4 mr-2" />Enviar a Cocina
                 </Button>
+                <Button variant="outline" className="h-11 font-bold px-5 border-sky-400 text-sky-600 hover:bg-sky-50" onClick={() => void imprimirCuentaMesa(mesaSeleccionada)}>
+                  <Printer className="w-4 h-4 mr-2" />{cuentasImpresas[mesaSeleccionada.id] ? 'Reimprimir cuenta' : 'Imprimir cuenta'}
+                </Button>
                 <Button className="h-11 bg-amber-600 hover:bg-amber-700 font-bold px-6" onClick={() => abrirMesaEnPOS(mesaSeleccionada)}>
-                  Facturar en POS
+                  Cobrar
                 </Button>
               </div>
             </div>

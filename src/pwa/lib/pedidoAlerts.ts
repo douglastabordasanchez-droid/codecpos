@@ -80,13 +80,37 @@ export function guardarPreferenciasAvisosPedidos(preferencias: PreferenciasAviso
   }
 }
 
+/**
+ * Cómo se nombra la estación en voz alta: «la greca», «el bar», «la cocina».
+ * Las de nombre en plural («comidas rápidas», «postres») van con «en»:
+ * «en comidas rápidas están preparando…». Sin estación = la cocina, como antes.
+ */
+function sujetoEstacion(nombre?: string): { texto: string; plural: boolean } {
+  const limpio = (nombre || '').trim();
+  if (!limpio) return { texto: 'la cocina', plural: false };
+  const minus = limpio.toLocaleLowerCase('es');
+  const primera = minus.split(/\s+/)[0];
+  if (/^(el|la|los|las)\s/.test(minus)) return { texto: minus, plural: /^(los|las)\s/.test(minus) };
+  if (primera.length > 3 && /[sx]$/.test(primera) && !/(is|us)$/.test(primera)) return { texto: minus, plural: true };
+  const femenina = /(a|ión|ion|dad|tad|umbre|ería)$/.test(primera);
+  return { texto: `${femenina ? 'la' : 'el'} ${minus}`, plural: false };
+}
+
+function mayuscula(t: string): string {
+  return t.charAt(0).toLocaleUpperCase('es') + t.slice(1);
+}
+
 function textoParaEstado(comanda: Comanda, estado: EstadoAvisableComanda): string {
   const mesa = comanda.mesaNombre || `la mesa ${comanda.mesaLocalId}`;
-  if (estado === 'preparando') return `La cocina está preparando el pedido de ${mesa}.`;
-  if (estado === 'listo') return `El pedido de ${mesa} está listo para servir.`;
-  return estado === 'preparando'
-    ? `El pedido de ${mesa} está en preparación.`
-    : `El pedido de ${mesa} está listo para servir.`;
+  const { texto, plural } = sujetoEstacion(comanda.estacionNombre);
+  if (estado === 'preparando') {
+    return plural
+      ? `En ${texto} están preparando el pedido de ${mesa}.`
+      : `${mayuscula(texto)} está preparando el pedido de ${mesa}.`;
+  }
+  return plural
+    ? `En ${texto} está listo el pedido de ${mesa}.`
+    : `${mayuscula(texto)} tiene listo el pedido de ${mesa}.`;
 }
 
 function vibrar(estado: EstadoAvisableComanda): void {
@@ -150,7 +174,7 @@ export function avisarCambioComanda(comanda: Comanda, estado: EstadoAvisableComa
   reproducirTono(estado);
   if (preferencias.voz) hablar(texto);
   void mostrarNotificacion(
-    estado === 'listo' ? '🍽️ Pedido listo' : '🍳 Pedido en preparación',
+    `${estado === 'listo' ? '🍽️ Pedido listo' : '🍳 Pedido en preparación'}${comanda.estacionNombre ? ` · ${comanda.estacionNombre}` : ''}`,
     texto,
     `codecpos-comanda-${comanda.id}`,
   );

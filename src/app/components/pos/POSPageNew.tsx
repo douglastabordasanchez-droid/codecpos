@@ -3568,13 +3568,26 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
                 {carrito.length > 0 && propinaActiva && (
                   <div className={`mb-4 p-4 rounded-2xl border ${darkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                    <p className={`font-semibold mb-2 text-left ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Propina</p>
+                    {/* El cliente decide: si no quiere pagar la propina, un toque la quita. */}
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setPropinaManual(null)}
+                        className={`h-11 rounded-xl font-bold text-sm border-2 transition-all ${propinaManual === null ? 'bg-emerald-600 border-emerald-600 text-[#fff]' : darkMode ? 'border-slate-600 text-gray-300' : 'border-gray-300 text-gray-700'}`}
+                      >
+                        Con propina {porcentajePropinaPredeterminado}%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPropinaManual(0)}
+                        className={`h-11 rounded-xl font-bold text-sm border-2 transition-all ${propinaManual === 0 ? 'bg-red-600 border-red-600 text-[#fff]' : darkMode ? 'border-slate-600 text-gray-300' : 'border-gray-300 text-gray-700'}`}
+                      >
+                        Sin propina
+                      </button>
+                    </div>
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-left">
-                        <p className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                          Propina{propinaManual === null ? ` (${porcentajePropinaPredeterminado}%)` : ''}
-                        </p>
-                        <button type="button" onClick={() => setPropinaManual(0)} className="text-xs text-red-500 hover:underline">Sin propina</button>
-                      </div>
+                      <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Otro valor</span>
                       <input
                         type="number"
                         min="0"

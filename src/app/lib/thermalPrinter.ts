@@ -349,9 +349,15 @@ export class ThermalPrinter {
 
       // Ancho del área imprimible en píxeles — convención estándar ESC/POS
       // (203dpi ≈ 8 dots/mm): 58mm → 384px, 80mm → 576px.
-      const targetWidth = this.ancho === 80 ? 576 : 384;
-      const scale = targetWidth / img.width;
-      const targetHeight = Math.max(1, Math.round(img.height * scale));
+      const anchoPapel = this.ancho === 80 ? 576 : 384;
+      // El logo ocupa la mitad del ancho del papel (antes llenaba todo el ancho
+      // y salía enorme), con tope de alto, y va centrado dentro del renglón.
+      let logoW = Math.round(anchoPapel / 2);
+      let logoH = Math.max(1, Math.round(img.height * (logoW / img.width)));
+      const altoMax = this.ancho === 80 ? 160 : 110;
+      if (logoH > altoMax) { logoW = Math.max(1, Math.round(logoW * (altoMax / logoH))); logoH = altoMax; }
+      const targetWidth = anchoPapel;
+      const targetHeight = logoH;
       // GS v 0 exige que el ancho en bytes sea entero — se redondea el ancho
       // en píxeles al múltiplo de 8 más cercano por arriba (padding blanco).
       const widthBytes = Math.ceil(targetWidth / 8);
@@ -364,7 +370,7 @@ export class ThermalPrinter {
       if (!ctx) return [];
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, paddedWidth, targetHeight);
-      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+      ctx.drawImage(img, Math.round((targetWidth - logoW) / 2), 0, logoW, logoH);
 
       const { data } = ctx.getImageData(0, 0, paddedWidth, targetHeight);
       const raster: number[] = [];
@@ -1428,4 +1434,49 @@ export async function printLabelRaw(
   } catch {
     return false;
   }
+}
+
+/**
+ * Cuenta de mesa pendiente de pago (pre cuenta): no es factura ni venta. Se
+ * imprime cuando el cliente pide la cuenta; muestra la propina sugerida y el
+ * total sin propina para que el cliente decida si la paga.
+ */
+export async function printCuentaPendiente(data: {
+  mesaNombre: string;
+  meseroNombre?: string;
+  items: Array<{ nombre: string; cantidad: number; precio: number }>;
+  subtotal: number;
+  propina: number;
+  porcentajePropina: number;
+}): Promise<boolean> {
+  const printer = createPrinter(resolveDefaultPrinterPort(), resolveTicketWidthFromConfig(80), resolvePrinterForSection('pos_tickets') || resolveFacturasPrinterName());
+  const cfg = readTirillaConfig();
+  const dinero = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+  const ahora = new Date();
+  const lineas: Array<{ texto: string; valor?: string; negrita?: boolean; centro?: boolean; separador?: boolean }> = [
+    { texto: cfg.nombreComercial || cfg.razonSocial || 'CUENTA', negrita: true, centro: true },
+    ...(cfg.nit ? [{ texto: `NIT ${cfg.nit}${cfg.digitoVerificacion ? `-${cfg.digitoVerificacion}` : ''}`, centro: true }] : []),
+    { separador: true, texto: '' },
+    { texto: 'CUENTA PENDIENTE DE PAGO', negrita: true, centro: true },
+    { texto: 'No es factura', centro: true },
+    { separador: true, texto: '' },
+    { texto: data.mesaNombre, valor: `${ahora.toLocaleDateString('es-CO')} ${ahora.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`, negrita: true },
+    ...(data.meseroNombre ? [{ texto: `Atendió: ${data.meseroNombre}` }] : []),
+    { separador: true, texto: '' },
+    ...data.items.map((it) => ({ texto: `${it.cantidad} x ${it.nombre}`, valor: dinero(it.precio * it.cantidad) })),
+    { separador: true, texto: '' },
+    { texto: 'Subtotal', valor: dinero(data.subtotal) },
+  ];
+  if (data.propina > 0) {
+    lineas.push(
+      { texto: `Propina sugerida (${data.porcentajePropina}%)`, valor: dinero(data.propina) },
+      { texto: 'TOTAL CON PROPINA', valor: dinero(data.subtotal + data.propina), negrita: true },
+      { texto: 'Total sin propina', valor: dinero(data.subtotal) },
+      { separador: true, texto: '' },
+      { texto: 'La propina es voluntaria. Si no desea pagarla, avísenos al pagar.', centro: true },
+    );
+  } else {
+    lineas.push({ texto: 'TOTAL', valor: dinero(data.subtotal), negrita: true });
+  }
+  return printer.printLineReceipts([lineas], cfg.logoUrl || undefined);
 }

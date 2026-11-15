@@ -85,7 +85,7 @@ export const CSS_TIRILLA_58 = `
   .t58 .doble { border-top: 2px solid #000; margin: 5px 0; height: 0; }
   .t58 .item { margin: 2px 0 3px; }
   .t58 .total { font-size: 15px; font-weight: 700; margin: 2px 0; }
-  .t58 .logo { display: block; margin: 0 auto 3px; max-width: 150px; max-height: 56px; object-fit: contain; }
+  .t58 .logo { display: block; margin: 0 auto 3px; max-width: 75px; max-height: 28px; object-fit: contain; }
   .t58 .cufe { word-break: break-all; font-size: 8px; }
 `;
 
