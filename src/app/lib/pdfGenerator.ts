@@ -213,7 +213,8 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
   let y = 15;
   const anchoLogo = 34;
   if (logo) {
-    const t = encajar(logo, anchoLogo, 30);
+    // Logo a la mitad del espacio reservado (17 × 15 mm), centrado en la caja de 34 × 30.
+    const t = encajar(logo, anchoLogo / 2, 15);
     doc.addImage(logo.data, 'PNG', IZQ + (anchoLogo - t.w) / 2, y + (30 - t.h) / 2, t.w, t.h, 'logo', 'FAST');
   }
   const centroEmisor = logo ? IZQ + anchoLogo + 34 : IZQ + 34;

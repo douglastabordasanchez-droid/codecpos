@@ -10,6 +10,8 @@ import './styles/index.css';
 import { MotionGlobalConfig } from 'motion/react';
 import { prepararAlmacenGrande } from './app/lib/almacenGrande';
 import { recargarSiFaltaPantalla } from './app/lib/recargarSiFaltaPantalla';
+import { iniciarRespaldoAndroid } from './app/lib/respaldoAndroid';
+import { mostrarArranqueAndroid } from './app/lib/arranqueAndroid';
 
 recargarSiFaltaPantalla();
 
@@ -40,6 +42,10 @@ const root = createRoot(rootElement);
 // con miles de referencias): se cargan a memoria ANTES de importar la app, que
 // los lee de forma síncrona desde el primer momento (ver almacenGrande.ts).
 const renderApp = async () => {
+  // Terminal Android: logo animado con sonido al abrir, y mesas y cuentas
+  // restauradas desde el respaldo en disco antes de pintar. En web y Electron no hace nada.
+  mostrarArranqueAndroid();
+  await iniciarRespaldoAndroid().catch(() => {});
   await prepararAlmacenGrande().catch((e) => console.error('[almacén]', e));
   const { default: App } = await import('./app/App.tsx');
   try {

@@ -12,9 +12,11 @@
  * • El administrador crea, renombra, ordena y apaga estaciones aquí mismo.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// Modo claro: mismas reglas que la web ([data-theme='light'] repinta la paleta slate).
+import '../../../pwa/themeClaro.css';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ChefHat, Volume2, VolumeX, Settings2, Plus, Trash2, ArrowUp, ArrowDown, Check, Clock, X, Loader2, Power, Maximize2, Minimize2,
+  ChefHat, Volume2, VolumeX, Settings2, Plus, Trash2, Pencil, ArrowUp, ArrowDown, Check, Clock, X, Loader2, Power, Maximize2, Minimize2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
@@ -124,14 +126,26 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
   // Pedidos de esta estación, en vivo.
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
+  // Los pedidos sin estación (enviados desde una versión anterior o sin
+  // estaciones creadas) caen en la primera estación encendida, que suele ser
+  // Cocina: así nunca se queda un pedido sin que nadie lo vea.
+  const primeraActivaId = estaciones.find((e) => e.activa)?.id ?? null;
+  const esDeEstaEstacion = useCallback((c: Comanda) => {
+    if (!estacion) return false;
+    if (c.estacionId) return c.estacionId === estacion.id || (estacion.id === primeraActivaId && !estaciones.some((e) => e.id === c.estacionId));
+    return estacion.id === primeraActivaId;
+  }, [estacion?.id, primeraActivaId, estaciones]);
+  const esDeEstaRef = useRef(esDeEstaEstacion);
+  esDeEstaRef.current = esDeEstaEstacion;
+
   useEffect(() => {
     if (!empleado || !estacion) return;
     let activo = true;
     obtenerComandasActivas(empleado.cliente_id, tienda)
-      .then((l) => { if (activo) setComandas(l.filter((c) => c.estacionId === estacion.id)); })
+      .then((l) => { if (activo) setComandas(l.filter((c) => esDeEstaRef.current(c))); })
       .catch(() => {});
     const quitar = suscribirComandas(empleado.cliente_id, (c) => {
-      if (c.estacionId !== estacion.id) return;
+      if (!esDeEstaRef.current(c)) return;
       setComandas((prev) => {
         const existe = prev.some((x) => x.id === c.id);
         if (c.estado === 'entregado' || c.estado === 'cancelado') return prev.filter((x) => x.id !== c.id);
@@ -143,7 +157,7 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
       });
     }, tienda);
     return () => { activo = false; quitar(); };
-  }, [empleado?.cliente_id, estacion?.id, tienda]);
+  }, [empleado?.cliente_id, estacion?.id, tienda, primeraActivaId]);
 
   // Mientras el letrero esté arriba, el timbre se repite cada 4 s.
   useEffect(() => {
@@ -203,7 +217,7 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
               <button
                 key={e.id}
                 onClick={() => { audio(); cambiarPrefs({ estacionId: e.id }); if (!completa.activa) completa.alternar(); }}
-                className="h-24 rounded-3xl text-white text-2xl font-black shadow-lg active:scale-[0.98] transition-transform"
+                className="h-24 rounded-3xl text-[#fff] text-2xl font-black shadow-lg active:scale-[0.98] transition-transform"
                 style={{ background: e.color }}
               >
                 {e.nombre}
@@ -223,9 +237,9 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
   return (
     <div className="min-h-screen bg-slate-950">
       {/* Barra de la estación */}
-      <div className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b border-slate-800 bg-slate-950/95">
+      <div className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b border-slate-800 bg-slate-950">
         <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: estacion.color }}>
-          <ChefHat className="w-6 h-6 text-white" />
+          <ChefHat className="w-6 h-6 text-[#fff]" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-white text-xl font-black leading-tight truncate">{estacion.nombre}</p>
@@ -259,7 +273,7 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
       <div className="p-4 space-y-6">
         {pendientes.length === 0 && listos.length === 0 && (
           <div className="text-center py-24">
-            <ChefHat className="w-16 h-16 text-slate-700 mx-auto mb-3" />
+            <ChefHat className="w-16 h-16 text-slate-600 mx-auto mb-3" />
             <p className="text-slate-400 text-lg font-semibold">Sin pedidos por ahora</p>
             <p className="text-slate-600 text-sm">Cuando un mesero envíe algo a {estacion.nombre}, aparece aquí.</p>
           </div>
@@ -284,11 +298,11 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
                     {c.items.map((it, i) => (
                       <li key={i} className="flex gap-3 text-white text-lg">
                         <span className="font-black w-8 text-right" style={{ color: estacion.color }}>{it.cantidad}×</span>
-                        <span className="font-semibold">{it.nombre}{it.nota ? <span className="block text-sm text-amber-300">{it.nota}</span> : null}</span>
+                        <span className="font-semibold">{it.nombre}{it.nota ? <span className="block text-sm text-amber-500">{it.nota}</span> : null}</span>
                       </li>
                     ))}
                   </ul>
-                  {c.nota && <p className="text-amber-300 text-sm mb-3">Nota: {c.nota}</p>}
+                  {c.nota && <p className="text-amber-500 text-sm mb-3">Nota: {c.nota}</p>}
                   {c.estado === 'pendiente' ? (
                     <Button className="w-full h-14 text-lg font-black rounded-2xl bg-amber-500 hover:bg-amber-600 text-white" onClick={() => void avanzar(c, 'preparando')}>
                       Preparando
@@ -312,7 +326,7 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
                 <button
                   key={c.id}
                   onClick={() => void avanzar(c, 'entregado')}
-                  className="flex items-center gap-2 h-12 px-4 rounded-2xl bg-emerald-600/15 border border-emerald-600/50 text-emerald-300 font-bold"
+                  className="flex items-center gap-2 h-12 px-4 rounded-2xl bg-emerald-600/15 border border-emerald-600/50 text-emerald-600 font-bold"
                 >
                   <Check className="w-5 h-5" />{c.mesaNombre || 'Mesa'} · entregado
                 </button>
@@ -328,7 +342,7 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
           <motion.button
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setAlerta(null)}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center text-white"
+            className="fixed inset-0 z-[70] flex flex-col items-center justify-center text-[#fff]"
             style={{ background: estacion.color }}
           >
             <motion.p
@@ -358,6 +372,19 @@ function AdministrarEstaciones({ clienteId, estaciones, onListo }: { clienteId: 
   const [ocupado, setOcupado] = useState(false);
   const [editando, setEditando] = useState<string | null>(null);
   const [nombreEdit, setNombreEdit] = useState('');
+  const [colorEdit, setColorEdit] = useState('');
+
+  const abrirEdicion = (e: Estacion) => { setEditando(e.id); setNombreEdit(e.nombre); setColorEdit(e.color); };
+  const guardarEdicion = (e: Estacion) => {
+    const n = nombreEdit.trim();
+    if (!n) { toast.error('Escribe el nombre de la estación'); return; }
+    if (estaciones.some((x) => x.id !== e.id && x.nombre.toLowerCase() === n.toLowerCase())) { toast.info(`${n} ya existe`); return; }
+    const cambios: { nombre?: string; color?: string } = {};
+    if (n !== e.nombre) cambios.nombre = n;
+    if (colorEdit && colorEdit !== e.color) cambios.color = colorEdit;
+    setEditando(null);
+    if (Object.keys(cambios).length) void ejecutar(() => actualizarEstacion(e.id, cambios), `${n} guardada`);
+  };
 
   const ejecutar = useCallback(async (fn: () => Promise<unknown>, ok?: string) => {
     setOcupado(true);
@@ -408,7 +435,7 @@ function AdministrarEstaciones({ clienteId, estaciones, onListo }: { clienteId: 
                 key={s}
                 disabled={ocupado}
                 onClick={() => agregar(s, COLORES_ESTACION[(estaciones.length + i) % COLORES_ESTACION.length])}
-                className="h-10 px-4 rounded-full bg-slate-900 border border-slate-700 text-slate-200 text-sm font-bold flex items-center gap-1.5"
+                className="h-10 px-4 rounded-full bg-slate-900 border border-slate-700 text-slate-300 text-sm font-bold flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4" />{s}
               </button>
@@ -417,7 +444,7 @@ function AdministrarEstaciones({ clienteId, estaciones, onListo }: { clienteId: 
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3 mb-5">
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-3 mb-5">
         <p className="text-slate-500 text-xs font-bold uppercase tracking-wide mb-2">Otra estación</p>
         <div className="flex gap-2">
           <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Postres" maxLength={40} className="h-11 bg-slate-950 border-slate-700 text-white" />
@@ -433,24 +460,37 @@ function AdministrarEstaciones({ clienteId, estaciones, onListo }: { clienteId: 
       </div>
 
       <div className="space-y-2">
-        {estaciones.map((e, i) => (
+        {estaciones.map((e, i) => editando === e.id ? (
+          <div key={e.id} className="rounded-2xl border-2 bg-slate-900 p-3 space-y-3" style={{ borderColor: colorEdit || e.color }}>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wide">Editar estación</p>
+            <Input
+              autoFocus
+              value={nombreEdit}
+              maxLength={40}
+              onChange={(ev) => setNombreEdit(ev.target.value)}
+              onKeyDown={(ev) => { if (ev.key === 'Enter') guardarEdicion(e); if (ev.key === 'Escape') setEditando(null); }}
+              className="h-11 bg-slate-950 border-slate-700 text-white"
+            />
+            <div className="flex flex-wrap gap-2">
+              {COLORES_ESTACION.map((c) => (
+                <button key={c} onClick={() => setColorEdit(c)} className={`w-9 h-9 rounded-full border-2 ${colorEdit === c ? 'border-white ring-2 ring-slate-500' : 'border-transparent'}`} style={{ background: c }} />
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="h-11 flex-1 rounded-xl" onClick={() => setEditando(null)}>Cancelar</Button>
+              <Button disabled={ocupado} className="h-11 flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-[#fff]" onClick={() => guardarEdicion(e)}>
+                <Check className="w-4 h-4 mr-1" />Guardar
+              </Button>
+            </div>
+          </div>
+        ) : (
           <div key={e.id} className={`flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-2.5 ${e.activa ? '' : 'opacity-60'}`}>
             <span className="w-4 h-10 rounded-full shrink-0" style={{ background: e.color }} />
-            {editando === e.id ? (
-              <Input
-                autoFocus
-                value={nombreEdit}
-                onChange={(ev) => setNombreEdit(ev.target.value)}
-                onBlur={() => { const n = nombreEdit.trim(); setEditando(null); if (n && n !== e.nombre) void ejecutar(() => actualizarEstacion(e.id, { nombre: n })); }}
-                onKeyDown={(ev) => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur(); }}
-                className="h-10 flex-1 bg-slate-950 border-slate-700 text-white"
-              />
-            ) : (
-              <button className="flex-1 text-left text-white font-bold" onClick={() => { setEditando(e.id); setNombreEdit(e.nombre); }}>
-                {e.nombre}
-                <span className="block text-xs text-slate-500 font-normal">{e.activa ? 'Toca para cambiar el nombre' : 'Apagada: no aparece al mesero'}</span>
-              </button>
-            )}
+            <button className="flex-1 min-w-0 text-left text-white font-bold truncate" onClick={() => abrirEdicion(e)}>
+              {e.nombre}
+              <span className="block text-xs text-slate-500 font-normal">{e.activa ? 'Encendida' : 'Apagada: no aparece al mesero'}</span>
+            </button>
+            <button disabled={ocupado} onClick={() => abrirEdicion(e)} title="Editar" className="w-9 h-9 rounded-xl bg-slate-800 text-amber-500 flex items-center justify-center"><Pencil className="w-4 h-4" /></button>
             <button disabled={ocupado || i === 0} onClick={() => mover(i, -1)} className="w-9 h-9 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center disabled:opacity-30"><ArrowUp className="w-4 h-4" /></button>
             <button disabled={ocupado || i === estaciones.length - 1} onClick={() => mover(i, 1)} className="w-9 h-9 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center disabled:opacity-30"><ArrowDown className="w-4 h-4" /></button>
             <button disabled={ocupado} onClick={() => void ejecutar(() => actualizarEstacion(e.id, { activa: !e.activa }), e.activa ? `${e.nombre} apagada` : `${e.nombre} encendida`)} className={`w-9 h-9 rounded-xl flex items-center justify-center ${e.activa ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'}`}><Power className="w-4 h-4" /></button>

@@ -751,7 +751,7 @@ function CuentaDeMesa({
                         <button
                           key={e.id}
                           onClick={() => setDestinos((prev) => ({ ...prev, [it.producto.id]: e.id }))}
-                          className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border transition-all ${activo ? 'text-white border-transparent' : 'bg-slate-950 border-slate-700 text-slate-300'}`}
+                          className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border transition-all ${activo ? 'text-[#fff] border-transparent' : 'bg-slate-950 border-slate-700 text-slate-300'}`}
                           style={activo ? { background: e.color } : undefined}
                         >
                           {e.nombre}

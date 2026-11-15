@@ -8,12 +8,15 @@ import { Label } from '../../app/components/ui/label';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { RecuperarPasswordModal } from '../components/RecuperarPasswordModal';
 import logo from '/logo.png';
+import { leerCredenciales, guardarCredenciales, borrarCredenciales } from '../../app/lib/credencialesGuardadas';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { iniciarSesion } = usePwaAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [guardadas] = useState(() => leerCredenciales('celular'));
+  const [email, setEmail] = useState(guardadas?.usuario ?? '');
+  const [password, setPassword] = useState(guardadas?.password ?? '');
+  const [recordar, setRecordar] = useState(!!guardadas);
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [mostrarRecuperar, setMostrarRecuperar] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,6 +29,8 @@ export default function LoginPage() {
     const resultado = await iniciarSesion(email.trim(), password);
     setLoading(false);
     if (resultado.ok) {
+      if (recordar) guardarCredenciales({ usuario: email.trim(), password }, 'celular');
+      else borrarCredenciales('celular');
       navigate('/', { replace: true });
     } else {
       setError(resultado.error || 'Credenciales inválidas');
@@ -101,6 +106,16 @@ export default function LoginPage() {
             ¿Olvidaste tu contraseña?
           </button>
         </div>
+
+        <label className="flex items-center gap-2.5 cursor-pointer select-none text-sm text-slate-300">
+          <input
+            type="checkbox"
+            checked={recordar}
+            onChange={(e) => { setRecordar(e.target.checked); if (!e.target.checked) borrarCredenciales('celular'); }}
+            className="w-5 h-5 rounded accent-amber-500"
+          />
+          Guardar contraseña en este celular
+        </label>
 
         {error && <p className="text-red-400 text-sm">{error}</p>}
 

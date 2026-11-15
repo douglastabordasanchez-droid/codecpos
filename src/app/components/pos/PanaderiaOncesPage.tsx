@@ -21,6 +21,9 @@ import {
 } from '../../lib/supabase/terminalPrincipalService';
 import { TerminalPrincipalMesas } from './TerminalPrincipalMesas';
 import { PantallaEstaciones } from '../estaciones/PantallaEstaciones';
+import { DialogoEnvioEstaciones, type ItemEnvio } from '../estaciones/DialogoEnvioEstaciones';
+import { type Estacion, listarEstaciones, suscribirEstaciones } from '../../lib/supabase/estacionesService';
+import { createPortal } from 'react-dom';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { rearmarMenuAlimentos } from '../../lib/menuAlimentosDesdeInventario';
 import { Button } from '../ui/button';
@@ -426,6 +429,20 @@ export default function PanaderiaOncesPage() {
     return () => { activo = false; unsubscribe?.(); };
   }, [tiendaActivaId]);
 
+  // 🍽️ Estaciones del negocio (Cocina, Greca, Bar…), en vivo: igual que en el
+  // celular, el pedido de la mesa se reparte por estación.
+  const [estacionesCaja, setEstacionesCaja] = useState<Estacion[]>([]);
+  const [envioEstaciones, setEnvioEstaciones] = useState<{ mesa: MesaConfig; items: ItemEnvio[] } | null>(null);
+  useEffect(() => {
+    const clienteId = getLinkedClienteId();
+    if (!clienteId) return;
+    let activo = true;
+    const traer = () => listarEstaciones(clienteId).then((l) => { if (activo) setEstacionesCaja(l); }).catch(() => {});
+    void traer();
+    const quitar = suscribirEstaciones(clienteId, () => void traer());
+    return () => { activo = false; quitar(); };
+  }, []);
+
   const STORAGE_MESAS = 'codecpos_mesas_config';
   const STORAGE_CUENTAS_MESAS = 'codecpos_mesas_cuentas';
   const STORAGE_TRANSFER_CART = 'codecpos_carrito_transferido';
@@ -771,29 +788,72 @@ export default function PanaderiaOncesPage() {
   // diferencia de persistirCuentas() (que solo espeja el estado de la
   // cuenta), esto crea un tiquete de comanda nuevo con su propio estado
   // (pendiente → preparando → listo) para que cocina sepa qué preparar.
+  // Lo que ya se envió de cada mesa desde esta caja ({ mesa: { producto: cantidad } }):
+  // así el botón solo manda lo nuevo, igual que el celular.
+  const STORAGE_ENVIADO = 'codecpos_mesas_enviado';
+  const leerEnviado = (): Record<string, Record<string, number>> => {
+    try { const v = JSON.parse(localStorage.getItem(STORAGE_ENVIADO) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+  };
+  const marcarEnviado = (mesaId: string, items: ItemEnvio[]) => {
+    const todo = leerEnviado();
+    const mesa = { ...(todo[mesaId] || {}) };
+    for (const it of items) mesa[it.productoId] = (mesa[it.productoId] || 0) + it.cantidad;
+    todo[mesaId] = mesa;
+    try { localStorage.setItem(STORAGE_ENVIADO, JSON.stringify(todo)); } catch { /* ignorar */ }
+  };
+  // Mesa vacía (cobrada o liberada): se olvida lo enviado para empezar de cero.
+  useEffect(() => {
+    const todo = leerEnviado();
+    let cambio = false;
+    for (const mesaId of Object.keys(todo)) {
+      if (!(cuentasMesas[mesaId] || []).length) { delete todo[mesaId]; cambio = true; }
+    }
+    if (cambio) { try { localStorage.setItem(STORAGE_ENVIADO, JSON.stringify(todo)); } catch { /* ignorar */ } }
+  }, [cuentasMesas]);
+
+  // 🍳 Envía lo nuevo de la mesa a las estaciones (o a Cocina/Bar si el negocio
+  // no tiene estaciones). Crea comandas nuevas con su propio estado
+  // (pendiente → preparando → listo); la cuenta de la mesa sigue siendo una.
   const enviarMesaACocina = async (mesa: MesaConfig) => {
     const items = cuentasMesas[mesa.id] || [];
     if (items.length === 0) { toast.error('No hay productos en la mesa para enviar'); return; }
 
+    const clienteId = getLinkedClienteId();
+    if (!clienteId) {
+      toast.error('Esta caja no está vinculada a la nube', { description: 'Ve a Configuración > Sincronización para activar Cocina/Bar' });
+      return;
+    }
+
+    const enviado = leerEnviado()[mesa.id] || {};
+    const porProducto = new Map<string, ItemEnvio>();
+    for (const it of items) {
+      const id = String(it.producto.id);
+      const previo = porProducto.get(id);
+      porProducto.set(id, { productoId: id, nombre: it.producto.nombre, cantidad: (previo?.cantidad || 0) + (Number(it.cantidad) || 0) });
+    }
+    const nuevos = [...porProducto.values()]
+      .map((it) => ({ ...it, cantidad: it.cantidad - (enviado[it.productoId] || 0) }))
+      .filter((it) => it.cantidad > 0);
+    if (nuevos.length === 0) {
+      toast.info(`Todo lo de ${mesa.nombre} ya se envió`, { description: 'Agrega productos nuevos para mandar otro pedido.' });
+      return;
+    }
+
+    const activas = estacionesCaja.filter((e) => e.activa);
+    if (activas.length > 0) { setEnvioEstaciones({ mesa, items: nuevos }); return; }
+
     try {
-      const [{ getLinkedClienteId }, { enviarComanda }] = await Promise.all([
-        import('../../lib/supabase/tenantLink'),
-        import('../../lib/supabase/panaderiaSyncService'),
-      ]);
-      const clienteId = getLinkedClienteId();
-      if (!clienteId) {
-        toast.error('Esta caja no está vinculada a la nube', { description: 'Ve a Configuración > Sincronización para activar Cocina/Bar' });
-        return;
-      }
+      const { enviarComanda } = await import('../../lib/supabase/panaderiaSyncService');
       await enviarComanda(
         clienteId,
         mesa.id,
         mesa.nombre,
-        items.map((it) => ({ nombre: it.producto.nombre, cantidad: Number(it.cantidad) || 0 })),
+        nuevos.map((it) => ({ nombre: it.nombre, cantidad: it.cantidad })),
         usuarioActual?.nombreCompleto || usuarioActual?.username,
         undefined,
         mesa.tiendaId
       );
+      marcarEnviado(mesa.id, nuevos);
       toast.success(`Pedido de ${mesa.nombre} enviado a Cocina/Bar`);
     } catch (error) {
       console.error('Error enviando comanda:', error);
@@ -2118,15 +2178,34 @@ export default function PanaderiaOncesPage() {
   // ── JSX principal ─────────────────────────────────────────────────────────────
   return (
     <div className={`h-full overflow-y-auto p-5 ${darkMode ? 'bg-transparent text-white' : 'bg-slate-50 text-slate-900'}`}>
-      {pantallaEstacionAbierta && getLinkedClienteId() && (
-        <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950">
+      {/* Va directo sobre <body>: dentro de la sección animada un `fixed` queda
+          recortado a la página en vez de cubrir toda la pantalla. */}
+      {pantallaEstacionAbierta && getLinkedClienteId() && createPortal(
+        <div
+          data-theme={darkMode ? 'dark' : 'light'}
+          style={{ colorScheme: darkMode ? 'dark' : 'light' }}
+          className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950"
+        >
           <PantallaEstaciones
             clienteId={getLinkedClienteId()!}
             esAdmin={puedeAdministrarPanaderia}
             tienda={tiendaActivaId}
             onSalir={() => setPantallaEstacionAbierta(false)}
           />
-        </div>
+        </div>,
+        document.body,
+      )}
+      {envioEstaciones && getLinkedClienteId() && (
+        <DialogoEnvioEstaciones
+          clienteId={getLinkedClienteId()!}
+          mesa={envioEstaciones.mesa}
+          items={envioEstaciones.items}
+          estaciones={estacionesCaja.filter((e) => e.activa)}
+          mesero={usuarioActual?.nombreCompleto || usuarioActual?.username}
+          oscuro={darkMode}
+          onCerrar={() => setEnvioEstaciones(null)}
+          onEnviado={(enviados) => { marcarEnviado(envioEstaciones.mesa.id, enviados); setEnvioEstaciones(null); }}
+        />
       )}
       <div className="max-w-5xl mx-auto space-y-4">
 

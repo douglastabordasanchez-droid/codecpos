@@ -13,14 +13,22 @@ import { RecuperarPasswordModal } from './RecuperarPasswordModal';
 import { toast } from 'sonner';
 import logoImage from '/logo.png';
 import { useDeveloperShortcut } from '../../hooks/useDeveloperShortcut';
+import { leerCredenciales, guardarCredenciales, borrarCredenciales } from '../../lib/credencialesGuardadas';
 
 interface AdminServer { ip: string; httpPort: number; }
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { iniciarSesion, estaAutenticado, registrarSesionRedLocal } = useAuth();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [guardadas] = useState(() => leerCredenciales('caja'));
+  const [username, setUsername] = useState(guardadas?.usuario ?? '');
+  const [password, setPassword] = useState(guardadas?.password ?? '');
+  const [recordar, setRecordar] = useState(!!guardadas);
+  // «Guardar contraseña»: se guarda solo si el ingreso fue correcto.
+  const recordarSiCorresponde = () => {
+    if (recordar) guardarCredenciales({ usuario: username, password }, 'caja');
+    else borrarCredenciales('caja');
+  };
   const [loading, setLoading] = useState(false);
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [wifiSsid, setWifiSsid] = useState<string | null>(null);
@@ -112,6 +120,7 @@ export default function LoginPage() {
       const localExito = await iniciarSesion(username, password);
 
       if (localExito) {
+        recordarSiCorresponde();
         console.log('✅ Login local exitoso');
         toast.success('¡Que Dios bendiga tu jornada!', { description: 'Bienvenido a CODEC POS', duration: 2500 });
         setTimeout(() => navigate('/pos', { replace: true }), 100);
@@ -145,6 +154,7 @@ export default function LoginPage() {
           const data = await resp.json();
 
           if (data.ok && data.usuario) {
+            recordarSiCorresponde();
             console.log('✅ Login de red exitoso:', data.usuario.nombreCompleto);
             // Registrar sesión localmente con los datos del servidor
             registrarSesionRedLocal(data.usuario);
@@ -354,11 +364,23 @@ export default function LoginPage() {
                 </div>
               </div>
 
+              {/* Guardar contraseña en este equipo */}
+              <label className="flex items-center gap-2.5 cursor-pointer select-none text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={recordar}
+                  onChange={(e) => { setRecordar(e.target.checked); if (!e.target.checked) borrarCredenciales('caja'); }}
+                  className="w-5 h-5 rounded accent-amber-500"
+                  disabled={loading}
+                />
+                Guardar contraseña en este equipo
+              </label>
+
               {/* Botón de Login */}
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full h-12 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-sm shadow-2xl shadow-amber-500/30 hover:shadow-amber-500/50 transition-all duration-300 border-0 mt-4"
+                className="w-full h-12 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-sm shadow-2xl shadow-amber-500/30 hover:shadow-amber-500/50 transition-all duration-300 border-0 mt-2"
               >
                 {loading ? (
                   <div className="flex items-center justify-center gap-2">
