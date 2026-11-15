@@ -6,7 +6,7 @@ import {
   ShoppingCart, Package, Receipt, BarChart3, Calculator,
   FileText, Wallet, Settings, Monitor, Users, User, Bell, Gift,
   TrendingUp, Tag, Building2, Barcode, Zap, Shield, ChevronLeft, ChevronRight,
-  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff, Palette, PartyPopper, PawPrint, ReceiptText,
+  ChevronDown, Sun, Moon, LogOut, Crown, Lock, Maximize, Minimize, Maximize2, Wrench, Coffee, Pencil, Wifi, Eye, EyeOff, Palette, PartyPopper, PawPrint, ReceiptText, ArrowUp, ArrowDown, Check, LayoutList,
 } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -636,6 +636,26 @@ export default function POSLayoutSidebar() {
     setDragOverPath(null);
   };
 
+  // 📱 Organizar menú en pantalla táctil (terminal, tablet): el arrastre y los
+  // botones que salen con el mouse no funcionan con el dedo. En este modo cada
+  // módulo muestra subir, bajar, renombrar y ocultar, siempre visibles.
+  const [organizando, setOrganizando] = useState(false);
+  const moverModulo = (path: string, direccion: -1 | 1) => {
+    const visibles = finalVisibleMenuItems.map((it) => it.path);
+    const i = visibles.indexOf(path);
+    const j = i + direccion;
+    if (i < 0 || j < 0 || j >= visibles.length) return;
+    const vecino = visibles[j];
+    setMenuOrder((prev) => {
+      const orden = [...prev];
+      for (const p of visibles) if (!orden.includes(p)) orden.push(p);
+      const a = orden.indexOf(path);
+      const b = orden.indexOf(vecino);
+      [orden[a], orden[b]] = [orden[b], orden[a]];
+      return orden;
+    });
+  };
+
   const handleRenameModule = (path: string, newName: string) => {
     const trimmed = newName.trim();
     setEditingPath(null);
@@ -651,6 +671,7 @@ export default function POSLayoutSidebar() {
 
   // ✅ MANEJAR CLICK EN OPCIÓN DEL MENÚ
   const handleMenuClick = (item: MenuItemType) => {
+    if (organizando) return;
     const access = canAccessItem(item);
 
     if (!access.allowed) {
@@ -891,6 +912,21 @@ export default function POSLayoutSidebar() {
           )}
         </div>
 
+        {!collapsed && (esSuperUsuario || modoAdminTemporalActivo) && (
+          <div className="flex-shrink-0 px-4 pt-3">
+            <button
+              onClick={() => { setOrganizando((v) => !v); setEditingPath(null); }}
+              className={`w-full h-9 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
+                organizando
+                  ? 'bg-emerald-600 border-emerald-600 text-[#fff]'
+                  : darkMode ? 'border-white/15 text-white/60 hover:text-white' : 'border-gray-200 text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              {organizando ? <><Check className="w-4 h-4" />Listo</> : <><LayoutList className="w-4 h-4" />Organizar menú</>}
+            </button>
+          </div>
+        )}
+
         {/* Navigation */}
         <nav className="flex-1 min-h-0 p-4 space-y-2 overflow-y-auto scrollbar-thin">
           {finalVisibleMenuItems.map((item) => {
@@ -984,14 +1020,14 @@ export default function POSLayoutSidebar() {
                               setEditingPath(item.path);
                               setEditingValue(getMenuLabel(item));
                             }}
-                            className={`hidden group-hover:flex items-center justify-center w-5 h-5 rounded transition-all ${
+                            className={`${organizando ? 'flex w-8 h-8 bg-black/10' : 'hidden group-hover:flex w-5 h-5'} items-center justify-center rounded transition-all ${
                               darkMode
                                 ? 'text-white/40 hover:text-white hover:bg-white/15'
                                 : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/70'
                             }`}
                             title="Renombrar módulo"
                           >
-                            <Pencil className="w-3 h-3" />
+                            <Pencil className={organizando ? "w-4 h-4" : "w-3 h-3"} />
                           </button>
                         )}
                         {item.path !== '/configuracion' && item.path !== '/developer' && (esSuperUsuario || modoAdminTemporalActivo) && (
@@ -1000,15 +1036,21 @@ export default function POSLayoutSidebar() {
                               e.stopPropagation();
                               toggleHiddenPath(item.path);
                             }}
-                            className={`hidden group-hover:flex items-center justify-center w-5 h-5 rounded transition-all ${
+                            className={`${organizando ? 'flex w-8 h-8 bg-black/10' : 'hidden group-hover:flex w-5 h-5'} items-center justify-center rounded transition-all ${
                               darkMode
                                 ? 'text-white/40 hover:text-white hover:bg-white/15'
                                 : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200/70'
                             }`}
                             title="Ocultar de mi sidebar"
                           >
-                            <EyeOff className="w-3 h-3" />
+                            <EyeOff className={organizando ? "w-4 h-4" : "w-3 h-3"} />
                           </button>
+                        )}
+                        {organizando && (
+                          <>
+                            <span role="button" aria-label="Subir" onClick={(e) => { e.stopPropagation(); moverModulo(item.path, -1); }} className="flex w-8 h-8 items-center justify-center rounded bg-black/10 active:scale-90"><ArrowUp className="w-4 h-4" /></span>
+                            <span role="button" aria-label="Bajar" onClick={(e) => { e.stopPropagation(); moverModulo(item.path, 1); }} className="flex w-8 h-8 items-center justify-center rounded bg-black/10 active:scale-90"><ArrowDown className="w-4 h-4" /></span>
+                          </>
                         )}
                         {locked && (
                           <div className="flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-500 to-amber-500 rounded-full">
@@ -1027,7 +1069,7 @@ export default function POSLayoutSidebar() {
 
         {!collapsed && hiddenPaths.length > 0 && (esSuperUsuario || modoAdminTemporalActivo) && (
           <div className="flex-shrink-0 px-3 pb-1">
-            <details>
+            <details open={organizando || undefined}>
               <summary className={`cursor-pointer select-none text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-lg ${darkMode ? 'text-white/40 hover:text-white/70' : 'text-gray-400 hover:text-gray-600'}`}>
                 {hiddenPaths.length} módulo{hiddenPaths.length === 1 ? '' : 's'} oculto{hiddenPaths.length === 1 ? '' : 's'}
               </summary>
