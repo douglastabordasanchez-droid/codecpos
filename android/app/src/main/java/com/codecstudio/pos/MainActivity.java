@@ -31,6 +31,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ImpresoraPosPlugin.class);
         registerPlugin(RespaldoPlugin.class);
+        registerPlugin(VozPlugin.class);
         super.onCreate(savedInstanceState);
 
         final Thread.UncaughtExceptionHandler previo = Thread.getDefaultUncaughtExceptionHandler();

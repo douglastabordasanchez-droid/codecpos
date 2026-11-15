@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
+import { billetesSugeridos } from '../../lib/billetesSugeridos';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router';
 import {
@@ -350,6 +351,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [boutiqueEditingProductoId, setBoutiqueEditingProductoId] = useState<string | null>(null);
   const [codigoBarras, setCodigoBarras] = useState('');
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
+  // Terminal o tablet táctil: el cobro en efectivo usa billetes y teclado en pantalla.
+  const esPantallaTactil = typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window);
   const [loading, setLoading] = useState(false);
   // 🛡️ Guard anti-doble-cobro: evita que un doble clic/doble-tap en el botón de pago
   // genere dos ventas con el mismo número de factura (una de ellas se pierde en silencio
@@ -4129,14 +4132,59 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     Efectivo Recibido:
                   </label>
                   <Input
-                    type="number"
-                    value={efectivoRecibido}
-                    onChange={(e) => setEfectivoRecibido(e.target.value)}
+                    type="text"
+                    // Pantalla táctil: no se abre el teclado del sistema (se usan los billetes
+                    // y el teclado numérico de abajo). Con teclado físico se escribe normal.
+                    inputMode={esPantallaTactil ? 'none' : 'numeric'}
+                    pattern="[0-9]*"
+                    value={efectivoRecibido ? Number(efectivoRecibido).toLocaleString('es-CO') : ''}
+                    onChange={(e) => setEfectivoRecibido(e.target.value.replace(/\D/g, '').slice(0, 9))}
                     placeholder="0"
-                    className={`text-2xl font-bold h-16 rounded-2xl ${
+                    className={`text-3xl font-black text-right h-16 rounded-2xl ${
                       darkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white'
                     }`}
                   />
+                  {/* ⚡ Billetes con los que el cliente puede pagar: un toque y queda el
+                      efectivo recibido con su cambio (igual que Vender en la web). */}
+                  {calcularTotal() > 0 && (
+                    <div className="grid grid-cols-5 gap-2 mt-3">
+                      {billetesSugeridos(calcularTotal()).map((b) => {
+                        const elegido = Math.round(parseFloat(efectivoRecibido) || 0) === b;
+                        return (
+                          <button
+                            key={b}
+                            type="button"
+                            onClick={() => setEfectivoRecibido(String(b))}
+                            className={`h-14 rounded-xl text-base font-black border-2 transition-all active:scale-95 ${
+                              elegido
+                                ? 'bg-amber-500 border-amber-500 text-slate-950'
+                                : darkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                          >
+                            {b === Math.round(calcularTotal()) ? 'Exacto' : `$${b.toLocaleString('es-CO')}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* Teclado numérico grande, como un datáfono. */}
+                  <div className="grid grid-cols-3 gap-2 mt-3">
+                    {['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'borrar'].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setEfectivoRecibido((v) => (t === 'borrar' ? v.slice(0, -1) : (v + t).replace(/^0+/, '').slice(0, 9)))}
+                        onDoubleClick={() => { if (t === 'borrar') setEfectivoRecibido(''); }}
+                        className={`h-14 rounded-xl text-2xl font-black border transition-all active:scale-95 ${
+                          t === 'borrar'
+                            ? 'bg-red-500/15 border-red-500/40 text-red-500 text-base'
+                            : darkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
+                        }`}
+                      >
+                        {t === 'borrar' ? '⌫ Borrar' : t}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {efectivoRecibido && parseFloat(efectivoRecibido) >= calcularTotal() && (

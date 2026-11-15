@@ -2,6 +2,7 @@ package com.codecpos.verify
 
 import android.app.Application
 import android.provider.Settings
+import com.codecpos.verify.notification.GuardianEscuchaService
 import com.codecpos.verify.notification.PagoNotificationListenerService
 
 class CodecVerifyApp : Application() {
@@ -10,5 +11,7 @@ class CodecVerifyApp : Application() {
         // Si el permiso de acceso a notificaciones está dado, se reconecta el lector al abrir la app.
         val habilitados = Settings.Secure.getString(contentResolver, "enabled_notification_listeners").orEmpty()
         if (habilitados.contains(packageName)) PagoNotificationListenerService.pedirReconexion(this)
+        // Guardián que mantiene el lector despierto (Samsung lo duerme sin avisar).
+        GuardianEscuchaService.iniciar(this)
     }
 }

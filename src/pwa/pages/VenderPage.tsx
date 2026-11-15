@@ -15,6 +15,7 @@
  *    como Electron hace con `codecpos_carrito_transferido`.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { billetesSugeridos } from '../../app/lib/billetesSugeridos';
 import { useNavigate } from 'react-router';
 import {
   ShoppingCart, Search, Plus, Minus, Trash2, X, Loader2, CheckCircle2, Package, Camera, Share2, Eye, Printer, Inbox, ShieldCheck, Scale,
@@ -124,16 +125,6 @@ interface FeCobro {
   estado: 'esperando' | 'demorada' | 'lista' | 'fallida';
   factura?: FacturaElectronicaDian;
   aviso?: string;
-}
-
-/** Billetes sugeridos para el efectivo recibido: el valor exacto y los redondeos útiles. */
-function billetesSugeridos(total: number): number[] {
-  const opciones = new Set<number>([total]);
-  for (const paso of [1000, 5000, 10000, 20000, 50000, 100000]) {
-    const v = Math.ceil(total / paso) * paso;
-    if (v > total) opciones.add(v);
-  }
-  return [...opciones].sort((a, b) => a - b).slice(0, 5);
 }
 
 export default function VenderPage() {

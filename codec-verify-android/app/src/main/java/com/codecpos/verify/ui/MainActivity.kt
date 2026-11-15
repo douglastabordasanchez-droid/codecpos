@@ -93,6 +93,13 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Con la app en pantalla Android sí deja arrancar el guardián en primer plano
+        // (desde Application.onCreate a veces lo bloquea por estar aún "en segundo plano").
+        com.codecpos.verify.notification.GuardianEscuchaService.iniciar(applicationContext)
+    }
 }
 
 /**

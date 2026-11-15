@@ -557,7 +557,14 @@ function _imprimirConVentana(html: string) {
       } catch { return ''; }
     })();
     el.print.printHtml({ html, silent: true, printerName }).catch(() => {});
+    return;
   }
+  // Terminal Android (APK): las etiquetas salen por la impresora térmica integrada.
+  void import('./impresoraAndroid').then(async ({ esAndroidNativo }) => {
+    if (!esAndroidNativo()) return;
+    const { imprimirHtmlEnTermica } = await import('./impresionHtmlAndroid');
+    await imprimirHtmlEnTermica(html);
+  });
 }
 
 /**

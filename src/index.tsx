@@ -13,6 +13,7 @@ import { recargarSiFaltaPantalla } from './app/lib/recargarSiFaltaPantalla';
 import { iniciarRespaldoAndroid } from './app/lib/respaldoAndroid';
 import { mostrarArranqueAndroid } from './app/lib/arranqueAndroid';
 import { instalarImpresionAndroid } from './app/lib/impresionHtmlAndroid';
+import { instalarVozAndroid } from './app/lib/vozAndroid';
 
 recargarSiFaltaPantalla();
 
@@ -53,6 +54,7 @@ const renderApp = async () => {
   // restauradas desde el respaldo en disco antes de pintar. En web y Electron no hace nada.
   mostrarArranqueAndroid();
   instalarImpresionAndroid();
+  instalarVozAndroid();
   await iniciarRespaldoAndroid().catch(() => {});
   await prepararAlmacenGrande().catch((e) => console.error('[almacén]', e));
   const { default: App } = await import('./app/App.tsx');

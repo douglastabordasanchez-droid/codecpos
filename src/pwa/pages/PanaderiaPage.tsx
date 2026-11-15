@@ -507,7 +507,8 @@ export default function PanaderiaPage() {
               const cuenta = cuentas[mesa.id];
               const items = cuenta?.items ?? [];
               const ocupada = items.length > 0;
-              const comanda = comandasPorMesa[mesa.id];
+              // Mesa vacía (ya la cobraron en caja) = libre, aunque quede un pedido viejo en «Listo».
+              const comanda = ocupada ? comandasPorMesa[mesa.id] : undefined;
               // Mesa de otra mesera: se ve llena y no se puede usar hasta que
               // paguen en caja. El administrador sí puede entrar.
               const atiende = ocupada ? cuenta?.meseroNombre : undefined;

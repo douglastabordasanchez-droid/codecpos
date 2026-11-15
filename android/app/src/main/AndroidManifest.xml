@@ -64,6 +64,13 @@
         </provider>
     </application>
 
+    <!-- Motor de voz del sistema (VozPlugin) en Android 11 o superior -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />

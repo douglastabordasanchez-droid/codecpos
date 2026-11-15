@@ -91,10 +91,51 @@ function imagenAEscPos(canvas: HTMLCanvasElement, anchoPx: number): Uint8Array {
 
 let cola: Promise<unknown> = Promise.resolve();
 
+function anchoTermicaPx(): number {
+  return getConfiguredTicketWidthMm() === 58 ? 384 : 576;
+}
+
+/** Imprime imágenes ya dibujadas (páginas de un PDF, una parte de la pantalla) en la térmica. */
+export function imprimirCanvasesEnTermica(canvases: HTMLCanvasElement[]): Promise<boolean> {
+  const tarea = cola.then(async () => {
+    const anchoPx = anchoTermicaPx();
+    let ok = true;
+    for (const c of canvases) ok = (await imprimirBytesAndroid(imagenAEscPos(c, anchoPx))) && ok;
+    return ok;
+  });
+  cola = tarea.catch(() => {});
+  return tarea;
+}
+
+/** PDF (factura, nota, reporte) → páginas en imagen → térmica. */
+export async function imprimirPdfEnTermica(pdf: Blob): Promise<boolean> {
+  try {
+    const { pdfAPaginas } = await import('./pdfVista');
+    const paginas = await pdfAPaginas(pdf, anchoTermicaPx() / Math.min(window.devicePixelRatio || 1, 2.5));
+    return await imprimirCanvasesEnTermica(paginas);
+  } catch (e) {
+    console.error('PDF en térmica:', e);
+    return false;
+  }
+}
+
+/** Un elemento de la pantalla (la hoja de una factura) → imagen → térmica. */
+async function imprimirElementoEnTermica(el: HTMLElement): Promise<boolean> {
+  try {
+    const { default: html2canvas } = await import('html2canvas');
+    const ancho = Math.max(1, el.scrollWidth || el.offsetWidth);
+    const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: anchoTermicaPx() / ancho, logging: false, useCORS: true });
+    return await imprimirCanvasesEnTermica([canvas]);
+  } catch (e) {
+    console.error('Elemento en térmica:', e);
+    return false;
+  }
+}
+
 /** Imprime un documento HTML completo en la térmica de la terminal. */
 export function imprimirHtmlEnTermica(html: string): Promise<boolean> {
   const tarea = cola.then(async () => {
-    const anchoPx = getConfiguredTicketWidthMm() === 58 ? 384 : 576;
+    const anchoPx = anchoTermicaPx();
     try {
       const canvas = await htmlAImagen(html, anchoPx);
       return await imprimirBytesAndroid(imagenAEscPos(canvas, anchoPx));
@@ -149,6 +190,18 @@ export function instalarImpresionAndroid(): void {
   if (instalado || !esAndroidNativo()) return;
   instalado = true;
   const abrirOriginal = window.open.bind(window);
+  // window.print() directo (vista de la factura electrónica): se imprime la hoja
+  // marcada como imprimible en vez de toda la pantalla.
+  window.print = () => {
+    const hoja = document.querySelector<HTMLElement>('[id$="-imprimible"], [data-imprimible]');
+    if (!hoja) {
+      void import('sonner').then(({ toast }) => toast.info('Esta pantalla no tiene nada para imprimir en la terminal'));
+      return;
+    }
+    void imprimirElementoEnTermica(hoja).then((ok) => {
+      if (!ok) void import('sonner').then(({ toast }) => toast.error('No se pudo imprimir en la impresora de la terminal'));
+    });
+  };
   window.open = ((url?: string | URL, objetivo?: string, opciones?: string) => {
     const destino = url === undefined || url === null ? '' : String(url);
     if (destino === '' || destino === 'about:blank') return ventanaDeImpresion();

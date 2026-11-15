@@ -75,6 +75,16 @@ export async function compartirPdf(blob: Blob, nombre: string, titulo: string, t
 export async function imprimirPdf(blob: Blob, nombre: string): Promise<void> {
   const android = puenteAndroid();
   if (android?.imprimirPdf && android.imprimirPdf(await aBase64(blob), nombre)) return;
+  // Terminal POS Android (APK): el PDF va directo a la impresora térmica integrada.
+  const { esAndroidNativo } = await import('./impresoraAndroid');
+  if (esAndroidNativo()) {
+    const { imprimirPdfEnTermica } = await import('./impresionHtmlAndroid');
+    if (!(await imprimirPdfEnTermica(blob))) {
+      const { toast } = await import('sonner');
+      toast.error('No se pudo imprimir en la impresora de la terminal');
+    }
+    return;
+  }
   if (esCelular()) {
     if (!(await compartirPdf(blob, nombre, nombre, ''))) descargarPdf(blob, nombre);
     return;

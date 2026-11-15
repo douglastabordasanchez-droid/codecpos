@@ -1,14 +1,16 @@
 /**
- * Guía para que un iPhone detecte pagos para Codec Verify.
+ * Asistente para que un iPhone detecte pagos para Codec Verify.
  *
- * Apple no deja que una app lea las notificaciones de otras apps (Nequi,
- * Bancolombia...). Lo que sí permite es una automatización de la app Atajos
- * que corre al llegar un SMS o un correo del banco y envía su texto a la
- * dirección del negocio (Edge Function codec-verify-entrada). El pago queda
- * registrado y lo ven al instante Electron, la web y la app.
+ * Apple no deja que una app (ni una web) lea las notificaciones de otras apps
+ * (Nequi, Bancolombia...). Lo que sí permite es una automatización de la app
+ * Atajos que corre al llegar la notificación, el SMS o el correo del banco y
+ * envía su texto a la dirección del negocio (Edge Function
+ * codec-verify-entrada). El pago queda registrado y suena en la caja, la web
+ * y la app. La automatización la tiene que crear la persona (Apple no deja
+ * crearla desde afuera): este asistente la guía paso a paso, uno a la vez.
  */
 import { useState } from 'react';
-import { Apple, Copy, Check, Loader2, MessageSquare, Mail, ShieldCheck, Bell } from 'lucide-react';
+import { Apple, Copy, Check, Loader2, MessageSquare, Mail, ShieldCheck, Bell, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSupabasePublicConfig } from '../../app/lib/supabase/config';
 
@@ -20,29 +22,35 @@ export function urlEntradaIphone(token: string) {
   return `${base}/functions/v1/codec-verify-entrada?t=${encodeURIComponent(token)}`;
 }
 
-function Paso({ n, children }: { n: number; children: React.ReactNode }) {
-  return (
-    <li className="flex gap-2.5">
-      <span className="w-5 h-5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">{n}</span>
-      <span className="text-slate-300 text-xs leading-relaxed">{children}</span>
-    </li>
-  );
+function Grande({ children }: { children: React.ReactNode }) {
+  return <p className="text-white text-base leading-relaxed">{children}</p>;
+}
+
+function Nota({ children }: { children: React.ReactNode }) {
+  return <p className="text-slate-400 text-xs leading-relaxed">{children}</p>;
+}
+
+/** Palabra en pantalla del iPhone, resaltada para encontrarla fácil. */
+function Boton({ children }: { children: React.ReactNode }) {
+  return <span className="inline-block px-1.5 rounded-md bg-sky-500/20 text-sky-300 font-bold">{children}</span>;
 }
 
 export function ConectarIphone({ token }: { token: string }) {
   const [via, setVia] = useState<Via>('notificacion');
   const [banco, setBanco] = useState('nequi');
+  const [paso, setPaso] = useState(0);
   const [copiado, setCopiado] = useState(false);
   const [probando, setProbando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: boolean; mensaje: string } | null>(null);
   // Por notificación se crea una automatización por app, y el enlace lleva el banco (la notificación no siempre lo nombra).
   const url = via === 'notificacion' ? `${urlEntradaIphone(token)}&e=${banco}` : urlEntradaIphone(token);
+  const nombreBanco = BANCOS.find(([id]) => id === banco)?.[1] || 'tu banco';
 
   const copiar = async () => {
     try {
       await navigator.clipboard.writeText(url);
       setCopiado(true);
-      toast.success('Enlace copiado. Pégalo en la automatización de Atajos.');
+      toast.success('Enlace copiado');
       setTimeout(() => setCopiado(false), 2500);
     } catch {
       toast.error('No se pudo copiar; mantén presionado el enlace para copiarlo.');
@@ -62,103 +70,149 @@ export function ConectarIphone({ token }: { token: string }) {
     setProbando(false);
   };
 
-  return (
-    <div className="rounded-2xl bg-slate-950/50 border border-slate-800 p-4 space-y-3">
-      <div>
-        <p className="text-white text-sm font-bold flex items-center gap-2"><Apple className="w-4 h-4" /> Detectar pagos desde un iPhone</p>
-        <p className="text-slate-500 text-xs mt-1">
-          Con <b>iOS 27</b> la app <b>Atajos</b> del iPhone puede reenviar sola la notificación de pago de Nequi, Bancolombia o
-          Daviplata. En iPhones sin iOS 27 se puede usar el <b>SMS</b> o el <b>correo</b> que manda el banco. Se configura una sola vez.
-        </p>
-      </div>
-
-      <div>
-        <p className="text-slate-400 text-[11px] font-bold uppercase tracking-wide mb-1.5">Enlace de tu negocio</p>
-        <div className="flex gap-2">
-          <div className="flex-1 min-w-0 h-11 px-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center font-mono text-[11px] text-slate-300 overflow-hidden">
-            <span className="truncate">{url.replace(token, `${token.slice(0, 6)}…`)}</span>
+  const pasos: Array<{ titulo: string; cuerpo: React.ReactNode }> = [
+    {
+      titulo: '¿Cómo te avisa el banco?',
+      cuerpo: (
+        <div className="space-y-3">
+          <Nota>Elige por dónde te llega el aviso de que entró plata. Si usas Nequi, elige Notificación.</Nota>
+          <div className="grid grid-cols-3 gap-2">
+            {([['notificacion', 'Notificación', Bell], ['sms', 'Mensaje SMS', MessageSquare], ['correo', 'Correo', Mail]] as const).map(([id, label, Icono]) => (
+              <button key={id} onClick={() => setVia(id)}
+                className={`h-20 rounded-2xl text-sm font-bold flex flex-col items-center justify-center gap-1.5 border-2 ${via === id ? 'bg-emerald-600 border-emerald-600 text-[#fff]' : 'bg-slate-900 border-slate-700 text-slate-300'}`}>
+                <Icono className="w-6 h-6" />{label}
+              </button>
+            ))}
           </div>
-          <button onClick={copiar} className="h-11 px-3 rounded-lg bg-emerald-600 text-xs font-bold flex items-center gap-1.5 shrink-0" style={{ color: '#ffffff' }}>
-            {copiado ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copiado ? 'Copiado' : 'Copiar'}
+          {via === 'notificacion' && (
+            <>
+              <Nota>¿De qué app? (si usas varias, repites esto una vez por cada una)</Nota>
+              <div className="flex flex-wrap gap-2">
+                {BANCOS.map(([id, nombre]) => (
+                  <button key={id} onClick={() => setBanco(id)}
+                    className={`h-10 px-4 rounded-full text-sm font-bold border-2 ${banco === id ? 'bg-emerald-600 border-emerald-600 text-[#fff]' : 'bg-slate-900 border-slate-700 text-slate-300'}`}>
+                    {nombre}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ),
+    },
+    {
+      titulo: 'Copia el enlace de tu negocio',
+      cuerpo: (
+        <div className="space-y-3">
+          <Grande>Toca el botón verde. El enlace queda copiado para pegarlo en un momento.</Grande>
+          <button onClick={copiar} className="w-full h-16 rounded-2xl bg-emerald-600 text-lg font-black flex items-center justify-center gap-2" style={{ color: '#ffffff' }}>
+            {copiado ? <Check className="w-6 h-6" /> : <Copy className="w-6 h-6" />} {copiado ? 'Copiado' : 'Copiar enlace'}
+          </button>
+          <Nota>Es privado: no lo compartas fuera de tu negocio.</Nota>
+        </div>
+      ),
+    },
+    {
+      titulo: 'Abre Atajos y crea la automatización',
+      cuerpo: (
+        <div className="space-y-3">
+          <a href="shortcuts://" className="w-full h-14 rounded-2xl bg-sky-600 text-base font-black flex items-center justify-center gap-2" style={{ color: '#ffffff' }}>
+            <ExternalLink className="w-5 h-5" /> Abrir Atajos
+          </a>
+          <Grande>Abajo toca <Boton>Automatización</Boton> y luego el <Boton>+</Boton> de arriba.</Grande>
+          {via === 'notificacion' ? (
+            <Grande>Busca y toca <Boton>Notificación</Boton>. En <Boton>App</Boton> elige <b>{banco === 'bre_b' ? 'la app de tu banco' : nombreBanco}</b>.</Grande>
+          ) : via === 'sms' ? (
+            <Grande>Busca y toca <Boton>Mensaje</Boton>. En <Boton>El mensaje contiene</Boton> escribe <b>Recibiste</b>.</Grande>
+          ) : (
+            <Grande>Busca y toca <Boton>Correo</Boton>. En <Boton>Remitente</Boton> pon el correo con el que te avisa el banco.</Grande>
+          )}
+          <Grande>Marca <Boton>Ejecutar inmediatamente</Boton> y toca <Boton>Siguiente</Boton>.</Grande>
+        </div>
+      ),
+    },
+    {
+      titulo: 'Pega el enlace',
+      cuerpo: (
+        <div className="space-y-3">
+          <Grande>Toca <Boton>Nueva automatización en blanco</Boton>.</Grande>
+          <Grande>En el buscador de abajo escribe <b>URL</b> y toca <Boton>Obtener contenido de URL</Boton>.</Grande>
+          <Grande>Toca donde dice <Boton>URL</Boton>, mantén presionado y elige <Boton>Pegar</Boton>.</Grande>
+          <button onClick={copiar} className="w-full h-11 rounded-xl bg-slate-800 text-sm font-bold flex items-center justify-center gap-2 text-white">
+            {copiado ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} Copiar el enlace otra vez
           </button>
         </div>
-        <p className="text-slate-600 text-[11px] mt-1">Es privado como el token: no lo compartas fuera de tu equipo.</p>
+      ),
+    },
+    {
+      titulo: 'Que envíe el aviso del banco',
+      cuerpo: (
+        <div className="space-y-3">
+          <Grande>Toca la flechita <Boton>›</Boton> de esa acción.</Grande>
+          <Grande>En <Boton>Método</Boton> elige <b>POST</b>. En <Boton>Cuerpo de la solicitud</Boton> elige <b>Formulario</b>.</Grande>
+          {via === 'notificacion' ? (
+            <Grande>Toca <Boton>Agregar campo</Boton> › <b>Texto</b>. Clave: <b>texto</b>. Valor: toca y elige la variable <Boton>Notificación</Boton>.</Grande>
+          ) : (
+            <Grande>Toca <Boton>Agregar campo</Boton> › <b>Texto</b>. Clave: <b>texto</b>. Valor: toca y elige la variable <Boton>{via === 'sms' ? 'Mensaje' : 'Correo'}</Boton>.</Grande>
+          )}
+          <Grande>Toca <Boton>OK</Boton> arriba. Listo.</Grande>
+        </div>
+      ),
+    },
+    {
+      titulo: 'Prueba que quedó conectado',
+      cuerpo: (
+        <div className="space-y-3">
+          <Grande>Toca el botón para revisar que el enlace funciona.</Grande>
+          <button onClick={probar} disabled={probando} className="w-full h-14 rounded-2xl bg-emerald-600 text-base font-black flex items-center justify-center gap-2 disabled:opacity-60" style={{ color: '#ffffff' }}>
+            {probando ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />} Probar conexión
+          </button>
+          {resultado && (
+            <p className={`text-sm rounded-xl px-3 py-2 ${resultado.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>{resultado.mensaje}</p>
+          )}
+          <Nota>
+            La prueba de verdad: pide que te envíen $50. Debe sonar en la caja. Los movimientos que tú haces (transferiste, pagaste) se
+            ignoran solos. Usa una sola vía por banco para que un pago no llegue dos veces.
+          </Nota>
+        </div>
+      ),
+    },
+  ];
+
+  const actual = pasos[paso];
+  return (
+    <div className="rounded-2xl bg-slate-950/50 border border-slate-800 p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <Apple className="w-5 h-5 text-white" />
+        <p className="text-white text-sm font-bold flex-1">Conectar un iPhone</p>
+        <span className="text-slate-500 text-xs font-bold">Paso {paso + 1} de {pasos.length}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${((paso + 1) / pasos.length) * 100}%` }} />
+      </div>
+
+      <div className="space-y-3 min-h-[220px]">
+        <p className="text-white text-lg font-black">{actual.titulo}</p>
+        {actual.cuerpo}
       </div>
 
       <div className="flex gap-2">
-        {([['notificacion', 'Notificación (iOS 27)', Bell], ['sms', 'SMS', MessageSquare], ['correo', 'Correo', Mail]] as const).map(([id, label, Icono]) => (
-          <button
-            key={id}
-            onClick={() => setVia(id)}
-            className={`flex-1 h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 ${via === id ? 'bg-slate-800 text-white' : 'bg-slate-900 text-slate-500 border border-slate-800'}`}
-          >
-            <Icono className="w-4 h-4" /> {label}
+        <button onClick={() => setPaso((p) => Math.max(0, p - 1))} disabled={paso === 0}
+          className="h-12 px-4 rounded-xl bg-slate-800 text-white text-sm font-bold flex items-center gap-1 disabled:opacity-30">
+          <ChevronLeft className="w-4 h-4" /> Atrás
+        </button>
+        {paso < pasos.length - 1 ? (
+          <button onClick={() => setPaso((p) => Math.min(pasos.length - 1, p + 1))}
+            className="flex-1 h-12 rounded-xl bg-amber-500 text-slate-950 text-base font-black flex items-center justify-center gap-1">
+            Siguiente <ChevronRight className="w-5 h-5" />
           </button>
-        ))}
+        ) : (
+          <button onClick={() => setPaso(0)} className="flex-1 h-12 rounded-xl bg-slate-800 text-white text-sm font-bold">
+            Conectar otro banco
+          </button>
+        )}
       </div>
-
-      {via === 'notificacion' && (
-        <div className="flex flex-wrap gap-1.5">
-          {BANCOS.map(([id, nombre]) => (
-            <button key={id} onClick={() => setBanco(id)}
-              className={`h-8 px-3 rounded-full text-xs font-semibold ${banco === id ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}>
-              {nombre}
-            </button>
-          ))}
-          <p className="w-full text-slate-500 text-[11px]">
-            Elige el banco: el enlace de arriba cambia para esa app. Haz una automatización por cada app que uses. Los pagos que digan
-            Bre-B se registran como Bre-B, lleguen por la app que lleguen.
-          </p>
-        </div>
-      )}
-
-      <ol className="space-y-2">
-        <Paso n={1}>Copia el enlace de arriba y abre la app <b>Atajos</b> en el iPhone.</Paso>
-        <Paso n={2}>Ve a la pestaña <b>Automatización</b> y toca <b>+</b> para crear una nueva.</Paso>
-        {via === 'notificacion' ? (
-          <Paso n={3}>
-            Elige <b>Notificación</b> y como app elige {banco === 'bre_b'
-              ? <>la del banco por donde te llegan los pagos <b>Bre-B</b> (Nu, Davivienda, Banco de Bogotá, BBVA...)</>
-              : <b>{BANCOS.find(([id]) => id === banco)?.[1]}</b>}. Si quieres, en
-            <b> El mensaje contiene</b> pon una palabra del aviso de pago (por ejemplo <b>Recibiste</b> o <b>te envió</b>).
-          </Paso>
-        ) : via === 'sms' ? (
-          <Paso n={3}>
-            Elige <b>Mensaje</b>. En <b>El mensaje contiene</b> escribe una palabra que siempre traiga el aviso de pago del banco
-            (por ejemplo <b>Recibiste</b> o <b>transferencia</b>), o en <b>Remitente</b> elige el número del banco.
-          </Paso>
-        ) : (
-          <Paso n={3}>
-            Elige <b>Correo</b>. En <b>Remitente</b> pon el correo con el que el banco te avisa los pagos y, si quieres, en
-            <b> El asunto contiene</b> una palabra como <b>Recibiste</b>.
-          </Paso>
-        )}
-        <Paso n={4}>Marca <b>Ejecutar inmediatamente</b> y apaga <b>Notificar al ejecutar</b>. Toca <b>Siguiente</b> y luego <b>Nueva automatización en blanco</b>.</Paso>
-        <Paso n={5}>Agrega la acción <b>Obtener contenido de URL</b> y pega el enlace en el campo de la URL.</Paso>
-        {via === 'notificacion' ? (
-          <Paso n={6}>
-            Toca la flecha de la acción: <b>Método</b> POST, <b>Cuerpo de la solicitud</b> Formulario. Agrega dos campos de texto:
-            <b> titulo</b> con la variable <b>Notificación › Título</b>, y <b>texto</b> con <b>Notificación › Mensaje</b>.
-          </Paso>
-        ) : (
-          <Paso n={6}>
-            Toca la flecha de la acción: <b>Método</b> POST, <b>Cuerpo de la solicitud</b> Formulario. Agrega un campo de texto con la clave
-            <b> texto</b> y como valor elige la variable <b>{via === 'sms' ? 'Mensaje' : 'Correo'}</b> y luego su <b>Contenido</b>.
-          </Paso>
-        )}
-        <Paso n={7}>Toca <b>OK</b>. Desde ahora, cada aviso de pago del banco llega solo a Codec Verify y suena en Electron, la web y la app.</Paso>
-      </ol>
-
-      <button onClick={probar} disabled={probando} className="w-full h-11 rounded-xl bg-slate-800 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60">
-        {probando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />} Probar el enlace
-      </button>
-      {resultado && (
-        <p className={`text-xs rounded-lg px-3 py-2 ${resultado.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>{resultado.mensaje}</p>
-      )}
-      <p className="text-slate-600 text-[11px]">
-        Configura una sola vía por banco (notificación, SMS o correo) para que un mismo pago no llegue dos veces. Los movimientos que tú haces
-        (transferiste, pagaste) se ignoran solos.
-      </p>
+      <Nota>Apple no deja que ninguna app lea las notificaciones del banco por su cuenta: por eso se hace con Atajos, una sola vez.</Nota>
     </div>
   );
 }

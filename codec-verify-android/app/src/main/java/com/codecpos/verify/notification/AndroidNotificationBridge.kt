@@ -43,11 +43,22 @@ class AndroidNotificationBridge(
     fun guardarSesion(webhookToken: String, nombreNegocio: String) {
         if (webhookToken.isBlank()) return
         prefs.guardarEmparejamiento(webhookToken, nombreNegocio.ifBlank { null }, emptySet())
+        // Emparejada: el lector se reconecta, arranca el guardián y se quita el aviso de "sin sesión".
+        mainHandler.post {
+            PagoNotificationListenerService.pedirReconexion(context.applicationContext)
+            GuardianEscuchaService.iniciar(context.applicationContext)
+            GuardianEscuchaService.quitarAvisoSinSesion(context.applicationContext)
+        }
     }
 
     @JavascriptInterface
     fun cerrarSesion() {
         prefs.limpiar()
+        // Sin sesión la app ya no escucha pagos: se avisa con una notificación fija para que no pase en silencio.
+        mainHandler.post {
+            context.applicationContext.stopService(android.content.Intent(context.applicationContext, GuardianEscuchaService::class.java))
+            GuardianEscuchaService.avisarSinSesion(context.applicationContext)
+        }
     }
 
     // 🔧 UX: antes había un ícono flotante propio (⚙️) además de la sección
