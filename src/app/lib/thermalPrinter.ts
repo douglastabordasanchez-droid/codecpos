@@ -86,6 +86,7 @@ export interface TicketData {
   porcentajePropinaSugerido?: number;
   total: number;
   cajero?: string;
+  mesero?: string;
   metodoPago?: string;
   cambio?: number;
   /** Mensajes personalizados del pie — se imprimen en el mismo orden que la vista previa (Arriba → Eslogan → Bajo). */
@@ -120,6 +121,8 @@ export interface VentaTicketInput {
   efectivoRecibido?: number;
   pagoMixto?: { metodo1: string; monto1: number; metodo2: string; monto2: number };
   cajero?: string;
+  /** Mesera o mesero que atendió la mesa. */
+  mesero?: string;
   mesa?: string;
   referencia_mesa?: string;
   fecha?: string;
@@ -617,6 +620,9 @@ export class ThermalPrinter {
         bytes.push(...this.commands.boldOn());
         bytes.push(...this.addLine(`UBICACIÓN: ${data.referencia_mesa}`, 'center'));
         bytes.push(...this.commands.boldOff());
+      }
+      if (data.mesero) {
+        bytes.push(...this.addLine(`Atendido por: ${data.mesero}`));
       }
       if (data.cajero) {
         bytes.push(...this.addLine(`Cajero: ${data.cajero}`));
@@ -1300,6 +1306,7 @@ export async function printSaleReceipt(
     numeroFactura: venta.numeroFactura,
     fecha: venta.fecha,
     cajero: venta.cajero,
+    mesero: venta.mesero,
     // Nombres reales guardados por ConfiguracionPage.tsx (no "regimenTributario"/
     // "resolucionDian" — esos nunca existieron en el config real, por lo que
     // esta sección jamás se imprimía aunque el usuario la configurara).

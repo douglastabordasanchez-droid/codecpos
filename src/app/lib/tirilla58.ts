@@ -38,6 +38,7 @@ export interface VentaTirilla58 {
   cambio?: number;
   pagoMixto?: { metodo1: string; monto1: number; metodo2: string; monto2: number };
   cajero: string;
+  mesero?: string;
   ubicacion?: string | null;
   cufe?: string;
   folioElectronico?: string;
@@ -134,6 +135,7 @@ export function htmlTirilla58(venta: VentaTirilla58, cfg: ConfigTirilla58, logoS
       : '';
     partes.push(`<div class="c pp">Resolución DIAN ${esc(cfg.claveResolucionDIAN)}${rango}</div>`);
   }
+  if (venta.mesero) partes.push(`<p>Atendido por: ${esc(venta.mesero)}</p>`);
   partes.push(fila(esc(fechaTxt), `Cajero: ${esc(venta.cajero)}`, 'p'));
   if (venta.ubicacion) partes.push(`<div class="b">Ubicación: ${esc(venta.ubicacion)}</div>`);
 

@@ -20,8 +20,14 @@ recargarSiFaltaPantalla();
 // limitadas y transiciones instantáneas. Las animaciones infinitas obligaban a redibujar
 // varias veces por segundo capas con desenfoque (212 en la app): CPU y GPU ocupados todo
 // el tiempo aunque nadie tocara la caja. Ver html.modo-caja en src/styles/index.css.
-if (typeof window !== 'undefined' && (window as any).electron) {
+// La terminal Android (APK) usa el mismo modo liviano y además apaga el
+// desenfoque (gpu-software): su procesador es más modesto que el de un PC.
+const esTerminalAndroid = typeof window !== 'undefined'
+  && !!(window as any).Capacitor?.isNativePlatform?.()
+  && (window as any).Capacitor?.getPlatform?.() === 'android';
+if (typeof window !== 'undefined' && ((window as any).electron || esTerminalAndroid)) {
   document.documentElement.classList.add('modo-caja');
+  if (esTerminalAndroid) document.documentElement.classList.add('gpu-software');
   MotionGlobalConfig.skipAnimations = true;
 }
 

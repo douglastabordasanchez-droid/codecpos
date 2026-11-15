@@ -526,3 +526,17 @@ export function suscribirComandas(
 
   return () => { client.removeChannel(canal); };
 }
+
+
+/** Mesa cobrada en caja: sus comandas abiertas pasan a entregadas. */
+export async function cerrarComandasDeMesa(clienteId: string, mesaLocalId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) return;
+  const { error } = await client
+    .from('panaderia_comandas')
+    .update({ estado: 'entregado', updated_at: new Date().toISOString() })
+    .eq('cliente_id', clienteId)
+    .eq('mesa_local_id', mesaLocalId)
+    .in('estado', ['pendiente', 'preparando', 'listo']);
+  if (error) throw new Error(error.message);
+}

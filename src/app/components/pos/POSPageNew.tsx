@@ -829,6 +829,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     });
   }, [cargarCarritoMesa, estadosMesasCocina, mesasDisponibles]);
 
+  // 🙋 Mesera o mesero que atendió la mesa que se está cobrando (sale en la tirilla).
+  const meseroDeMesaEnCobro = (): string | undefined => {
+    try {
+      const origen = localStorage.getItem('codecpos_panaderia_origen');
+      if (!origen || origen === 'libre') return undefined;
+      const mapa = JSON.parse(localStorage.getItem('codecpos_mesas_mesero') || '{}');
+      return typeof mapa[origen] === 'string' && mapa[origen] ? mapa[origen] : undefined;
+    } catch { return undefined; }
+  };
+
   // Limpia la cuenta de Panadería que originó esta venta (mesa o cuenta libre)
   const limpiarCuentaPanaderia = () => {
     try {
@@ -840,13 +850,18 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         const cuentas = JSON.parse(localStorage.getItem('codecpos_mesas_cuentas') || '{}');
         delete cuentas[origen];
         localStorage.setItem('codecpos_mesas_cuentas', JSON.stringify(cuentas));
+        try {
+          const meseros = JSON.parse(localStorage.getItem('codecpos_mesas_mesero') || '{}');
+          delete meseros[origen];
+          localStorage.setItem('codecpos_mesas_mesero', JSON.stringify(meseros));
+        } catch { /* ignorar */ }
         setVersionCuentasMesas((version) => version + 1);
         // También libera la mesa en la nube para que no vuelva a aparecer en
         // el celular del mesero ni en otra caja después de facturarla.
         Promise.all([
           import('../../lib/supabase/tenantLink'),
           import('../../lib/supabase/panaderiaSyncService'),
-        ]).then(([{ getLinkedClienteId }, { guardarCuentaMesa }]) => {
+        ]).then(async ([{ getLinkedClienteId }, { guardarCuentaMesa }]) => {
           const clienteId = getLinkedClienteId();
           if (!clienteId) return;
           // 🏪 La cuenta debe quedar liberada con la MISMA sucursal de la mesa
@@ -857,6 +872,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             const mesasConfig = JSON.parse(localStorage.getItem('codecpos_mesas_config') || '[]');
             tiendaId = (Array.isArray(mesasConfig) ? mesasConfig : []).find((m: any) => m.id === origen)?.tiendaId || null;
           } catch {}
+          // Mesa cobrada: sus pedidos quedan entregados y desaparecen de los
+          // celulares de los meseros y de las pantallas de estación.
+          const { cerrarComandasDeMesa } = await import('../../lib/supabase/panaderiaSyncService');
+          await cerrarComandasDeMesa(clienteId, origen).catch(() => {});
           return guardarCuentaMesa(clienteId, origen, [], 'electron', undefined, tiendaId);
         }).catch(() => {});
       }
@@ -1968,6 +1987,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         facturaEstado: feConfig.feActiva ? 'PENDIENTE_ENVIO' : 'NO_APLICA',
         mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
         referencia_mesa: referenciaMesaTransfer ?? undefined,
+        mesero: meseroDeMesaEnCobro(),
       };
 
       try {
@@ -2152,6 +2172,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             facturacionElectronica: feConfig.feActiva,
             mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
             referencia_mesa: referenciaMesaTransfer ?? undefined,
+        mesero: meseroDeMesaEnCobro(),
           });
         } catch (persistError) {
           // 🚨 Esta venta ya se mostró como exitosa al cajero pero NO quedó guardada.
@@ -2479,6 +2500,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         cajero: usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero',
         mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
         referencia_mesa: referenciaMesaTransfer ?? undefined,
+        mesero: meseroDeMesaEnCobro(),
       };
 
       try {
@@ -2557,6 +2579,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             syncStatus: 'pending',
             mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
             referencia_mesa: referenciaMesaTransfer ?? undefined,
+        mesero: meseroDeMesaEnCobro(),
           });
         } catch (persistError) {
           // 🚨 Ver comentario equivalente en procesarVenta(): venta mostrada como exitosa
@@ -2742,6 +2765,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         cajero: usuarioActual?.nombreCompleto || usuarioActual?.username || 'Cajero',
         mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
         referencia_mesa: referenciaMesaTransfer ?? undefined,
+        mesero: meseroDeMesaEnCobro(),
       };
 
       try { setVentaActual(ventaParaTicket); setMostrarTicket(true); } catch { /* UI no crítica */ }
@@ -2804,6 +2828,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             carteraFechaVencimiento: fechaVencimientoCartera.toISOString(),
             mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
             referencia_mesa: referenciaMesaTransfer ?? undefined,
+        mesero: meseroDeMesaEnCobro(),
           });
 
           // La cuenta de cartera es lo que hace cobrable el saldo — si esto

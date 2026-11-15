@@ -252,6 +252,11 @@ export default function PanaderiaPage() {
     // estado optimista, porque compara contra lo que ya estaba guardado.
     const enviarComandaPromise = enviarComandaMesa(mesa, items, destinos);
 
+    // La mesa sigue siendo de quien la abrió (aunque la edite un administrador);
+    // si queda vacía, se libera.
+    const duenoPrevio = cuentas[mesa.id]?.items?.length ? cuentas[mesa.id]?.meseroNombre : undefined;
+    const dueno = items.length > 0 ? (duenoPrevio || empleado.nombre_completo) : undefined;
+
     // Optimista: la comandera debe sentirse instantánea aunque la red esté lenta.
     setCuentas((prev) => ({
       ...prev,
@@ -260,14 +265,14 @@ export default function PanaderiaPage() {
         items,
         total: totalDeItems(items),
         abierta: items.length > 0,
-        meseroNombre: empleado.nombre_completo,
+        meseroNombre: dueno,
         actualizadoEn: 'pwa',
         updatedAt: new Date().toISOString(),
       },
     }));
     try {
       await Promise.all([
-        guardarCuentaMesa(empleado.cliente_id, mesa.id, items, 'pwa', empleado.nombre_completo, mesa.tiendaId),
+        guardarCuentaMesa(empleado.cliente_id, mesa.id, items, 'pwa', dueno, mesa.tiendaId),
         enviarComandaPromise,
       ]);
     } catch (e) {
@@ -503,15 +508,27 @@ export default function PanaderiaPage() {
               const items = cuenta?.items ?? [];
               const ocupada = items.length > 0;
               const comanda = comandasPorMesa[mesa.id];
+              // Mesa de otra mesera: se ve llena y no se puede usar hasta que
+              // paguen en caja. El administrador sí puede entrar.
+              const atiende = ocupada ? cuenta?.meseroNombre : undefined;
+              const deOtro = !!atiende && !!empleado && atiende !== empleado.nombre_completo && !esAdmin;
               return (
                 <motion.button
                   key={mesa.id}
                   initial={{ opacity: 0, scale: 0.94 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                  onClick={() => { void desbloquearAvisosPedidos().then(setAudioAvisosActivo); setMesaAbierta(mesa); }}
+                  onClick={() => {
+                    if (deOtro) {
+                      toast.info(`${mesa.nombre} la atiende ${atiende}`, { description: 'Se libera cuando paguen la cuenta en caja.' });
+                      return;
+                    }
+                    void desbloquearAvisosPedidos().then(setAudioAvisosActivo); setMesaAbierta(mesa);
+                  }}
                   className={`relative aspect-square rounded-2xl p-3 flex flex-col items-center justify-center gap-1 border transition-all active:scale-95 ${
-                    comanda?.estado === 'listo'
+                    deOtro
+                      ? 'bg-slate-900/70 border-red-500/40 opacity-70'
+                      : comanda?.estado === 'listo'
                       ? 'bg-gradient-to-br from-emerald-500/20 to-teal-600/20 border-emerald-500/50'
                       : ocupada
                       ? 'bg-gradient-to-br from-amber-500/20 to-orange-600/20 border-amber-500/50'
@@ -530,7 +547,9 @@ export default function PanaderiaPage() {
                   {ocupada ? (
                     <>
                       <p className="text-amber-400 text-[11px] font-black">{money(cuenta.total)}</p>
-                      <p className="text-slate-500 text-[9px]">{items.length} ítem{items.length === 1 ? '' : 's'}</p>
+                      {atiende
+                        ? <p className={`text-[9px] font-bold truncate max-w-full ${deOtro ? 'text-red-400' : 'text-slate-400'}`}>{deOtro ? '🔒 ' : ''}{atiende.split(' ')[0]}</p>
+                        : <p className="text-slate-500 text-[9px]">{items.length} ítem{items.length === 1 ? '' : 's'}</p>}
                     </>
                   ) : (
                     <p className="text-slate-600 text-[10px]">Libre</p>

@@ -67,6 +67,8 @@ interface Venta {
   pagoMixto?: PagoMixto;
   fecha: string;
   cajero?: string;
+  /** Mesera o mesero que atendió la mesa. */
+  mesero?: string;
   mesa?: string;
   referencia_mesa?: string;
   // Facturación electrónica
@@ -255,6 +257,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       pagoMixto: venta.pagoMixto,
       fecha: venta.fecha,
       cajero: cajeroDisplay,
+      mesero: venta.mesero,
       mesa: venta.mesa,
       referencia_mesa: mesaDisplay ?? undefined,
       facturaElectronica: !!config.facturaElectronica,
@@ -350,6 +353,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     doc.setFont('helvetica', 'normal');
     center(`N° ${venta.numeroFactura}`, 9);
     if (mesaDisplay) center(`UBICACIÓN: ${mesaDisplay}`, 8);
+    if (venta.mesero) center(`Atendido por: ${venta.mesero}`, 8);
     center(`Cajero: ${cajeroDisplay}`, 8);
     const fechaVentaLocal = new Date(venta.fecha);
     center(fechaVentaLocal.toLocaleDateString('es-CO', { year: 'numeric', month: '2-digit', day: '2-digit' }) + '  ' +
@@ -478,6 +482,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
         total: venta!.total,
         metodoPago: venta!.metodoPago,
         cajero: cajeroDisplay,
+      mesero: venta.mesero,
         descuento: venta!.descuento || 0,
         pagoMixto: (venta! as any).pagoMixto || null,
         fechaVencimiento: (venta! as any).carteraFechaVencimiento || undefined,
@@ -640,6 +645,7 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
               UBICACIÓN: {mesaDisplay}
             </div>
           )}
+          {venta.mesero && <div>Atendido por: {venta.mesero}</div>}
           <div>Cajero: {cajeroDisplay}</div>
           <div>Fecha: {fechaVenta.toLocaleDateString('es-CO', {
             year: 'numeric',

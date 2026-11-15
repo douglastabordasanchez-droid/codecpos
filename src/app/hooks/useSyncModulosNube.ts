@@ -133,6 +133,13 @@ export function useSyncModulosNube() {
           const mapa: Record<string, unknown[]> = raw ? JSON.parse(raw) : {};
           mapa[cuenta.mesaLocalId] = cuenta.items;
           localStorage.setItem(STORAGE_CUENTAS_MESAS, JSON.stringify(mapa));
+          // Quién atiende la mesa: sale en la tirilla como «Atendido por».
+          try {
+            const meseros = JSON.parse(localStorage.getItem('codecpos_mesas_mesero') || '{}');
+            if (cuenta.items.length > 0 && cuenta.meseroNombre) meseros[cuenta.mesaLocalId] = cuenta.meseroNombre;
+            if (cuenta.items.length === 0) delete meseros[cuenta.mesaLocalId];
+            localStorage.setItem('codecpos_mesas_mesero', JSON.stringify(meseros));
+          } catch { /* ignorar */ }
 
           // La pantalla de Panadería escucha esto para repintar el salón.
           window.dispatchEvent(new CustomEvent('codecpos:panaderia-cuentas-sincronizadas', {

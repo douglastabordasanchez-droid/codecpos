@@ -972,6 +972,16 @@ export default function PanaderiaOncesPage() {
     // Best-effort — si no hay internet o el negocio no está vinculado, no
     // pasa nada: la cuenta ya quedó guardada localmente, como siempre.
     const mesasAEnviar = mesaTocada ? [mesaTocada] : Object.keys(map);
+    // Quién atiende cada mesa: se conserva quien la abrió (mesera o caja); al
+    // vaciarse la mesa se olvida. Sale en la tirilla y bloquea la mesa a otros meseros.
+    let meseros: Record<string, string> = {};
+    try { meseros = JSON.parse(localStorage.getItem('codecpos_mesas_mesero') || '{}') || {}; } catch { meseros = {}; }
+    for (const mesaId of mesasAEnviar) {
+      const ocupada = (map[mesaId] || []).length > 0;
+      if (!ocupada) delete meseros[mesaId];
+      else if (!meseros[mesaId]) meseros[mesaId] = usuarioActual?.nombreCompleto || usuarioActual?.username || 'Caja';
+    }
+    try { localStorage.setItem('codecpos_mesas_mesero', JSON.stringify(meseros)); } catch { /* ignorar */ }
     Promise.all([
       import('../../lib/supabase/tenantLink'),
       import('../../lib/supabase/panaderiaSyncService'),
@@ -994,7 +1004,7 @@ export default function PanaderiaOncesPage() {
                 cantidad: Number(it.cantidad) || 0,
               })),
               'electron',
-              undefined,
+              meseros[mesaId],
               mesas.find((m) => m.id === mesaId)?.tiendaId ?? null
             ).catch(() => {})
           )
