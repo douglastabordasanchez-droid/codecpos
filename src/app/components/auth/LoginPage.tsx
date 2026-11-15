@@ -324,7 +324,7 @@ export default function LoginPage() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Ingresa tu usuario"
-                    className="pl-10 h-12 rounded-xl bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                    className="pl-10 h-12 rounded-xl campo-login bg-slate-900 border-slate-600 text-white text-base font-semibold placeholder:text-slate-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
                     disabled={loading}
                     autoFocus
                   />
@@ -346,7 +346,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Ingresa tu contraseña"
-                    className="pl-10 pr-10 h-12 rounded-xl bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                    className="pl-10 pr-10 h-12 rounded-xl campo-login bg-slate-900 border-slate-600 text-white text-base font-semibold placeholder:text-slate-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
                     disabled={loading}
                   />
                   <button
