@@ -1915,6 +1915,8 @@ class SyncService {
             terminal_id: v.puntoVentaId,
             numero: v.numero,
             cajero_nombre: v.cajero,
+            // Quién atendió la mesa (0154): para el reporte de meseros en la web y el celular.
+            mesero_nombre: (v as any).mesero || null,
             total: v.total,
             descuento: v.descuento || 0,
             propina: v.propina || 0,

@@ -185,6 +185,8 @@ export interface Venta {
   cliente?: string;
   mesa?: string;
   referencia_mesa?: string;
+  /** Mesera o mesero que atendió la mesa (sale en la tirilla y va a la nube, 0154). */
+  mesero?: string;
   puntoVentaId: string;
   createdAt: number;
   syncStatus?: 'synced' | 'pending' | 'conflict';
