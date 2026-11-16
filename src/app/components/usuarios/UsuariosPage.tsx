@@ -3,7 +3,7 @@
  * Centro unificado: datos laborales + acceso + permisos operacionales
  */
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users, Plus, Edit2, Trash2, User,
@@ -471,7 +471,7 @@ export function UsuariosPage() {
   };
 
   // ─── Guardar (crear o editar) ────────────────────────────────────────────────
-  const handleGuardar = (e: React.FormEvent) => {
+  const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!modoEdicion && rolFormulario === 'admin_nube') {
@@ -530,6 +530,16 @@ export function UsuariosPage() {
         toast.error('El correo no es válido'); return;
       }
 
+      // ☁️ Primero en la nube (con o sin correo): así el empleado entra también desde el
+      // celular y las demás cajas del negocio, y la nube aplica el límite de usuarios del
+      // plan. Si la nube lo rechaza por una regla, no se crea a medias. Sin internet se crea
+      // solo en este equipo (la caja nunca depende de internet para trabajar).
+      if (creandoEnNube.current) return;
+      creandoEnNube.current = true;
+      const enNube = await crearPersonalEnNube(form.nombreCompleto, form.email.trim(), form.username, form.password, rolFormulario as 'cajero' | 'tecnico', form.telefono);
+      creandoEnNube.current = false;
+      if (enNube === 'rechazado') return;
+
       const ok = crearUsuario({
         nombreCompleto: form.nombreCompleto,
         cedula: form.cedula,
@@ -548,8 +558,11 @@ export function UsuariosPage() {
       });
 
       if (ok) {
-        toast.success(`${rolFormulario === 'tecnico' ? 'Técnico' : 'Cajero'} "${form.nombreCompleto}" creado correctamente`);
-        sincronizarPersonalConNube(form.nombreCompleto, form.email.trim(), form.password, rolFormulario as 'cajero' | 'tecnico');
+        toast.success(`${rolFormulario === 'tecnico' ? 'Técnico' : 'Cajero'} "${form.nombreCompleto}" creado correctamente`, {
+          description: enNube === 'nube'
+            ? `Ya puede entrar desde el celular y las demás cajas con el usuario «${form.username.trim().toLowerCase()}».`
+            : 'No había conexión con la nube: por ahora solo entra en esta caja.',
+        });
         limpiarBorrador();
         cerrarModal();
       } else {
@@ -565,25 +578,28 @@ export function UsuariosPage() {
   // misma PC (u otra de la misma red LAN). La creación local nunca debe
   // depender de internet (regla dura del proyecto), así que esto corre
   // aparte, después, sin bloquear ni deshacer la creación local si falla.
-  const sincronizarPersonalConNube = async (nombreCompleto: string, email: string, password: string, rol: 'cajero' | 'tecnico') => {
-    if (!email) return; // sin correo, el dueño decidió que este usuario sea solo local
+  const creandoEnNube = useRef(false);
+  const crearPersonalEnNube = async (
+    nombreCompleto: string, email: string, username: string, password: string, rol: 'cajero' | 'tecnico', telefono?: string,
+  ): Promise<'nube' | 'local' | 'rechazado'> => {
     if (!isLinked()) {
-      toast.warning('Se creó localmente, pero esta instalación no está vinculada a la nube — no puede entrar por celular todavía.');
-      return;
+      toast.warning('Esta caja no está vinculada a la nube: el usuario solo podrá entrar aquí.');
+      return 'local';
     }
     const client = getSupabaseClient();
-    if (!client) return;
-    const { error } = await client.rpc('invitar_empleado', {
-      p_email: email,
-      p_password: password,
-      p_nombre_completo: nombreCompleto,
-      p_rol: rol,
-    });
-    if (error) {
-      toast.warning(`Se creó localmente, pero no se pudo sincronizar con la nube (${error.message}) — por ahora solo entra desde esta PC.`);
-      return;
-    }
-    toast.success('También sincronizado con la nube — ya puede entrar desde el celular/PWA.');
+    if (!client || !navigator.onLine) return 'local';
+    const { error } = email
+      ? await client.rpc('invitar_empleado', { p_email: email, p_password: password, p_nombre_completo: nombreCompleto, p_rol: rol })
+      : await client.rpc('crear_empleado_usuario', {
+        p_usuario: username, p_password: password, p_nombre_completo: nombreCompleto, p_rol: rol, p_telefono: telefono || null,
+      });
+    if (!error) return 'nube';
+    // Sin conexión o la nube no respondió: se crea solo aquí y se avisa.
+    const esDeRed = /fetch|network|timeout|Failed to/i.test(error.message || '');
+    if (esDeRed) return 'local';
+    // Regla del negocio (límite de usuarios, usuario repetido, permisos): no se crea.
+    toast.error('No se pudo crear el usuario', { description: error.message, duration: 9000 });
+    return 'rechazado';
   };
 
   // ─── Eliminar ────────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@
  *    como Electron hace con `codecpos_carrito_transferido`.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { obtenerEstadoSedes, sedeVencida, type EstadoSede } from '../components/AvisoSedesCobro';
 import { billetesSugeridos } from '../../app/lib/billetesSugeridos';
 import { useNavigate } from 'react-router';
 import {
@@ -202,6 +203,10 @@ export default function VenderPage() {
   const [sucursalActiva, setSucursalActivaLocal] = useState(getSucursalActiva());
   useEffect(() => suscribirSucursalActiva(() => setSucursalActivaLocal(getSucursalActiva())), []);
   const tiendaEfectiva = esAdmin ? (sucursalActiva?.id ?? null) : (empleado?.tienda_id ?? null);
+  // Sede adicional que terminó su prueba gratis sin activarse: no se vende en ella.
+  const [estadoSedes, setEstadoSedes] = useState<EstadoSede[]>([]);
+  useEffect(() => { void obtenerEstadoSedes().then(setEstadoSedes); }, [empleado?.cliente_id]);
+  const sedeBloqueada = sedeVencida(estadoSedes, tiendaEfectiva);
 
   useEffect(() => {
     const actualizar = () => setVerifyActivo(codecVerifyPwaActivo());
@@ -492,6 +497,10 @@ export default function VenderPage() {
   const registrarVenta = async (pagoVerificado: NotificacionPagoRow | null) => {
     if (!empleado) return;
     setEsperando(null);
+    if (sedeBloqueada) {
+      setError('Esta sede terminó su prueba gratis. Para vender aquí, actívala con Codec Studio.');
+      return;
+    }
     setProcesando(true);
     setError(null);
     const metodosMultiples: MetodosMultiplesMovil | undefined = metodoPago === 'mixto'

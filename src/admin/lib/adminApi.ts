@@ -141,6 +141,24 @@ export async function listarSucursales() {
   return data;
 }
 
+// ---- Sedes de los negocios (cobro, migraciones 0150 y 0151) ----------
+export interface SedeCobro {
+  cliente_id: string; nombre_negocio: string; local_id: string; nombre: string; es_principal: boolean;
+  activo: boolean; cobro_estado: 'incluida' | 'pagada' | 'prueba' | 'vencida'; prueba_hasta: string | null; dias_restantes: number | null;
+}
+
+export async function listarSedesCobro(): Promise<SedeCobro[]> {
+  const { data, error } = await cliente().rpc('admin_listar_sedes');
+  if (error) throw new Error(error.message);
+  return (data as SedeCobro[]) || [];
+}
+
+/** Marca una sede adicional como pagada (o la devuelve a vencida si `pagada` es false). */
+export async function marcarSedePagada(clienteId: string, localId: string, pagada: boolean) {
+  const { error } = await cliente().rpc('admin_marcar_sede_pagada', { p_cliente_id: clienteId, p_local_id: localId, p_pagada: pagada });
+  if (error) throw new Error(error.message);
+}
+
 // ---- Usuarios ---------------------------------------------------------
 export async function listarUsuarios() {
   // RPC (no select directo) porque necesita el email real de auth.users --

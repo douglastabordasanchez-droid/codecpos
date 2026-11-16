@@ -8,6 +8,7 @@
  */
 
 import { ventaSinPropina } from '../../lib/propinas';
+import { AvisoSedesCobro } from '../../../pwa/components/AvisoSedesCobro';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -1393,6 +1394,7 @@ export default function DashboardPOSPage() {
   return (
     <div className="h-screen overflow-y-auto" style={{ background: bgPage }}>
       <div className="max-w-[1600px] mx-auto p-4 pb-10 space-y-4">
+        <AvisoSedesCobro oscuro={dark} />
 
         {/* ══ HEADER ══ */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">

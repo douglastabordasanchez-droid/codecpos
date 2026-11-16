@@ -15,6 +15,7 @@ import { machineIdsDeSucursal } from '../../app/lib/supabase/sucursalesService';
 import { EmpleadoSelector, ResumenEmpleados, useEmpleadosNube } from '../components/EmpleadoFiltro';
 import { FILTRO_TIENDA_PRINCIPAL, claveEmpleado, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 import { SucursalFiltro } from '../components/SucursalFiltro';
+import { AvisoSedesCobro } from '../components/AvisoSedesCobro';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
 interface VentaFila {
@@ -325,6 +326,7 @@ export default function InicioPage() {
       </div>
 
       {esAdmin && <SucursalFiltro />}
+      {esAdmin && <AvisoSedesCobro className="mx-5 mb-4" />}
 
       {esAdmin && (
         <motion.div
