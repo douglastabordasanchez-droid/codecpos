@@ -7,7 +7,7 @@ import {
   UsersRound, GlassWater, CirclePlus, PackageOpen, Drumstick, Wheat, Salad, CookingPot,
   Martini, Milk, Donut, CakeSlice, Sandwich, Popcorn, Beef, Shrimp, Shell, ChefHat, PackageCheck, PackagePlus,
   GripVertical, ChevronDown, ChevronLeft, ChevronRight, AlertTriangle, ShoppingCart, BarChart3, TrendingUp,
-  Maximize2, Printer,
+  Maximize2, Printer, Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePOS } from '../../contexts/POSContext';
@@ -23,6 +23,7 @@ import {
 import { TerminalPrincipalMesas } from './TerminalPrincipalMesas';
 import { PantallaEstaciones } from '../estaciones/PantallaEstaciones';
 import { DialogoEnvioEstaciones, type ItemEnvio } from '../estaciones/DialogoEnvioEstaciones';
+import { OrdenarCategoriasModal } from './OrdenarCategoriasModal';
 import { esEmoji } from '../../lib/estiloMenu';
 import type { PlanImportacionMenu } from '../../lib/importarMenuAlimentos';
 import { type Estacion, listarEstaciones, suscribirEstaciones } from '../../lib/supabase/estacionesService';
@@ -877,6 +878,9 @@ export default function PanaderiaOncesPage() {
   // diferencia de persistirCuentas() (que solo espeja el estado de la
   // cuenta), esto crea un tiquete de comanda nuevo con su propio estado
   // (pendiente → preparando → listo) para que cocina sepa qué preparar.
+  // ↕️ Ordenar categorías (alfabético o a mano): administrador y cajero.
+  const [ordenandoCategorias, setOrdenandoCategorias] = useState(false);
+
   // 🧾 Cuenta impresa y pendiente de pago: el cliente pidió la cuenta, se le
   // imprimió (con la propina sugerida) y la mesa sigue abierta hasta que pague.
   const { propinaActiva, porcentajePropinaPredeterminado } = useBusinessContext();
@@ -1767,6 +1771,11 @@ export default function PanaderiaOncesPage() {
             </p>
 
                 <div className="flex flex-wrap items-center justify-end gap-3">
+                  {categoriasPos.length > 1 && (
+                    <Button variant="outline" className="h-10 px-4 font-semibold" onClick={() => setOrdenandoCategorias(true)}>
+                      <Pencil className="w-4 h-4 mr-2" />Ordenar categorías
+                    </Button>
+                  )}
                   <Button variant="outline" className={`h-10 px-4 font-semibold ${!puedeAdministrarPanaderia ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={!puedeAdministrarPanaderia} onClick={() => { if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; } if (showCategoriaForm) { setShowCategoriaForm(false); setCategoriaEditando(null); } else { confirmarNuevoCategoria(); } }}>
                     {showCategoriaForm ? 'Cerrar' : 'Nueva categoría'}
                   </Button>
@@ -2427,6 +2436,19 @@ export default function PanaderiaOncesPage() {
           />
         </div>,
         document.body,
+      )}
+      {ordenandoCategorias && (
+        <OrdenarCategoriasModal
+          categorias={categoriasPos}
+          oscuro={darkMode}
+          icono={(c) => renderIcon(c.icono, 'w-6 h-6')}
+          onCerrar={() => setOrdenandoCategorias(false)}
+          onGuardar={(ordenadas) => {
+            guardarCategorias(ordenadas);
+            setOrdenandoCategorias(false);
+            toast.success('Orden de categorías guardado');
+          }}
+        />
       )}
       {planImportacion && createPortal(
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onClick={() => !aplicandoImportacion && setPlanImportacion(null)}>
