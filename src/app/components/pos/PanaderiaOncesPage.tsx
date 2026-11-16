@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type ComponentPropsWithoutRef } from 'react';
+import { iniciarArrastreTactil } from '../../lib/arrastreTactil';
 import { marcarCambioLocalMesa } from '../../lib/cambiosMesaLocal';
 import { useNavigate } from 'react-router';
 import {
@@ -284,11 +285,13 @@ interface SectionShellProps {
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: () => void;
   onToggle: () => void;
+  /** Arrastre con el dedo o el mouse desde la manija (funciona también en la terminal Android). */
+  onArrastrar?: (e: React.PointerEvent) => void;
   darkMode: boolean;
   children: React.ReactNode;
 }
 
-function SectionShell({ label, icon, gradient, isDragging, isDragOver, isCollapsed, onDragStart, onDragOver, onDrop, onDragEnd, onToggle, darkMode, children }: SectionShellProps) {
+function SectionShell({ id, label, icon, gradient, isDragging, isDragOver, isCollapsed, onDragOver, onDrop, onDragEnd, onToggle, onArrastrar, darkMode, children }: SectionShellProps) {
   return (
     <motion.div
       layout
@@ -301,6 +304,7 @@ function SectionShell({ label, icon, gradient, isDragging, isDragOver, isCollaps
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
+      data-orden-seccion={id}
     >
       {/* Header */}
       <div
@@ -310,8 +314,7 @@ function SectionShell({ label, icon, gradient, isDragging, isDragOver, isCollaps
       >
         <button
           type="button"
-          draggable
-          onDragStart={(e) => { e.stopPropagation(); onDragStart(e); }}
+          onPointerDown={(e) => { e.stopPropagation(); onArrastrar?.(e); }}
           onClick={(e) => e.stopPropagation()}
           className="touch-none cursor-grab active:cursor-grabbing text-white/60 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10 flex-shrink-0"
           title="Mantén presionado para arrastrar"
@@ -1602,6 +1605,49 @@ export default function PanaderiaOncesPage() {
     toast.success('Merma registrada'); setNuevaMerma({ ingredientId: '', cantidad: '', unidad: 'g', motivo: '' }); await cargar();
   };
 
+  // 📥 Recetario en Excel (importarRecetario.ts): ingredientes y recetas de todo el menú.
+  const [importandoRecetario, setImportandoRecetario] = useState(false);
+  const importarRecetario = async (archivo: File) => {
+    setImportandoRecetario(true);
+    try {
+      const { planearRecetario } = await import('../../lib/importarRecetario');
+      const r = await planearRecetario(
+        archivo,
+        productosPos.map((p) => ({ id: p.id, nombre: p.nombre, codigo: p.codigo })),
+        ingredientes, recetas, recetaIngredientes,
+      );
+      if (r.recetasNuevas === 0 && r.ingredientesNuevos === 0) {
+        toast.info('El archivo no trae ingredientes ni recetas nuevas'); return;
+      }
+      const texto = `Se crearán ${r.ingredientesNuevos} ingrediente(s) y ${r.recetasNuevas} receta(s).`
+        + (r.productosNoEncontrados.length ? ` ${r.productosNoEncontrados.length} producto(s) del archivo no están en el menú y se omiten.` : '')
+        + ' Los productos con receta descontarán sus ingredientes al venderse. ¿Continuar?';
+      if (!window.confirm(texto)) return;
+      await electronStore.guardarIngredientesInventario(r.ingredientes);
+      await electronStore.guardarRecetas(r.recetas as any, r.lineas as any);
+      setIngredientes(r.ingredientes);
+      setRecetas(r.recetas as any);
+      setRecetaIngredientes(r.lineas as any);
+      // Los productos con receta pasan a descontar ingredientes.
+      const actualizados = productosPos.map((p) => r.productosConReceta.has(p.id)
+        ? { ...p, tipoInventario: 'receta' as const, recipeId: r.productosConReceta.get(p.id) } : p);
+      guardarProductosPos(actualizados);
+      for (const p of actualizados.filter((x) => r.productosConReceta.has(x.id))) {
+        const categoria = categoriasPos.find((c) => c.id === p.categoriaId)?.nombre || 'Alimentos y Bebidas';
+        await electronStore.upsertProducto({
+          id: p.id, codigo: p.codigo, nombre: p.nombre, precio: p.precio, costo: p.costo, stock: p.stock,
+          categoria, categoriaId: p.categoriaId, tipoInventario: 'receta', recipeId: p.recipeId,
+        } as any).catch(() => {});
+      }
+      toast.success('Recetario importado', { description: `${r.ingredientesNuevos} ingredientes nuevos · ${r.recetasNuevas} recetas` });
+    } catch (e) {
+      console.error('Recetario:', e);
+      toast.error('No se pudo leer el recetario', { description: 'Usa la plantilla (hojas Ingredientes y Recetas).' });
+    } finally {
+      setImportandoRecetario(false);
+    }
+  };
+
   const guardarReceta = async () => {
     if (!productoRecetaId) return toast.error('Selecciona producto');
     const lineasValidas = lineasReceta.filter(l => l.ingredientId && Number(l.cantidad) > 0);
@@ -1689,6 +1735,31 @@ export default function PanaderiaOncesPage() {
   }, [dragSectionId, sectionOrder]);
 
   const handleSectionDragEnd = useCallback(() => { setDragSectionId(null); setDragOverSectionId(null); }, []);
+
+  // Arrastre con el dedo (terminal Android) o el mouse desde la manija: la sección se mueve en vivo.
+  const arrastrarSeccion = (e: React.PointerEvent, id: SectionId) => {
+    setDragSectionId(id);
+    iniciarArrastreTactil(e, {
+      atributo: 'data-orden-seccion',
+      idArrastrado: id,
+      onMover: (arrastrado, destino) => {
+        setSectionOrder((prev) => {
+          const order = [...prev];
+          const desde = order.indexOf(arrastrado as SectionId);
+          const hasta = order.indexOf(destino as SectionId);
+          if (desde < 0 || hasta < 0) return prev;
+          order.splice(desde, 1);
+          order.splice(hasta, 0, arrastrado as SectionId);
+          try { localStorage.setItem('codecpos_panaderia_section_order', JSON.stringify(order)); } catch { /* ignorar */ }
+          return order;
+        });
+      },
+      onFin: () => { setDragSectionId(null); setDragOverSectionId(null); },
+    });
+    // Si solo fue un toque (sin moverse), se suelta al levantar el dedo.
+    const soltar = () => { setDragSectionId(null); window.removeEventListener('pointerup', soltar); };
+    window.addEventListener('pointerup', soltar);
+  };
 
   // ── Métricas para Dashboard ───────────────────────────────────────────────────
   const ingredientesBajoStock = ingredientes.filter(i => Number(i.stockActual) <= Number(i.stockMinimo));
@@ -2307,6 +2378,18 @@ export default function PanaderiaOncesPage() {
       case 'recetas':
         return (
           <div className="max-h-[540px] overflow-y-auto scrollbar-thin scrollbar-thumb-sky-200 pr-2 space-y-4">
+            {/* Recetario en Excel: ingredientes y recetas de todo el menú de una vez. */}
+            {puedeAdministrarPanaderia && (
+              <div className="flex flex-wrap gap-2">
+                <label className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-bold cursor-pointer bg-sky-600 !text-[#fff] ${importandoRecetario ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <Upload className="w-4 h-4" />{importandoRecetario ? 'Importando…' : 'Importar recetario (Excel)'}
+                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ''; if (f) void importarRecetario(f); }} />
+                </label>
+                <Button variant="outline" className="h-10 px-4 font-semibold" onClick={() => void import('../../lib/importarRecetario').then((m) => m.descargarPlantillaRecetario())}>
+                  <Download className="w-4 h-4 mr-2" />Plantilla recetario
+                </Button>
+              </div>
+            )}
             <div className={`rounded-2xl border p-4 ${darkMode ? 'border-slate-700 bg-slate-800/40' : 'border-slate-200 bg-slate-50'}`}>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <select className="h-12 rounded-xl border px-3 bg-transparent text-sm" value={productoRecetaId} onChange={e => setProductoRecetaId(e.target.value)}>
@@ -2588,6 +2671,7 @@ export default function PanaderiaOncesPage() {
                 onDragOver={(e) => handleSectionDragOver(e, id)}
                 onDrop={() => handleSectionDrop(id)}
                 onDragEnd={handleSectionDragEnd}
+                onArrastrar={(e) => arrastrarSeccion(e, id)}
                 onToggle={() => toggleCollapse(id)}
                 darkMode={darkMode}
               >

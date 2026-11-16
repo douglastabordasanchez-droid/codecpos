@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
+import { iniciarArrastreTactil } from '../../lib/arrastreTactil';
 import { useNavigate, useLocation, Outlet } from 'react-router';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
@@ -640,6 +641,35 @@ export default function POSLayoutSidebar() {
   // botones que salen con el mouse no funcionan con el dedo. En este modo cada
   // módulo muestra subir, bajar, renombrar y ocultar, siempre visibles.
   const [organizando, setOrganizando] = useState(false);
+  // ✋ Mantener presionado un módulo y deslizarlo (pantallas táctiles, también la terminal
+  // Android, donde el arrastre del navegador no funciona con el dedo).
+  const arrastroMenu = useRef(false);
+  const arrastrarModulo = (e: React.PointerEvent, path: string) => {
+    if (!(esSuperUsuario || modoAdminTemporalActivo)) return;
+    arrastroMenu.current = false;
+    iniciarArrastreTactil(e, {
+      atributo: 'data-orden-menu',
+      idArrastrado: path,
+      esperaMs: 450,
+      onMover: (arrastrado, destino) => {
+        arrastroMenu.current = true;
+        setDraggedPath(arrastrado);
+        const visibles = finalVisibleMenuItems.map((it) => it.path);
+        setMenuOrder((prev) => {
+          const orden = [...prev];
+          for (const p of visibles) if (!orden.includes(p)) orden.push(p);
+          const desde = orden.indexOf(arrastrado);
+          const hasta = orden.indexOf(destino);
+          if (desde < 0 || hasta < 0) return prev;
+          orden.splice(desde, 1);
+          orden.splice(hasta, 0, arrastrado);
+          return orden;
+        });
+      },
+      onFin: () => { setDraggedPath(null); setDragOverPath(null); },
+    });
+  };
+
   const moverModulo = (path: string, direccion: -1 | 1) => {
     const visibles = finalVisibleMenuItems.map((it) => it.path);
     const i = visibles.indexOf(path);
@@ -672,6 +702,8 @@ export default function POSLayoutSidebar() {
   // ✅ MANEJAR CLICK EN OPCIÓN DEL MENÚ
   const handleMenuClick = (item: MenuItemType) => {
     if (organizando) return;
+    // El toque que terminó un arrastre no abre el módulo.
+    if (arrastroMenu.current) { arrastroMenu.current = false; return; }
     const access = canAccessItem(item);
 
     if (!access.allowed) {
@@ -942,6 +974,9 @@ export default function POSLayoutSidebar() {
               <motion.button
                 key={item.path}
                 onClick={() => handleMenuClick(item)}
+                onPointerDown={(e) => { if (e.pointerType !== 'mouse') arrastrarModulo(e, item.path); }}
+                onContextMenu={(e) => e.preventDefault()}
+                data-orden-menu={item.path}
                 draggable
                 onDragStart={() => handleDragStart(item.path)}
                 onDragOver={(event) => handleDragOver(event, item.path)}
