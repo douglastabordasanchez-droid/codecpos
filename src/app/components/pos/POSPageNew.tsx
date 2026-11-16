@@ -351,6 +351,23 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [boutiqueEditingProductoId, setBoutiqueEditingProductoId] = useState<string | null>(null);
   const [codigoBarras, setCodigoBarras] = useState('');
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
+  // El efectivo (billetes y teclado) se muestra solo al elegir «Efectivo» en el cobro.
+  const [mostrarEfectivo, setMostrarEfectivo] = useState(false);
+  // Modo táctil del efectivo (rueda de configuración del cobro): encendido, el efectivo aparece
+  // al tocar «Efectivo» con billetes y teclado numérico; apagado, la casilla queda siempre
+  // visible para escribir con el teclado del computador. Por defecto según la pantalla.
+  const [modoTactilEfectivo, setModoTactilEfectivo] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('codecpos_efectivo_tactil');
+      if (v !== null) return v === 'true';
+    } catch { /* ignorar */ }
+    return typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window);
+  });
+  const cambiarModoTactilEfectivo = (v: boolean) => {
+    setModoTactilEfectivo(v);
+    setMostrarEfectivo(false);
+    try { localStorage.setItem('codecpos_efectivo_tactil', String(v)); } catch { /* ignorar */ }
+  };
   // Terminal o tablet táctil: el cobro en efectivo usa billetes y teclado en pantalla.
   const esPantallaTactil = typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window);
   const [loading, setLoading] = useState(false);
@@ -375,6 +392,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const [ticketContenidoListo, setTicketContenidoListo] = useState(false);
   const [productoPesable, setProductoPesable] = useState<Producto | null>(null);
   const [showPagoModal, setShowPagoModal] = useState(false);
+  // Cada vez que se abre el cobro, el efectivo arranca escondido.
+  useEffect(() => { if (!showPagoModal) setMostrarEfectivo(false); }, [showPagoModal]);
   const [showSugerencias, setShowSugerencias] = useState(false);
   const [productosSugeridos, setProductosSugeridos] = useState<Producto[]>([]);
   const [pagoMixtoDetalles, setPagoMixtoDetalles] = useState<PagoMixtoDetalle[]>([]);
@@ -3979,6 +3998,20 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     exit={{ opacity: 0, height: 0 }}
                     className={`mb-5 rounded-2xl border p-4 ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-amber-50 border-amber-200'}`}
                   >
+                    <label className={`flex items-center justify-between gap-3 mb-4 pb-4 border-b cursor-pointer ${darkMode ? 'border-slate-600' : 'border-amber-200'}`}>
+                      <span>
+                        <span className={`block text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Modo táctil para efectivo</span>
+                        <span className={`block text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Encendido: billetes y teclado numérico al tocar «Efectivo» (pantallas táctiles). Apagado: casilla para escribir con el teclado del computador.
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={modoTactilEfectivo}
+                        onChange={(e) => cambiarModoTactilEfectivo(e.target.checked)}
+                        className="w-6 h-6 shrink-0 accent-amber-500"
+                      />
+                    </label>
                     <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
                       Configurar métodos de pago
                     </p>
@@ -4127,6 +4160,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   </div>
                 )}
 
+                {/* Billetes y teclado numérico: solo después de tocar «Efectivo». */}
+                {(mostrarEfectivo || !modoTactilEfectivo) && (<>
                 <div>
                   <label className={`block mb-2 font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                     Efectivo Recibido:
@@ -4135,7 +4170,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     type="text"
                     // Pantalla táctil: no se abre el teclado del sistema (se usan los billetes
                     // y el teclado numérico de abajo). Con teclado físico se escribe normal.
-                    inputMode={esPantallaTactil ? 'none' : 'numeric'}
+                    inputMode={modoTactilEfectivo && esPantallaTactil ? 'none' : 'numeric'}
                     pattern="[0-9]*"
                     value={efectivoRecibido ? Number(efectivoRecibido).toLocaleString('es-CO') : ''}
                     onChange={(e) => setEfectivoRecibido(e.target.value.replace(/\D/g, '').slice(0, 9))}
@@ -4167,8 +4202,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       })}
                     </div>
                   )}
-                  {/* Teclado numérico grande, como un datáfono. */}
-                  <div className="grid grid-cols-3 gap-2 mt-3">
+                  {/* Teclado numérico grande, como un datáfono (solo en modo táctil). */}
+                  {modoTactilEfectivo && <div className="grid grid-cols-3 gap-2 mt-3">
                     {['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'borrar'].map((t) => (
                       <button
                         key={t}
@@ -4184,7 +4219,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                         {t === 'borrar' ? '⌫ Borrar' : t}
                       </button>
                     ))}
-                  </div>
+                  </div>}
                 </div>
 
                 {efectivoRecibido && parseFloat(efectivoRecibido) >= calcularTotal() && (
@@ -4205,6 +4240,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </div>
                   </motion.div>
                 )}
+                </>)}
               </div>
 
               <div className="grid grid-cols-3 gap-3">
@@ -4213,10 +4249,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   const cls = 'h-20 rounded-2xl flex flex-col items-center justify-center text-white font-bold text-sm border border-white/20 transition-all duration-150 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-95 disabled:hover:translate-y-0 disabled:hover:brightness-100';
                   if (m.id === 'efectivo') return (
                     <button key={m.id} style={style}
-                      onClick={() => procesarVenta('efectivo')}
-                      disabled={procesandoPago || !efectivoRecibido || parseFloat(efectivoRecibido) < calcularTotal()}
-                      className={`${cls} disabled:opacity-40`}>
-                      <Banknote className="w-7 h-7 mb-1" />{m.label}
+                      // Primer toque: muestra billetes y teclado. Segundo: cobra.
+                      onClick={() => { if (modoTactilEfectivo && !mostrarEfectivo) { setMostrarEfectivo(true); return; } procesarVenta('efectivo'); }}
+                      disabled={procesandoPago || ((mostrarEfectivo || !modoTactilEfectivo) && (!efectivoRecibido || parseFloat(efectivoRecibido) < calcularTotal()))}
+                      className={`${cls} disabled:opacity-40 ${modoTactilEfectivo && mostrarEfectivo ? 'ring-4 ring-amber-400' : ''}`}>
+                      <Banknote className="w-7 h-7 mb-1" />{modoTactilEfectivo && mostrarEfectivo ? 'Cobrar efectivo' : m.label}
                     </button>
                   );
                   if (m.id === 'tarjeta') return (

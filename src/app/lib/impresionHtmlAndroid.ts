@@ -14,18 +14,34 @@
 import { esAndroidNativo, imprimirBytesAndroid } from './impresoraAndroid';
 import { getConfiguredTicketWidthMm } from './printerConfig';
 
+/**
+ * Ancho del área imprimible en píxeles CSS (96 por pulgada): 72 mm en papel de
+ * 80 y 48 mm en papel de 58. Los reportes están diseñados para ese tamaño
+ * físico; se arman a ese ancho y luego se agrandan a los puntos de la
+ * impresora (8 por mm), para que el texto salga del mismo tamaño que la
+ * tirilla de venta. Antes se armaban al ancho en puntos (576) sin agrandar y
+ * todo salía a menos de la mitad.
+ */
+function anchoCssDe(anchoPx: number): number {
+  const mm = anchoPx >= 576 ? 72 : 48;
+  return Math.round((mm / 25.4) * 96);
+}
+
 async function htmlAImagen(html: string, anchoPx: number): Promise<HTMLCanvasElement> {
+  const anchoCss = anchoCssDe(anchoPx);
   const marco = document.createElement('iframe');
-  marco.style.cssText = `position:fixed;left:-10000px;top:0;width:${anchoPx}px;height:200px;border:0;background:#fff`;
+  marco.style.cssText = `position:fixed;left:-10000px;top:0;width:${anchoCss}px;height:200px;border:0;background:#fff`;
   document.body.appendChild(marco);
   try {
     const doc = marco.contentDocument!;
     doc.open();
     doc.write(html);
     doc.close();
-    // Sin márgenes de página: el papel térmico ya tiene su propio margen.
+    // Sin márgenes de página (el papel térmico ya tiene su margen) y todo al ancho del papel,
+    // aunque el reporte traiga un ancho fijo (80mm, 300px…).
     const ajuste = doc.createElement('style');
-    ajuste.textContent = `html,body{margin:0!important;padding:0 4px!important;background:#fff!important;width:${anchoPx}px!important;max-width:${anchoPx}px!important;color:#000}
+    ajuste.textContent = `html,body{margin:0!important;padding:0 2px!important;background:#fff!important;width:auto!important;max-width:${anchoCss}px!important;min-width:0!important;color:#000}
+      body>*{max-width:100%!important;box-sizing:border-box}
       *{-webkit-print-color-adjust:exact} img{max-width:100%}`;
     doc.head?.appendChild(ajuste);
 
@@ -42,9 +58,9 @@ async function htmlAImagen(html: string, anchoPx: number): Promise<HTMLCanvasEle
     const { default: html2canvas } = await import('html2canvas');
     return await html2canvas(doc.body, {
       backgroundColor: '#ffffff',
-      scale: 1,
-      width: anchoPx,
-      windowWidth: anchoPx,
+      scale: anchoPx / anchoCss,
+      width: anchoCss,
+      windowWidth: anchoCss,
       height: alto,
       logging: false,
       useCORS: true,
