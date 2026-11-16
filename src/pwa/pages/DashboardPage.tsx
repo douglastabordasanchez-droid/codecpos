@@ -67,7 +67,7 @@ export default function DashboardPage() {
       const hasta = fin.toISOString();
       try {
         // Paginado: PostgREST corta en 1000 filas y un mes movido las supera.
-        const [ventasLista, gastosData, devolucionesData] = await Promise.all([
+        let [ventasLista, gastosData, devolucionesData] = await Promise.all([
           traerTodo<{ id: string; total: number; created_at: string }>((i, j) => {
             let q = client.from('ventas').select('id, total, propina, created_at')
               .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
@@ -79,16 +79,32 @@ export default function DashboardPage() {
           }),
           traerTodo<{ monto: number }>((i, j) => client.from('gastos').select('monto')
             .eq('cliente_id', empleado.cliente_id).gte('fecha', desde).lt('fecha', hasta).order('fecha').range(i, j)),
-          traerTodo<{ total_devolucion: number }>((i, j) => client.from('devoluciones').select('total_devolucion')
+          traerTodo<{ total_devolucion: number; venta_id: string | null; ventas: { tienda_id: string | null } | null }>((i, j) => client.from('devoluciones')
+            .select('total_devolucion, venta_id, ventas(tienda_id)')
             .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
             .gte('created_at', desde).lt('created_at', hasta).order('created_at').range(i, j)),
         ]);
         if (cancelado) return;
+        // La devolución pertenece a la tienda de su venta (no guarda tienda propia).
+        const devolucionesTienda = devolucionesData.filter((d) => {
+          if (tiendaEfectiva === undefined) return true;
+          const t = d.ventas?.tienda_id || null;
+          return (!tiendaEfectiva || tiendaEfectiva === 'tienda_principal') ? (!t || t === 'tienda_principal') : t === tiendaEfectiva;
+        });
+        // Una venta devuelta completa deja de ser venta: no cuenta en cantidad, total, gráfico ni costo.
+        const devueltoPorVenta = new Map<string, number>();
+        for (const d of devolucionesTienda) if (d.venta_id) devueltoPorVenta.set(d.venta_id, (devueltoPorVenta.get(d.venta_id) || 0) + Number(d.total_devolucion));
+        const devueltasCompletas = new Set(ventasLista.filter((v) => (devueltoPorVenta.get(v.id) || 0) >= ventaSinPropina(v) - 0.5).map((v) => v.id));
+        ventasLista = ventasLista.filter((v) => !devueltasCompletas.has(v.id));
         setVentas(ventasLista);
         const gastosTotalCalc = gastosData.reduce((a, g) => a + Number(g.monto), 0);
-        const devolucionesTotalCalc = devolucionesData.reduce((a, d) => a + Number(d.total_devolucion), 0);
+        // Se resta lo que no quedó ya fuera: devoluciones parciales o de ventas de otro período.
+        const devolucionesTotalCalc = devolucionesTienda
+          .filter((d) => !d.venta_id || !devueltasCompletas.has(d.venta_id))
+          .reduce((a, d) => a + Number(d.total_devolucion), 0);
         setGastosTotal(gastosTotalCalc);
-        setDevolucionesTotal(devolucionesTotalCalc);
+        // El recuadro muestra todo lo devuelto en el período (de la tienda elegida).
+        setDevolucionesTotal(devolucionesTienda.reduce((a, d) => a + Number(d.total_devolucion), 0));
 
         // Utilidad real (igual que Electron/InicioPage): ventas − devoluciones − costo de lo vendido − gastos.
         // Los ítems se piden por lotes: miles de ids en una sola URL hacen fallar la consulta

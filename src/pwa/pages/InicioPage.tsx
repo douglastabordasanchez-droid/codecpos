@@ -13,7 +13,7 @@ import { RingStat } from '../components/RingStat';
 import { SucursalSelector } from '../components/SucursalSelector';
 import { machineIdsDeSucursal } from '../../app/lib/supabase/sucursalesService';
 import { EmpleadoSelector, ResumenEmpleados, useEmpleadosNube } from '../components/EmpleadoFiltro';
-import { FILTRO_TIENDA_PRINCIPAL, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
+import { FILTRO_TIENDA_PRINCIPAL, claveEmpleado, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
@@ -97,6 +97,9 @@ export default function InicioPage() {
   const [empleadoSel, setEmpleadoSel] = useState<string | null>(null);
   const [devolucionesTotal, setDevolucionesTotal] = useState(0);
   const [devolucionesCount, setDevolucionesCount] = useState(0);
+  // Cada devolución con la tienda y el cajero de SU venta: así se resta también con
+  // una tienda o un empleado elegido, y una venta devuelta completa deja de contar.
+  const [devolucionesPeriodo, setDevolucionesPeriodo] = useState<Array<{ monto: number; ventaId: string | null; cajero: string | null }>>([]);
   const [gastosTotal, setGastosTotal] = useState(0);
   const [alertasCount, setAlertasCount] = useState(0);
   const [productosConMinimo, setProductosConMinimo] = useState(0);
@@ -172,7 +175,7 @@ export default function InicioPage() {
           ? client.from('gastos').select('monto, fecha').eq('cliente_id', empleado.cliente_id)
               .gte('fecha', inicio.toISOString()).lt('fecha', fin.toISOString())
           : Promise.resolve({ data: [] as any[] }),
-        client.from('devoluciones').select('total_devolucion, created_at').eq('cliente_id', empleado.cliente_id)
+        client.from('devoluciones').select('total_devolucion, created_at, venta_id, ventas(tienda_id, cajero_nombre)').eq('cliente_id', empleado.cliente_id)
           .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString()),
       ]);
 
@@ -184,9 +187,22 @@ export default function InicioPage() {
       setProductosConMinimo(productos.length);
       setAlertasCount(productos.filter((p) => p.stock <= p.stock_minimo).length);
       setSesiones((sesionesData as SesionFila[]) || []);
-      const devolucionesLista = (devolucionesData as { total_devolucion: number }[]) || [];
-      const devTotal = devolucionesLista.reduce((a, d) => a + Number(d.total_devolucion), 0);
-      setDevolucionesTotal(devTotal);
+      // La devolución toma la tienda de su venta (las devoluciones no guardan tienda propia).
+      const enTiendaFiltro = (tiendaVenta: string | null | undefined) => {
+        if (tiendaFiltro === undefined) return true;
+        const t = tiendaVenta || null;
+        return tiendaFiltro === 'tienda_principal' ? (!t || t === 'tienda_principal') : t === tiendaFiltro;
+      };
+      const devolucionesLista = ((devolucionesData as any[]) || [])
+        .map((d) => ({
+          monto: Number(d.total_devolucion) || 0,
+          ventaId: (d.venta_id as string) || null,
+          cajero: (d.ventas?.cajero_nombre as string) ?? null,
+          tienda: (d.ventas?.tienda_id as string) ?? null,
+        }))
+        .filter((d) => enTiendaFiltro(d.tienda));
+      setDevolucionesPeriodo(devolucionesLista);
+      setDevolucionesTotal(devolucionesLista.reduce((a, d) => a + d.monto, 0));
       setDevolucionesCount(devolucionesLista.length);
       setGastosTotal(esAdmin ? ((gastosData as { monto: number }[]) || []).reduce((a, g) => a + Number(g.monto), 0) : 0);
 
@@ -226,11 +242,30 @@ export default function InicioPage() {
     return () => { cancelado = true; window.clearInterval(interval); };
   }, [empleado?.cliente_id, esAdmin, rango, customDesde, customHasta, sucursalSeleccionada, tiendaFiltro]);
 
+  // Devoluciones del filtro actual (empleado = cajero de la venta devuelta).
+  const devolucionesDelFiltro = useMemo(
+    () => (empleadoSel ? devolucionesPeriodo.filter((d) => claveEmpleado(d.cajero) === empleadoSel) : devolucionesPeriodo),
+    [devolucionesPeriodo, empleadoSel],
+  );
+  const devueltoPorVenta = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const d of devolucionesPeriodo) if (d.ventaId) m.set(d.ventaId, (m.get(d.ventaId) || 0) + d.monto);
+    return m;
+  }, [devolucionesPeriodo]);
+  // Una venta devuelta completa no es una venta: no cuenta en cantidad, ingresos ni costo.
+  const devueltaCompleta = (v: VentaFila) => (devueltoPorVenta.get(v.id) || 0) >= ventaSinPropina(v) - 0.5;
+  const ventasValidasPeriodo = useMemo(() => ventasPeriodo.filter((v) => !devueltaCompleta(v)), [ventasPeriodo, devueltoPorVenta]);
+  // Lo que se resta además: devoluciones parciales o de ventas de otro período.
+  const devolucionesARestar = useMemo(() => {
+    const idsCompletas = new Set(ventasPeriodo.filter((v) => devueltaCompleta(v)).map((v) => v.id));
+    return devolucionesDelFiltro.filter((d) => !d.ventaId || !idsCompletas.has(d.ventaId)).reduce((a, d) => a + d.monto, 0);
+  }, [devolucionesDelFiltro, ventasPeriodo, devueltoPorVenta]);
+
   const resumenEmpleados = useMemo(() => completarConEmpleados(
-    resumirPorEmpleado(ventasPeriodo),
+    resumirPorEmpleado(ventasValidasPeriodo),
     empleadosNube.filter((e) => empleadoEnTienda(e.tienda_id, tiendaFiltro)).map((e) => e.nombre),
-  ), [ventasPeriodo, empleadosNube, tiendaFiltro]);
-  const ventasDelFiltro = useMemo(() => filtrarPorEmpleado(ventasPeriodo, empleadoSel), [ventasPeriodo, empleadoSel]);
+  ), [ventasValidasPeriodo, empleadosNube, tiendaFiltro]);
+  const ventasDelFiltro = useMemo(() => filtrarPorEmpleado(ventasValidasPeriodo, empleadoSel), [ventasValidasPeriodo, empleadoSel]);
   const ventasAnterioresDelFiltro = useMemo(() => filtrarPorEmpleado(ventasPeriodoAnterior, empleadoSel), [ventasPeriodoAnterior, empleadoSel]);
 
   // Con un empleado elegido: lo que dejaron sus ventas (venta menos costo). Los
@@ -238,14 +273,16 @@ export default function InicioPage() {
   const utilidadNeta = useMemo(() => {
     const ventasBase = ventasDelFiltro.reduce((a, v) => a + ventaSinPropina(v), 0);
     const costo = ventasDelFiltro.reduce((a, v) => a + (costoPorVenta.get(v.id) || 0), 0);
-    // Gastos y devoluciones no tienen tienda: con una tienda elegida tampoco se restan.
-    return empleadoSel || tiendaFiltro ? ventasBase - costo : ventasBase - devolucionesTotal - costo - gastosTotal;
-  }, [ventasDelFiltro, costoPorVenta, empleadoSel, tiendaFiltro, devolucionesTotal, gastosTotal]);
+    // Las devoluciones van por la tienda y el cajero de su venta; los gastos no tienen
+    // tienda ni empleado, así que solo se restan en «Todos».
+    const gastos = empleadoSel || tiendaFiltro ? 0 : gastosTotal;
+    return ventasBase - devolucionesARestar - costo - gastos;
+  }, [ventasDelFiltro, costoPorVenta, empleadoSel, tiendaFiltro, devolucionesARestar, gastosTotal]);
 
   const stats = useMemo(() => {
     const ventasPeriodo = ventasDelFiltro;
     const ventasPeriodoAnterior = ventasAnterioresDelFiltro;
-    const devolucionesTotalFiltro = empleadoSel || tiendaFiltro ? 0 : devolucionesTotal;
+    const devolucionesTotalFiltro = devolucionesARestar;
     const totalPeriodo = ventasPeriodo.reduce((a, v) => a + ventaSinPropina(v), 0);
     // Neto de devoluciones — así el anillo de "Ventas" coincide con el
     // número que Electron llama "Ingresos Netos" (bruto - devoluciones),
@@ -263,7 +300,7 @@ export default function InicioPage() {
     const horasTranscurridas = Math.max(ahora.getHours() + ahora.getMinutes() / 60, 0.25);
     const proyeccionCierre = rango === 'hoy' ? (totalPeriodo / horasTranscurridas) * 24 : totalPeriodo;
     return { totalPeriodo, totalPeriodoNeto, ticketProm, cantidadPeriodo: ventasPeriodo.length, pctVentasVsAnterior, pctTransaccionesVsAnterior, pctInventarioSano, proyeccionCierre };
-  }, [ventasDelFiltro, ventasAnterioresDelFiltro, empleadoSel, tiendaFiltro, productosConMinimo, alertasCount, devolucionesTotal, rango]);
+  }, [ventasDelFiltro, ventasAnterioresDelFiltro, productosConMinimo, alertasCount, devolucionesARestar, rango]);
   const nombreEmpleadoSel = resumenEmpleados.find((r) => r.clave === empleadoSel)?.nombre;
   const irAVentas = () => navigate(`/ventas?periodo=${rango === 'hoy' ? 'hoy' : rango === 'custom' ? '30d' : '7d'}${empleadoSel ? `&cajero=${encodeURIComponent(empleadoSel)}` : ''}`);
 
