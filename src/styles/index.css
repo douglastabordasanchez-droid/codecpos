@@ -69,3 +69,18 @@ html input.campo-login.campo-login:-webkit-autofill:active {
 html input.campo-login.campo-login:-webkit-autofill::first-line {
   color: #f8fafc !important;
 }
+
+/* ── Texto blanco siempre blanco (modo claro de la caja) ─────────────────────
+   theme.css pinta en modo claro todo título, párrafo, botón y span de color
+   oscuro. Dentro de su capa debería perder contra .text-white, pero en la
+   terminal Android se veía negro sobre fondos de color (encabezados verdes,
+   botones, chips seleccionados). Estas reglas van fuera de capas y con más
+   peso que la del modo claro, así el texto blanco queda blanco siempre. */
+html:not(.dark) .text-white { color: #fff; }
+/* Textos de adentro sin color propio (un <span> dentro de un botón): heredan el blanco en vez
+   del gris oscuro que les pone la regla general a los span, p, label… */
+html:not(.dark) .text-white :where(span, p, label, li, h1, h2, h3, h4, small, strong, b):not([class*='text-']) { color: inherit; }
+html:not(.dark) .text-white\/90 { color: rgb(255 255 255 / 0.9); }
+html:not(.dark) .text-white\/80 { color: rgb(255 255 255 / 0.8); }
+html:not(.dark) .text-white\/70 { color: rgb(255 255 255 / 0.7); }
+html:not(.dark) .text-white\/60 { color: rgb(255 255 255 / 0.6); }

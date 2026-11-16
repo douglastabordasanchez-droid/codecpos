@@ -27,6 +27,22 @@ function anchoCssDe(anchoPx: number): number {
   return Math.round((mm / 25.4) * 96);
 }
 
+/** true si el dibujo tiene algo oscuro (foreignObject a veces devuelve una hoja en blanco). */
+function lienzoTieneContenido(c: HTMLCanvasElement): boolean {
+  try {
+    const ctx = c.getContext('2d');
+    if (!ctx || c.width === 0 || c.height === 0) return false;
+    const alto = Math.min(c.height, 400);
+    const { data } = ctx.getImageData(0, 0, c.width, alto);
+    for (let i = 0; i < data.length; i += 4 * 7) {
+      if (data[i + 3] > 128 && data[i] + data[i + 1] + data[i + 2] < 300) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function htmlAImagen(html: string, anchoPx: number): Promise<HTMLCanvasElement> {
   const anchoCss = anchoCssDe(anchoPx);
   const marco = document.createElement('iframe');
@@ -40,7 +56,10 @@ async function htmlAImagen(html: string, anchoPx: number): Promise<HTMLCanvasEle
     // Sin márgenes de página (el papel térmico ya tiene su margen) y todo al ancho del papel,
     // aunque el reporte traiga un ancho fijo (80mm, 300px…).
     const ajuste = doc.createElement('style');
+    // Fuente monoespaciada que sí existe en Android (Courier New no viene instalada) y alto de
+    // línea fijo: con la fuente de reemplazo las letras quedaban corridas sobre las líneas.
     ajuste.textContent = `html,body{margin:0!important;padding:0 2px!important;background:#fff!important;width:auto!important;max-width:${anchoCss}px!important;min-width:0!important;color:#000}
+      body,body *{font-family:'Courier New','Droid Sans Mono','Roboto Mono',monospace!important;line-height:1.35!important}
       body>*{max-width:100%!important;box-sizing:border-box}
       *{-webkit-print-color-adjust:exact} img{max-width:100%}`;
     doc.head?.appendChild(ajuste);
@@ -56,7 +75,7 @@ async function htmlAImagen(html: string, anchoPx: number): Promise<HTMLCanvasEle
     const alto = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight || 0, 20);
     marco.style.height = `${alto}px`;
     const { default: html2canvas } = await import('html2canvas');
-    return await html2canvas(doc.body, {
+    const opciones = {
       backgroundColor: '#ffffff',
       scale: anchoPx / anchoCss,
       width: anchoCss,
@@ -64,7 +83,15 @@ async function htmlAImagen(html: string, anchoPx: number): Promise<HTMLCanvasEle
       height: alto,
       logging: false,
       useCORS: true,
-    });
+    };
+    // Primero lo dibuja el propio navegador (foreignObject): las posiciones del texto y las
+    // líneas son las reales. El dibujo manual de html2canvas corría las letras sobre las
+    // líneas en los reportes largos. Si el navegador no puede, se usa el método de antes.
+    try {
+      const lienzo = await html2canvas(doc.body, { ...opciones, foreignObjectRendering: true });
+      if (lienzoTieneContenido(lienzo)) return lienzo;
+    } catch { /* se intenta con el método de siempre */ }
+    return await html2canvas(doc.body, opciones);
   } finally {
     marco.remove();
   }
