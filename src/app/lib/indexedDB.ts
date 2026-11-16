@@ -53,6 +53,8 @@ export const STORES = {
 } as const;
 
 export interface Producto {
+  /** Sede dueña del producto (productos.tienda_id, migración 0153). Vacío = Tienda Principal. */
+  sedeDuena?: string | null;
   id: string;
   codigo: string;
   nombre: string;

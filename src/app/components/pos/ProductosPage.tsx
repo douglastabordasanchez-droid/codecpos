@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { productoEnSede, inventarioUniversalGuardado } from '../../lib/inventarioSede';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Package, Search, Upload, Plus, Edit, Trash2,
@@ -172,8 +173,9 @@ export default function ProductosPage() {
         ? productosConStockDeTienda(tiendaActual.id)
         : getCached<any[]>('pos-productos', []);
 
-      console.log(`✅ ${productosConStock.length} productos cargados`);
-      setProductos(productosConStock);
+      // Inventario independiente (0153): la sede activa ve solo sus productos.
+      const universal = inventarioUniversalGuardado();
+      setProductos(productosConStock.filter((p: any) => productoEnSede(p.sedeDuena, tiendaActual?.id, universal)));
     } catch (error) {
       console.error('❌ Error cargando productos:', error);
       toast.error('Error al cargar productos');

@@ -5,6 +5,7 @@
  * historial y sedes con carga masiva de inventario. Ver lib/multitiendaNube.ts.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { InterruptorInventarioUniversal } from '../../../pwa/components/InterruptorInventarioUniversal';
 import {
   ArrowLeftRight, ArrowRight, Boxes, Check, CloudUpload, History, Loader2, PackageCheck, Pencil, Plus, Search,
   Store, Trash2, Truck, Upload, Warehouse, X,
@@ -125,6 +126,7 @@ export function MultitiendaNube({ clienteId, esAdmin, miSede }: Props) {
 
   return (
     <div className="space-y-4">
+      {esAdmin && <InterruptorInventarioUniversal clienteId={clienteId} />}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         {pestanas.map(([id, etiqueta, Icono, badge]) => (
           <button

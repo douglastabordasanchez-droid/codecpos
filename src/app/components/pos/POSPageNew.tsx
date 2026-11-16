@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
+import { productoEnSede, inventarioUniversalGuardado } from '../../lib/inventarioSede';
+import { getTiendaActivaId } from '../../lib/multitiendaService';
 import { billetesSugeridos } from '../../lib/billetesSugeridos';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router';
@@ -1209,7 +1211,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         }));
 
         setCombosOnces(combos);
-        setProductos([...productosConModificadores, ...combos]);
+        // Inventario independiente (0153): en cada sede solo sus productos.
+        const sedeActiva = getTiendaActivaId();
+        const universal = inventarioUniversalGuardado();
+        setProductos([...productosConModificadores.filter((p: any) => productoEnSede(p.sedeDuena, sedeActiva, universal)), ...combos]);
       } else {
         // Inventario vacío por defecto
         const combos = (await electronStore.obtenerCombosOnces()).map((c: any) => ({

@@ -848,8 +848,9 @@ class SyncService {
       if (multitiendaEnNube() && (local.syncStatus === 'pending' || local.updatedAt >= remoteUpdatedAt)) {
         const pendiente = (await vendidoSinSubir()).get(local.id) || 0;
         const stockNube = Math.max(0, Number(remote.stock) - pendiente);
-        if (Number(local.stock) === stockNube) return null;
-        const soloStock: Producto = { ...local, stock: stockNube, supabaseId: remote.id, stockNube: Number(remote.stock) } as Producto;
+        const sedeNube = remote.tienda_id ?? null;
+        if (Number(local.stock) === stockNube && (local.sedeDuena ?? null) === sedeNube) return null;
+        const soloStock: Producto = { ...local, stock: stockNube, supabaseId: remote.id, stockNube: Number(remote.stock), sedeDuena: sedeNube } as Producto;
         await dbManager.putProductoRaw(soloStock);
         if (!opts?.skipLocalStorageSync) sincronizarProductoEnLocalStorage(soloStock);
         reemplazar(soloStock);
@@ -897,6 +898,7 @@ class SyncService {
         rendimientoRaciones: remote.rendimiento_raciones ?? local.rendimientoRaciones,
         especie: remote.especie || local.especie,
         requiereReceta: remote.requiere_receta ?? local.requiereReceta,
+        sedeDuena: remote.tienda_id ?? null,
         supabaseId: remote.id,
         updatedAt: remoteUpdatedAt,
         syncStatus: 'synced',
@@ -960,6 +962,7 @@ class SyncService {
         rendimientoRaciones: remote.rendimiento_raciones ?? undefined,
         especie: remote.especie || undefined,
         requiereReceta: remote.requiere_receta || undefined,
+        sedeDuena: remote.tienda_id ?? null,
         supabaseId: remote.id,
         createdAt: new Date(remote.created_at).getTime(),
         updatedAt: remoteUpdatedAt,
@@ -1641,6 +1644,9 @@ class SyncService {
         rendimiento_raciones: p.rendimientoRaciones ?? null,
         especie: p.especie || null,
         requiere_receta: !!p.requiereReceta,
+        // Sede dueña (0153): solo si este equipo la conoce; así no se le borra a un producto
+        // que se creó en otra sede.
+        ...(p.sedeDuena !== undefined ? { tienda_id: p.sedeDuena || null } : {}),
         updated_at: new Date().toISOString(),
       };
       let filaSubida: { id: string } | null = null;

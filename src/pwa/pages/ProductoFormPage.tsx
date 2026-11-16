@@ -13,6 +13,7 @@ import { soloAgregar } from '../lib/restriccionesEmpleado';
 import { obtenerCategoriasPorTipo, obtenerAtributosPorTipo, normalizarTipoNegocio } from '../../data/tipos-negocio';
 import { leerConfigIva } from '../../app/lib/dian/configIva';
 import { getSucursalActiva } from '../lib/sucursalActiva';
+import { obtenerInventarioUniversal, inventarioUniversalGuardado, sedeParaProductoNuevo } from '../../app/lib/inventarioSede';
 
 const UNIDADES = ['unidad', 'kg', 'g', 'lb', 'l', 'ml', 'paquete'];
 const MAX_FOTOS = 6;
@@ -334,7 +335,12 @@ export default function ProductoFormPage() {
     const stockNuevo = form.servicio ? stockAlAbrir.current : Number(form.stock) || 0;
     // Producto nuevo: nace con su stock en la principal; en otra sede nace en 0 y se le carga a ella.
     const { data: guardado, error } = esNuevo
-      ? await client.from('productos').insert({ ...payload, stock: enOtraSede ? 0 : stockNuevo }).select('id').single()
+      ? await client.from('productos').insert({
+        ...payload,
+        stock: enOtraSede ? 0 : stockNuevo,
+        // Inventario independiente: el producto nuevo pertenece a la sede donde se crea.
+        tienda_id: sedeParaProductoNuevo(sede, await obtenerInventarioUniversal(empleado.cliente_id).catch(() => inventarioUniversalGuardado())),
+      }).select('id').single()
       : await client.from('productos').update(payload).eq('id', id).select('id').single();
 
     if (error) {

@@ -17,6 +17,7 @@ import { AjustesAlertasPago } from '../components/AjustesAlertasPago';
 import { ConectarIphone } from '../components/ConectarIphone';
 import { ConfigurarMiNegocio } from '../components/ConfigurarMiNegocio';
 import { SeccionPlegable } from '../components/SeccionPlegable';
+import { InterruptorInventarioUniversal } from '../components/InterruptorInventarioUniversal';
 import { UltimosAvisosCodecVerify } from '../components/UltimosAvisosCodecVerify';
 import { UserCircle, Briefcase, BellRing, ShieldCheck as EscudoPagos, Calculator } from 'lucide-react';
 import { MiContador } from '../../app/components/contador/MiContador';
@@ -195,6 +196,7 @@ export default function ConfiguracionPage() {
             {esAdmin && (
               <SeccionPlegable titulo="Configurar mi negocio" subtitulo="Tipo de negocio, propina, precios e IVA" icono={Briefcase}>
                 <ConfigurarMiNegocio embebido />
+                <div className="mt-3"><InterruptorInventarioUniversal clienteId={empleado.cliente_id} /></div>
               </SeccionPlegable>
             )}
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { obtenerInventarioUniversal, productoEnSede } from '../../app/lib/inventarioSede';
 import { useNavigate } from 'react-router';
 import { Plus, Search, Package, Upload } from 'lucide-react';
 import { Input } from '../../app/components/ui/input';
@@ -43,7 +44,7 @@ export default function InventarioPage() {
     for (let desde = 0; ; desde += 1000) {
       const { data } = await client!
         .from('productos')
-        .select('id, nombre, categoria, precio_venta, stock, stock_minimo, foto_url, activo')
+        .select('id, nombre, categoria, precio_venta, stock, stock_minimo, foto_url, activo, tienda_id')
         .eq('cliente_id', empleado.cliente_id)
         .order('nombre')
         .order('id')
@@ -51,6 +52,10 @@ export default function InventarioPage() {
       filas = filas.concat((data as ProductoFila[]) || []);
       if (!data || data.length < 1000) break;
     }
+
+    // Inventario independiente: la sede elegida ve solo sus productos (vacía si no tiene).
+    const universal = await obtenerInventarioUniversal(empleado.cliente_id).catch(() => false);
+    filas = filas.filter((p: any) => productoEnSede(p.tienda_id, tiendaEfectiva, universal));
 
     // 🏪 Multi-Tienda: mostrar el stock de la sucursal activa (tiendas_stock),
     // no siempre el de Tienda Principal (productos.stock) — mismo criterio

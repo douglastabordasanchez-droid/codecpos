@@ -15,6 +15,7 @@
  *    como Electron hace con `codecpos_carrito_transferido`.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { obtenerInventarioUniversal, productoEnSede } from '../../app/lib/inventarioSede';
 import { obtenerEstadoSedes, sedeVencida, type EstadoSede } from '../components/AvisoSedesCobro';
 import { billetesSugeridos } from '../../app/lib/billetesSugeridos';
 import { useNavigate } from 'react-router';
@@ -220,10 +221,10 @@ export default function VenderPage() {
     const client = getSupabaseClient();
     // Paginado: PostgREST corta en 1000 filas y un negocio con más productos
     // solo veía los primeros 1000 (A..M) sin ningún aviso.
-    const [data, configIva] = await Promise.all([
+    const [data, configIva, universal] = await Promise.all([
       traerTodo<ProductoFila>((desde, hasta) => client!
         .from('productos')
-        .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto, iva, peso_bulto_kg')
+        .select('id, nombre, categoria, precio_venta, stock, codigo_barras, foto_url, talla, color, tipo_producto, iva, peso_bulto_kg, tienda_id')
         .eq('cliente_id', empleado.cliente_id)
         .eq('activo', true)
         .order('nombre')
@@ -231,11 +232,13 @@ export default function VenderPage() {
         .range(desde, hasta)).catch(() => [] as ProductoFila[]),
       // IVA del negocio (el mismo de Electron). Si no se puede leer, se vende sin IVA como Electron sin configurar.
       leerConfigIva(empleado.cliente_id).catch(() => CONFIG_IVA_APAGADO),
+      obtenerInventarioUniversal(empleado.cliente_id).catch(() => false),
     ]);
     // Cada producto queda con la tarifa con la que se vende y, si el IVA se
     // suma encima, con el precio que de verdad paga el cliente.
     setConfigIvaNegocio(configIva);
-    let filas = data.map((p) => {
+    // Inventario independiente: en cada sede solo se venden sus propios productos.
+    let filas = data.filter((p: any) => productoEnSede(p.tienda_id, tiendaEfectiva, universal)).map((p) => {
       const tarifaIva = tarifaIvaProducto(configIva, p.iva);
       return { ...p, tarifaIva, precio_venta: precioDeVentaConIva(configIva, Number(p.precio_venta) || 0, tarifaIva) };
     });
