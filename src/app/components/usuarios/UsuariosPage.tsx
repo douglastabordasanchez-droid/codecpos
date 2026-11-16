@@ -4,6 +4,7 @@
  */
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users, Plus, Edit2, Trash2, User,
@@ -28,7 +29,7 @@ import { electronStore, type Venta } from '../../lib/electronStore';
 import { toast } from 'sonner';
 import type { Usuario, PermisosUsuario } from '../../contexts/AuthContext';
 import PermisosUsuarioModal from '../pos/PermisosUsuarioModal';
-import { esModuloActivoGlobal, ModuloPOS } from '../../lib/permissions';
+import { esModuloActivoGlobal, ModuloPOS, modulosPropiosDeUsuario } from '../../lib/permissions';
 import {
   employeeActivityLogService,
   employeeActivityRetentionPolicy,
@@ -142,6 +143,48 @@ const PERMISOS_CAJERO_DEFAULT: PermisosUsuario = {
   tallerCrearOrdenes: true,
   tallerEditarPrecios: false,
 };
+
+
+// ─── Módulos del empleado en la nube ──────────────────────────────────────────
+// El celular limita los módulos de cada empleado con empleados.permisos.modulosHabilitados.
+// La caja guarda permisos como interruptores (o una lista propia en la ventana «Módulos»);
+// aquí se traducen para que el celular muestre solo lo que el administrador activó.
+function modulosDesdePermisos(p: PermisosUsuario): string[] {
+  const m = new Set<string>();
+  if (p.ventas) { m.add(ModuloPOS.PUNTO_DE_VENTA); m.add(ModuloPOS.VENTAS_HISTORIAL); }
+  if (p.productos) { m.add(ModuloPOS.PRODUCTOS); m.add(ModuloPOS.CODIGOS_BARRAS); }
+  if (p.alertas) m.add(ModuloPOS.ALERTAS_STOCK);
+  if (p.dashboard) m.add(ModuloPOS.DASHBOARD);
+  if (p.configuracion) m.add(ModuloPOS.CONFIGURACION);
+  if (p.usuarios) m.add(ModuloPOS.USUARIOS);
+  if (p.cierreCaja) m.add(ModuloPOS.CIERRE_CAJA);
+  if (p.reportes) m.add(ModuloPOS.REPORTES);
+  if (p.contabilidad) m.add(ModuloPOS.CONTABILIDAD);
+  if (p.gastos) m.add(ModuloPOS.GASTOS);
+  if (p.codecVerify) m.add(ModuloPOS.CODEC_VERIFY);
+  if (p.devoluciones) m.add(ModuloPOS.DEVOLUCIONES);
+  if (p.empleados) m.add(ModuloPOS.EMPLEADOS);
+  if (p.multitienda) m.add(ModuloPOS.MULTITIENDA);
+  if (p.fidelizacion) { m.add(ModuloPOS.FIDELIZACION); m.add(ModuloPOS.CLIENTES); }
+  if (p.panaderiaOnces || p.panaderiaVentas) m.add(ModuloPOS.PANADERIA_ONCES);
+  if (p.tallerCrearOrdenes) m.add(ModuloPOS.TALLER_REPARACIONES);
+  return [...m];
+}
+
+/** Sube a la nube los módulos de un empleado (por su id en la nube, o buscándolo por usuario). */
+async function subirModulosEmpleado(destino: { id?: string; username?: string }, modulos: string[]): Promise<void> {
+  if (!isLinked()) return;
+  const client = getSupabaseClient();
+  if (!client || modulos.length === 0) return;
+  let id = destino.id;
+  if (!id && destino.username) {
+    const { data } = await client.from('empleados').select('id').eq('username', destino.username.trim().toLowerCase()).maybeSingle();
+    id = (data as { id: string } | null)?.id;
+  }
+  if (!id) return;
+  const { error } = await client.rpc('actualizar_permisos_empleado', { p_empleado_id: id, p_modulos: modulos });
+  if (error) console.warn('[personal] No se pudieron subir los módulos:', error.message);
+}
 
 // ─── Tipos internos del formulario ────────────────────────────────────────────
 type ModalTab = 'info' | 'acceso' | 'permisos';
@@ -510,6 +553,7 @@ export function UsuariosPage() {
       });
 
       if (ok) {
+        void subirModulosEmpleado({ username: form.username }, modulosPropiosDeUsuario(usuarioEditando.id) ?? modulosDesdePermisos(permisos));
         toast.success('Personal actualizado correctamente');
         cerrarModal();
       } else {
@@ -578,6 +622,14 @@ export function UsuariosPage() {
   // misma PC (u otra de la misma red LAN). La creación local nunca debe
   // depender de internet (regla dura del proyecto), así que esto corre
   // aparte, después, sin bloquear ni deshacer la creación local si falla.
+  const [codigoNegocio, setCodigoNegocio] = useState<string | null>(null);
+  useEffect(() => {
+    const client = getSupabaseClient();
+    const clienteId = getLinkedClienteId();
+    if (!client || !clienteId) return;
+    void client.from('clientes_pos').select('codigo_corto').eq('id', clienteId).maybeSingle()
+      .then(({ data }) => setCodigoNegocio((data as { codigo_corto?: string } | null)?.codigo_corto || null));
+  }, []);
   const creandoEnNube = useRef(false);
   const crearPersonalEnNube = async (
     nombreCompleto: string, email: string, username: string, password: string, rol: 'cajero' | 'tecnico', telefono?: string,
@@ -588,12 +640,16 @@ export function UsuariosPage() {
     }
     const client = getSupabaseClient();
     if (!client || !navigator.onLine) return 'local';
-    const { error } = email
+    const { data: nuevoId, error } = email
       ? await client.rpc('invitar_empleado', { p_email: email, p_password: password, p_nombre_completo: nombreCompleto, p_rol: rol })
       : await client.rpc('crear_empleado_usuario', {
         p_usuario: username, p_password: password, p_nombre_completo: nombreCompleto, p_rol: rol, p_telefono: telefono || null,
       });
-    if (!error) return 'nube';
+    if (!error) {
+      // Los módulos que el administrador activó al crearlo, también en el celular.
+      void subirModulosEmpleado({ id: nuevoId as string }, modulosDesdePermisos(permisos));
+      return 'nube';
+    }
     // Sin conexión o la nube no respondió: se crea solo aquí y se avisa.
     const esDeRed = /fetch|network|timeout|Failed to/i.test(error.message || '');
     if (esDeRed) return 'local';
@@ -700,6 +756,15 @@ export function UsuariosPage() {
             </div>
           </div>
         </div>
+
+        {/* Código del negocio: si otro negocio tiene un empleado con el mismo usuario y la
+            misma contraseña, se entra escribiendo usuario#código (migración 0152). */}
+        {codigoNegocio && (
+          <p className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
+            Tus empleados entran desde el celular con su usuario y contraseña. Código de tu negocio: <b className={dm ? 'text-white' : 'text-gray-900'}>{codigoNegocio}</b>
+            {' '}(solo se usa si el sistema lo pide, así: usuario#{codigoNegocio}).
+          </p>
+        )}
 
         {/* ── BUSCADOR ───────────────────────────────────────────────────── */}
         <div className="relative">
@@ -1725,7 +1790,11 @@ export function UsuariosPage() {
           userId={usuarioModulos.id}
           userName={usuarioModulos.nombreCompleto}
           userRole={usuarioModulos.rol}
-          onClose={() => { setModalModulos(false); setUsuarioModulos(null); }}
+          onClose={() => {
+            const propios = modulosPropiosDeUsuario(usuarioModulos.id);
+            if (propios) void subirModulosEmpleado({ username: usuarioModulos.username }, propios);
+            setModalModulos(false); setUsuarioModulos(null);
+          }}
         />
       )}
     </div>

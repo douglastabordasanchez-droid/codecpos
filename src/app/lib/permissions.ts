@@ -880,6 +880,12 @@ export function resetearModulosCliente(clienteId: string, plan: 'BASICO' | 'PREM
 // FUNCIONES DE GESTIÓN DE USUARIOS (dentro de una instalación)
 // ============================================================
 
+/** Lista de módulos elegida a mano para este usuario (ventana «Módulos»), o null si no tiene. */
+export function modulosPropiosDeUsuario(userId: string): ModuloPOS[] | null {
+  const p = leerTodosPermisos().find((x) => x.userId === userId);
+  return p ? [...p.modulosHabilitados] : null;
+}
+
 export function obtenerPermisosUsuario(userId: string): PermisosUsuario {
   const permisos = leerTodosPermisos().find(p => p.userId === userId);
   if (permisos) return permisos;

@@ -1,4 +1,9 @@
 import { getSupabaseClient } from './config';
+import { getLinkedClienteId } from './tenantLink';
+
+// Último negocio con el que se entró en este equipo: desempata si dos negocios
+// tienen un empleado con el mismo usuario y la misma contraseña (migración 0152).
+const CLAVE_ULTIMO_NEGOCIO = 'codecpos_ultimo_negocio_login';
 
 export interface EmpleadoSupabase {
   id: string;
@@ -46,10 +51,15 @@ export async function signInSupabase(
       email = `owner+${clienteId}@codecpos.internal`;
     } else {
       // Empleado con usuario corto (migración 0132).
-      const { data: correo } = await client.rpc('resolver_login_empleado', {
+      let negocioDelEquipo: string | null = null;
+      try { negocioDelEquipo = getLinkedClienteId() || localStorage.getItem(CLAVE_ULTIMO_NEGOCIO); } catch { /* sin almacenamiento */ }
+      const { data: correo, error: errorEmpleado } = await client.rpc('resolver_login_empleado', {
         p_usuario: emailOUsuario,
         p_password: password,
+        ...(negocioDelEquipo ? { p_cliente_id: negocioDelEquipo } : {}),
       });
+      // «Existe en varios negocios»: se muestra tal cual para que escriba usuario#código.
+      if (errorEmpleado && /varios negocios/i.test(errorEmpleado.message)) return { ok: false, error: errorEmpleado.message };
       if (!correo) return { ok: false, error: 'Usuario o contraseña incorrectos' };
       email = correo as string;
     }
@@ -70,6 +80,7 @@ export async function signInSupabase(
     return { ok: false, error: 'Cuenta sin perfil de empleado asociado' };
   }
 
+  try { localStorage.setItem(CLAVE_ULTIMO_NEGOCIO, (empleado as EmpleadoSupabase).cliente_id); } catch { /* ignorar */ }
   return { ok: true, empleado: empleado as EmpleadoSupabase };
 }
 
