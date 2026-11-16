@@ -9,7 +9,7 @@
  * supabase/migrations/0047_motor_comercial_planes_precios_licencias.sql.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   Shield,
@@ -316,10 +316,18 @@ export function DeveloperPanel() {
     setShowModal(true);
   };
 
+  // Al abrir «Nuevo cliente» se marcan los módulos del plan. Si después se cambia el plan,
+  // se agregan los del plan nuevo pero se RESPETAN los que ya se quitaron a mano: antes
+  // se volvía a marcar todo y el cliente quedaba con módulos que se le habían quitado
+  // (Tierra Colombiana quedó con Mascotas, 2026-11-16).
+  const modulosQuitadosAMano = useRef<Set<ModuloPOS>>(new Set());
   useEffect(() => {
-    if (showModal && !editingCliente) setModulosSeleccionados(new Set(construirModulosPorPlan(formData.plan)));
+    if (!showModal || editingCliente) return;
+    const delPlan = construirModulosPorPlan(formData.plan).filter((m) => !modulosQuitadosAMano.current.has(m));
+    setModulosSeleccionados(new Set(delPlan));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showModal, editingCliente, formData.plan]);
+  useEffect(() => { if (!showModal) modulosQuitadosAMano.current = new Set(); }, [showModal]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar este cliente? Esta acción no se puede deshacer.')) return;
@@ -1130,7 +1138,12 @@ export function DeveloperPanel() {
                           <button
                             key={modulo.id}
                             type="button"
-                            onClick={() => setModulosSeleccionados(prev => { const n = new Set(prev); if (n.has(modulo.id)) n.delete(modulo.id); else n.add(modulo.id); return n; })}
+                            onClick={() => setModulosSeleccionados(prev => {
+                              const n = new Set(prev);
+                              if (n.has(modulo.id)) { n.delete(modulo.id); modulosQuitadosAMano.current.add(modulo.id); }
+                              else { n.add(modulo.id); modulosQuitadosAMano.current.delete(modulo.id); }
+                              return n;
+                            })}
                             className={`text-left px-2.5 py-2 rounded-md border text-sm transition ${activo ? darkMode ? 'border-emerald-400 bg-emerald-700/45 text-white' : 'border-emerald-400 bg-emerald-50 text-slate-900' : darkMode ? 'border-slate-600 text-gray-200 hover:bg-slate-700/50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                           >
                             <span className="mr-1.5">{activo ? '☑' : '☐'}</span>

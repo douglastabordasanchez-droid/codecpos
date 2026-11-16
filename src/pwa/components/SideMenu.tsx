@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, LogOut, Sun, Moon, Crown, Zap } from 'lucide-react';
+import { X, LogOut, Sun, Moon, Crown, Zap, Briefcase } from 'lucide-react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useMenuPersonalizado, type ItemMenu } from '../hooks/useMenuPersonalizado';
 import { HojaAccionesModulo, ModulosOcultos, usePresionLarga } from './EdicionMenu';
@@ -95,6 +95,15 @@ export function SideMenu({ open, onClose }: Props) {
             </div>
 
             <div className="mt-auto px-3 pb-6 pt-2 border-t border-slate-800 space-y-1">
+              {/* Solo el equipo de Codec Studio: clientes, licencias, contraseñas e historial. */}
+              {empleado?.es_staff_codec && (
+                <button
+                  onClick={() => ir('/desarrollador')}
+                  className="w-full flex items-center gap-3 px-2 py-3 rounded-xl text-amber-400 active:bg-slate-900 text-sm font-bold"
+                >
+                  <Briefcase className="w-4 h-4" />Clientes (Desarrollador)
+                </button>
+              )}
               <button
                 onClick={alternarTema}
                 className="w-full flex items-center justify-between gap-3 px-2 py-3 rounded-xl text-slate-300 active:bg-slate-900"

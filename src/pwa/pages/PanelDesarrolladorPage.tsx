@@ -6,6 +6,7 @@ import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { RingStat } from '../components/RingStat';
+import { SoporteClienteMovil } from '../components/SoporteClienteMovil';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import {
   listarClientesAdmin,
@@ -475,6 +476,9 @@ export default function PanelDesarrolladorPage() {
               <Button onClick={guardarModulos} disabled={guardando} className="w-full h-12 bg-gradient-to-r from-amber-500 to-orange-600">
                 {guardando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : 'Guardar módulos'}
               </Button>
+
+              {/* Soporte: contraseñas, empleados e historial del cliente (como el panel web /admin). */}
+              <SoporteClienteMovil key={seleccionado.id} clienteId={seleccionado.id} usuarioLicencia={(seleccionado as any).usuario} />
             </div>
           </div>
         </div>
