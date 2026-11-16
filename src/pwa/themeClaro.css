@@ -42,6 +42,9 @@
 [data-theme='light'] .text-white\/80 { color: rgb(28 25 23 / 0.8) !important; }
 [data-theme='light'] .text-white\/70 { color: rgb(28 25 23 / 0.7) !important; }
 [data-theme='light'] .text-slate-300 { color: #44403c !important; }
+/* Texto casi blanco de botones grises (Importar, + Sede…): sin esta regla quedaba invisible en claro. */
+[data-theme='light'] .text-slate-200 { color: #292524 !important; }
+[data-theme='light'] .text-slate-100 { color: #1c1917 !important; }
 [data-theme='light'] .text-slate-400 { color: #78716c !important; }
 [data-theme='light'] .text-slate-500 { color: #8a8580 !important; }
 [data-theme='light'] .text-slate-600 { color: #a39e98 !important; }
@@ -91,3 +94,6 @@
 [data-theme='light'] select {
   color: #78716c;
 }
+
+/* Fondo al pasar el dedo o el mouse sobre botones grises. */
+[data-theme='light'] .hover\:bg-slate-700:hover { background-color: #ddd8d2 !important; }

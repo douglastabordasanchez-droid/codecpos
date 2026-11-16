@@ -97,7 +97,7 @@ export default function InventarioPage() {
         {esAdmin && (
           <button
             onClick={() => navigate('/inventario/importar')}
-            className="h-11 px-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold inline-flex items-center gap-1.5"
+            className="h-11 px-3 rounded-full bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 text-sm font-semibold inline-flex items-center gap-1.5"
             title="Cargar muchos productos con una plantilla de Excel"
           >
             <Upload className="w-4 h-4" /> Importar
