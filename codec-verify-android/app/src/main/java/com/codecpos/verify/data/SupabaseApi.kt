@@ -99,6 +99,8 @@ class SupabaseApi {
         textoNotificacion: String,
         entidad: String,
         referencia: String = "",
+        /** "android" (notificación o SMS) o "correo" (LectorCorreo): así se ve en Últimos avisos. */
+        origen: String = "android",
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val body = buildJsonObject {
@@ -106,6 +108,7 @@ class SupabaseApi {
                 put("p_monto", textoNotificacion)
                 put("p_entidad", entidad)
                 put("p_referencia", referencia)
+                put("p_origen", origen)
             }.toString()
             val request = Request.Builder()
                 .url("$baseUrl/rest/v1/rpc/registrar_pago_automatico")

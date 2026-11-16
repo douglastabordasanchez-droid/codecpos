@@ -98,6 +98,41 @@ class Prefs(context: Context) {
 
     val estaEmparejado: Boolean get() = !webhookToken.isNullOrBlank()
 
+    // ── Lectura del correo del banco (LectorCorreo). La clave de aplicación queda cifrada
+    //    en este celular y solo se usa para conectarse al correo: nunca viaja a Codec POS.
+    var correoActivo: Boolean
+        get() = prefs.getBoolean("correo_activo", false)
+        set(value) = prefs.edit().putBoolean("correo_activo", value).apply()
+    var correoUsuario: String?
+        get() = prefs.getString("correo_usuario", null)
+        set(value) = prefs.edit().putString("correo_usuario", value).apply()
+    var correoClave: String?
+        get() = prefs.getString("correo_clave", null)
+        set(value) = prefs.edit().putString("correo_clave", value).apply()
+    var correoServidor: String?
+        get() = prefs.getString("correo_servidor", null)
+        set(value) = prefs.edit().putString("correo_servidor", value).apply()
+    /** Remitentes extra que el negocio quiere leer (separados por coma), además de los bancos conocidos. */
+    var correoRemitentesExtra: String
+        get() = prefs.getString("correo_remitentes_extra", "").orEmpty()
+        set(value) = prefs.edit().putString("correo_remitentes_extra", value).apply()
+    /** Último correo ya revisado (UID de IMAP) y la «validez» de esos números en el buzón. */
+    var correoUltimoUid: Long
+        get() = prefs.getLong("correo_ultimo_uid", 0L)
+        set(value) = prefs.edit().putLong("correo_ultimo_uid", value).apply()
+    var correoUidValidity: Long
+        get() = prefs.getLong("correo_uid_validity", 0L)
+        set(value) = prefs.edit().putLong("correo_uid_validity", value).apply()
+    var correoUltimaRevision: Long
+        get() = prefs.getLong("correo_ultima_revision", 0L)
+        set(value) = prefs.edit().putLong("correo_ultima_revision", value).apply()
+    var correoUltimoError: String?
+        get() = prefs.getString("correo_ultimo_error", null)
+        set(value) = prefs.edit().putString("correo_ultimo_error", value).apply()
+    var correoUltimoPago: String?
+        get() = prefs.getString("correo_ultimo_pago", null)
+        set(value) = prefs.edit().putString("correo_ultimo_pago", value).apply()
+
     fun limpiar() {
         // Al cerrar sesión se borra el emparejamiento, pero se conserva cómo quiere sonar este celular.
         val sonido = alertaSonido

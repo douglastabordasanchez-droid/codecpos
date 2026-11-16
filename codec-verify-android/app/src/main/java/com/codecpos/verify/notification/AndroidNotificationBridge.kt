@@ -185,4 +185,44 @@ class AndroidNotificationBridge(
         prefs.alertaNotificacion = notificacion
         prefs.alertaVoz = voz
     }
+
+    /**
+     * Conecta el correo del negocio (respaldo de las notificaciones, ver LectorCorreo).
+     * La clave de aplicación se guarda cifrada aquí y no vuelve a la web. Desde la versión 1.4.0.
+     */
+    @JavascriptInterface
+    fun configurarCorreo(correo: String, clave: String, servidor: String, remitentesExtra: String) {
+        val c = correo.trim().lowercase()
+        if (c.isBlank() || !c.contains('@')) return
+        prefs.correoUsuario = c
+        if (clave.isNotBlank()) prefs.correoClave = clave.replace(" ", "")
+        prefs.correoServidor = servidor.trim().ifBlank { LectorCorreo.servidorPara(c) }
+        prefs.correoRemitentesExtra = remitentesExtra.trim()
+        prefs.correoUltimoUid = 0L // se empieza desde los correos que lleguen ahora
+        prefs.correoUltimoError = null
+        prefs.correoUltimaRevision = 0L
+        prefs.correoActivo = true
+        mainHandler.post { GuardianEscuchaService.iniciar(context.applicationContext) }
+        LectorCorreo.revisarAhora(context)
+    }
+
+    @JavascriptInterface
+    fun desactivarCorreo() {
+        prefs.correoActivo = false
+        prefs.correoClave = null
+        prefs.correoUltimoError = null
+    }
+
+    /** Estado del correo para la web (sin la clave). */
+    @JavascriptInterface
+    fun estadoCorreo(): String = org.json.JSONObject().apply {
+        put("activo", prefs.correoActivo)
+        put("correo", prefs.correoUsuario ?: "")
+        put("servidor", prefs.correoServidor ?: "")
+        put("remitentesExtra", prefs.correoRemitentesExtra)
+        put("tieneClave", !prefs.correoClave.isNullOrBlank())
+        put("ultimaRevision", prefs.correoUltimaRevision)
+        put("ultimoError", prefs.correoUltimoError ?: "")
+        put("ultimoPago", prefs.correoUltimoPago ?: "")
+    }.toString()
 }

@@ -24,8 +24,8 @@ android {
         applicationId = "com.codecpos.verify"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.3.0"
+        versionCode = 14
+        versionName = "1.4.0"
 
         // 🔗 Mismo backend que ya usan Electron/PWA (src/app/lib/supabase/config.ts) —
         // URL + anon key son públicos por diseño (protegidos por RLS), no son secretos.
@@ -74,6 +74,7 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/{NOTICE.md,LICENSE.md,NOTICE,LICENSE}"
         }
     }
 }
@@ -98,6 +99,9 @@ dependencies {
     // Red: llamadas directas a PostgREST/Supabase Auth (sin SDK pesado — solo lo
     // que se necesita: POST JSON + headers apikey/Authorization).
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Lectura del correo del banco por IMAP (LectorCorreo): JavaMail para Android.
+    implementation("com.sun.mail:android-mail:1.6.7")
+    implementation("com.sun.mail:android-activation:1.6.7")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Almacenamiento local cifrado del webhook_token / config del negocio.

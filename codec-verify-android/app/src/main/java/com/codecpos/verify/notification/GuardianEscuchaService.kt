@@ -20,6 +20,13 @@ import androidx.core.app.NotificationCompat
 import com.codecpos.verify.R
 import com.codecpos.verify.data.Prefs
 import com.codecpos.verify.ui.MainActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * Guardián del lector de pagos.
@@ -74,12 +81,23 @@ class GuardianEscuchaService : Service() {
         }
         // La primera revisión espera un poco: al arrancar el lector tarda en conectarse.
         handler.postDelayed(revisar, 30_000)
+        // Respaldo: el correo del banco se revisa cada 45 segundos (si el negocio lo conectó).
+        correo = scope.launch {
+            while (isActive) {
+                try { LectorCorreo.revisar(applicationContext) } catch (_: Exception) { /* se reintenta */ }
+                delay(45_000)
+            }
+        }
     }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var correo: Job? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
         handler.removeCallbacks(revisar)
+        correo?.cancel()
         super.onDestroy()
     }
 
@@ -97,7 +115,8 @@ class GuardianEscuchaService : Service() {
         /** Arranca el guardián si la app ya está emparejada y tiene acceso a notificaciones. */
         fun iniciar(context: Context) {
             val emparejado = try { !Prefs(context).webhookToken.isNullOrBlank() } catch (e: Exception) { true }
-            if (!emparejado || !tienePermiso(context)) {
+            val conCorreo = try { Prefs(context).correoActivo } catch (e: Exception) { false }
+            if (!emparejado || !(tienePermiso(context) || conCorreo)) {
                 android.util.Log.i("CodecVerifyGuardian", "No arranca: emparejado=$emparejado permiso=${tienePermiso(context)}")
                 if (!emparejado) avisarSinSesion(context)
                 return

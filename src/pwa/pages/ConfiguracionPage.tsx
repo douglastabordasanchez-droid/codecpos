@@ -19,6 +19,7 @@ import { ConfigurarMiNegocio } from '../components/ConfigurarMiNegocio';
 import { SeccionPlegable } from '../components/SeccionPlegable';
 import { InterruptorInventarioUniversal } from '../components/InterruptorInventarioUniversal';
 import { UltimosAvisosCodecVerify } from '../components/UltimosAvisosCodecVerify';
+import { ConectarCorreoBanco } from '../components/ConectarCorreoBanco';
 import { UserCircle, Briefcase, BellRing, ShieldCheck as EscudoPagos, Calculator } from 'lucide-react';
 import { MiContador } from '../../app/components/contador/MiContador';
 
@@ -353,6 +354,7 @@ export default function ConfiguracionPage() {
               {form.webhook_token ? (
                 <div className="space-y-3">
                   <UltimosAvisosCodecVerify clienteId={empleado.cliente_id} />
+                  <ConectarCorreoBanco />
                   <ConectarIphone token={form.webhook_token} />
                   <div>
                     <Label className="text-slate-400 text-xs">Token del negocio</Label>

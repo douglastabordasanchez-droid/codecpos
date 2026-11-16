@@ -168,7 +168,7 @@ class PagoNotificationListenerService : NotificationListenerService() {
             // El mismo pago avisado por la app y por SMS: solo se registra una vez.
             val valor = ClasificadorAviso.valorEnPesos(textoFinal)
             if (valor != null && yaRegistradoPorOtraVia(valor, esSms)) {
-                anotar(entidad, paquete, textoFinal, clase, monto, "DUPLICADO", exitoso = false, error = "Ese pago ya se registró por ${if (esSms) "la app del banco" else "SMS"}")
+                anotar(entidad, paquete, textoFinal, clase, monto, "DUPLICADO", exitoso = false, error = "Ese pago ya se registró por otra vía (app, SMS o correo)")
                 return@launch
             }
 
@@ -215,21 +215,10 @@ class PagoNotificationListenerService : NotificationListenerService() {
         }
     }
 
-    /** Pagos registrados hace poco: valor, si llegó por SMS y cuándo (para no duplicar app + SMS). */
-    private val registrosRecientes = ArrayDeque<Triple<Long, Boolean, Long>>()
-
-    private fun yaRegistradoPorOtraVia(valor: Long, esSms: Boolean): Boolean = synchronized(registrosRecientes) {
-        val limite = System.currentTimeMillis() - 3 * 60_000
-        registrosRecientes.removeAll { it.third < limite }
-        val previo = registrosRecientes.firstOrNull { it.first == valor && it.second != esSms } ?: return false
-        registrosRecientes.remove(previo) // un SMS cubre un solo aviso de la app (dos pagos iguales seguidos sí cuentan)
-        true
-    }
-
-    private fun recordarRegistro(valor: Long, esSms: Boolean) = synchronized(registrosRecientes) {
-        registrosRecientes.addLast(Triple(valor, esSms, System.currentTimeMillis()))
-        while (registrosRecientes.size > 30) registrosRecientes.removeFirst()
-    }
+    // El mismo pago avisado por la app, el SMS o el correo cuenta una sola vez (ver PagosRecientes).
+    private fun via(esSms: Boolean) = if (esSms) PagosRecientes.Via.SMS else PagosRecientes.Via.APP
+    private fun yaRegistradoPorOtraVia(valor: Long, esSms: Boolean) = PagosRecientes.yaRegistradoPorOtraVia(valor, via(esSms))
+    private fun recordarRegistro(valor: Long, esSms: Boolean) = PagosRecientes.recordar(valor, via(esSms))
 
     /** Nombre visible de la app ("Lulo Bank"); si Android no lo deja ver, el paquete. */
     private fun nombreApp(paquete: String): String = try {
