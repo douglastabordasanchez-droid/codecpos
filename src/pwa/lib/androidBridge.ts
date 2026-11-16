@@ -85,6 +85,11 @@ export async function sincronizarSesionConAndroid(clienteId: string): Promise<vo
   } catch {
     /* la app nativa nunca debe romper la PWA si algo falla acá */
   }
+  // Un solo paso: el correo de las facturas electrónicas también alimenta a Codec Verify
+  // (lee ahí los avisos del banco). Solo con sesión de administrador; si no, no hace nada.
+  void import('../../app/lib/dian/correoFacturas')
+    .then((m) => m.conectarCodecVerifyConCorreoFacturas())
+    .catch(() => { /* no es administrador o no hay correo de facturas */ });
 }
 
 export function cerrarSesionAndroid(): void {

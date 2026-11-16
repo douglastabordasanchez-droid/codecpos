@@ -60,7 +60,14 @@ export function ConfiguracionCorreo({ soloLectura, onCambio }: Props) {
         servidor: form.servidor || undefined,
         puerto: Number(form.puerto) || 465,
       });
-      toast.success('Correo conectado', { description: 'Ya puedes enviar las facturas al cliente con un clic.' });
+      // El mismo correo alimenta a Codec Verify: si esto corre en su app, queda leyendo los avisos del banco.
+      const { conectarCodecVerifyConCorreoFacturas } = await import('../../lib/dian/correoFacturas');
+      const lector = await conectarCodecVerifyConCorreoFacturas({ forzar: true }).catch(() => 'no_aplica' as const);
+      toast.success('Correo conectado', {
+        description: lector === 'conectado'
+          ? 'Ya puedes enviar las facturas al cliente, y Codec Verify también lee en este correo los avisos del banco.'
+          : 'Ya puedes enviar las facturas al cliente con un clic. Codec Verify lo tomará solo al abrir su app con un administrador.',
+      });
       setAbierto(false);
       await cargar();
     } catch (e: any) {

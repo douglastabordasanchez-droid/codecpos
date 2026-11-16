@@ -44,6 +44,27 @@ export const guardarCorreoNegocio = (datos: { proveedor: string; usuario: string
   return invocar<{ ok: true }>({ accion: 'guardar', ...datos });
 };
 
+/**
+ * Codec Verify (app Android) lee los avisos del banco con el MISMO correo de las facturas:
+ * se le pasa el correo y la clave de aplicación para que no haya que configurarlo dos veces.
+ * Solo administradores; la clave se guarda cifrada en el celular (LectorCorreo.kt).
+ */
+export async function conectarCodecVerifyConCorreoFacturas(opciones: { forzar?: boolean } = {}): Promise<'conectado' | 'ya_conectado' | 'sin_correo' | 'no_aplica'> {
+  const puente = typeof window !== 'undefined' ? (window as any).AndroidCodecVerify : null;
+  if (!puente?.estadoCorreo || !puente?.configurarCorreo) return 'no_aplica';
+  let estado: { activo?: boolean; correo?: string; tieneClave?: boolean; ultimoError?: string } = {};
+  try { estado = JSON.parse(puente.estadoCorreo() || '{}'); } catch { /* sin estado */ }
+  const credencial = await invocar<{ configurado: boolean; usuario?: string; clave?: string; servidorImap?: string }>({ accion: 'lector_codec_verify' });
+  if (!credencial.configurado || !credencial.usuario || !credencial.clave) return 'sin_correo';
+  const mismaCuenta = estado.activo && estado.tieneClave && estado.correo === credencial.usuario;
+  // Si ya lee ese correo y la clave funciona, no se toca (conserva por dónde iba leyendo).
+  if (mismaCuenta && !opciones.forzar && !/clave|correctos/i.test(estado.ultimoError || '')) return 'ya_conectado';
+  // Si el celular lee OTRO correo que el negocio puso a mano, no se reemplaza solo.
+  if (estado.activo && estado.correo && estado.correo !== credencial.usuario && !opciones.forzar) return 'ya_conectado';
+  puente.configurarCorreo(credencial.usuario, credencial.clave, credencial.servidorImap || '', '');
+  return 'conectado';
+}
+
 export const eliminarCorreoNegocio = () => {
   correoConectado = null;
   return invocar<{ ok: true }>({ accion: 'eliminar' });

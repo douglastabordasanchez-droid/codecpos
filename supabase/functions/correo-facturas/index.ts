@@ -7,6 +7,10 @@
 //   · estado    cualquier sesión del negocio: si hay correo conectado y cuál.
 //   · guardar   administrador: prueba la conexión y guarda la clave cifrada.
 //   · eliminar  administrador: desconecta el correo.
+//   · lector_codec_verify  administrador, desde la app Codec Verify: entrega el
+//               mismo correo y clave para que el celular lea los avisos del
+//               banco (IMAP) sin configurarlo dos veces. La clave queda
+//               cifrada en ese celular.
 //   · enviar    cualquier sesión del negocio: manda la factura con sus
 //               adjuntos (ZIP para la DIAN y PDF) y la marca como enviada.
 //
@@ -150,6 +154,16 @@ Deno.serve(async (req: Request) => {
         });
         if (error) throw new ErrorHttp(error.message, 500);
         return json({ ok: true });
+      }
+
+      case 'lector_codec_verify': {
+        await exigirAdministrador();
+        const { data: config } = await admin.from('correo_envio_negocio').select('*').eq('cliente_id', clienteId).maybeSingle();
+        if (!config) return json({ configurado: false });
+        const clave = new TextDecoder().decode(await descifrar(config.clave_cifrada, LLAVE, contexto));
+        // El mismo servidor sirve para leer: smtp.gmail.com → imap.gmail.com.
+        const servidorImap = String(config.servidor || '').replace(/^smtp\./i, 'imap.');
+        return json({ configurado: true, usuario: config.usuario, clave, servidorImap });
       }
 
       case 'eliminar': {

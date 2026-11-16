@@ -6,8 +6,10 @@
  * adelante, LectorCorreo.kt) revisa cada 45 segundos los correos nuevos de
  * bancos y registra los pagos para desbloquear la venta que los espera.
  *
- * Se configura desde la app Codec Verify del celular: la clave de aplicación
- * queda cifrada en ese celular y nunca se guarda en la nube.
+ * Un solo paso: si el negocio ya conectó su correo para enviar las facturas
+ * electrónicas, Codec Verify toma ese mismo correo solo al abrir su app con un
+ * administrador (conectarCodecVerifyConCorreoFacturas). También se puede poner
+ * otro correo a mano.
  */
 import { useEffect, useState } from 'react';
 import { Mail, CheckCircle2, AlertTriangle, Loader2, ExternalLink } from 'lucide-react';
@@ -116,6 +118,21 @@ export function ConectarCorreoBanco() {
 
   const esGmail = /@(gmail|googlemail)\.com$/i.test(correo.trim());
 
+  // Un solo paso: tomar el correo que ya se configuró para enviar las facturas electrónicas.
+  const usarCorreoFacturas = async () => {
+    setProbando(true);
+    try {
+      const { conectarCodecVerifyConCorreoFacturas } = await import('../../app/lib/dian/correoFacturas');
+      const r = await conectarCodecVerifyConCorreoFacturas({ forzar: true });
+      if (r === 'sin_correo') { setProbando(false); toast.info('Todavía no hay correo de facturas', { description: 'Configúralo en Facturación › Correo, o escribe aquí el correo y la clave.' }); return; }
+      if (r !== 'conectado') setProbando(false);
+      setEstado(leerEstado());
+    } catch (e: any) {
+      setProbando(false);
+      toast.error('No se pudo usar el correo de facturas', { description: e?.message || 'Solo un administrador puede hacerlo.' });
+    }
+  };
+
   return (
     <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4 space-y-3">
       <div className="flex items-start gap-2">
@@ -144,6 +161,11 @@ export function ConectarCorreoBanco() {
         </div>
       ) : (
         <div className="space-y-3">
+          <button onClick={() => void usarCorreoFacturas()} disabled={probando}
+            className="w-full h-11 rounded-lg bg-emerald-600 !text-[#fff] text-sm font-bold disabled:opacity-60">
+            Usar el mismo correo de las facturas electrónicas
+          </button>
+          <p className="text-[11px] text-slate-500 text-center">o escribe otro correo:</p>
           <div>
             <Label className="text-slate-400 text-xs">Correo donde llegan los avisos del banco</Label>
             <Input type="email" inputMode="email" autoCapitalize="off" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="minegocio@gmail.com" className="mt-1.5 h-11" />
