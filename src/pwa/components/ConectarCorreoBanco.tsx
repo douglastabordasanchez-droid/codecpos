@@ -3,7 +3,7 @@
  *
  * Muchas veces la app del banco no muestra la notificación, pero el banco sí
  * manda el correo de «Recibiste una transferencia». La app Android (1.4.0 en
- * adelante, LectorCorreo.kt) revisa cada 45 segundos los correos nuevos de
+ * adelante, LectorCorreo.kt) queda conectada al correo y recibe al instante los correos de
  * bancos y registra los pagos para desbloquear la venta que los espera.
  *
  * Un solo paso: si el negocio ya conectó su correo para enviar las facturas
@@ -150,7 +150,7 @@ export function ConectarCorreoBanco() {
               {estado.ultimoError ? <AlertTriangle className="w-4 h-4 text-red-400" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
               <span className={estado.ultimoError ? 'text-red-300' : 'text-emerald-300'}>{estado.correo}</span>
             </div>
-            <p className="text-slate-400 mt-1">Última revisión: {haceCuanto(estado.ultimaRevision)} · cada 45 segundos</p>
+            <p className="text-slate-400 mt-1">Conectado: los correos del banco llegan al instante · última señal {haceCuanto(estado.ultimaRevision)}</p>
             {estado.ultimoPago && <p className="text-slate-300 mt-0.5">Último pago por correo: {estado.ultimoPago}</p>}
             {estado.ultimoError && <p className="text-red-300 mt-1">{estado.ultimoError}</p>}
           </div>

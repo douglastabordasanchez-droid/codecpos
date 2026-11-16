@@ -211,6 +211,7 @@ class AndroidNotificationBridge(
         prefs.correoActivo = false
         prefs.correoClave = null
         prefs.correoUltimoError = null
+        LectorCorreo.reiniciar()
     }
 
     /** Estado del correo para la web (sin la clave). */

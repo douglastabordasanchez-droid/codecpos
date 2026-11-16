@@ -14,6 +14,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Properties
 import javax.mail.AuthenticationFailedException
+import javax.mail.FolderClosedException
+import javax.mail.MessagingException
+import javax.mail.Store
+import javax.mail.StoreClosedException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import javax.mail.FetchProfile
 import javax.mail.Folder
 import javax.mail.Message
@@ -28,8 +35,8 @@ import javax.mail.internet.InternetAddress
  *
  * Muchas veces la app del banco no muestra la notificación (el celular la
  * duerme, el banco la manda tarde o nunca), pero el banco SÍ manda el correo
- * de «Recibiste una transferencia». Cada 45 segundos se revisan por IMAP los
- * correos NUEVOS de la bandeja de entrada (solo lectura: no se marcan como
+ * de «Recibiste una transferencia». La app queda conectada al correo (IMAP IDLE)
+ * y recibe cada correo NUEVO en el mismo segundo en que llega; los correos nuevos de la bandeja de entrada (solo lectura: no se marcan como
  * leídos ni se borran) y los de bancos que confirman dinero recibido se
  * registran como un pago, igual que una notificación, para desbloquear la venta
  * que lo espera.
@@ -99,18 +106,31 @@ object LectorCorreo {
         }
     }
 
-    /** Revisión inmediata (al guardar el correo o al abrir la app). */
-    fun revisarAhora(context: Context) {
-        scope.launch { revisar(context.applicationContext) }
+    @Volatile private var conexionActiva: Store? = null
+
+    /** Corta la conexión abierta (al cambiar o quitar el correo): el guardián reconecta con los datos nuevos. */
+    fun reiniciar() {
+        scope.launch { try { conexionActiva?.close() } catch (_: Exception) { /* ya estaba cerrada */ } }
     }
 
-    /** Revisa los correos nuevos. La llama el guardián cada 45 segundos. */
-    suspend fun revisar(context: Context) = candado.withLock {
-        val prefs = try { Prefs(context) } catch (_: Exception) { return@withLock }
+    /** Compatibilidad: al guardar el correo se reinicia la conexión para usarlo enseguida. */
+    fun revisarAhora(@Suppress("UNUSED_PARAMETER") context: Context) = reiniciar()
+
+    /**
+     * Conexión PERMANENTE con el correo (IMAP IDLE): el servidor avisa en el mismo
+     * segundo en que llega un correo, como lo ve el cajero en Gmail, y el pago se
+     * registra de inmediato. No espera a una revisión cada cierto tiempo.
+     *
+     * Devuelve cuando la conexión se cae (sin internet, cambio de wifi a datos, correo
+     * cambiado); el guardián la vuelve a abrir. Cada minuto se «despierta» la conexión
+     * para comprobar que sigue viva. Si el servidor no soporta IDLE, revisa cada 10 s.
+     */
+    suspend fun escuchar(context: Context) {
+        val prefs = try { Prefs(context) } catch (_: Exception) { return }
         val token = prefs.webhookToken
         val usuario = prefs.correoUsuario
         val clave = prefs.correoClave
-        if (!prefs.correoActivo || token.isNullOrBlank() || usuario.isNullOrBlank() || clave.isNullOrBlank()) return@withLock
+        if (!prefs.correoActivo || token.isNullOrBlank() || usuario.isNullOrBlank() || clave.isNullOrBlank()) return
         val servidor = prefs.correoServidor?.takeIf { it.isNotBlank() } ?: servidorPara(usuario)
 
         val props = Properties().apply {
@@ -120,30 +140,57 @@ object LectorCorreo {
             put("mail.imaps.ssl.enable", "true")
             put("mail.imaps.ssl.checkserveridentity", "true")
             put("mail.imaps.connectiontimeout", "15000")
-            put("mail.imaps.timeout", "20000")
+            // Más largo que el «despertador» de 60 s: una conexión muerta se detecta en menos de 2 minutos.
+            put("mail.imaps.timeout", "90000")
         }
+        var store: Store? = null
+        var despertador: Job? = null
         try {
-            val store = Session.getInstance(props).getStore("imaps")
+            store = Session.getInstance(props).getStore("imaps")
             store.connect(servidor, 993, usuario, clave.replace(" ", ""))
-            try {
-                val bandeja = store.getFolder("INBOX") as IMAPFolder
-                bandeja.open(Folder.READ_ONLY)
-                try {
-                    procesarBandeja(context, prefs, token, bandeja)
-                } finally {
-                    bandeja.close(false)
-                }
-            } finally {
-                store.close()
-            }
+            conexionActiva = store
+            val bandeja = store.getFolder("INBOX") as IMAPFolder
+            bandeja.open(Folder.READ_ONLY)
+            candado.withLock { procesarBandeja(context, prefs, token, bandeja) }
             prefs.correoUltimaRevision = System.currentTimeMillis()
             prefs.correoUltimoError = null
+
+            despertador = scope.launch {
+                while (isActive) {
+                    delay(60_000)
+                    // Un comando cualquiera interrumpe el IDLE; si la conexión murió, falla y se reconecta.
+                    try { bandeja.messageCount } catch (_: Exception) { try { store.close() } catch (_: Exception) { } }
+                }
+            }
+            var conIdle = true
+            while (store.isConnected && bandeja.isOpen && prefs.correoActivo) {
+                if (conIdle) {
+                    try {
+                        bandeja.idle(true) // espera aquí hasta que llegue un correo (o el despertador)
+                    } catch (e: MessagingException) {
+                        if (e.message?.contains("IDLE", ignoreCase = true) == true) conIdle = false else throw e
+                    }
+                } else {
+                    delay(10_000)
+                    bandeja.messageCount
+                }
+                candado.withLock { procesarBandeja(context, prefs, token, bandeja) }
+                prefs.correoUltimaRevision = System.currentTimeMillis()
+            }
         } catch (e: AuthenticationFailedException) {
             prefs.correoUltimoError = "El correo o la clave de aplicación no son correctos"
             Log.w(TAG, "Autenticación: ${e.message}")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            prefs.correoUltimoError = "No se pudo conectar al correo: ${e.message?.take(120) ?: e.javaClass.simpleName}"
-            Log.w(TAG, "Error: ${e.message}")
+            if (prefs.correoActivo && !(e is FolderClosedException || e is StoreClosedException)) {
+                prefs.correoUltimoError = "No se pudo conectar al correo: ${e.message?.take(120) ?: e.javaClass.simpleName}"
+            }
+            Log.w(TAG, "Conexión: ${e.javaClass.simpleName} ${e.message}")
+        } finally {
+            despertador?.cancel()
+            if (conexionActiva === store) conexionActiva = null
+            try { store?.close() } catch (_: Exception) { }
         }
     }
 
@@ -157,7 +204,6 @@ object LectorCorreo {
             return
         }
         val ultimo = prefs.correoUltimoUid
-        if (siguiente in 1..ultimo + 1) return // nada nuevo
 
         val mensajes = bandeja.getMessagesByUID(ultimo + 1, UIDFolder.LASTUID)
             .filter { bandeja.getUID(it) > ultimo }

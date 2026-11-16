@@ -81,11 +81,13 @@ class GuardianEscuchaService : Service() {
         }
         // La primera revisión espera un poco: al arrancar el lector tarda en conectarse.
         handler.postDelayed(revisar, 30_000)
-        // Respaldo: el correo del banco se revisa cada 45 segundos (si el negocio lo conectó).
+        // Respaldo: conexión permanente con el correo del banco (llega al instante, ver LectorCorreo).
+        // Si se cae, se vuelve a abrir enseguida; sin internet o sin correo configurado, cada 10 s.
         correo = scope.launch {
             while (isActive) {
-                try { LectorCorreo.revisar(applicationContext) } catch (_: Exception) { /* se reintenta */ }
-                delay(45_000)
+                val inicio = System.currentTimeMillis()
+                try { LectorCorreo.escuchar(applicationContext) } catch (_: Exception) { /* se reintenta */ }
+                delay(if (System.currentTimeMillis() - inicio < 30_000) 10_000 else 1_000)
             }
         }
     }
