@@ -1487,3 +1487,25 @@ export async function printCuentaPendiente(data: {
   }
   return printer.printLineReceipts([lineas], cfg.logoUrl || undefined);
 }
+
+/**
+ * Reporte en líneas (texto a la izquierda, valor a la derecha) por la
+ * impresora de tirillas, con el logo y el nombre del negocio arriba. Lo usa,
+ * por ejemplo, «Imprimir tirilla» del historial de Ventas.
+ */
+export async function printReporteLineas(
+  titulo: string,
+  lineas: Array<{ texto: string; valor?: string; negrita?: boolean; centro?: boolean; separador?: boolean }>,
+): Promise<boolean> {
+  const printer = createPrinter(resolveDefaultPrinterPort(), resolveTicketWidthFromConfig(80), resolvePrinterForSection('pos_tickets') || resolveFacturasPrinterName());
+  const cfg = readTirillaConfig();
+  const encabezado = [
+    { texto: cfg.nombreComercial || cfg.razonSocial || 'REPORTE', negrita: true, centro: true },
+    ...(cfg.nit ? [{ texto: `NIT ${cfg.nit}${cfg.digitoVerificacion ? `-${cfg.digitoVerificacion}` : ''}`, centro: true }] : []),
+    { separador: true, texto: '' },
+    { texto: titulo, negrita: true, centro: true },
+    { texto: new Date().toLocaleString('es-CO'), centro: true },
+    { separador: true, texto: '' },
+  ];
+  return printer.printLineReceipts([[...encabezado, ...lineas]], cfg.logoUrl || undefined);
+}

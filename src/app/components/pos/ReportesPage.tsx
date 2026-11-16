@@ -4,9 +4,10 @@ import {
   FileText, TrendingUp, Package, DollarSign, BarChart3, Trash2,
   AlertCircle, Clock, CheckCircle, FilePlus, Archive, Calendar,
   Wrench, TrendingDown, ShoppingCart, AlertTriangle, Search, Filter,
-  RefreshCw,
+  RefreshCw, Printer,
 } from 'lucide-react';
 import { esModuloActivoGlobal, ModuloPOS } from '../../lib/permissions';
+import { ReporteMeserosPropinas } from './ReporteMeserosPropinas';
 import { electronStore } from '../../lib/electronStore';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -457,6 +458,9 @@ export default function ReportesPage() {
         </div>
       </div>
 
+      {/* ── Meseros y propinas ── */}
+      <ReporteMeserosPropinas darkMode={darkMode} />
+
       {/* ── Mis reportes ── */}
       <div className={`p-5 rounded-3xl border-2 ${card}`}>
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
@@ -577,7 +581,16 @@ export default function ReportesPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         <Button
                           size="sm"
-                          className="rounded-xl font-bold bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow h-8"
+                          className="rounded-xl font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 !text-[#fff] shadow h-8"
+                          onClick={() => ejecutarTirilla(reporte)}
+                          title="Imprimir la tirilla de este reporte"
+                        >
+                          <Printer className="w-3.5 h-3.5 mr-1" />
+                          Tirilla
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="rounded-xl font-bold bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 !text-[#fff] shadow h-8"
                           onClick={() => setReporteParaExportar(reporte)}
                         >
                           <FileText className="w-3.5 h-3.5 mr-1" />

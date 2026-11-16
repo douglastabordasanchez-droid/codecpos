@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type ComponentPropsWithoutRef } from 'react';
+import { marcarCambioLocalMesa } from '../../lib/cambiosMesaLocal';
 import { useNavigate } from 'react-router';
 import {
   Coffee, Package2, BookOpen, Trash2, Plus, Save, Upload, Download, Armchair, Edit,
@@ -1052,6 +1053,10 @@ export default function PanaderiaOncesPage() {
   const cerrarModalMesa = () => { setMesaSeleccionada(null); setProductoMesaId(''); setCantidadMesa('1'); };
 
   const persistirCuentas = (map: Record<string, ItemMesa[]>, mesaTocada?: string) => {
+    // Mesas que cambiaron aquí: al recuperar de la nube no se pisan (cambiosMesaLocal.ts).
+    for (const mesaId of new Set([...Object.keys(map), ...Object.keys(cuentasMesas)])) {
+      if (JSON.stringify(map[mesaId] || []) !== JSON.stringify(cuentasMesas[mesaId] || [])) marcarCambioLocalMesa(mesaId);
+    }
     setCuentasMesas(map);
     localStorage.setItem(STORAGE_CUENTAS_MESAS, JSON.stringify(map));
 
@@ -2113,12 +2118,16 @@ export default function PanaderiaOncesPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pb-2">
                 {mesasVisibles.map((m) => (
                   <button key={m.id} type="button" onClick={() => abrirModalMesa(m)}
-                    className={`relative rounded-2xl border-2 p-3 flex flex-col items-center justify-center gap-1.5 text-center transition-all shadow-sm hover:-translate-y-0.5 ${m.activa ? (darkMode ? 'border-emerald-500/50 bg-emerald-900/20' : 'border-emerald-200 bg-emerald-50') : (darkMode ? 'border-slate-600 bg-slate-800/70' : 'border-slate-200 bg-slate-100')}`}
+                    className={`relative rounded-2xl border-2 p-3 flex flex-col items-center justify-center gap-1.5 text-center transition-all shadow-sm hover:-translate-y-0.5 ${
+                      // Mesa ocupada (con cuenta abierta) en rojo; libre, verde como siempre.
+                      totalMesa(m.id) > 0
+                        ? (darkMode ? 'border-red-500/70 bg-red-900/25' : 'border-red-300 bg-red-50')
+                        : m.activa ? (darkMode ? 'border-emerald-500/50 bg-emerald-900/20' : 'border-emerald-200 bg-emerald-50') : (darkMode ? 'border-slate-600 bg-slate-800/70' : 'border-slate-200 bg-slate-100')}`}
                   >
-                    <Armchair className={`w-9 h-9 ${m.activa ? 'text-emerald-500' : darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
+                    <Armchair className={`w-9 h-9 ${totalMesa(m.id) > 0 ? 'text-red-500' : m.activa ? 'text-emerald-500' : darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
                     <span className="text-sm font-black leading-tight">{m.nombre}</span>
                     {totalMesa(m.id) > 0 && (
-                      <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">${totalMesa(m.id).toLocaleString('es-CO')}</span>
+                      <span className="text-xs font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">${totalMesa(m.id).toLocaleString('es-CO')}</span>
                     )}
                     {cuentasImpresas[m.id] && totalMesa(m.id) > 0 && (
                       <span className={`absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full text-[#fff] shadow ${cuentasImpresas[m.id].total === totalMesa(m.id) ? 'bg-amber-500' : 'bg-red-500'}`}>

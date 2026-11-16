@@ -609,8 +609,19 @@ class IndexedDBManager {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([STORES.PRODUCTOS], 'readwrite');
       const store = transaction.objectStore(STORES.PRODUCTOS);
+      // Inventario por sede (0153): sin «Inventario universal», el producto nuevo pertenece a la
+      // sede activa de esta caja (la principal se guarda vacía).
+      let sedeDuena = producto.sedeDuena;
+      if (sedeDuena === undefined) {
+        try {
+          const universal = localStorage.getItem('codecpos_inventario_universal') === 'true';
+          const sede = localStorage.getItem('multitienda_activa_id');
+          sedeDuena = !universal && sede && sede !== 'tienda_principal' ? sede : null;
+        } catch { sedeDuena = null; }
+      }
       const request = store.add({
         ...producto,
+        sedeDuena,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         syncStatus: 'pending'

@@ -751,7 +751,7 @@ export function UsuariosPage() {
                 Retención de actividad del personal
               </p>
               <p className={`text-xs mt-0.5 ${dm ? 'text-amber-200/90' : 'text-amber-700'}`}>
-                Se conservan detalles por {employeeActivityRetentionPolicy.visibleDays} días. Del día 31 al 35 aplica una ventana de gracia de 5 días antes de la depuración automática.
+                Se conservan los turnos de caja de los últimos 6 meses ({employeeActivityRetentionPolicy.visibleDays} días) en este equipo, y 5 días más de gracia antes de borrarlos. Las ventas y los cierres quedan además en la nube.
               </p>
             </div>
           </div>

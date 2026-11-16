@@ -20,6 +20,10 @@ export interface EmployeeActivityLog {
 }
 
 const LS_ACTIVITY = 'pos-personal-activity-logs';
+// Un turno ocupa ~400 bytes: un año entero es menos de medio megabyte. Se guardan 6 meses
+// (antes 30 días) y 5 días de gracia antes de borrar (2026-11-16).
+const DIAS_VISIBLES = 180;
+const DIAS_BORRADO = DIAS_VISIBLES + 5;
 const LS_PURGE_NOTICE_DAY = 'pos-personal-activity-purge-notice-day';
 
 const getFechaLocalISO = (date: Date = new Date()): string => {
@@ -62,11 +66,11 @@ class EmployeeActivityLogService {
 
     for (const log of logs) {
       const age = diffDays(log.fecha, todayISO);
-      if (age >= 35) {
+      if (age >= DIAS_BORRADO) {
         removed += 1;
         continue;
       }
-      if (age === 34) day34Pending += 1;
+      if (age === DIAS_BORRADO - 1) day34Pending += 1;
       kept.push(log);
     }
 
@@ -183,6 +187,6 @@ class EmployeeActivityLogService {
 
 export const employeeActivityLogService = new EmployeeActivityLogService();
 export const employeeActivityRetentionPolicy = {
-  visibleDays: 30,
-  purgeDays: 35,
+  visibleDays: DIAS_VISIBLES,
+  purgeDays: DIAS_BORRADO,
 };

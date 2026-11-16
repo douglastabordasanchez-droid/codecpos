@@ -192,8 +192,26 @@ export const generarFacturaPDF = async (venta: Venta, configEntrada: ConfigEmpre
   const DER = W - 14;
   const electronica = !!venta.cufe;
 
+  // El logo del equipo, y si no hay o no carga, el del negocio en la nube (empresa-logos):
+  // así la factura siempre sale con logo y marca de agua aunque este equipo no lo tenga guardado.
+  const logoConRespaldo = async () => {
+    const local = await cargarImagen(config.logoUrl).catch(() => null);
+    if (local) return local;
+    try {
+      const [{ getLinkedClienteId }, { empresaEnLaNube }] = await Promise.all([
+        import('./supabase/tenantLink'),
+        import('./dian/representacionGrafica'),
+      ]);
+      const clienteId = getLinkedClienteId() || (() => { try { return localStorage.getItem('codecpos_ultimo_negocio_login'); } catch { return null; } })();
+      if (!clienteId) return null;
+      const nube = await empresaEnLaNube(clienteId);
+      return nube.logoUrl ? await cargarImagen(nube.logoUrl).catch(() => null) : null;
+    } catch {
+      return null;
+    }
+  };
   const [logo, qr] = await Promise.all([
-    cargarImagen(config.logoUrl),
+    logoConRespaldo(),
     QRCode.toDataURL(
       venta.qrUrl || [
         `${electronica ? 'Factura electrónica' : 'Factura de venta'} ${venta.numeroFactura}`,

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
+import { marcarCambioLocalMesa } from '../../lib/cambiosMesaLocal';
 import { productoEnSede, inventarioUniversalGuardado } from '../../lib/inventarioSede';
 import { getTiendaActivaId } from '../../lib/multitiendaService';
 import { billetesSugeridos } from '../../lib/billetesSugeridos';
@@ -874,6 +875,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         const cuentas = JSON.parse(localStorage.getItem('codecpos_mesas_cuentas') || '{}');
         delete cuentas[origen];
         localStorage.setItem('codecpos_mesas_cuentas', JSON.stringify(cuentas));
+        marcarCambioLocalMesa(origen);
         try {
           const meseros = JSON.parse(localStorage.getItem('codecpos_mesas_mesero') || '{}');
           delete meseros[origen];

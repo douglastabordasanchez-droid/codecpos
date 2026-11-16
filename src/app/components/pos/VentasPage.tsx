@@ -206,6 +206,43 @@ export default function VentasPage() {
     setPaginaActual(1);
   }, [filtroFecha, searchTerm, ordenVentas, fechaInicioPersonalizada, fechaFinPersonalizada]);
 
+  // 🧾 Tirilla del reporte de ventas filtradas: totales por método y el detalle de cada venta.
+  const imprimirTirillaVentas = async () => {
+    const dinero = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+    const porMetodo = new Map<string, number>();
+    let total = 0;
+    let propinas = 0;
+    for (const v of ventasFiltradas as any[]) {
+      const t = Number(v.total) || 0;
+      total += t;
+      propinas += Number(v.propina) || 0;
+      const m = String(v.metodoPago || 'otro').toUpperCase();
+      porMetodo.set(m, (porMetodo.get(m) || 0) + t);
+    }
+    const lineas: Array<{ texto: string; valor?: string; negrita?: boolean; centro?: boolean; separador?: boolean }> = [
+      { texto: `Filtro: ${filtroFecha}` },
+      { texto: 'Ventas', valor: String(ventasFiltradas.length) },
+      { texto: 'TOTAL', valor: dinero(total), negrita: true },
+      ...(propinas > 0 ? [{ texto: 'Propinas incluidas', valor: dinero(propinas) }] : []),
+      { separador: true, texto: '' },
+      { texto: 'Por método de pago', negrita: true },
+      ...[...porMetodo.entries()].map(([m, t]) => ({ texto: m, valor: dinero(t) })),
+      { separador: true, texto: '' },
+      { texto: 'Detalle', negrita: true },
+      ...(ventasFiltradas as any[]).map((v) => ({
+        texto: `${v.numeroFactura || v.id} ${new Date(v.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`,
+        valor: dinero(Number(v.total) || 0),
+      })),
+    ];
+    try {
+      const { printReporteLineas } = await import('../../lib/thermalPrinter');
+      const ok = await printReporteLineas('REPORTE DE VENTAS', lineas);
+      if (ok) toast.success('Tirilla enviada a imprimir'); else toast.error('No se pudo imprimir. Revisa la impresora.');
+    } catch {
+      toast.error('No se pudo imprimir la tirilla');
+    }
+  };
+
   const totalPaginas = Math.max(1, Math.ceil(ventasFiltradas.length / VENTAS_POR_PAGINA));
   const ventasPaginadas = useMemo(
     () => ventasFiltradas.slice((paginaActual - 1) * VENTAS_POR_PAGINA, paginaActual * VENTAS_POR_PAGINA),
@@ -889,8 +926,16 @@ export default function VentasPage() {
               
               <div className="space-y-2">
                 <Button
+                  onClick={() => void imprimirTirillaVentas()}
+                  disabled={ventasFiltradas.length === 0}
+                  className="w-full bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 !text-[#fff] font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Printer className="w-5 h-5 mr-2" />
+                  Imprimir tirilla
+                </Button>
+                <Button
                   onClick={exportarPDF}
-                  className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 !text-[#fff] font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={ventasFiltradas.length === 0}
                 >
                   <FileText className="w-5 h-5 mr-2" />
@@ -900,7 +945,7 @@ export default function VentasPage() {
                 <PremiumButton
                   feature="reportes_avanzados"
                   onClick={exportarExcel}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 !text-[#fff] font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={ventasFiltradas.length === 0}
                 >
                   <FileSpreadsheet className="w-5 h-5 mr-2" />
@@ -909,7 +954,7 @@ export default function VentasPage() {
                 
                 <Button
                   onClick={exportarCSV}
-                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 !text-[#fff] font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={ventasFiltradas.length === 0}
                 >
                   <Download className="w-5 h-5 mr-2" />

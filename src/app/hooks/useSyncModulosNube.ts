@@ -27,8 +27,11 @@ import {
 import {
   suscribirCuentasMesa,
   esEcoPropioDeMesa,
+  obtenerCuentasMesa,
+  guardarCuentaMesa,
   type CuentaMesa,
 } from '../lib/supabase/panaderiaSyncService';
+import { cambioLocalDeMesa } from '../lib/cambiosMesaLocal';
 import type { OrdenServicio } from '../types/taller';
 import { esModuloActivoGlobal, ModuloPOS } from '../lib/permissions';
 
@@ -58,12 +61,16 @@ export function useSyncModulosNube() {
     // mismo comportamiento de siempre.
     const tallerActivo = esModuloActivoGlobal(ModuloPOS.TALLER_REPARACIONES);
     const panaderiaActivo = esModuloActivoGlobal(ModuloPOS.PANADERIA_ONCES);
+    // Inventario por sede (0153): la caja sabe si el negocio comparte catálogo entre sedes.
+    void import('../lib/inventarioSede').then(({ obtenerInventarioUniversal }) => obtenerInventarioUniversal(clienteId)).catch(() => {});
     if (!tallerActivo && !panaderiaActivo) return;
 
     let cancelado = false;
     let intervaloTaller: ReturnType<typeof window.setInterval> | null = null;
     let desuscribirTaller: (() => void) | null = null;
     let desuscribirCuentas: (() => void) | null = null;
+    let intervaloCuentas: ReturnType<typeof window.setInterval> | null = null;
+    let alVolverInternet: (() => void) | null = null;
 
     // ── Taller: aplicar una orden que llegó de otra caja o del celular ───────
     const aplicarOrden = async (orden: OrdenServicio) => {
@@ -121,13 +128,7 @@ export function useSyncModulosNube() {
 
     // ── Panadería: cuenta de mesa enviada por un mesero U OTRA CAJA ──────────
     if (panaderiaActivo) {
-      desuscribirCuentas = suscribirCuentasMesa(clienteId, (cuenta: CuentaMesa) => {
-        if (cancelado) return;
-        // Ignorar el reflejo del propio guardado — antes se ignoraba TODO lo
-        // que no viniera marcado 'pwa', lo que también bloqueaba enterarse de
-        // cambios hechos desde otra caja Electron.
-        if (esEcoPropioDeMesa(cuenta.mesaLocalId)) return;
-
+      const aplicarCuenta = (cuenta: CuentaMesa, avisar = true) => {
         try {
           const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS);
           const mapa: Record<string, unknown[]> = raw ? JSON.parse(raw) : {};
@@ -146,7 +147,7 @@ export function useSyncModulosNube() {
             detail: { mesaId: cuenta.mesaLocalId, items: cuenta.items },
           }));
 
-          if (cuenta.items.length > 0) {
+          if (avisar && cuenta.items.length > 0) {
             toast.success(`Comanda recibida — Mesa ${cuenta.mesaLocalId}`, {
               description: `${cuenta.items.length} ítem(s) · $${Math.round(cuenta.total).toLocaleString('es-CO')}`
                 + (cuenta.meseroNombre ? ` · ${cuenta.meseroNombre}` : ''),
@@ -156,7 +157,58 @@ export function useSyncModulosNube() {
         } catch (e) {
           console.warn('[SyncNube] No se pudo aplicar la comanda recibida:', e);
         }
+      };
+
+      desuscribirCuentas = suscribirCuentasMesa(clienteId, (cuenta: CuentaMesa) => {
+        if (cancelado) return;
+        // Ignorar el reflejo del propio guardado — antes se ignoraba TODO lo
+        // que no viniera marcado 'pwa', lo que también bloqueaba enterarse de
+        // cambios hechos desde otra caja Electron.
+        if (esEcoPropioDeMesa(cuenta.mesaLocalId)) return;
+        aplicarCuenta(cuenta);
       }, tiendaActivaId);
+
+      // 🛡️ Red de seguridad: el aviso en vivo se pierde si la caja no tenía internet en
+      // ese momento (pedidos de los celulares que nunca llegaron al punto de venta, Tierra
+      // Colombiana 2026-11-16). Al abrir, al volver internet y cada minuto se compara con
+      // la nube: se trae la cuenta que en la nube sea más nueva que el último cambio hecho
+      // en esta caja (lo que la caja cambió sin internet no se pisa).
+      const pullCuentas = async () => {
+        if (cancelado || !navigator.onLine) return;
+        try {
+          const nube = await obtenerCuentasMesa(clienteId, tiendaActivaId ?? undefined);
+          const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS);
+          const mapa: Record<string, unknown[]> = raw ? JSON.parse(raw) : {};
+          let traidas = 0;
+          for (const cuenta of nube) {
+            const local = mapa[cuenta.mesaLocalId] || [];
+            if (JSON.stringify(local) === JSON.stringify(cuenta.items)) continue;
+            const enNube = Date.parse(cuenta.updatedAt) || 0;
+            if (enNube <= cambioLocalDeMesa(cuenta.mesaLocalId)) {
+              // La caja la cambió después (por ejemplo, sin internet): se sube su versión.
+              let mesero: string | undefined;
+              let tienda: string | null = null;
+              try { mesero = JSON.parse(localStorage.getItem('codecpos_mesas_mesero') || '{}')[cuenta.mesaLocalId] || undefined; } catch { /* ignorar */ }
+              try { tienda = (JSON.parse(localStorage.getItem('codecpos_mesas_config') || '[]') as any[]).find((m) => m.id === cuenta.mesaLocalId)?.tiendaId || null; } catch { /* ignorar */ }
+              const items = (local as any[]).map((it) => ({
+                producto: { id: it.producto?.id, nombre: it.producto?.nombre, precio: Number(it.producto?.precio) || 0, codigo: it.producto?.codigo },
+                cantidad: Number(it.cantidad) || 0,
+              }));
+              void guardarCuentaMesa(clienteId, cuenta.mesaLocalId, items as any, 'electron', mesero, tienda).catch(() => {});
+              continue;
+            }
+            aplicarCuenta(cuenta, false);
+            if (cuenta.items.length > 0) traidas++;
+          }
+          if (traidas > 0) toast.info(`Se recuperaron ${traidas} pedido(s) de mesa que llegaron mientras no había internet`);
+        } catch (e) {
+          console.warn('[SyncNube] No se pudieron revisar las cuentas de mesa:', e);
+        }
+      };
+      void pullCuentas();
+      intervaloCuentas = window.setInterval(() => void pullCuentas(), 60_000);
+      alVolverInternet = () => { window.setTimeout(() => void pullCuentas(), 1500); };
+      window.addEventListener('online', alVolverInternet);
     }
 
     return () => {
@@ -164,6 +216,8 @@ export function useSyncModulosNube() {
       if (intervaloTaller !== null) window.clearInterval(intervaloTaller);
       desuscribirTaller?.();
       desuscribirCuentas?.();
+      if (intervaloCuentas !== null) window.clearInterval(intervaloCuentas);
+      if (alVolverInternet) window.removeEventListener('online', alVolverInternet);
     };
   }, [usuarioActual?.nombreCompleto, tiendaActivaId]);
 }
