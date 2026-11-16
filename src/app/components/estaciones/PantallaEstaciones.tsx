@@ -104,6 +104,12 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
   const [alerta, setAlerta] = useState<Comanda | null>(null);
   const [, setReloj] = useState(0);
 
+  // Mientras esta pantalla está abierta, el equipo no muestra pagos de Codec Verify.
+  useEffect(() => {
+    (window as any).__codecPantallaEstacion = true;
+    return () => { (window as any).__codecPantallaEstacion = false; };
+  }, []);
+
   const cambiarPrefs = (p: Partial<PreferenciasTablet>) => {
     setPrefs((prev) => { const s = { ...prev, ...p }; guardarPreferenciasTablet(s); return s; });
   };

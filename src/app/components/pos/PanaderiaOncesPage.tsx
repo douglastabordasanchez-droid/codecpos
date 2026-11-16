@@ -1060,6 +1060,54 @@ export default function PanaderiaOncesPage() {
     window.dispatchEvent(new Event('codecpos:inventario-actualizado'));
   };
 
+  // ✋ Mantener presionado (medio segundo) una categoría o un producto abre el menú
+  // Editar / Eliminar. Solo administradores; el toque normal sigue funcionando igual.
+  type ObjetivoMenu = { tipo: 'categoria' | 'producto'; id: string; nombre: string };
+  const [menuAcciones, setMenuAcciones] = useState<ObjetivoMenu | null>(null);
+  const temporizadorPresion = useRef<number | null>(null);
+  const presionDisparada = useRef(false);
+  const inicioPresion = useRef<{ x: number; y: number } | null>(null);
+  const cancelarPresion = () => {
+    if (temporizadorPresion.current) { window.clearTimeout(temporizadorPresion.current); temporizadorPresion.current = null; }
+  };
+  const fuePresionLarga = () => {
+    if (presionDisparada.current) { presionDisparada.current = false; return true; }
+    return false;
+  };
+  const presionLarga = (objetivo: ObjetivoMenu) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      presionDisparada.current = false;
+      if (!puedeAdministrarPanaderia) return;
+      inicioPresion.current = { x: e.clientX, y: e.clientY };
+      cancelarPresion();
+      temporizadorPresion.current = window.setTimeout(() => {
+        presionDisparada.current = true;
+        try { navigator.vibrate?.(30); } catch { /* sin vibración */ }
+        setMenuAcciones(objetivo);
+      }, 550);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      // Si el dedo se desliza (para hacer scroll), no es una presión larga.
+      const ini = inicioPresion.current;
+      if (ini && Math.hypot(e.clientX - ini.x, e.clientY - ini.y) > 12) cancelarPresion();
+    },
+    onPointerUp: cancelarPresion,
+    onPointerLeave: cancelarPresion,
+    onPointerCancel: cancelarPresion,
+  });
+  const editarDesdeMenu = () => {
+    const m = menuAcciones; setMenuAcciones(null);
+    if (!m) return;
+    if (m.tipo === 'categoria') { const c = categoriasPos.find((x) => x.id === m.id); if (c) abrirEdicionCategoria(c); }
+    else { const p = productosPos.find((x) => x.id === m.id); if (p) abrirEdicionProducto(p); }
+  };
+  const eliminarDesdeMenu = () => {
+    const m = menuAcciones; setMenuAcciones(null);
+    if (!m) return;
+    if (m.tipo === 'categoria') void confirmarEliminarCategoria(m.id);
+    else void confirmarEliminarProducto(m.id);
+  };
+
   const abrirEdicionCategoria = (categoria: CategoriaPos) => {
     if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
     setCategoriaEditando(categoria); setNuevaCat({ nombre: categoria.nombre, icono: categoria.icono, color: categoria.color }); setShowCategoriaForm(true);
@@ -1618,7 +1666,7 @@ export default function PanaderiaOncesPage() {
                   {categoriasPos.map((cat, index) => {
                     const light = isColorLight(cat.color);
                     return (
-                      <div key={cat.id} role="button" tabIndex={0} onClick={() => setCatSeleccionada(cat.id)}
+                      <div key={cat.id} role="button" tabIndex={0} {...presionLarga({ tipo: 'categoria', id: cat.id, nombre: cat.nombre })} onClick={() => { if (fuePresionLarga()) return; setCatSeleccionada(cat.id); }} onContextMenu={(e) => e.preventDefault()}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
                           if (event.key === 'Enter' || event.key === ' ') {
@@ -1637,14 +1685,6 @@ export default function PanaderiaOncesPage() {
                           <span className={light ? 'text-slate-900' : 'text-white'}>{renderIcon(cat.icono, 'w-5 h-5')}</span>
                         </span>
                         <span className={`truncate ${light ? 'text-slate-900' : 'text-white'}`}>{cat.nombre}</span>
-                        {/* Editar y eliminar: visibles en la categoría seleccionada (en pantalla
-                            táctil no hay mouse para el hover); solo administradores. */}
-                        {puedeAdministrarPanaderia && (
-                          <div className={`absolute -right-1 -top-2 items-center gap-1 ${catSeleccionada === cat.id ? 'flex' : 'hidden group-hover:flex'}`}>
-                            <button type="button" draggable={false} aria-label="Editar categoría" onClick={(e) => { e.stopPropagation(); abrirEdicionCategoria(cat); }} className="w-8 h-8 rounded-full bg-slate-900/80 text-[#fff] flex items-center justify-center shadow-lg active:scale-90"><Edit className="w-4 h-4" /></button>
-                            <button type="button" draggable={false} aria-label="Eliminar categoría" onClick={(e) => { e.stopPropagation(); void confirmarEliminarCategoria(cat.id); }} className="w-8 h-8 rounded-full bg-red-600 text-[#fff] flex items-center justify-center shadow-lg active:scale-90"><Trash2 className="w-4 h-4" /></button>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -1715,7 +1755,7 @@ export default function PanaderiaOncesPage() {
                     {productosCategoriaActual.map((prod, index) => {
                       const light = isColorLight(prod.color);
                       return (
-                        <div key={prod.id} role="button" tabIndex={0} onClick={() => toqueRapidoProducto(prod)}
+                        <div key={prod.id} role="button" tabIndex={0} {...presionLarga({ tipo: 'producto', id: prod.id, nombre: prod.nombre })} onClick={() => { if (fuePresionLarga()) return; toqueRapidoProducto(prod); }} onContextMenu={(e) => e.preventDefault()}
                           onKeyDown={(event) => {
                             if (event.target !== event.currentTarget) return;
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -1735,12 +1775,6 @@ export default function PanaderiaOncesPage() {
                           </div>
                           <div className={`text-sm font-black leading-tight ${light ? 'text-slate-900' : 'text-white'}`}>{prod.nombre}</div>
                           <div className={`text-sm font-semibold ${light ? 'text-amber-700' : 'text-white/90'}`}>${prod.precio.toLocaleString('es-CO')}</div>
-                          {puedeAdministrarPanaderia && (
-                            <div className="absolute right-2 top-2 flex gap-1.5">
-                              <button type="button" draggable={false} aria-label="Editar producto" onClick={(e) => { e.stopPropagation(); abrirEdicionProducto(prod); }} className="w-8 h-8 rounded-full bg-slate-900/60 text-[#fff] flex items-center justify-center active:scale-90"><Edit className="w-4 h-4" /></button>
-                              <button type="button" draggable={false} aria-label="Eliminar producto" onClick={(e) => { e.stopPropagation(); void confirmarEliminarProducto(prod.id); }} className="w-8 h-8 rounded-full bg-red-600/90 text-[#fff] flex items-center justify-center active:scale-90"><Trash2 className="w-4 h-4" /></button>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -2261,6 +2295,24 @@ export default function PanaderiaOncesPage() {
             tienda={tiendaActivaId}
             onSalir={() => setPantallaEstacionAbierta(false)}
           />
+        </div>,
+        document.body,
+      )}
+      {menuAcciones && createPortal(
+        <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setMenuAcciones(null)}>
+          <div className={`w-full max-w-sm rounded-3xl p-4 space-y-2 shadow-2xl ${darkMode ? 'bg-slate-900 text-white border border-slate-700' : 'bg-white text-slate-900'}`} onClick={(e) => e.stopPropagation()}>
+            <p className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{menuAcciones.tipo === 'categoria' ? 'Categoría' : 'Producto'}</p>
+            <p className="text-xl font-black truncate pb-1">{menuAcciones.nombre}</p>
+            <button onClick={editarDesdeMenu} className="w-full h-14 rounded-2xl bg-sky-600 text-[#fff] text-lg font-black flex items-center justify-center gap-2 active:scale-[0.98]">
+              <Edit className="w-5 h-5" />Editar
+            </button>
+            <button onClick={eliminarDesdeMenu} className="w-full h-14 rounded-2xl bg-red-600 text-[#fff] text-lg font-black flex items-center justify-center gap-2 active:scale-[0.98]">
+              <Trash2 className="w-5 h-5" />Eliminar
+            </button>
+            <button onClick={() => setMenuAcciones(null)} className={`w-full h-12 rounded-2xl text-base font-bold ${darkMode ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'}`}>
+              Cancelar
+            </button>
+          </div>
         </div>,
         document.body,
       )}

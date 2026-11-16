@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { suscribirNotificacionesPagoPwa, type NotificacionPagoRow } from '../lib/codecVerifyPwa';
-import { abrirPopupPago } from '../components/PopupPagoRecibido';
+import { abrirPopupPago, esPantallaDeEstacion } from '../components/PopupPagoRecibido';
 import { esperandoMonto } from '../components/EsperandoPagoModal';
 import { desactivarPush, refrescarPush } from '../lib/pushPagos';
 import {
@@ -20,6 +20,10 @@ export async function avisarPago(row: NotificacionPagoRow, ejemplo = false) {
   // El mismo pago puede llegar por tiempo real y por push: se muestra una sola vez.
   if (pagosMostrados.has(row.id)) return;
   pagosMostrados.add(row.id);
+  // Con el sonido de pagos apagado en este equipo (o en una pantalla de estación) no
+  // aparece nada: ni ventana, ni notificación, ni voz. Así solo la caja atiende los pagos.
+  const enSilencio = (() => { const p = obtenerAlertasPago(); return !p.sonido && !p.voz; })();
+  if (!ejemplo && (enSilencio || esPantallaDeEstacion())) return;
   // Si Vender está esperando justo ese monto, su propia ventana lo muestra: aquí solo suena.
   if (ejemplo || esperandoMonto() !== Math.round(Number(row.monto))) abrirPopupPago(row, ejemplo);
   const { sono } = await alertarPago(row);

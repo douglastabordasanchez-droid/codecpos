@@ -20,6 +20,14 @@ export interface DetallePagoPopup {
   recibidoEn: number;
 }
 
+/**
+ * Pantallas de cocina, greca, bar…: nunca muestran pagos (solo la caja los atiende).
+ * PantallaEstaciones lo enciende mientras está abierta.
+ */
+export function esPantallaDeEstacion(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).__codecPantallaEstacion;
+}
+
 export function abrirPopupPago(row: NotificacionPagoRow, ejemplo = false) {
   window.dispatchEvent(new CustomEvent<DetallePagoPopup>(EVENTO_PAGO_RECIBIDO, { detail: { row, ejemplo, recibidoEn: Date.now() } }));
 }
@@ -63,6 +71,9 @@ export function PopupPagoRecibido({ rutaPagos = '/pagos', silencio = SILENCIO_WE
   useEffect(() => {
     const alRecibir = (e: Event) => {
       const detalle = (e as CustomEvent<DetallePagoPopup>).detail;
+      // Equipo en silencio (cajero o mesero que apagó el sonido de pagos) o pantalla de
+      // estación: no se muestra nada. El ejemplo de Configuración sí se ve siempre.
+      if (!detalle.ejemplo && (silencio.estaSilenciado() || esPantallaDeEstacion())) return;
       setExtra((n) => (abierto.current ? n + 1 : 0));
       abierto.current = true;
       setActual(detalle);

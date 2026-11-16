@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { isVozActiva } from '../../lib/voz';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckCircle2,
@@ -18,7 +19,7 @@ import {
 } from '../../lib/supabase/codecVerifyService';
 import { isLinked } from '../../lib/supabase/tenantLink';
 import { anunciarPagoRecibido, nombreMedioPago } from '../../lib/voz';
-import { abrirPopupPago } from '../../../pwa/components/PopupPagoRecibido';
+import { abrirPopupPago, esPantallaDeEstacion } from '../../../pwa/components/PopupPagoRecibido';
 import { esperandoMonto } from '../../lib/codecVerifyEspera';
 
 export interface PagoEntrante {
@@ -196,9 +197,13 @@ export function useCodecVerify() {
       timestamp: new Date().toLocaleTimeString('es-CO'),
     };
 
+    // 🔕 Este equipo en silencio o pantalla de estación: el pago no se anuncia ni se
+    // muestra aquí (sí se avisa a una venta que lo esté esperando, más abajo).
+    const callado = !isVozActiva() || esPantallaDeEstacion();
+
     // 🔊 Anuncio de voz: se dice en voz alta apenas llega la confirmación de
     // pago al celular vinculado, sin importar si es manual o automático.
-    anunciarPagoRecibido(pago.monto, pago.banco);
+    if (!callado) anunciarPagoRecibido(pago.monto, pago.banco);
 
     // 🔗 Puente para consumidores existentes (p. ej. NequiVerifyModal en el
     // checkout), que ya escuchaban este evento esperando una infraestructura
@@ -208,6 +213,8 @@ export function useCodecVerify() {
         detail: { monto: pago.monto, banco: pago.banco, remitente: pago.remitente, referencia: row.referencia, origen: row.origen },
       })
     );
+
+    if (callado) return;
 
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
