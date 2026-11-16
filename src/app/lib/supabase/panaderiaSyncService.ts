@@ -40,6 +40,8 @@ export interface PanaderiaProducto {
   color?: string;
   tipoInventario?: 'directo' | 'receta';
   recipeId?: string;
+  /** Ingredientes o detalle de la carta (migración 0149). */
+  descripcion?: string;
 }
 
 export interface PanaderiaMesa {
@@ -267,6 +269,7 @@ export async function obtenerCatalogoPanaderia(clienteId: string, tiendaId?: str
       color: r.color,
       tipoInventario: r.tipo_inventario,
       recipeId: r.recipe_id || undefined,
+      descripcion: r.descripcion || undefined,
     })),
     mesas: (mesas.data || [])
       .filter((r: any) => r.activa !== false)
@@ -539,4 +542,36 @@ export async function cerrarComandasDeMesa(clienteId: string, mesaLocalId: strin
     .eq('mesa_local_id', mesaLocalId)
     .in('estado', ['pendiente', 'preparando', 'listo']);
   if (error) throw new Error(error.message);
+}
+
+
+/**
+ * Sube a la nube del negocio el menú de Alimentos y Bebidas de esta caja y
+ * desactiva SOLO lo que se borró a propósito en este equipo (borrados).
+ * No se "iguala" la nube al equipo: un negocio con dos cajas no debe perder
+ * lo que la otra caja agregó. Todo va filtrado por el negocio vinculado.
+ */
+export async function reemplazarMenuAlimentosEnNube(
+  categorias: PanaderiaCategoria[],
+  productos: PanaderiaProducto[],
+  borrados: { productos: string[]; categorias: string[] } = { productos: [], categorias: [] },
+): Promise<void> {
+  const c = ctx();
+  if (!c) return;
+  const { client, clienteId } = c;
+  await pushCatalogoPanaderia({ categorias, productos, mesas: [] });
+  // Descripciones (columna aparte para no tocar la firma de pushCatalogoPanaderia).
+  const conDescripcion = productos.filter((p) => p.descripcion);
+  for (let i = 0; i < conDescripcion.length; i += 50) {
+    await Promise.all(conDescripcion.slice(i, i + 50).map((p) => client.from('panaderia_productos')
+      .update({ descripcion: p.descripcion || null })
+      .eq('cliente_id', clienteId).eq('local_id', p.id)));
+  }
+  if (borrados.productos.length) {
+    await client.from('panaderia_productos').update({ activo: false, updated_at: new Date().toISOString() })
+      .eq('cliente_id', clienteId).in('local_id', borrados.productos);
+  }
+  if (borrados.categorias.length) {
+    await client.from('panaderia_categorias').delete().eq('cliente_id', clienteId).in('local_id', borrados.categorias);
+  }
 }

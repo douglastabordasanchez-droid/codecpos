@@ -23,6 +23,8 @@ import {
 import { TerminalPrincipalMesas } from './TerminalPrincipalMesas';
 import { PantallaEstaciones } from '../estaciones/PantallaEstaciones';
 import { DialogoEnvioEstaciones, type ItemEnvio } from '../estaciones/DialogoEnvioEstaciones';
+import { esEmoji } from '../../lib/estiloMenu';
+import type { PlanImportacionMenu } from '../../lib/importarMenuAlimentos';
 import { type Estacion, listarEstaciones, suscribirEstaciones } from '../../lib/supabase/estacionesService';
 import { createPortal } from 'react-dom';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
@@ -234,6 +236,11 @@ const COLOR_PALETTE = [
 ];
 
 const renderIcon = (key: string, cls = 'w-10 h-10') => {
+  // Categorías y productos importados desde Excel usan un emoji como ícono.
+  if (esEmoji(key)) {
+    const n = Number(cls.match(/w-(\d+)/)?.[1] || 10);
+    return <span className="leading-none select-none" style={{ fontSize: `${Math.round(n * 3.4)}px` }} aria-hidden>{key}</span>;
+  }
   const found = ICON_LIBRARY.find(i => i.key === key);
   const Comp = found ? found.Component : Package2;
   return <Comp className={cls} />;
@@ -258,7 +265,7 @@ interface MesaConfig { id: string; nombre: string; activa: boolean; tiendaId?: s
 interface ProductoMesa { id: string; codigo: string; nombre: string; precio: number; stock: number; categoria: string; costo: number; pesable?: boolean; aplicaIVA?: boolean; tipoInventario?: 'directo' | 'receta'; recipeId?: string; }
 interface ItemMesa { producto: ProductoMesa; cantidad: number; }
 interface RecetaLinea { ingredientId: string; cantidad: string; unidad: string; }
-interface ProductoPos { id: string; categoriaId: string; nombre: string; precio: number; costo: number; stock: number; icono: IconKey; color: string; codigo: string; tipoInventario?: 'directo' | 'receta'; recipeId?: string; ingredientesReceta?: RecetaLinea[]; }
+interface ProductoPos { id: string; categoriaId: string; nombre: string; precio: number; costo: number; stock: number; icono: IconKey; color: string; codigo: string; tipoInventario?: 'directo' | 'receta'; recipeId?: string; ingredientesReceta?: RecetaLinea[]; descripcion?: string; }
 interface ProductoFormState { categoriaId: string; nombre: string; precioVenta: string; precioCosto: string; stock: string; codigo: string; icono: IconKey; color: string; tipoInventario: 'directo' | 'receta'; }
 
 // ── SectionShell ─────────────────────────────────────────────────────────────
@@ -562,6 +569,83 @@ export default function PanaderiaOncesPage() {
   };
 
   useEffect(() => { cargar(); }, []);
+
+  // 🔒 El menú de Alimentos y Bebidas es de UN negocio. Este equipo recuerda de
+  // quién es el menú que tiene guardado; si entra otro negocio, se reemplaza por
+  // el menú de ese negocio desde la nube (o queda vacío). Nunca se mezclan.
+  const CLAVE_DUENO_MENU = 'codecpos_panaderia_menu_negocio';
+  const menuListoParaNube = useRef(false);
+  useEffect(() => {
+    const clienteId = getLinkedClienteId();
+    if (!clienteId) { menuListoParaNube.current = false; return; }
+    let activo = true;
+    const dueno = localStorage.getItem(CLAVE_DUENO_MENU);
+    void import('../../lib/supabase/panaderiaSyncService').then(async ({ obtenerCatalogoPanaderia }) => {
+      const nube = await obtenerCatalogoPanaderia(clienteId).catch(() => null);
+      if (!activo || !nube) return;
+      const deOtroNegocio = !!dueno && dueno !== clienteId;
+      // Equipo que aún no sabía de quién era su menú: si tiene un menú real se
+      // conserva (puede ser más nuevo que la nube) y solo se baja si está vacío
+      // o tiene los productos de ejemplo.
+      const soloEjemplo = productosPos.length === 0 || productosPos.every((p) => /^pprod-\d$/.test(p.id));
+      const equipoSinDueno = !dueno && soloEjemplo;
+      if (nube.productos.length > 0 && (deOtroNegocio || equipoSinDueno)) {
+        // Se baja el menú de este negocio (reemplaza lo que hubiera en el equipo).
+        const cats = nube.categorias.map((c) => ({ id: c.id, nombre: c.nombre, icono: (c.icono || 'general') as IconKey, color: c.color || '#2563eb' }));
+        const prods = nube.productos.map((p) => ({
+          id: p.id, categoriaId: p.categoriaId, nombre: p.nombre, precio: p.precio, costo: p.costo || 0, stock: p.stock || 0,
+          icono: (p.icono || 'general') as IconKey, color: p.color || '#2563eb', codigo: p.codigo || '',
+          tipoInventario: p.tipoInventario, recipeId: p.recipeId, descripcion: p.descripcion,
+        }));
+        menuAnterior.current = null;
+        guardarCategorias(cats);
+        guardarProductosPos(prods);
+        setCatSeleccionada(cats[0]?.id || '');
+        if (deOtroNegocio) toast.info('Se cargó el menú de este negocio');
+      } else if (deOtroNegocio) {
+        // El menú guardado es de otro negocio y este no tiene menú en la nube: se vacía.
+        menuAnterior.current = null;
+        guardarCategorias([]);
+        guardarProductosPos([]);
+        setCatSeleccionada('');
+      }
+      localStorage.setItem(CLAVE_DUENO_MENU, clienteId);
+      menuListoParaNube.current = true;
+    });
+    return () => { activo = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ☁️ Cada cambio del menú (crear, editar, borrar, importar) se refleja en la
+  // nube del negocio, para que el celular y las demás cajas vean lo mismo.
+  const menuAnterior = useRef<{ prods: Set<string>; cats: Set<string> } | null>(null);
+  const borradosPendientes = useRef<{ productos: Set<string>; categorias: Set<string> }>({ productos: new Set(), categorias: new Set() });
+  useEffect(() => {
+    // Lo que desapareció desde el último cambio fue borrado en este equipo.
+    const prods = new Set(productosPos.map((p) => p.id));
+    const cats = new Set(categoriasPos.map((c) => c.id));
+    const previo = menuAnterior.current;
+    if (previo && menuListoParaNube.current) {
+      previo.prods.forEach((id) => { if (!prods.has(id)) borradosPendientes.current.productos.add(id); });
+      previo.cats.forEach((id) => { if (!cats.has(id)) borradosPendientes.current.categorias.add(id); });
+    }
+    menuAnterior.current = { prods, cats };
+    if (!menuListoParaNube.current) return;
+    const clienteId = getLinkedClienteId();
+    if (!clienteId || localStorage.getItem(CLAVE_DUENO_MENU) !== clienteId) return;
+    const t = window.setTimeout(() => {
+      const borrados = {
+        productos: [...borradosPendientes.current.productos],
+        categorias: [...borradosPendientes.current.categorias],
+      };
+      void import('../../lib/supabase/panaderiaSyncService').then(({ reemplazarMenuAlimentosEnNube }) =>
+        reemplazarMenuAlimentosEnNube(categoriasPos as any, productosPos as any, borrados)).then(() => {
+        borrados.productos.forEach((id) => borradosPendientes.current.productos.delete(id));
+        borrados.categorias.forEach((id) => borradosPendientes.current.categorias.delete(id));
+      }).catch(() => {});
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, [categoriasPos, productosPos]);
 
   // El catálogo de Alimentos y Bebidas comparte productos con Inventario.
   // Al entrar, se completa cualquier producto histórico que aún no estuviera
@@ -1256,15 +1340,61 @@ export default function PanaderiaOncesPage() {
   const descargarPlantillaProductosExcel = async () => {
     if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); return; }
     try {
-      const XLSX = await import('xlsx');
-      const plantilla = [{ categoria: 'Hojaldres', nombre: 'Croissant', precioVenta: 4500, precioCosto: 2500, stock: 15, codigo: 'PAN-001', icono: 'pan', color: '#2563eb', tipoInventario: 'directo' }];
-      const ws = XLSX.utils.json_to_sheet(plantilla);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Productos');
-      XLSX.writeFile(wb, 'plantilla_panaderia_productos.xlsx');
-      toast.success('Plantilla de productos descargada');
+      // La misma plantilla de Inventario › Importar: un solo formato para todo el sistema.
+      const { descargarPlantillaMenu } = await import('../../lib/importarMenuAlimentos');
+      descargarPlantillaMenu();
+      toast.success('Plantilla descargada', { description: 'Llénala y súbela con «Cargar productos».' });
     } catch {
       toast.error('No se pudo generar la plantilla Excel de productos');
+    }
+  };
+
+  // 📥 Importación inteligente desde Excel: primero se revisa y se muestra el resumen.
+  const [planImportacion, setPlanImportacion] = useState<PlanImportacionMenu | null>(null);
+  const [aplicandoImportacion, setAplicandoImportacion] = useState(false);
+  const cargarMenuDesdeExcel = async (file: File) => {
+    try {
+      // Archivos viejos exportados desde esta pantalla (columna tipoRegistro): método anterior.
+      const XLSX = await import('xlsx');
+      const libro = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const primera = libro.Sheets[libro.SheetNames[0]];
+      const encabezados = (XLSX.utils.sheet_to_json(primera, { header: 1 })[0] as unknown[] || []).map((h) => String(h || '').toLowerCase());
+      if (encabezados.includes('tiporegistro')) { await cargarProductosDesdeArchivo(file); return; }
+      const { planearImportacionMenu } = await import('../../lib/importarMenuAlimentos');
+      const plan = await planearImportacionMenu(file, categoriasPos as any, productosPos as any);
+      if (plan.nuevos + plan.actualizados === 0) {
+        toast.info('No hay productos nuevos ni cambios en el archivo', { description: plan.omitidas.length ? `${plan.omitidas.length} fila(s) con errores` : undefined });
+        return;
+      }
+      setPlanImportacion(plan);
+    } catch (e) {
+      console.error('Importar menú:', e);
+      toast.error('No se pudo leer el archivo', { description: 'Usa la plantilla de productos (Excel o CSV).' });
+    }
+  };
+  const aplicarImportacion = async () => {
+    const plan = planImportacion;
+    if (!plan) return;
+    setAplicandoImportacion(true);
+    try {
+      guardarCategorias(plan.categorias as CategoriaPos[]);
+      guardarProductosPos(plan.productos as ProductoPos[]);
+      // También quedan en Inventario (mismo id), como los productos creados a mano.
+      const nombreCat = new Map(plan.categorias.map((c) => [c.id, c.nombre]));
+      for (const p of plan.productos) {
+        await electronStore.upsertProducto({
+          id: p.id, codigo: p.codigo, nombre: p.nombre, precio: p.precio, costo: p.costo, stock: p.stock,
+          categoria: nombreCat.get(p.categoriaId) || 'Alimentos y Bebidas', categoriaId: p.categoriaId,
+          tipoInventario: p.tipoInventario || 'directo', recipeId: p.recipeId,
+        } as any).catch(() => {});
+      }
+      if (!catSeleccionada && plan.categorias[0]) setCatSeleccionada(plan.categorias[0].id);
+      toast.success('Menú actualizado', {
+        description: `${plan.nuevos} nuevo(s), ${plan.actualizados} actualizado(s)${plan.categoriasNuevas.length ? `, ${plan.categoriasNuevas.length} categoría(s) nueva(s)` : ''}`,
+      });
+      setPlanImportacion(null);
+    } finally {
+      setAplicandoImportacion(false);
     }
   };
 
@@ -1645,7 +1775,7 @@ export default function PanaderiaOncesPage() {
                   </Button>
                   <label className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-sm font-semibold transition ${!puedeAdministrarPanaderia ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50'}`}>
                     <Upload className="w-4 h-4" />Cargar productos
-                    <input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={!puedeAdministrarPanaderia} onChange={async (e) => { if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); e.currentTarget.value = ''; return; } const file = e.target.files?.[0]; if (file) await cargarProductosDesdeArchivo(file); e.currentTarget.value = ''; }} />
+                    <input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={!puedeAdministrarPanaderia} onChange={async (e) => { if (!puedeAdministrarPanaderia) { notificarAccesoDenegado(); e.currentTarget.value = ''; return; } const file = e.target.files?.[0]; e.currentTarget.value = ''; if (file) await cargarMenuDesdeExcel(file); }} />
                   </label>
                   <div className="relative">
                     <Button variant="outline" className={`h-10 px-4 font-semibold ${!puedeAdministrarPanaderia ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={!puedeAdministrarPanaderia} onClick={() => setShowExportMenu((visible) => !visible)}>
@@ -1654,7 +1784,7 @@ export default function PanaderiaOncesPage() {
                     {showExportMenu && (
                       <div className={`absolute right-0 top-11 z-30 min-w-[190px] overflow-hidden rounded-xl border shadow-xl ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'}`}>
                         <button type="button" onClick={descargarProductosCSV} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><Download className="w-4 h-4" />Descargar CSV</button>
-                        <button type="button" onClick={descargarProductosExcel} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><Download className="w-4 h-4" />Descargar Excel</button>
+                        <button type="button" onClick={() => { setShowExportMenu(false); void import('../../lib/importarMenuAlimentos').then(({ exportarMenuExcel }) => exportarMenuExcel(categoriasPos as any, productosPos as any)); }} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><Download className="w-4 h-4" />Descargar Excel</button>
                       </div>
                     )}
                   </div>
@@ -2295,6 +2425,39 @@ export default function PanaderiaOncesPage() {
             tienda={tiendaActivaId}
             onSalir={() => setPantallaEstacionAbierta(false)}
           />
+        </div>,
+        document.body,
+      )}
+      {planImportacion && createPortal(
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onClick={() => !aplicandoImportacion && setPlanImportacion(null)}>
+          <div className={`w-full max-w-lg rounded-3xl p-5 space-y-3 shadow-2xl max-h-[85vh] flex flex-col ${darkMode ? 'bg-slate-900 text-white border border-slate-700' : 'bg-white text-slate-900'}`} onClick={(e) => e.stopPropagation()}>
+            <p className="text-xl font-black">Revisa antes de cargar</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-2xl bg-emerald-500/15 p-3"><p className="text-2xl font-black text-emerald-600">{planImportacion.nuevos}</p><p className="text-xs font-bold">Nuevos</p></div>
+              <div className="rounded-2xl bg-sky-500/15 p-3"><p className="text-2xl font-black text-sky-600">{planImportacion.actualizados}</p><p className="text-xs font-bold">Actualizados</p></div>
+              <div className="rounded-2xl bg-slate-500/15 p-3"><p className="text-2xl font-black">{planImportacion.sinCambios}</p><p className="text-xs font-bold">Sin cambios</p></div>
+            </div>
+            {planImportacion.categoriasNuevas.length > 0 && (
+              <div className="overflow-y-auto">
+                <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Categorías nuevas, con su color y emoji</p>
+                <div className="flex flex-wrap gap-2">
+                  {planImportacion.categoriasNuevas.map((nombre) => {
+                    const c = planImportacion.categorias.find((x) => x.nombre === nombre);
+                    return <span key={nombre} className="h-9 px-3 rounded-full text-sm font-bold text-[#fff] flex items-center gap-1.5" style={{ background: c?.color }}>{c && esEmoji(c.icono) ? c.icono : ''} {nombre}</span>;
+                  })}
+                </div>
+              </div>
+            )}
+            {planImportacion.omitidas.length > 0 && (
+              <p className="text-xs text-amber-600 font-semibold">{planImportacion.omitidas.length} fila(s) no se cargan: {planImportacion.omitidas.slice(0, 3).map((o) => `fila ${o.fila} (${o.motivo})`).join(', ')}{planImportacion.omitidas.length > 3 ? '…' : ''}</p>
+            )}
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="h-12 flex-1 rounded-2xl" disabled={aplicandoImportacion} onClick={() => setPlanImportacion(null)}>Cancelar</Button>
+              <Button className="h-12 flex-1 rounded-2xl bg-emerald-600 hover:bg-emerald-700 font-black text-[#fff]" disabled={aplicandoImportacion} onClick={() => void aplicarImportacion()}>
+                {aplicandoImportacion ? 'Cargando…' : 'Cargar al menú'}
+              </Button>
+            </div>
+          </div>
         </div>,
         document.body,
       )}

@@ -526,6 +526,7 @@ export default function ProductosPage() {
                 <div className={`absolute right-0 top-12 z-30 min-w-[180px] overflow-hidden rounded-xl border shadow-xl ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'}`}>
                   <button type="button" onClick={descargarCSV} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><Download className="w-4 h-4" />Descargar CSV</button>
                   <button type="button" onClick={descargarExcel} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-50'}`}><FileSpreadsheet className="w-4 h-4" />Descargar Excel</button>
+                  <button type="button" onClick={() => { setShowExportMenu(false); void import('../../lib/importarProductos').then(({ descargarPlantilla }) => descargarPlantilla()); }} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition border-t ${darkMode ? 'border-slate-700 hover:bg-slate-700' : 'border-slate-100 hover:bg-slate-50'}`}><FileSpreadsheet className="w-4 h-4" />Plantilla de productos (Excel)</button>
                 </div>
               )}
             </div>
