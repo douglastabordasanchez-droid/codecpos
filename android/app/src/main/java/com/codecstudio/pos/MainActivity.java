@@ -1,5 +1,6 @@
 package com.codecstudio.pos;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Process;
 import android.view.View;
@@ -11,6 +12,9 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+
+import androidx.webkit.WebSettingsCompat;
+import androidx.webkit.WebViewFeature;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
@@ -44,6 +48,26 @@ public class MainActivity extends BridgeActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         pantallaCompleta();
         GuardianService.iniciar(this);
+
+        if (bridge != null && bridge.getWebView() != null) {
+            WebView wv = bridge.getWebView();
+            // Sin autocompletado de Android: su sugerencia de usuario o contraseña pintaba
+            // el texto en negro sobre los campos oscuros del inicio de sesión (la app ya
+            // tiene su propio «Guardar contraseña»).
+            if (Build.VERSION.SDK_INT >= 26) {
+                wv.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+            }
+            // Sin oscurecimiento automático (modo oscuro del sistema en Android 10+): la app
+            // ya tiene sus propios colores y el sistema los invertía.
+            try {
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                    WebSettingsCompat.setAlgorithmicDarkeningAllowed(wv.getSettings(), false);
+                }
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+                    WebSettingsCompat.setForceDark(wv.getSettings(), WebSettingsCompat.FORCE_DARK_OFF);
+                }
+            } catch (Throwable ignorado) { /* WebView viejo: no aplica */ }
+        }
 
         if (bridge != null) {
             bridge.addWebViewListener(new WebViewListener() {

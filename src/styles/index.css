@@ -36,25 +36,36 @@ html.gpu-software [class*="backdrop-blur"] {
 }
 
 
-/* Campos de usuario y contraseña del inicio de sesión: el navegador de Android
-   (y el autocompletado) les ponía texto negro sobre el fondo oscuro. */
-.campo-login {
+/* Campos de usuario y contraseña del inicio de sesión: el autocompletado de
+   Android, el modo oscuro del sistema o el estado "verificando" les ponían el
+   texto en negro sobre el fondo oscuro. Selectores reforzados para que ninguna
+   otra regla (ni la del tema claro) les gane. */
+html input.campo-login.campo-login,
+html input.campo-login.campo-login:focus,
+html input.campo-login.campo-login:disabled,
+html input.campo-login.campo-login:read-only {
   color: #f8fafc !important;
   -webkit-text-fill-color: #f8fafc !important;
   background-color: #0f172a !important;
   caret-color: #fbbf24;
   color-scheme: dark;
+  opacity: 1 !important;
 }
-.campo-login::placeholder {
+html input.campo-login.campo-login::placeholder {
   color: #94a3b8 !important;
   -webkit-text-fill-color: #94a3b8 !important;
   opacity: 1;
 }
-.campo-login:-webkit-autofill,
-.campo-login:-webkit-autofill:hover,
-.campo-login:-webkit-autofill:focus {
+html input.campo-login.campo-login:-webkit-autofill,
+html input.campo-login.campo-login:-webkit-autofill:hover,
+html input.campo-login.campo-login:-webkit-autofill:focus,
+html input.campo-login.campo-login:-webkit-autofill:active {
   -webkit-text-fill-color: #f8fafc !important;
   -webkit-box-shadow: 0 0 0 1000px #0f172a inset !important;
   box-shadow: 0 0 0 1000px #0f172a inset !important;
+  caret-color: #fbbf24;
   transition: background-color 9999s ease-out 0s;
+}
+html input.campo-login.campo-login:-webkit-autofill::first-line {
+  color: #f8fafc !important;
 }

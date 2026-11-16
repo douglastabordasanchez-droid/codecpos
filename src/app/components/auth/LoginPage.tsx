@@ -308,7 +308,7 @@ export default function LoginPage() {
             </div>
 
             {/* Formulario */}
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
               {/* Campo Usuario */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
@@ -321,6 +321,13 @@ export default function LoginPage() {
                   </div>
                   <Input
                     type="text"
+                    // Sin autocompletado del navegador/Android: su sugerencia pintaba el texto en
+                    // negro. La app tiene su propio «Guardar contraseña».
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    name="codec-usuario"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Ingresa tu usuario"
@@ -343,6 +350,11 @@ export default function LoginPage() {
                   </div>
                   <Input
                     type={mostrarPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    name="codec-clave"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Ingresa tu contraseña"
