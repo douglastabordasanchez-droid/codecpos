@@ -7,7 +7,7 @@ import {
   UsersRound, GlassWater, CirclePlus, PackageOpen, Drumstick, Wheat, Salad, CookingPot,
   Martini, Milk, Donut, CakeSlice, Sandwich, Popcorn, Beef, Shrimp, Shell, ChefHat, PackageCheck, PackagePlus,
   GripVertical, ChevronDown, ChevronLeft, ChevronRight, AlertTriangle, ShoppingCart, BarChart3, TrendingUp,
-  Maximize2, Printer, Pencil,
+  Maximize2, Printer, Pencil, Search, Minus,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePOS } from '../../contexts/POSContext';
@@ -1048,7 +1048,7 @@ export default function PanaderiaOncesPage() {
     toast.success(`Pedido transferido a ${mesaNombre}`);
   };
 
-  const abrirModalMesa = (mesa: MesaConfig) => { setMesaSeleccionada(mesa); setProductoMesaId(''); setCantidadMesa('1'); };
+  const abrirModalMesa = (mesa: MesaConfig) => { setMesaSeleccionada(mesa); setProductoMesaId(''); setCantidadMesa('1'); setBusquedaMesa(''); };
   const cerrarModalMesa = () => { setMesaSeleccionada(null); setProductoMesaId(''); setCantidadMesa('1'); };
 
   const persistirCuentas = (map: Record<string, ItemMesa[]>, mesaTocada?: string) => {
@@ -1102,17 +1102,41 @@ export default function PanaderiaOncesPage() {
   };
   const persistirCuentaLibre = (items: ItemMesa[]) => { setCuentaLibre(items); try { localStorage.setItem(STORAGE_CUENTA_LIBRE, JSON.stringify(items)); } catch {} };
 
-  const agregarItemMesa = () => {
+  // 🔎 Buscador del pedido de la mesa: sin tildes ni mayúsculas, varias palabras a la vez
+  // ("hambur mex"), también por categoría o código. Primero lo que empieza igual.
+  const [busquedaMesa, setBusquedaMesa] = useState('');
+  const inputBusquedaMesa = useRef<HTMLInputElement>(null);
+  // Quita tildes: "cafe" encuentra "CAFÉ".
+  const normalizarBusqueda = (t: unknown) => String(t ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
+  const resultadosMesa = useMemo(() => {
+    const q = normalizarBusqueda(busquedaMesa);
+    if (!q) return [];
+    const palabras = q.split(/\s+/).filter(Boolean);
+    const conPuntaje = (productos as any[]).flatMap((p) => {
+      const nombre = normalizarBusqueda(p.nombre);
+      const texto = `${nombre} ${normalizarBusqueda(p.categoria)} ${normalizarBusqueda(p.codigo)}`;
+      if (!palabras.every((w) => texto.includes(w))) return [];
+      const puntaje = nombre.startsWith(q) ? 0 : nombre.split(/\s+/).some((w) => w.startsWith(palabras[0])) ? 1 : 2;
+      return [{ p, puntaje, nombre }];
+    });
+    return conPuntaje.sort((a, b) => a.puntaje - b.puntaje || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 40).map((x) => x.p);
+  }, [busquedaMesa, productos]);
+
+  const agregarItemMesa = (productoElegido?: any) => {
     if (!mesaSeleccionada) return;
-    const producto = productos.find((p: any) => String(p.id) === String(productoMesaId));
+    const producto = productoElegido || productos.find((p: any) => String(p.id) === String(productoMesaId));
     const cantidad = Math.max(1, Math.floor(Number(cantidadMesa) || 1));
-    if (!producto) { toast.error('Selecciona un producto'); return; }
+    if (!producto) { toast.error('Busca y toca un producto'); return; }
     const productoNormalizado: ProductoMesa = { id: String(producto.id), codigo: String(producto.codigo || producto.nombre || producto.id), nombre: String(producto.nombre || 'Producto'), precio: Number(producto.precio) || 0, stock: Number(producto.stock) > 0 ? Number(producto.stock) : 999999, categoria: String(producto.categoria || 'General'), costo: Number(producto.costo) || 0, pesable: Boolean(producto.pesable), aplicaIVA: Boolean(producto.aplicaIVA), tipoInventario: producto.tipoInventario, recipeId: producto.recipeId };
     const actuales = Array.isArray(cuentasMesas[mesaSeleccionada.id]) ? cuentasMesas[mesaSeleccionada.id] : [];
     const existente = actuales.find((it) => it.producto.id === productoNormalizado.id);
     const nuevos = existente ? actuales.map((it) => it.producto.id === productoNormalizado.id ? { ...it, cantidad: it.cantidad + cantidad } : it) : [...actuales, { producto: productoNormalizado, cantidad }];
     persistirCuentas({ ...cuentasMesas, [mesaSeleccionada.id]: nuevos });
-    setProductoMesaId(''); setCantidadMesa('1'); toast.success('Producto agregado a la mesa');
+    setProductoMesaId(''); setCantidadMesa('1');
+    toast.success(`${cantidad > 1 ? `${cantidad} × ` : ''}${producto.nombre} agregado`);
+    // Listo para buscar el siguiente producto sin tocar nada más.
+    setBusquedaMesa('');
+    window.setTimeout(() => inputBusquedaMesa.current?.focus(), 30);
   };
 
   const quitarItemMesa = (productoId: string) => {
@@ -2579,13 +2603,56 @@ export default function PanaderiaOncesPage() {
               <Button variant="outline" onClick={cerrarModalMesa} className="h-9">Cerrar</Button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <select className="h-11 rounded-xl border px-3 bg-transparent text-sm" value={productoMesaId} onChange={(e) => setProductoMesaId(e.target.value)}>
-                <option value="">Selecciona producto</option>
-                {productos.map((p: any) => <option key={p.id} value={p.id}>{p.nombre} · ${Number(p.precio || 0).toLocaleString('es-CO')}</option>)}
-              </select>
-              <Input className="h-11" placeholder="Cantidad" value={cantidadMesa} onChange={(e) => setCantidadMesa(e.target.value)} />
-              <Button className="h-11 bg-emerald-600 hover:bg-emerald-700 font-bold" onClick={agregarItemMesa}><Plus className="w-4 h-4 mr-2" />Agregar</Button>
+            {/* 🔎 Buscador de productos para la mesa */}
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    ref={inputBusquedaMesa}
+                    autoFocus
+                    value={busquedaMesa}
+                    onChange={(e) => setBusquedaMesa(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && resultadosMesa[0]) { e.preventDefault(); agregarItemMesa(resultadosMesa[0]); } }}
+                    placeholder="Buscar producto: nombre, categoría o código…"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className={`w-full h-14 pl-11 pr-11 rounded-2xl border-2 text-lg font-semibold outline-none focus:border-amber-500 ${darkMode ? 'bg-slate-950 border-slate-700 text-white placeholder:text-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'}`}
+                  />
+                  {busquedaMesa && (
+                    <button type="button" onClick={() => { setBusquedaMesa(''); inputBusquedaMesa.current?.focus(); }} className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl flex items-center justify-center text-slate-400" aria-label="Borrar búsqueda">✕</button>
+                  )}
+                </div>
+                {/* Cantidad con botones grandes: se aplica al producto que se toque. */}
+                <div className={`flex items-center rounded-2xl border-2 ${darkMode ? 'border-slate-700' : 'border-slate-300'}`}>
+                  <button type="button" onClick={() => setCantidadMesa(String(Math.max(1, (Number(cantidadMesa) || 1) - 1)))} className="w-11 h-14 flex items-center justify-center" aria-label="Menos"><Minus className="w-5 h-5" /></button>
+                  <span className="w-8 text-center text-lg font-black">{Math.max(1, Number(cantidadMesa) || 1)}</span>
+                  <button type="button" onClick={() => setCantidadMesa(String((Number(cantidadMesa) || 1) + 1))} className="w-11 h-14 flex items-center justify-center" aria-label="Más"><Plus className="w-5 h-5" /></button>
+                </div>
+              </div>
+              {busquedaMesa.trim() && (
+                resultadosMesa.length === 0 ? (
+                  <p className={`text-sm text-center py-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>No hay productos con «{busquedaMesa.trim()}»</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[38vh] overflow-y-auto pr-1">
+                    {resultadosMesa.map((p: any) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => agregarItemMesa(p)}
+                        className={`text-left rounded-2xl border-2 p-3 min-h-[72px] transition-all active:scale-[0.97] ${darkMode ? 'bg-slate-800 border-slate-700 hover:border-emerald-500' : 'bg-white border-slate-200 hover:border-emerald-500'}`}
+                      >
+                        <span className="block font-bold text-sm leading-tight line-clamp-2">{p.nombre}</span>
+                        <span className="flex items-center justify-between gap-2 mt-1">
+                          <span className={`text-xs truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{p.categoria || ''}</span>
+                          <span className="text-sm font-black text-emerald-600 shrink-0">${Number(p.precio || 0).toLocaleString('es-CO')}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )
+              )}
             </div>
 
             {/* Combos rápidos en el modal */}

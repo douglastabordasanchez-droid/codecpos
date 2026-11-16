@@ -20,6 +20,7 @@
             android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
             android:keepScreenOn="true"
+            android:windowSoftInputMode="adjustResize"
             android:exported="true">
 
             <intent-filter>

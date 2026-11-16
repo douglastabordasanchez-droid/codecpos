@@ -9,6 +9,7 @@ import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -47,6 +48,16 @@ public class MainActivity extends BridgeActivity {
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         pantallaCompleta();
+
+        // ⌨️ En pantalla completa Android pone el teclado ENCIMA de la app sin achicarla:
+        // los campos de abajo quedaban tapados y no se podía deslizar hasta ellos.
+        // Se deja abajo un espacio del alto del teclado mientras está abierto.
+        View contenido = findViewById(android.R.id.content);
+        ViewCompat.setOnApplyWindowInsetsListener(contenido, (v, insets) -> {
+            int teclado = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+            if (v.getPaddingBottom() != teclado) v.setPadding(0, 0, 0, teclado);
+            return insets;
+        });
         GuardianService.iniciar(this);
 
         if (bridge != null && bridge.getWebView() != null) {

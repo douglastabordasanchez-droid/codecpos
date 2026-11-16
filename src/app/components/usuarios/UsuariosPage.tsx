@@ -21,6 +21,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
+import { SelectorCargo } from './SelectorCargo';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePOS } from '../../contexts/POSContext';
 import { electronStore, type Venta } from '../../lib/electronStore';
@@ -363,8 +364,40 @@ export function UsuariosPage() {
     );
   }, [personalOperativo, busqueda]);
 
+  // 📝 Borrador del usuario nuevo: si la ventana se cierra a mitad (teclado de la
+  // terminal, un toque de más), lo escrito se recupera al volver a abrirla.
+  // Las contraseñas no se guardan en el borrador.
+  const CLAVE_BORRADOR = 'codecpos_borrador_usuario_nuevo';
+  const limpiarBorrador = () => { try { localStorage.removeItem(CLAVE_BORRADOR); } catch { /* ignorar */ } };
+  useEffect(() => {
+    if (!modalAbierto || modoEdicion) return;
+    const tieneDatos = Object.entries(form).some(([k, v]) => !/password/i.test(k) && String(v || '').trim() !== '');
+    try {
+      if (tieneDatos) {
+        const { password: _p, passwordAnterior: _pa, passwordNueva: _pn, ...sinClaves } = form as any;
+        localStorage.setItem(CLAVE_BORRADOR, JSON.stringify({ form: sinClaves, permisos, rolFormulario, emailAdminNube }));
+      }
+    } catch { /* sin almacenamiento */ }
+  }, [form, permisos, rolFormulario, emailAdminNube, modalAbierto, modoEdicion]);
+
   // ─── Abrir modal crear ───────────────────────────────────────────────────────
   const abrirCrear = () => {
+    let borrador: any = null;
+    try { borrador = JSON.parse(localStorage.getItem(CLAVE_BORRADOR) || 'null'); } catch { borrador = null; }
+    if (borrador?.form) {
+      setForm({ ...FORM_EMPTY, ...borrador.form });
+      setPermisos(borrador.permisos ? { ...PERMISOS_CAJERO_DEFAULT, ...borrador.permisos } : PERMISOS_CAJERO_DEFAULT);
+      setRolFormulario(borrador.rolFormulario || 'cajero');
+      setEmailAdminNube(borrador.emailAdminNube || '');
+      setPasswordAdminNube('');
+      setModoEdicion(false);
+      setUsuarioEditando(null);
+      setTabActivo('info');
+      setMostrarPass(false);
+      setModalAbierto(true);
+      toast.info('Recuperamos lo que habías llenado', { description: 'Solo falta la contraseña. Si quieres empezar de cero, toca «Borrar todo».' });
+      return;
+    }
     setForm(FORM_EMPTY);
     setPermisos(PERMISOS_CAJERO_DEFAULT);
     setRolFormulario('cajero');
@@ -432,6 +465,7 @@ export function UsuariosPage() {
       return;
     }
     toast.success(`Administrador "${form.nombreCompleto}" creado — ya puede entrar por Electron, PWA y Android`);
+    limpiarBorrador();
     cerrarModal();
     navigate('/usuarios/organizacion');
   };
@@ -516,6 +550,7 @@ export function UsuariosPage() {
       if (ok) {
         toast.success(`${rolFormulario === 'tecnico' ? 'Técnico' : 'Cajero'} "${form.nombreCompleto}" creado correctamente`);
         sincronizarPersonalConNube(form.nombreCompleto, form.email.trim(), form.password, rolFormulario as 'cajero' | 'tecnico');
+        limpiarBorrador();
         cerrarModal();
       } else {
         toast.error('Error al crear el usuario');
@@ -1230,12 +1265,29 @@ export function UsuariosPage() {
           MODAL CREAR / EDITAR PERSONAL
       ═══════════════════════════════════════════════════════════════════ */}
       <Dialog open={modalAbierto} onOpenChange={open => { if (!open) cerrarModal(); }}>
-        <DialogContent className={`max-w-xl max-h-[90vh] overflow-y-auto ${dm ? 'bg-slate-900 border-slate-700' : 'bg-white'}`}>
+        <DialogContent
+          // Solo se cierra con la X o con Cancelar: en pantalla táctil, el toque para
+          // esconder el teclado caía fuera de la ventana y la cerraba con todo lo escrito.
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          className={`max-w-xl max-h-[85dvh] overflow-y-auto overscroll-contain ${dm ? 'bg-slate-900 border-slate-700' : 'bg-white'}`}
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           <DialogHeader>
             <DialogTitle className={`text-xl font-black flex items-center gap-2 ${dm ? 'text-white' : 'text-gray-900'}`}>
               {modoEdicion ? <Edit2 className="w-5 h-5 text-indigo-500" /> : <UserPlus className="w-5 h-5 text-indigo-500" />}
               {modoEdicion ? `Editar — ${usuarioEditando?.nombreCompleto}` : 'Nuevo Personal'}
             </DialogTitle>
+            {!modoEdicion && (
+              <button
+                type="button"
+                onClick={() => { limpiarBorrador(); setForm(FORM_EMPTY); setPermisos(PERMISOS_CAJERO_DEFAULT); setRolFormulario('cajero'); setEmailAdminNube(''); setPasswordAdminNube(''); }}
+                className={`self-start text-xs font-bold underline ${dm ? 'text-slate-400' : 'text-gray-500'}`}
+              >
+                Borrar todo y empezar de cero
+              </button>
+            )}
           </DialogHeader>
 
           {/* Tabs del modal */}
@@ -1286,12 +1338,7 @@ export function UsuariosPage() {
                       <Briefcase className="w-3.5 h-3.5 inline mr-1" />
                       Cargo
                     </Label>
-                    <Input
-                      value={form.cargo}
-                      onChange={e => setForm(f => ({ ...f, cargo: e.target.value }))}
-                      placeholder="Ej: Cajera, Operaria"
-                      className={`h-11 ${dm ? 'bg-slate-800 border-slate-600 text-white' : ''}`}
-                    />
+                    <SelectorCargo valor={form.cargo} onCambio={(cargo) => setForm(f => ({ ...f, cargo }))} oscuro={dm} />
                   </div>
                   <div className="space-y-1.5">
                     <Label className={dm ? 'text-gray-300' : ''}>
