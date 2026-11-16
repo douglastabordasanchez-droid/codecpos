@@ -459,3 +459,12 @@ export function normalizarTipoNegocio(valor?: string | null): string {
   };
   return alias[v] || v;
 }
+
+/**
+ * Negocios que atienden mesas con meseros (panadería, restaurante / comidas
+ * rápidas): en ellos el inicio muestra el filtro por mesero.
+ */
+const TIPOS_CON_MESEROS = new Set(['panaderia', 'restaurante']);
+export function negocioConMeseros(tipo?: string | null): boolean {
+  return TIPOS_CON_MESEROS.has(normalizarTipoNegocio(tipo));
+}

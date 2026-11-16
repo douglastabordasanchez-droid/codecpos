@@ -16,6 +16,8 @@ import { EmpleadoSelector, ResumenEmpleados, useEmpleadosNube } from '../compone
 import { FILTRO_TIENDA_PRINCIPAL, claveEmpleado, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { AvisoSedesCobro } from '../components/AvisoSedesCobro';
+import { useMiNegocio } from '../hooks/useMiNegocio';
+import { negocioConMeseros } from '../../data/tipos-negocio';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 
 interface VentaFila {
@@ -23,6 +25,8 @@ interface VentaFila {
   total: number;
   propina?: number | null;
   cajero_nombre?: string | null;
+  /** Quién atendió la mesa (migración 0154). */
+  mesero_nombre?: string | null;
   created_at: string;
 }
 
@@ -96,11 +100,15 @@ export default function InicioPage() {
   // Costo de lo vendido en cada venta: así la utilidad también sale por empleado.
   const [costoPorVenta, setCostoPorVenta] = useState<Map<string, number>>(new Map());
   const [empleadoSel, setEmpleadoSel] = useState<string | null>(null);
+  // Filtro por mesero: solo en negocios que atienden mesas (panadería, restaurante / comidas rápidas).
+  const [meseroSel, setMeseroSel] = useState<string | null>(null);
+  const { miNegocio } = useMiNegocio();
+  const conMeseros = negocioConMeseros(miNegocio?.tipoNegocio);
   const [devolucionesTotal, setDevolucionesTotal] = useState(0);
   const [devolucionesCount, setDevolucionesCount] = useState(0);
   // Cada devolución con la tienda y el cajero de SU venta: así se resta también con
   // una tienda o un empleado elegido, y una venta devuelta completa deja de contar.
-  const [devolucionesPeriodo, setDevolucionesPeriodo] = useState<Array<{ monto: number; ventaId: string | null; cajero: string | null }>>([]);
+  const [devolucionesPeriodo, setDevolucionesPeriodo] = useState<Array<{ monto: number; ventaId: string | null; cajero: string | null; mesero?: string | null }>>([]);
   const [gastosTotal, setGastosTotal] = useState(0);
   const [alertasCount, setAlertasCount] = useState(0);
   const [productosConMinimo, setProductosConMinimo] = useState(0);
@@ -117,7 +125,7 @@ export default function InicioPage() {
   const [tiendaActiva, setTiendaActiva] = useState(getSucursalActiva());
   useEffect(() => suscribirSucursalActiva(() => setTiendaActiva(getSucursalActiva())), []);
   const tiendaFiltro = esAdmin ? (tiendaActiva?.id ?? undefined) : undefined;
-  useEffect(() => { setEmpleadoSel(null); }, [tiendaFiltro]);
+  useEffect(() => { setEmpleadoSel(null); setMeseroSel(null); }, [tiendaFiltro]);
   const empleadosNube = useEmpleadosNube(empleado?.cliente_id, esAdmin);
 
   useEffect(() => {
@@ -155,7 +163,7 @@ export default function InicioPage() {
 
       // Paginado: con 1000 filas por consulta, 7 días de un negocio movido salían cortados.
       const ventasEntre = (desde: Date, hasta: Date) => traerTodo<VentaFila>((a, b) =>
-        filtrarPorTienda(filtrarPorSucursal(client.from('ventas').select('id, total, propina, cajero_nombre, created_at')
+        filtrarPorTienda(filtrarPorSucursal(client.from('ventas').select('id, total, propina, cajero_nombre, mesero_nombre, created_at')
           .eq('cliente_id', empleado.cliente_id).eq('estado', 'completada')
           .gte('created_at', desde.toISOString()).lt('created_at', hasta.toISOString())))
           .order('id').range(a, b))
@@ -176,7 +184,7 @@ export default function InicioPage() {
           ? client.from('gastos').select('monto, fecha').eq('cliente_id', empleado.cliente_id)
               .gte('fecha', inicio.toISOString()).lt('fecha', fin.toISOString())
           : Promise.resolve({ data: [] as any[] }),
-        client.from('devoluciones').select('total_devolucion, created_at, venta_id, ventas(tienda_id, cajero_nombre)').eq('cliente_id', empleado.cliente_id)
+        client.from('devoluciones').select('total_devolucion, created_at, venta_id, ventas(tienda_id, cajero_nombre, mesero_nombre)').eq('cliente_id', empleado.cliente_id)
           .gte('created_at', inicio.toISOString()).lt('created_at', fin.toISOString()),
       ]);
 
@@ -199,6 +207,7 @@ export default function InicioPage() {
           monto: Number(d.total_devolucion) || 0,
           ventaId: (d.venta_id as string) || null,
           cajero: (d.ventas?.cajero_nombre as string) ?? null,
+          mesero: (d.ventas?.mesero_nombre as string) ?? null,
           tienda: (d.ventas?.tienda_id as string) ?? null,
         }))
         .filter((d) => enTiendaFiltro(d.tienda));
@@ -245,8 +254,10 @@ export default function InicioPage() {
 
   // Devoluciones del filtro actual (empleado = cajero de la venta devuelta).
   const devolucionesDelFiltro = useMemo(
-    () => (empleadoSel ? devolucionesPeriodo.filter((d) => claveEmpleado(d.cajero) === empleadoSel) : devolucionesPeriodo),
-    [devolucionesPeriodo, empleadoSel],
+    () => devolucionesPeriodo
+      .filter((d) => !empleadoSel || claveEmpleado(d.cajero) === empleadoSel)
+      .filter((d) => !meseroSel || claveEmpleado(d.mesero) === meseroSel),
+    [devolucionesPeriodo, empleadoSel, meseroSel],
   );
   const devueltoPorVenta = useMemo(() => {
     const m = new Map<string, number>();
@@ -266,8 +277,14 @@ export default function InicioPage() {
     resumirPorEmpleado(ventasValidasPeriodo),
     empleadosNube.filter((e) => empleadoEnTienda(e.tienda_id, tiendaFiltro)).map((e) => e.nombre),
   ), [ventasValidasPeriodo, empleadosNube, tiendaFiltro]);
-  const ventasDelFiltro = useMemo(() => filtrarPorEmpleado(ventasValidasPeriodo, empleadoSel), [ventasValidasPeriodo, empleadoSel]);
-  const ventasAnterioresDelFiltro = useMemo(() => filtrarPorEmpleado(ventasPeriodoAnterior, empleadoSel), [ventasPeriodoAnterior, empleadoSel]);
+  const porMesero = <T extends VentaFila>(lista: T[]) => (meseroSel ? lista.filter((v) => claveEmpleado(v.mesero_nombre) === meseroSel) : lista);
+  const ventasDelFiltro = useMemo(() => porMesero(filtrarPorEmpleado(ventasValidasPeriodo, empleadoSel)), [ventasValidasPeriodo, empleadoSel, meseroSel]);
+  const ventasAnterioresDelFiltro = useMemo(() => porMesero(filtrarPorEmpleado(ventasPeriodoAnterior, empleadoSel)), [ventasPeriodoAnterior, empleadoSel, meseroSel]);
+  // Resumen por mesero (mismo formato que el de empleados): solo ventas de mesa con mesero.
+  const resumenMeseros = useMemo(
+    () => resumirPorEmpleado(ventasValidasPeriodo.filter((v) => v.mesero_nombre).map((v) => ({ ...v, cajero_nombre: v.mesero_nombre }))),
+    [ventasValidasPeriodo],
+  );
 
   // Con un empleado elegido: lo que dejaron sus ventas (venta menos costo). Los
   // gastos y devoluciones son del negocio, así que solo se restan en «Todos».
@@ -276,9 +293,9 @@ export default function InicioPage() {
     const costo = ventasDelFiltro.reduce((a, v) => a + (costoPorVenta.get(v.id) || 0), 0);
     // Las devoluciones van por la tienda y el cajero de su venta; los gastos no tienen
     // tienda ni empleado, así que solo se restan en «Todos».
-    const gastos = empleadoSel || tiendaFiltro ? 0 : gastosTotal;
+    const gastos = empleadoSel || meseroSel || tiendaFiltro ? 0 : gastosTotal;
     return ventasBase - devolucionesARestar - costo - gastos;
-  }, [ventasDelFiltro, costoPorVenta, empleadoSel, tiendaFiltro, devolucionesARestar, gastosTotal]);
+  }, [ventasDelFiltro, costoPorVenta, empleadoSel, meseroSel, tiendaFiltro, devolucionesARestar, gastosTotal]);
 
   const stats = useMemo(() => {
     const ventasPeriodo = ventasDelFiltro;
@@ -354,6 +371,18 @@ export default function InicioPage() {
           {resumenEmpleados.length > 0 && (
             <div className="px-4 mb-4">
               <EmpleadoSelector resumen={resumenEmpleados} seleccionado={empleadoSel} onSeleccionar={setEmpleadoSel} />
+            </div>
+          )}
+
+          {conMeseros && (resumenMeseros.length > 0 || meseroSel) && (
+            <div className="px-4 mb-4">
+              <EmpleadoSelector
+                resumen={resumenMeseros}
+                seleccionado={meseroSel}
+                onSeleccionar={setMeseroSel}
+                etiquetaTodos="Todos los meseros"
+                etiqueta="Mesero"
+              />
             </div>
           )}
 

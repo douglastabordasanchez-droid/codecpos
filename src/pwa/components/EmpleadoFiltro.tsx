@@ -7,11 +7,14 @@ import type { ResumenEmpleado } from '../lib/ventasPorEmpleado';
 const pesos = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
 
 /** Lista desplegable «Todos los empleados / Diana / Jorge…» con lo que vendió cada uno. */
-export function EmpleadoSelector({ resumen, seleccionado, onSeleccionar, className = '' }: {
+export function EmpleadoSelector({ resumen, seleccionado, onSeleccionar, className = '', etiquetaTodos = 'Todos los empleados', etiqueta = 'Empleado' }: {
   resumen: ResumenEmpleado[];
   seleccionado: string | null;
   onSeleccionar: (clave: string | null) => void;
   className?: string;
+  /** Texto de la opción sin filtro (por ejemplo «Todos los meseros»). */
+  etiquetaTodos?: string;
+  etiqueta?: string;
 }) {
   // Si el elegido no vendió en este periodo, igual se deja en la lista para poder quitarlo.
   const opciones = seleccionado && !resumen.some((r) => r.clave === seleccionado)
@@ -24,9 +27,9 @@ export function EmpleadoSelector({ resumen, seleccionado, onSeleccionar, classNa
         value={seleccionado ?? ''}
         onChange={(e) => onSeleccionar(e.target.value || null)}
         className="flex-1 min-w-0 bg-transparent text-white text-sm outline-none"
-        aria-label="Empleado"
+        aria-label={etiqueta}
       >
-        <option value="" className="bg-slate-900">Todos los empleados</option>
+        <option value="" className="bg-slate-900">{etiquetaTodos}</option>
         {opciones.map((r) => (
           <option key={r.clave} value={r.clave} className="bg-slate-900">
             {r.nombre} · {r.cantidad} {r.cantidad === 1 ? 'venta' : 'ventas'} · {pesos(r.total)}
