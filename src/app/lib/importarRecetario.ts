@@ -76,6 +76,7 @@ export async function planearRecetario(
       costoUnitario: num(f['costo por unidad']),
       stockActual: num(f['stock actual']),
       stockMinimo: num(f['stock minimo']),
+      stockAjustadoEn: Date.now(),
       categoria: String(f['categoria'] || 'General').trim() || 'General',
     });
   }

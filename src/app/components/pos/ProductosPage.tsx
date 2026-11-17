@@ -28,6 +28,8 @@ import { ImportMasivaCSV } from './ImportMasivaCSV';
 import { ModalNuevoProducto } from './ModalNuevoProducto';
 import { EditProductModal } from './EditProductModal';
 import { ModalMargenGanancia } from './ModalMargenGanancia';
+import { IngredienteEditorModal } from './IngredienteEditorModal';
+import { EVENTO_RECETARIO_ACTUALIZADO } from '../../lib/recetarioLocal';
 import { useMultitienda } from '../../contexts/MultitiendaContext';
 import { productosConStockDeTienda } from '../../lib/multitiendaService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -110,6 +112,8 @@ export default function ProductosPage() {
   const [searchIngrediente, setSearchIngrediente] = useState('');
   const [restockTarget, setRestockTarget] = useState<IngredienteInventarioItem | null>(null);
   const [restockAmount, setRestockAmount] = useState('');
+  // Editor de ingredientes: { ing: null } = nuevo.
+  const [editorIng, setEditorIng] = useState<{ ing: IngredienteInventarioItem | null } | null>(null);
   const [panaderiaCatIds, setPanaderiaCatIds] = useState<Set<string>>(new Set());
 
   console.log('✅ ProductosPage renderizado - Productos:', productos.length);
@@ -125,7 +129,12 @@ export default function ProductosPage() {
       if (e.key === 'pos-ingredientes-inventario') cargarIngredientes();
     };
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    // El recetario bajó de la nube (lo cambió otra caja).
+    window.addEventListener(EVENTO_RECETARIO_ACTUALIZADO, cargarIngredientes);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(EVENTO_RECETARIO_ACTUALIZADO, cargarIngredientes);
+    };
   }, []);
 
   // ========== CARGAR PRODUCTOS ==========
@@ -370,6 +379,9 @@ export default function ProductosPage() {
       const XLSX = await import('xlsx');
       const libro = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filasExportacion(), { header: COLUMNAS_EXPORTACION }), 'Inventario');
+      // Alimentos y Bebidas: ingredientes, recetas y combos en hojas aparte. Las
+      // hojas Ingredientes y Recetas tienen el formato de «Importar recetario».
+      await agregarHojasRecetario(XLSX, libro);
       const fecha = new Date().toISOString().split('T')[0];
       XLSX.writeFile(libro, `inventario_${fecha}.xlsx`);
       setShowExportMenu(false);
@@ -377,6 +389,51 @@ export default function ProductosPage() {
     } catch (error) {
       console.error('❌ Error exportando Excel:', error);
       toast.error('Error al exportar Excel');
+    }
+  };
+
+  const agregarHojasRecetario = async (XLSX: typeof import('xlsx'), libro: import('xlsx').WorkBook) => {
+    const [ings, recetas, lineas, combos] = await Promise.all([
+      electronStore.obtenerIngredientesInventario(),
+      electronStore.obtenerRecetas(),
+      electronStore.obtenerRecetaIngredientes(),
+      electronStore.obtenerCombosOnces(),
+    ]);
+    if (ings.length === 0 && recetas.length === 0 && combos.length === 0) return;
+    const nombreIng = new Map(ings.map((i) => [String(i.id), i.nombre]));
+    let menu: Array<{ id: string; nombre: string }> = [];
+    try { menu = JSON.parse(localStorage.getItem('codecpos_panaderia_prods') || '[]'); } catch { /* sin menú */ }
+    const nombreProducto = new Map<string, string>([
+      ...productos.map((p) => [String(p.id), p.nombre] as [string, string]),
+      ...menu.map((p) => [String(p.id), p.nombre] as [string, string]),
+    ]);
+    const hoja = (filas: unknown[][], nombre: string, anchos: number[]) => {
+      const h = XLSX.utils.aoa_to_sheet(filas);
+      h['!cols'] = anchos.map((wch) => ({ wch }));
+      XLSX.utils.book_append_sheet(libro, h, nombre);
+    };
+    hoja([
+      ['Nombre', 'Unidad', 'Costo por unidad', 'Stock actual', 'Stock mínimo', 'Categoría'],
+      ...[...ings].sort((a, b) => (a.categoria || '').localeCompare(b.categoria || '') || a.nombre.localeCompare(b.nombre))
+        .map((i) => [i.nombre, i.unidad, Number(i.costoUnitario) || 0, Number(i.stockActual) || 0, Number(i.stockMinimo) || 0, i.categoria || 'General']),
+    ], 'Ingredientes', [34, 8, 16, 14, 14, 18]);
+    const filasRecetas: unknown[][] = [];
+    for (const r of recetas) {
+      const producto = nombreProducto.get(String(r.productoId)) || String(r.nombre || '').replace(/^Receta\s+/i, '').replace(/\s+-\s+Receta$/i, '');
+      for (const l of lineas.filter((x) => String(x.recipeId) === String(r.id))) {
+        filasRecetas.push([producto, nombreIng.get(String(l.ingredientId)) || String(l.ingredientId), Number(l.cantidad) || 0, l.unidad]);
+      }
+    }
+    filasRecetas.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    hoja([['Producto', 'Ingrediente', 'Cantidad', 'Unidad'], ...filasRecetas], 'Recetas', [34, 34, 10, 8]);
+    if (combos.length > 0) {
+      const filasCombos: unknown[][] = [];
+      for (const c of combos) {
+        for (const k of c.componentes || []) {
+          filasCombos.push([c.nombre, c.codigo, Number(c.precio) || 0, k.nombre, k.tipo === 'ingrediente' ? 'Ingrediente' : 'Producto', Number(k.cantidad) || 0, k.unidad || 'und', c.activo === false ? 'No' : 'Sí']);
+        }
+      }
+      hoja([['Combo', 'Código', 'Precio', 'Componente', 'Tipo', 'Cantidad', 'Unidad', 'Activo'], ...filasCombos], 'Combos', [30, 12, 12, 30, 12, 10, 8, 8]);
     }
   };
 
@@ -655,8 +712,9 @@ export default function ProductosPage() {
               </Card>
             )}
 
-            {/* Buscador */}
-            <div className="relative">
+            {/* Buscador y nuevo ingrediente */}
+            <div className="flex gap-2">
+            <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
                 value={searchIngrediente}
@@ -670,6 +728,14 @@ export default function ProductosPage() {
                 </button>
               )}
             </div>
+            <Button
+              onClick={() => setEditorIng({ ing: null })}
+              className="h-11 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Nuevo ingrediente
+            </Button>
+            </div>
 
             {/* Grid de ingredientes */}
             {ingredientesFiltrados.length === 0 ? (
@@ -680,7 +746,7 @@ export default function ProductosPage() {
                     {ingredientes.length === 0 ? 'Sin ingredientes registrados' : 'Sin resultados'}
                   </p>
                   <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Registra ingredientes desde el módulo de Panadería/Cafetería
+                    Créalos con «Nuevo ingrediente» o importa un recetario en Alimentos y Bebidas › Recetas
                   </p>
                 </CardContent>
               </Card>
@@ -769,6 +835,14 @@ export default function ProductosPage() {
                           >
                             <PackagePlus className="w-3.5 h-3.5 mr-1" />
                             Stock
+                          </Button>
+                          <Button
+                            onClick={() => setEditorIng({ ing })}
+                            size="sm"
+                            title="Editar o eliminar"
+                            className={`h-8 px-2.5 rounded-xl ${darkMode ? 'bg-slate-700 hover:bg-blue-600 text-gray-300 hover:text-white border border-slate-600' : 'bg-gray-100 hover:bg-blue-100 text-gray-600 hover:text-blue-700 border border-gray-300'}`}
+                          >
+                            <Edit className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             onClick={() => handleToggleInventarioGeneral(ing)}
@@ -1273,6 +1347,19 @@ export default function ProductosPage() {
         </>
         )}
       </div>
+
+      {/* ========== EDITOR DE INGREDIENTE ========== */}
+      <AnimatePresence>
+        {editorIng && (
+          <IngredienteEditorModal
+            ingrediente={editorIng.ing}
+            categorias={[...new Set(ingredientes.map((i) => i.categoria || 'General'))].sort()}
+            darkMode={darkMode}
+            onClose={() => setEditorIng(null)}
+            onGuardado={() => { void electronStore.obtenerIngredientesInventario().then(setIngredientes); }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ========== MODAL RESTOCK INGREDIENTE ========== */}
       <AnimatePresence>

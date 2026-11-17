@@ -10,6 +10,7 @@ import { costoPorUnidadDeVenta } from './costoGranel';
 import { diaLocal } from './diaLocal';
 import { ModuloPOS, esModuloPermitidoLicenciaDesarrollador } from './permissions';
 import { seVendeSinStock } from '../../pwa/lib/ventasPorArea';
+import { marcarCambioRecetario, anotarIngredienteEliminado } from './recetarioLocal';
 
 /**
  * Veterinaria: un servicio (baño, corte, consulta) se cobra sin inventario —
@@ -238,6 +239,8 @@ export interface IngredienteInventarioItem {
   enInventarioGeneral?: boolean;
   /** Módulo que lo creó: 'panaderia_onces', 'taller_reparaciones', etc. */
   moduloOrigen?: string;
+  /** Cuándo se ajustó el stock a mano (no por ventas): ese ajuste viaja a las otras cajas. */
+  stockAjustadoEn?: number;
 }
 
 export interface RecetaItem {
@@ -1494,32 +1497,9 @@ class ElectronStoreService {
         }
       }
 
-      const producto = mapProductos.get(String(item.id));
-      if (esServicioSinStock(producto)) continue;
-      const tipoInventario = (item.productoTipo || producto?.tipoInventario || 'directo') as 'directo' | 'receta';
-      const recipeId = String(item.recipeId || producto?.recipeId || '');
-
-      if (tipoInventario === 'receta' && recipeId) {
-        const receta = recipes.find((r: any) => String(r.id) === recipeId);
+      // Descuenta los ingredientes de una receta (por la venta de este ítem).
+      const descontarInsumos = (recipeId: string, receta: any) => {
         const insumos = recipeIngredients.filter((ri: any) => String(ri.recipeId) === recipeId);
-
-        if (producto) {
-          producto.stock = Math.max(0, (Number(producto.stock) || 0) - cantidadVenta);
-          movimientos.push({
-            id: `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            fecha: new Date().toISOString(),
-            tipo: 'venta_receta_producto',
-            productoId: producto.id,
-            productoNombre: producto.nombre,
-            cantidad: cantidadVenta,
-            unidad: producto.unidad || 'und',
-          });
-          storeEvents.emit('inventario:actualizado', { productoId: producto.id, nuevoStock: producto.stock });
-          if (producto.stock <= (producto.stockMinimo || 5)) {
-            storeEvents.emit('alerta:stock-bajo', producto);
-          }
-        }
-
         for (const ri of insumos) {
           const ing = mapIngredientes.get(String(ri.ingredientId));
           if (!ing) continue;
@@ -1543,6 +1523,34 @@ class ElectronStoreService {
             storeEvents.emit('alerta:stock-bajo', { ...ing, tipo: 'ingrediente' });
           }
         }
+      };
+
+      const producto = mapProductos.get(String(item.id));
+      if (esServicioSinStock(producto)) continue;
+      const tipoInventario = (item.productoTipo || producto?.tipoInventario || 'directo') as 'directo' | 'receta';
+      const recipeId = String(item.recipeId || producto?.recipeId || '');
+
+      if (tipoInventario === 'receta' && recipeId) {
+        const receta = recipes.find((r: any) => String(r.id) === recipeId);
+
+        if (producto) {
+          producto.stock = Math.max(0, (Number(producto.stock) || 0) - cantidadVenta);
+          movimientos.push({
+            id: `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            fecha: new Date().toISOString(),
+            tipo: 'venta_receta_producto',
+            productoId: producto.id,
+            productoNombre: producto.nombre,
+            cantidad: cantidadVenta,
+            unidad: producto.unidad || 'und',
+          });
+          storeEvents.emit('inventario:actualizado', { productoId: producto.id, nuevoStock: producto.stock });
+          if (producto.stock <= (producto.stockMinimo || 5)) {
+            storeEvents.emit('alerta:stock-bajo', producto);
+          }
+        }
+
+        descontarInsumos(recipeId, receta);
       } else if (producto) {
         producto.stock = Math.max(0, (Number(producto.stock) || 0) - cantidadVenta);
         movimientos.push({
@@ -1558,6 +1566,14 @@ class ElectronStoreService {
         if (producto.stock <= (producto.stockMinimo || 5)) {
           storeEvents.emit('alerta:stock-bajo', producto);
         }
+      }
+
+      // Producto con receta en Alimentos y Bebidas aunque no esté marcado como
+      // «receta» (recetario importado o bajado de la nube): se descuentan sus
+      // ingredientes sin tocar el stock del producto ni bloquear la venta.
+      if (!(tipoInventario === 'receta' && recipeId)) {
+        const recetaDelProducto = recipes.find((r: any) => String(r.productoId) === String(item.id) && r.activa !== false);
+        if (recetaDelProducto) descontarInsumos(String(recetaDelProducto.id), recetaDelProducto);
       }
 
       for (const mod of (item.modifiers || [])) {
@@ -1622,17 +1638,30 @@ class ElectronStoreService {
   async guardarIngredientesInventario(items: IngredienteInventarioItem[]): Promise<void> {
     this.setLS('pos-ingredientes-inventario', items);
     storeEvents.emit('inventario:actualizado', { tipo: 'ingredientes', total: items.length });
+    marcarCambioRecetario();
+  }
+
+  /** Borra un ingrediente (y sus líneas de receta); las otras cajas también lo quitan. */
+  async eliminarIngrediente(id: string): Promise<void> {
+    const items = (await this.obtenerIngredientesInventario()).filter(i => i.id !== id);
+    anotarIngredienteEliminado(id);
+    const lineas = (await this.obtenerRecetaIngredientes()).filter(l => String(l.ingredientId) !== id);
+    this.setLS('pos-receta-ingredientes', lineas);
+    await this.guardarIngredientesInventario(items);
   }
 
   async upsertIngrediente(item: IngredienteInventarioItem): Promise<IngredienteInventarioItem> {
     const items = await this.obtenerIngredientesInventario();
     const idx = items.findIndex(i => i.id === item.id);
+    const stockActual = Math.max(0, Number(item.stockActual) || 0);
+    const cambioStock = idx < 0 || (Number(items[idx].stockActual) || 0) !== stockActual;
     const normalized: IngredienteInventarioItem = {
       ...item,
-      stockActual: Math.max(0, Number(item.stockActual) || 0),
+      stockActual,
       stockMinimo: Math.max(0, Number(item.stockMinimo) || 0),
       updatedAt: Date.now(),
       activo: item.activo !== false,
+      ...(cambioStock ? { stockAjustadoEn: Date.now() } : {}),
     };
     if (idx >= 0) items[idx] = normalized;
     else items.unshift(normalized);
@@ -1651,6 +1680,7 @@ class ElectronStoreService {
   async guardarRecetas(recetas: RecetaItem[], recipeIngredients: RecetaIngredienteItem[]): Promise<void> {
     this.setLS('pos-recetas', recetas);
     this.setLS('pos-receta-ingredientes', recipeIngredients);
+    marcarCambioRecetario();
   }
 
   async obtenerCombosOnces(): Promise<ComboOncesItem[]> {
@@ -1659,6 +1689,7 @@ class ElectronStoreService {
 
   async guardarCombosOnces(items: ComboOncesItem[]): Promise<void> {
     this.setLS('pos-combos-onces', items);
+    marcarCambioRecetario();
   }
 
   async upsertComboOnces(item: ComboOncesItem): Promise<ComboOncesItem> {

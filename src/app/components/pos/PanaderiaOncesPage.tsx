@@ -35,6 +35,7 @@ import { rearmarMenuAlimentos } from '../../lib/menuAlimentosDesdeInventario';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from 'sonner';
+import { EVENTO_RECETARIO_ACTUALIZADO } from '../../lib/recetarioLocal';
 
 // Lucide 0.487 no incluye hamburguesa, perro caliente ni papas fritas. Estos
 // SVG mantienen su color mediante `currentColor`, como los iconos de Lucide.
@@ -574,6 +575,12 @@ export default function PanaderiaOncesPage() {
   };
 
   useEffect(() => { cargar(); }, []);
+  // El recetario bajó de la nube (otra caja lo cambió): se vuelve a leer.
+  useEffect(() => {
+    const recargar = () => { void cargar(); };
+    window.addEventListener(EVENTO_RECETARIO_ACTUALIZADO, recargar);
+    return () => window.removeEventListener(EVENTO_RECETARIO_ACTUALIZADO, recargar);
+  }, []);
 
   // 🔒 El menú de Alimentos y Bebidas es de UN negocio. Este equipo recuerda de
   // quién es el menú que tiene guardado; si entra otro negocio, se reemplaza por

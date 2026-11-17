@@ -32,6 +32,8 @@ import {
   type CuentaMesa,
 } from '../lib/supabase/panaderiaSyncService';
 import { cambioLocalDeMesa } from '../lib/cambiosMesaLocal';
+import { sincronizarRecetario } from '../lib/supabase/recetarioNube';
+import { EVENTO_RECETARIO_CAMBIO } from '../lib/recetarioLocal';
 import type { OrdenServicio } from '../types/taller';
 import { esModuloActivoGlobal, ModuloPOS } from '../lib/permissions';
 
@@ -71,6 +73,9 @@ export function useSyncModulosNube() {
     let desuscribirCuentas: (() => void) | null = null;
     let intervaloCuentas: ReturnType<typeof window.setInterval> | null = null;
     let alVolverInternet: (() => void) | null = null;
+    let intervaloRecetario: number | null = null;
+    let esperaRecetario: number | null = null;
+    let alCambiarRecetario: (() => void) | null = null;
 
     // ── Taller: aplicar una orden que llegó de otra caja o del celular ───────
     const aplicarOrden = async (orden: OrdenServicio) => {
@@ -209,6 +214,21 @@ export function useSyncModulosNube() {
       intervaloCuentas = window.setInterval(() => void pullCuentas(), 60_000);
       alVolverInternet = () => { window.setTimeout(() => void pullCuentas(), 1500); };
       window.addEventListener('online', alVolverInternet);
+
+      // ── Recetario (ingredientes, recetas y combos) en la nube, 0155 ──────────
+      const syncRecetario = () => {
+        if (cancelado || !navigator.onLine) return;
+        sincronizarRecetario().catch((e) => console.warn('[SyncNube] Recetario:', e));
+      };
+      syncRecetario();
+      intervaloRecetario = window.setInterval(syncRecetario, 180_000);
+      // Lo que se cambie aquí se sube a los pocos segundos (agrupando varios cambios seguidos).
+      alCambiarRecetario = () => {
+        if (esperaRecetario !== null) window.clearTimeout(esperaRecetario);
+        esperaRecetario = window.setTimeout(syncRecetario, 4000);
+      };
+      window.addEventListener(EVENTO_RECETARIO_CAMBIO, alCambiarRecetario);
+      window.addEventListener('online', alCambiarRecetario);
     }
 
     return () => {
@@ -218,6 +238,12 @@ export function useSyncModulosNube() {
       desuscribirCuentas?.();
       if (intervaloCuentas !== null) window.clearInterval(intervaloCuentas);
       if (alVolverInternet) window.removeEventListener('online', alVolverInternet);
+      if (intervaloRecetario !== null) window.clearInterval(intervaloRecetario);
+      if (esperaRecetario !== null) window.clearTimeout(esperaRecetario);
+      if (alCambiarRecetario) {
+        window.removeEventListener(EVENTO_RECETARIO_CAMBIO, alCambiarRecetario);
+        window.removeEventListener('online', alCambiarRecetario);
+      }
     };
   }, [usuarioActual?.nombreCompleto, tiendaActivaId]);
 }
