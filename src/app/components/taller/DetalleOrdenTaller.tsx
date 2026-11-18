@@ -18,7 +18,7 @@ import { es } from 'date-fns/locale';
 import { usePOS } from '../../contexts/POSContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanContext } from '../../contexts/LanContext';
-import { electronStore } from '../../lib/electronStore';
+import { registrarCobroTallerEnCaja } from '../../lib/tallerCaja';
 import ModalImprimirOrdenTaller from './ModalImprimirOrdenTaller';
 import { getNombreEmpresaCliente } from '../../lib/empresaConfig';
 
@@ -155,43 +155,27 @@ export default function DetalleOrdenTaller({ ordenId, onClose, onActualizar }: D
   const handleAgregarPago = async () => {
     if (!orden || nuevoPago.monto <= 0) return;
     try {
-      await tallerService.registrarPago(orden.id, nuevoPago);
-
-      try {
-        const getHoy = () => {
-          const ahora = new Date();
-          return new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-        };
-        const sesiones: any[] = JSON.parse(localStorage.getItem('pos-caja-sesiones-diarias') || '[]');
-        const hoy = getHoy();
-        const sesionActiva = sesiones.find((s: any) => s.fecha === hoy && s.estado === 'abierta');
-
-        await electronStore.registrarVentaServicio({
-          id: `TALLER-PAGO-${Date.now()}`,
-          numero: 0,
-          fecha: new Date().toISOString(),
-          sesionCajaId: sesionActiva?.id || '',
-          puntoVentaId: '',
-          createdAt: new Date().toISOString(),
-          syncStatus: 'pending' as any,
-          items: [{
-            id: `taller-${orden.id}`,
-            codigo: `TALLER-${orden.numeroOrden}`,
-            nombre: `Servicio Taller: ${orden.numeroOrden} — ${orden.dispositivo.marca} ${orden.dispositivo.modelo}`,
-            precio: nuevoPago.monto,
-            cantidad: 1,
-            subtotal: nuevoPago.monto,
-          } as any],
-          subtotal: nuevoPago.monto,
-          descuento: 0,
-          total: nuevoPago.monto,
-          metodoPago: nuevoPago.metodoPago as any,
-          cajero: sesionActiva?.usuarioNombre || 'Taller',
-          cajeroId: sesionActiva?.usuarioId || '',
-          sincronizado: false,
-        } as any);
-      } catch (e) {
-        console.warn('No se pudo registrar el pago en el flujo de caja:', e);
+      // Primero la venta en la caja (cierre del turno, Ventas, Reportes y nube)
+      // y luego el pago en la orden, con el número de esa venta.
+      const saldoAntes = Number(orden.saldoPendiente) || 0;
+      const caja = await registrarCobroTallerEnCaja({
+        orden,
+        monto: nuevoPago.monto,
+        metodoPago: nuevoPago.metodoPago,
+        usuario: usuarioActual as any,
+        concepto: nuevoPago.monto >= saldoAntes && saldoAntes > 0 ? 'Pago final' : 'Abono',
+      });
+      await tallerService.registrarPago(orden.id, {
+        ...nuevoPago,
+        recibidoPor: nuevoPago.recibidoPor.trim() || usuarioNombre,
+        ...(caja ? { ventaId: caja.ventaId, sesionCajaId: caja.sesionCajaId } : {}),
+      });
+      if (!caja) {
+        toast.warning('El pago quedó en la orden, pero no se pudo registrar en la caja');
+      } else if (!caja.sesionCajaId) {
+        toast.info(`Cobro guardado como venta ${caja.ventaId}`, {
+          description: 'No hay caja abierta: no entrará a ningún cierre de turno.',
+        });
       }
 
       await cargarOrden();

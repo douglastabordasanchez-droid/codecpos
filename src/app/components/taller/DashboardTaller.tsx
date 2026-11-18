@@ -441,16 +441,26 @@ export default function DashboardTaller() {
               : '0 2px 16px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,1)',
           }}
         >
-          <h3 className={`text-base font-black mb-5 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-            Productividad por Técnico
+          <h3 className={`text-base font-black mb-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+            Ventas por técnico
           </h3>
+          <p className={`text-xs mb-5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+            Lo cobrado por las reparaciones de cada técnico, en todos los equipos y el celular del negocio
+          </p>
           {estadisticas.ordenesporTecnico.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {estadisticas.ordenesporTecnico.slice(0, 6).map((item, i) => {
-                const total = estadisticas.ordenesporTecnico.reduce((s, t) => s + t.cantidad, 0);
-                const pct = total > 0 ? (item.cantidad / total) * 100 : 0;
+              {estadisticas.ordenesporTecnico.map((item, i) => {
+                const maxCobrado = Math.max(1, ...estadisticas.ordenesporTecnico.map((t) => t.cobrado));
+                const pct = (item.cobrado / maxCobrado) * 100;
+                const money = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+                const dato = (titulo: string, valor: string, color?: string) => (
+                  <div className={`rounded-lg px-2.5 py-2 ${darkMode ? 'bg-slate-800/80' : 'bg-white border border-slate-200'}`}>
+                    <p className={`text-[11px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{titulo}</p>
+                    <p className={`text-sm font-black ${color || (darkMode ? 'text-white' : 'text-slate-900')}`}>{valor}</p>
+                  </div>
+                );
                 return (
-                  <div key={i} className={`p-3.5 rounded-xl border ${
+                  <div key={item.tecnico} className={`p-3.5 rounded-xl border ${
                     darkMode ? 'bg-slate-900/60 border-slate-700/50' : 'bg-slate-50 border-slate-200'
                   }`}>
                     <div className="flex items-center gap-2.5 mb-3">
@@ -464,10 +474,18 @@ export default function DashboardTaller() {
                           {item.tecnico}
                         </p>
                         <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                          {item.cantidad} {item.cantidad === 1 ? 'orden' : 'órdenes'}
+                          {item.cantidad} {item.cantidad === 1 ? 'orden' : 'órdenes'} · {item.activas} en proceso · {item.entregadas} entregadas
                         </p>
                       </div>
-                      <span className="ml-auto text-xl font-black text-blue-500">{item.cantidad}</span>
+                      <span className="ml-auto text-lg font-black text-emerald-500">{money(item.cobrado)}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      {dato('Cobrado este mes', money(item.cobradoMes), 'text-emerald-500')}
+                      {dato('Entregadas este mes', String(item.entregadasMes))}
+                      {dato('Por cobrar', money(item.porCobrar), item.porCobrar > 0 ? 'text-amber-500' : undefined)}
+                      {dato('Repuestos', money(item.repuestos), 'text-rose-500')}
+                      {dato('Ganancia', money(item.utilidad), item.utilidad >= 0 ? 'text-blue-500' : 'text-rose-500')}
+                      {dato('Cobrado total', money(item.cobrado))}
                     </div>
                     <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-slate-700' : 'bg-slate-200'}`}>
                       <motion.div
@@ -476,8 +494,8 @@ export default function DashboardTaller() {
                         transition={{ delay: 1.0 + i * 0.06, duration: 0.55, ease: 'easeOut' }}
                         className="h-full rounded-full"
                         style={{
-                          background: 'linear-gradient(90deg,#f59e0b 0%,#ef4444 100%)',
-                          boxShadow: '0 0 6px rgba(245,158,11,0.5)',
+                          background: 'linear-gradient(90deg,#10b981 0%,#3b82f6 100%)',
+                          boxShadow: '0 0 6px rgba(16,185,129,0.5)',
                         }}
                       />
                     </div>

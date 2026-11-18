@@ -15,6 +15,7 @@ import type {
   NotaInterna,
   FiltrosOrden,
   EstadisticasTaller,
+  ResumenTecnico,
   Diagnostico,
   InsumoReparacion,
 } from '../types/taller';
@@ -24,7 +25,10 @@ import type {
 // ===========================
 
 const DB_NAME = 'codec_pos_taller';
-const DB_VERSION = 1;
+// v2: el índice numeroOrden deja de ser único. Con dos equipos numerando cada
+// uno por su lado, la orden del otro PC traía un número que aquí ya existía y
+// IndexedDB la rechazaba en silencio: nunca llegaba. La identidad es el `id`.
+const DB_VERSION = 2;
 
 const STORES = {
   ORDENES: 'ordenes_servicio',
@@ -42,11 +46,16 @@ class TallerService {
   async init(): Promise<void> {
     try {
       this.db = await openDB(DB_NAME, DB_VERSION, {
-        upgrade(db) {
+        upgrade(db, oldVersion, _newVersion, tx) {
+          if (oldVersion >= 1 && oldVersion < 2 && db.objectStoreNames.contains(STORES.ORDENES)) {
+            const store = tx.objectStore(STORES.ORDENES);
+            if (store.indexNames.contains('numeroOrden')) store.deleteIndex('numeroOrden');
+            store.createIndex('numeroOrden', 'numeroOrden', { unique: false });
+          }
           // Store de órdenes de servicio
           if (!db.objectStoreNames.contains(STORES.ORDENES)) {
             const ordenesStore = db.createObjectStore(STORES.ORDENES, { keyPath: 'id' });
-            ordenesStore.createIndex('numeroOrden', 'numeroOrden', { unique: true });
+            ordenesStore.createIndex('numeroOrden', 'numeroOrden', { unique: false });
             ordenesStore.createIndex('estado', 'estado', { unique: false });
             ordenesStore.createIndex('fechaRecepcion', 'fechaRecepcion', { unique: false });
             ordenesStore.createIndex('clienteTelefono', 'cliente.telefono', { unique: false });
@@ -126,10 +135,10 @@ class TallerService {
    * `upsertOrdenRemota()`: esa recibe órdenes que vienen de la red (LAN o
    * celular), y volver a publicarlas crearía un eco infinito.
    */
-  private publicarEnNube(orden: OrdenServicio): void {
+  private publicarEnNube(orden: OrdenServicio & { eliminada?: boolean }): void {
     import('../lib/supabase/tallerSyncService')
       .then(({ pushOrdenTaller }) => pushOrdenTaller(orden))
-      .catch(() => { /* sin nube: la orden vive local, como siempre */ });
+      .catch(() => { /* sin internet: queda en cola y sube en el siguiente intento */ });
   }
 
   async crearOrden(orden: Omit<OrdenServicio, 'id' | 'numeroOrden' | 'fechaCreacion' | 'ultimaActualizacion' | 'historialEstados'>): Promise<OrdenServicio> {
@@ -186,16 +195,47 @@ class TallerService {
    * existe o reemplaza si ya existe, dejando ambas terminales con el mismo
    * registro.
    */
-  async upsertOrdenRemota(orden: OrdenServicio): Promise<void> {
+  async upsertOrdenRemota(
+    orden: OrdenServicio & { eliminada?: boolean }
+  ): Promise<'nueva' | 'actualizada' | 'igual' | 'eliminada' | 'ignorada'> {
     await this.ensureDB();
     if (!this.db) throw new Error('Base de datos no disponible');
 
-    const normalizada = this.normalizarOrden(orden);
-    await this.db.put(STORES.ORDENES, normalizada);
+    const { eliminada, ...limpia } = orden;
+    const local: OrdenServicio | undefined = await this.db.get(STORES.ORDENES, orden.id);
 
-    if (orden.cliente?.telefono) {
-      await this.guardarCliente(orden.cliente).catch(() => {});
+    if (eliminada) {
+      if (!local) return 'ignorada';
+      await this.db.delete(STORES.ORDENES, orden.id);
+      return 'eliminada';
     }
+
+    const normalizada = this.normalizarOrden(limpia as OrdenServicio);
+
+    if (local) {
+      // La nube manda, salvo que este equipo tenga cambios propios que todavía
+      // no suben (sin internet) y la versión de la nube sea más vieja. No se
+      // compara solo por hora porque el reloj de cada equipo puede estar mal.
+      const tsLocal = Date.parse(local.ultimaActualizacion || '') || 0;
+      const tsRemoto = Date.parse(normalizada.ultimaActualizacion || '') || 0;
+      if (tsRemoto < tsLocal) {
+        const pendiente = await import('../lib/supabase/tallerSyncService')
+          .then((m) => m.tienePendienteDeSubir(orden.id))
+          .catch(() => false);
+        if (pendiente) return 'ignorada';
+      }
+      // Misma hora de cambio = la misma versión (por ejemplo, la que este
+      // equipo subió y vuelve a bajar en el siguiente ciclo).
+      if (tsRemoto === tsLocal || JSON.stringify(local) === JSON.stringify(normalizada)) return 'igual';
+    }
+
+    await this.db.put(STORES.ORDENES, normalizada);
+    this.avanzarContadorDesde(normalizada.numeroOrden);
+
+    if (normalizada.cliente?.telefono) {
+      await this.guardarCliente(normalizada.cliente).catch(() => {});
+    }
+    return local ? 'actualizada' : 'nueva';
   }
 
   /**
@@ -325,11 +365,12 @@ class TallerService {
         ultimaActualizacion: new Date().toISOString(),
       };
 
-      await this.db.put(STORES.ORDENES, ordenActualizada);
-      this.publicarEnNube(ordenActualizada);
+      const normalizada = this.normalizarOrden(ordenActualizada);
+      await this.db.put(STORES.ORDENES, normalizada);
+      this.publicarEnNube(normalizada);
 
       console.log(`✅ Diagnóstico agregado a orden: ${orden.numeroOrden}`);
-      return ordenActualizada;
+      return normalizada;
     } catch (error) {
       console.error('❌ Error agregando diagnóstico:', error);
       throw error;
@@ -383,7 +424,7 @@ class TallerService {
 
       const nuevoPago: PagoOrden = {
         ...pago,
-        id: `pago_${Date.now()}`,
+        id: `pago_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         fecha: new Date().toISOString(),
       };
 
@@ -391,13 +432,13 @@ class TallerService {
       const costoEfectivo = Number(orden.valorCobrado ?? orden.costoFinal ?? orden.costoEstimado ?? 0);
       const saldoPendiente = costoEfectivo - totalPagado;
 
-      const ordenActualizada: OrdenServicio = {
+      const ordenActualizada: OrdenServicio = this.normalizarOrden({
         ...orden,
         pagos: [...orden.pagos, nuevoPago],
         anticipo: totalPagado,
         saldoPendiente: Math.max(0, saldoPendiente),
         ultimaActualizacion: new Date().toISOString(),
-      };
+      });
 
       await this.db.put(STORES.ORDENES, ordenActualizada);
       this.publicarEnNube(ordenActualizada);
@@ -582,7 +623,10 @@ class TallerService {
     if (!this.db) throw new Error('Base de datos no disponible');
 
     try {
+      const orden: OrdenServicio | undefined = await this.db.get(STORES.ORDENES, id);
       await this.db.delete(STORES.ORDENES, id);
+      // Los demás equipos y el celular también la quitan.
+      if (orden) this.publicarEnNube({ ...orden, ultimaActualizacion: new Date().toISOString(), eliminada: true });
       console.log(`✅ Orden eliminada: ${id}`);
     } catch (error) {
       console.error('❌ Error eliminando orden:', error);
@@ -688,11 +732,11 @@ class TallerService {
         totalPendiente,
         ordenesConSaldoPendiente: ordenesConSaldo.length,
         saldoPendienteVencido,
-        tiempoPromedioReparacion: 0,
-        ordenesAtrasadas: 0,
-        dispositivosMasReparados: [],
-        marcasMasComunes: [],
-        ordenesporTecnico: [],
+        tiempoPromedioReparacion: this.tiempoPromedioHoras(todasOrdenes),
+        ordenesAtrasadas: ordenesActivas.filter((o) => o.fechaEstimadaEntrega && new Date(o.fechaEstimadaEntrega) < ahora).length,
+        dispositivosMasReparados: this.contarPor(todasOrdenes, (o) => o.dispositivo?.tipo).map(([tipo, cantidad]) => ({ tipo: tipo as any, cantidad })),
+        marcasMasComunes: this.contarPor(todasOrdenes, (o) => o.dispositivo?.marca?.trim()).map(([marca, cantidad]) => ({ marca, cantidad })),
+        ordenesporTecnico: resumenPorTecnico(todasOrdenes, inicioMes),
         ordenesConGarantia: todasOrdenes.filter((o) => o.garantia?.activa).length,
         devolucionesPorGarantia: todasOrdenes.filter((o) => o.estado === 'garantia').length,
       };
@@ -704,19 +748,73 @@ class TallerService {
     }
   }
 
+  private contarPor(ordenes: OrdenServicio[], clave: (o: OrdenServicio) => string | undefined): [string, number][] {
+    const mapa = new Map<string, number>();
+    for (const o of ordenes) {
+      const k = clave(o);
+      if (k) mapa.set(k, (mapa.get(k) || 0) + 1);
+    }
+    return [...mapa.entries()].sort((a, b) => b[1] - a[1]);
+  }
+
+  /** Horas promedio entre recibir y entregar, solo de las órdenes entregadas. */
+  private tiempoPromedioHoras(ordenes: OrdenServicio[]): number {
+    const tiempos = ordenes
+      .filter((o) => o.estado === 'entregado' && o.fechaEntrega)
+      .map((o) => (new Date(o.fechaEntrega!).getTime() - new Date(o.fechaRecepcion).getTime()) / 3600000)
+      .filter((h) => Number.isFinite(h) && h >= 0);
+    if (tiempos.length === 0) return 0;
+    return Math.round((tiempos.reduce((s, h) => s + h, 0) / tiempos.length) * 10) / 10;
+  }
+
   // ===========================
   // UTILIDADES
   // ===========================
 
+  /**
+   * El número lo da la nube (0156) para que dos equipos nunca repitan. Sin
+   * internet se usa el contador de este equipo con la letra de la caja
+   * (OS-2026-B0012), que no choca con los números de la nube.
+   */
   private async generarNumeroOrden(): Promise<string> {
+    try {
+      const { siguienteNumeroOrdenNube } = await import('../lib/supabase/tallerSyncService');
+      const nube = await siguienteNumeroOrdenNube();
+      if (nube) {
+        this.avanzarContadorDesde(nube);
+        await this.guardarContadorOrden();
+        return nube;
+      }
+    } catch { /* sin nube: contador local */ }
+
+    await this.avanzarContadorDesdeLocal();
     const año = new Date().getFullYear();
     const numero = String(this.contadorOrden).padStart(4, '0');
     this.contadorOrden++;
-
-    // Guardar nuevo contador
     await this.guardarContadorOrden();
 
-    return `OS-${año}-${numero}`;
+    let letra = 'X';
+    try {
+      const { letraDeEstaCaja } = await import('../lib/numeracionCaja');
+      letra = letraDeEstaCaja() || 'X';
+    } catch { /* sin letra */ }
+    return `OS-${año}-${letra}${numero}`;
+  }
+
+  /** Lleva el contador local por encima de un número ya usado (OS-2026-0015 u OS-2026-B0015). */
+  private avanzarContadorDesde(numeroOrden?: string): void {
+    const m = /^OS-(\d{4})-[A-Z]?(\d+)$/.exec(String(numeroOrden || ''));
+    if (!m || Number(m[1]) !== new Date().getFullYear()) return;
+    const n = parseInt(m[2], 10);
+    if (Number.isFinite(n) && n + 1 > this.contadorOrden) this.contadorOrden = n + 1;
+  }
+
+  private async avanzarContadorDesdeLocal(): Promise<void> {
+    if (!this.db) return;
+    try {
+      const todas: OrdenServicio[] = await this.db.getAll(STORES.ORDENES);
+      todas.forEach((o) => this.avanzarContadorDesde(o.numeroOrden));
+    } catch { /* no crítico */ }
   }
 
   private async cargarContadorOrden(): Promise<void> {
@@ -746,6 +844,43 @@ class TallerService {
       console.error('Error guardando contador:', error);
     }
   }
+}
+
+/**
+ * Registro de cada técnico: cuántas órdenes tiene, cuántas entregó, cuánto se
+ * ha cobrado por sus reparaciones (pagos recibidos) y cuánto queda de
+ * ganancia después de los repuestos. `desde` marca el corte del mes.
+ */
+export function resumenPorTecnico(ordenes: OrdenServicio[], desde?: Date): ResumenTecnico[] {
+  const mapa = new Map<string, ResumenTecnico>();
+  const desdeTs = desde ? desde.getTime() : 0;
+  for (const o of ordenes) {
+    const nombre = (o.tecnicoAsignado || '').trim() || 'Sin técnico';
+    const r = mapa.get(nombre) || {
+      tecnico: nombre, cantidad: 0, activas: 0, entregadas: 0, entregadasMes: 0,
+      cobrado: 0, cobradoMes: 0, repuestos: 0, utilidad: 0, porCobrar: 0,
+    };
+    r.cantidad++;
+    if (!['entregado', 'cancelado'].includes(o.estado)) r.activas++;
+    if (o.estado === 'entregado') {
+      r.entregadas++;
+      if (o.fechaEntrega && new Date(o.fechaEntrega).getTime() >= desdeTs) r.entregadasMes++;
+    }
+    if (o.estado !== 'cancelado') {
+      const pagos = Array.isArray(o.pagos) ? o.pagos : [];
+      for (const p of pagos) {
+        const monto = Number(p.monto) || 0;
+        r.cobrado += monto;
+        if (new Date(p.fecha).getTime() >= desdeTs) r.cobradoMes += monto;
+      }
+      const repuestos = Number(o.costoInsumos) || 0;
+      r.repuestos += repuestos;
+      r.porCobrar += Number(o.saldoPendiente) || 0;
+    }
+    r.utilidad = r.cobrado - r.repuestos;
+    mapa.set(nombre, r);
+  }
+  return [...mapa.values()].sort((a, b) => b.cobrado - a.cobrado || b.cantidad - a.cantidad);
 }
 
 // Singleton

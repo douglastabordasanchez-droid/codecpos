@@ -150,7 +150,7 @@ export function ModuloFacturacion({ clienteId, operador, soloLectura, onIr }: Pr
       )}
 
       {pestana === 'ventas'
-        ? <FacturasEmitidas clienteId={clienteId} recarga={recarga} onVerNotas={verNotas} correoConectado={correoConectado} />
+        ? <FacturasEmitidas clienteId={clienteId} recarga={recarga} onVerNotas={verNotas} correoConectado={correoConectado} operador={operador} />
         : pestana === 'notas'
         ? <NotasAjuste key={busquedaNotas} clienteId={clienteId} recarga={recarga} textoInicial={busquedaNotas} />
         : pestana === 'clientes'

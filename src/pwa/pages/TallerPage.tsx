@@ -70,7 +70,12 @@ export default function TallerPage() {
   const [error, setError] = useState<string | null>(null);
 
   const autor = empleado
-    ? { clienteId: empleado.cliente_id, nombre: empleado.nombre_completo }
+    ? {
+        clienteId: empleado.cliente_id,
+        nombre: empleado.nombre_completo,
+        empleadoId: empleado.id,
+        tiendaId: (empleado as any).tienda_id ?? null,
+      }
     : null;
 
   // Nombre completo normalizado del técnico logueado — es lo único que viaja
@@ -91,8 +96,9 @@ export default function TallerPage() {
       .from('taller_ordenes')
       .select('*')
       .eq('cliente_id', empleado.cliente_id)
+      .eq('eliminada', false)
       .order('fecha_recepcion', { ascending: false })
-      .limit(200);
+      .limit(300);
     if (e) setError(e.message);
     const filas = (data as FilaOrdenTaller[]) || [];
     setOrdenes(filas);
@@ -163,7 +169,23 @@ export default function TallerPage() {
   );
 
   const activas = ordenes.filter((o) => !['entregado', 'cancelado'].includes(o.estado)).length;
-  const porCobrar = ordenes.reduce((s, o) => s + (Number(o.saldo_pendiente) || 0), 0);
+  const porCobrar = ordenes.reduce((s, o) => s + (o.estado === 'cancelado' ? 0 : Number(o.saldo_pendiente) || 0), 0);
+
+  // Registro del técnico que tiene el celular: lo cobrado este mes por sus reparaciones.
+  const miMes = useMemo(() => {
+    const inicio = new Date();
+    inicio.setDate(1); inicio.setHours(0, 0, 0, 0);
+    let cobrado = 0;
+    let entregadas = 0;
+    for (const o of ordenes) {
+      if (!miNombre || (o.tecnico_asignado || '').trim().toLowerCase() !== miNombre || o.estado === 'cancelado') continue;
+      for (const p of o.datos?.pagos || []) {
+        if (new Date(p.fecha) >= inicio) cobrado += Number(p.monto) || 0;
+      }
+      if (o.estado === 'entregado' && o.datos?.fechaEntrega && new Date(o.datos.fechaEntrega) >= inicio) entregadas++;
+    }
+    return { cobrado, entregadas };
+  }, [ordenes, miNombre]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
@@ -205,6 +227,21 @@ export default function TallerPage() {
           <p className="text-amber-400 text-2xl font-black mt-0.5">{money(porCobrar)}</p>
           <p className="text-slate-500 text-xs">saldo pendiente</p>
         </motion.div>
+        {miNombre && misOrdenesCount > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
+            className="col-span-2 bg-slate-900/70 backdrop-blur border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between gap-3"
+          >
+            <div>
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wide">Mis ventas este mes</p>
+              <p className="text-emerald-400 text-2xl font-black mt-0.5">{money(miMes.cobrado)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-white text-xl font-black">{miMes.entregadas}</p>
+              <p className="text-slate-500 text-xs">entregadas</p>
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {/* ── Búsqueda ── */}
@@ -547,7 +584,7 @@ function DetalleOrden({
   orden, autor, onCerrar, onAplicar,
 }: {
   orden: FilaOrdenTaller;
-  autor: { clienteId: string; nombre: string };
+  autor: { clienteId: string; nombre: string; empleadoId?: string; tiendaId?: string | null };
   onCerrar: () => void;
   onAplicar: (fila: FilaOrdenTaller) => void;
 }) {

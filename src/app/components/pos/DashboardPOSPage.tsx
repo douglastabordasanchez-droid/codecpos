@@ -833,6 +833,9 @@ export default function DashboardPOSPage() {
 
     let repuestosPeriodo = 0;
     let reparacionesPeriodo = 0;
+    // Pagos del taller que NO entraron a la caja como venta: solo esos se
+    // suman a la utilidad (los demás ya están dentro de las ventas).
+    let reparacionesFueraDeVentas = 0;
     let cantidadRepuestos = 0;
     let cantidadReparaciones = 0;
 
@@ -865,6 +868,14 @@ export default function DashboardPOSPage() {
         }, 0);
         return sum + totalPagosEnRango;
       }, 0);
+      reparacionesFueraDeVentas = ordenes.reduce((sum: number, o: any) => {
+        const pagos = Array.isArray(o?.pagos) ? o.pagos : [];
+        return sum + pagos.reduce((s2: number, p: any) => {
+          const tsPago = new Date(p?.fecha).getTime();
+          if (p?.ventaId || !Number.isFinite(tsPago) || tsPago < inicioTs || tsPago > finTs) return s2;
+          return s2 + (Number(p?.monto) || 0);
+        }, 0);
+      }, 0);
 
       cantidadReparaciones = ordenes.filter((o: any) => {
         const pagos = Array.isArray(o?.pagos) ? o.pagos : [];
@@ -883,6 +894,7 @@ export default function DashboardPOSPage() {
       repuestosPeriodo,
       cantidadRepuestos,
       reparacionesPeriodo,
+      reparacionesFueraDeVentas,
       cantidadReparaciones,
     };
   }, []);
@@ -1084,9 +1096,9 @@ export default function DashboardPOSPage() {
           utilidadVentas
           - movimientosOperativos.gastosPeriodo
           - movimientosOperativos.repuestosPeriodo
-          + movimientosOperativos.reparacionesPeriodo;
+          + movimientosOperativos.reparacionesFueraDeVentas;
         setUtilidadNetaConsolidada(utilidadConsolidada);
-        const baseMargen = (Number(statsNorm.totalIngresos) || 0) + movimientosOperativos.reparacionesPeriodo;
+        const baseMargen = (Number(statsNorm.totalIngresos) || 0) + movimientosOperativos.reparacionesFueraDeVentas;
         setMargenUtilidad(baseMargen > 0 ? (utilidadConsolidada / baseMargen) * 100 : 0);
         setUltimaActualizacion(new Date());
         await cargarExtendidos(statsNorm, filtroDashboard, undefined, rango);
@@ -1167,9 +1179,9 @@ export default function DashboardPOSPage() {
           utilidadVentas
           - movimientosOperativos.gastosPeriodo
           - movimientosOperativos.repuestosPeriodo
-          + movimientosOperativos.reparacionesPeriodo;
+          + movimientosOperativos.reparacionesFueraDeVentas;
         setUtilidadNetaConsolidada(utilidadConsolidada);
-        const baseMargen = (Number(statsNorm.totalIngresos) || 0) + movimientosOperativos.reparacionesPeriodo;
+        const baseMargen = (Number(statsNorm.totalIngresos) || 0) + movimientosOperativos.reparacionesFueraDeVentas;
         setMargenUtilidad(baseMargen > 0 ? (utilidadConsolidada / baseMargen) * 100 : 0);
         setUltimaActualizacion(new Date());
 

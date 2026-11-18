@@ -17,6 +17,7 @@ import { format, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { usePOS } from '../../contexts/POSContext';
 import { useLanContext } from '../../contexts/LanContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { getNombreEmpresaCliente } from '../../lib/empresaConfig';
 import ModalImprimirOrdenTaller from './ModalImprimirOrdenTaller';
 import { toast } from 'sonner';
@@ -74,6 +75,8 @@ interface ListaOrdenestallerProps {
 export default function ListaOrdenesTaller({ onVerDetalle, onNuevaOrden }: ListaOrdenestallerProps) {
   const { darkMode } = usePOS();
   const { emitLanEvent } = useLanContext();
+  const { usuarioActual } = useAuth();
+  const usuarioNombre = usuarioActual?.nombreCompleto || usuarioActual?.username || 'Tablero Kanban';
   const [ordenes, setOrdenes] = useState<OrdenServicio[]>([]);
   const [cargando, setCargando] = useState(true);
   const [ordenParaImprimir, setOrdenParaImprimir] = useState<OrdenServicio | null>(null);
@@ -118,7 +121,7 @@ export default function ListaOrdenesTaller({ onVerDetalle, onNuevaOrden }: Lista
   const moverOrdenEstado = async (orden: OrdenServicio, nuevoEstado: EstadoOrden) => {
     if (orden.estado === nuevoEstado) return;
     try {
-      await tallerService.cambiarEstado(orden.id, nuevoEstado, 'Tablero Kanban', 'Cambio por arrastre');
+      await tallerService.cambiarEstado(orden.id, nuevoEstado, usuarioNombre, 'Cambio en el tablero');
       await cargarOrdenes();
       const estadoLabel = ESTADOS_ORDEN.find((e) => e.value === nuevoEstado)?.label ?? nuevoEstado;
 

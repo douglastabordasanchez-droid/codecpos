@@ -23,6 +23,9 @@ import { playTallerAlertSound } from '../lib/tallerAlertSound';
 import {
   pullOrdenesTallerDesdePwa,
   suscribirCambiosTallerPwa,
+  reintentarPendientesTaller,
+  pushInicialTaller,
+  type OrdenRemota,
 } from '../lib/supabase/tallerSyncService';
 import {
   suscribirCuentasMesa,
@@ -34,7 +37,6 @@ import {
 import { cambioLocalDeMesa } from '../lib/cambiosMesaLocal';
 import { sincronizarRecetario } from '../lib/supabase/recetarioNube';
 import { EVENTO_RECETARIO_CAMBIO } from '../lib/recetarioLocal';
-import type { OrdenServicio } from '../types/taller';
 import { esModuloActivoGlobal, ModuloPOS } from '../lib/permissions';
 
 const STORAGE_CUENTAS_MESAS = 'codecpos_mesas_cuentas';
@@ -78,57 +80,92 @@ export function useSyncModulosNube() {
     let alCambiarRecetario: (() => void) | null = null;
 
     // ── Taller: aplicar una orden que llegó de otra caja o del celular ───────
-    const aplicarOrden = async (orden: OrdenServicio) => {
-      if (cancelado) return;
+    const miNombre = (usuarioActual?.nombreCompleto || '').trim().toLowerCase();
+    const esMia = (o: OrdenRemota) => !!miNombre && (o.tecnicoAsignado || '').trim().toLowerCase() === miNombre;
+
+    /** `avisar` = false en los pulls grandes: se resume en un solo aviso. */
+    const aplicarOrden = async (orden: OrdenRemota, avisar = true) => {
+      if (cancelado) return 'ignorada' as const;
       try {
         await tallerService.init();
-        const yaExistia = !!(await tallerService.obtenerOrden(orden.id));
-        await tallerService.upsertOrdenRemota(orden);
+        const antes = await tallerService.obtenerOrden(orden.id);
+        const resultado = await tallerService.upsertOrdenRemota(orden);
+        if (resultado === 'igual' || resultado === 'ignorada') return resultado;
         window.dispatchEvent(new CustomEvent('lan:taller-estado-cambio', { detail: orden }));
+        if (!avisar) return resultado;
 
-        // Compara por nombre completo — es lo único que viaja hoy en
-        // `tecnicoAsignado` desde cualquier origen (Electron u otra caja).
-        const asignadaAMi =
-          !!usuarioActual?.nombreCompleto &&
-          orden.tecnicoAsignado?.trim().toLowerCase() === usuarioActual.nombreCompleto.trim().toLowerCase();
-
-        if (!yaExistia && asignadaAMi) {
+        const meLaAsignaron = esMia(orden) && (!antes || !esMia(antes as OrdenRemota));
+        if (resultado === 'eliminada') {
+          toast(`Taller · Orden ${orden.numeroOrden} eliminada`, { duration: 5000 });
+        } else if (meLaAsignaron) {
           playTallerAlertSound();
-          toast.success(`🔧 Nueva reparación asignada a ti — Orden ${orden.numeroOrden}`, {
-            description: orden.dispositivo?.marca || orden.dispositivo?.tipo || undefined,
-            duration: 8000,
+          toast.success(`🔧 Nueva reparación asignada a ti · Orden ${orden.numeroOrden}`, {
+            description: [orden.dispositivo?.marca, orden.dispositivo?.modelo, orden.cliente?.nombre].filter(Boolean).join(' · ') || undefined,
+            duration: 10000,
           });
-        } else if (!yaExistia) {
+        } else if (resultado === 'nueva') {
           toast(`Taller · Nueva orden ${orden.numeroOrden}`, {
             description: orden.tecnicoAsignado ? `Asignada a ${orden.tecnicoAsignado}` : 'Sin técnico asignado',
             duration: 5000,
           });
         } else {
-          toast(`Taller · Orden ${orden.numeroOrden}`, {
-            description: `Actualizada · ${orden.estado}`,
-            duration: 5000,
-          });
+          const estado = orden.estado.replace(/_/g, ' ');
+          toast(`Taller · Orden ${orden.numeroOrden}`, { description: `Actualizada · ${estado}`, duration: 4000 });
         }
+        return resultado;
       } catch (e) {
         console.warn('[SyncNube] No se pudo aplicar la orden recibida:', e);
+        return 'ignorada' as const;
       }
     };
 
+    let alVolverInternetTaller: (() => void) | null = null;
+
     if (tallerActivo) {
-      const pullTaller = () => {
-        pullOrdenesTallerDesdePwa()
-          .then((ordenes) => { ordenes.forEach(aplicarOrden); })
-          .catch((e) => console.warn('[SyncNube] Pull de taller falló:', e));
+      let enCurso = false;
+      const cicloTaller = async () => {
+        if (cancelado || enCurso || !navigator.onLine) return;
+        enCurso = true;
+        try {
+          // 1. Subir lo de este equipo que quedó sin subir (sin internet).
+          await reintentarPendientesTaller((id) => tallerService.obtenerOrden(id))
+            .catch((e) => console.warn('[SyncNube] Reintento de taller falló:', e));
+          // 2. Una sola vez por equipo: subir las órdenes que ya existían.
+          await pushInicialTaller(() => tallerService.obtenerTodasOrdenes())
+            .catch((e) => console.warn('[SyncNube] Subida inicial de taller falló:', e));
+          // 3. Bajar lo que hicieron los demás.
+          const ordenes = await pullOrdenesTallerDesdePwa();
+          const avisarUna = ordenes.length <= 3;
+          let nuevas = 0;
+          let cambiadas = 0;
+          for (const o of ordenes) {
+            const r = await aplicarOrden(o, avisarUna);
+            if (r === 'nueva') nuevas++;
+            else if (r === 'actualizada' || r === 'eliminada') cambiadas++;
+          }
+          if (!avisarUna && nuevas + cambiadas > 0) {
+            const asignadas = ordenes.filter(esMia).length;
+            if (asignadas > 0) playTallerAlertSound();
+            toast(`Taller al día: ${nuevas} orden(es) nueva(s) y ${cambiadas} actualizada(s)`, {
+              description: asignadas > 0 ? `${asignadas} asignada(s) a ti` : undefined,
+              duration: 6000,
+            });
+          }
+        } catch (e) {
+          console.warn('[SyncNube] Sync de taller falló:', e);
+        } finally {
+          enCurso = false;
+        }
       };
 
-      // Al arrancar: recuperar lo que pasó mientras la caja estaba cerrada.
-      pullTaller();
-      // 🛡️ Red de seguridad: además del realtime, un pull periódico por si se
-      // cae la conexión del canal sin que nadie lo note (mismo patrón que
-      // ventas/productos en syncService.ts).
-      intervaloTaller = window.setInterval(pullTaller, TALLER_PULL_INTERVAL_MS);
+      // Al arrancar: recuperar lo que pasó mientras el equipo estaba cerrado.
+      void cicloTaller();
+      // 🛡️ Red de seguridad además del tiempo real: por si el canal se cae sin que nadie lo note.
+      intervaloTaller = window.setInterval(() => void cicloTaller(), TALLER_PULL_INTERVAL_MS);
+      alVolverInternetTaller = () => { window.setTimeout(() => void cicloTaller(), 1500); };
+      window.addEventListener('online', alVolverInternetTaller);
 
-      desuscribirTaller = suscribirCambiosTallerPwa(aplicarOrden);
+      desuscribirTaller = suscribirCambiosTallerPwa((o) => { void aplicarOrden(o); });
     }
 
     // ── Panadería: cuenta de mesa enviada por un mesero U OTRA CAJA ──────────
@@ -234,6 +271,7 @@ export function useSyncModulosNube() {
     return () => {
       cancelado = true;
       if (intervaloTaller !== null) window.clearInterval(intervaloTaller);
+      if (alVolverInternetTaller) window.removeEventListener('online', alVolverInternetTaller);
       desuscribirTaller?.();
       desuscribirCuentas?.();
       if (intervaloCuentas !== null) window.clearInterval(intervaloCuentas);

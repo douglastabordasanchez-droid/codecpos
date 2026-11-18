@@ -611,8 +611,10 @@ export function LanProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         await tallerService.init();
-        await tallerService.upsertOrdenRemota(orden as any);
+        const resultado = await tallerService.upsertOrdenRemota(orden as any);
         console.log(`[LAN][receive] TALLER_ORDEN_NUEVA — orden ${orden.numeroOrden} guardada localmente (id=${orden.id})`);
+        // Ya había llegado por la nube: no repetir el aviso.
+        if (resultado === 'igual' || resultado === 'ignorada') return;
 
         toast.success(`Nueva orden de taller — ${orden.numeroOrden}`, {
           description: `${orden.dispositivo?.marca ?? ''} ${orden.dispositivo?.modelo ?? ''} · ${orden.cliente?.nombre ?? ''} · desde ${event.cajeroNombre}`,

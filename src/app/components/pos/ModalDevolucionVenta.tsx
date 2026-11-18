@@ -170,6 +170,8 @@ export function ModalDevolucionVenta({ venta, onClose, onHecho }: Props) {
         emitirNotaCreditoPorDevolucion({
           clienteId,
           ventaReferencia: numeroFactura,
+          // Una venta que vino de la web o del celular se facturó con su código de la nube.
+          otrasReferencias: [venta.id, (venta as any).supabaseId, (venta as any).localIdNube].filter((r): r is string => !!r && r !== numeroFactura),
           items: elegidas.map((l) => ({ codigo: l.item.codigo, nombre: l.item.nombre, cantidad: cantidades[l.item.id] })),
           motivo: motivoFinal,
           devolucionTotal,
@@ -228,7 +230,7 @@ export function ModalDevolucionVenta({ venta, onClose, onHecho }: Props) {
               <>
                 <div className="flex items-center justify-between">
                   <p className={`text-sm font-semibold ${texto}`}>¿Qué se devuelve?</p>
-                  <button onClick={devolverTodo} className="text-sm font-semibold text-orange-500 hover:underline">Devolver todo</button>
+                  <button onClick={devolverTodo} className="text-sm font-semibold text-orange-500 hover:underline">Devolver todo (anular la venta)</button>
                 </div>
 
                 <div className="space-y-2">

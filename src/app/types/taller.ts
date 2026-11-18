@@ -243,6 +243,10 @@ export interface PagoOrden {
   referencia?: string;
   recibidoPor: string;
   comprobante?: string; // URL del comprobante
+  /** Venta con la que este pago entró a la caja (Electron, web o celular). */
+  ventaId?: string;
+  /** Sesión de caja abierta cuando se recibió el pago. */
+  sesionCajaId?: string;
 }
 
 /**
@@ -347,6 +351,20 @@ export interface OrdenServicio {
   firmaEntrega?: string; // URL de la firma al entregar
 }
 
+/** Registro de un técnico: sus órdenes y lo que se ha cobrado por ellas. */
+export interface ResumenTecnico {
+  tecnico: string;
+  cantidad: number;
+  activas: number;
+  entregadas: number;
+  entregadasMes: number;
+  cobrado: number;
+  cobradoMes: number;
+  repuestos: number;
+  utilidad: number;
+  porCobrar: number;
+}
+
 /**
  * Estadísticas del taller
  */
@@ -381,7 +399,7 @@ export interface EstadisticasTaller {
   marcasMasComunes: { marca: string; cantidad: number }[];
 
   // Técnicos
-  ordenesporTecnico: { tecnico: string; cantidad: number }[];
+  ordenesporTecnico: ResumenTecnico[];
 
   // Satisfacción
   ordenesConGarantia: number;

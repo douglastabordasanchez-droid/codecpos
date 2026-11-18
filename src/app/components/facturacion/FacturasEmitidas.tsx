@@ -12,7 +12,9 @@ import { guardarNotaContador, listarFacturasDian, marcarCorreoEnviado } from '..
 import { asegurarNumeracionNota, listarResolucionesPerfil } from '../../lib/supabase/fiscalProfileService';
 import { listarNotasDeFactura, listarNotasDelCliente, type NotaConFactura } from '../../lib/supabase/notaAjusteDianService';
 import { ManualDeliveryProvider } from '../../lib/dian/deliveryProvider';
-import { emitirNotaAjuste } from '../../lib/dian/emitirNotaAjuste';
+import { emitirNotaAjuste, itemsDeFactura } from '../../lib/dian/emitirNotaAjuste';
+import { calcularDocumentoFiscal, redondear2 } from '../../lib/dian/documentoFiscal';
+import { devolverVentaPorNotaCredito, avisoDevolucionPorNota, CONCEPTOS_QUE_DEVUELVEN } from '../../lib/dian/devolucionPorNota';
 import { prepararPaqueteEntrega } from '../../lib/dian/paqueteEntrega';
 import { enviarFacturaPorCorreoNegocio } from '../../lib/dian/correoFacturas';
 import { facturaReemplazada, referenciaVenta } from '../../lib/dian/refacturar';
@@ -20,7 +22,7 @@ import { ModalFacturarDeNuevo } from './ModalFacturarDeNuevo';
 import {
   CONCEPTOS_NOTA_CREDITO, CONCEPTOS_NOTA_DEBITO,
   type FacturaElectronicaDian, type EstadoDocumentoDian, type ResolucionDian,
-  type TipoNotaAjuste, type NotaAjusteDian,
+  type TipoNotaAjuste, type NotaAjusteDian, type ItemFacturaDian,
 } from '../../lib/dian/types';
 import { ModalVistaFactura } from '../factura/ModalVistaFactura';
 import { datosPdfFacturaDianCompletos } from '../../lib/dian/representacionGrafica';
@@ -46,6 +48,19 @@ interface Props {
   onVerNotas?: (numeroFactura: string) => void;
   /** El negocio conectó su correo: Enviar manda la factura sin abrir otro programa. */
   correoConectado?: boolean;
+  /** Quien emite la nota: queda como responsable de la devolución de la venta. */
+  operador?: { id: string | null; nombre: string };
+}
+
+/** Parte devuelta de una línea de la factura, con sus impuestos en proporción. */
+function lineaParcial(linea: ItemFacturaDian, cantidad: number): ItemFacturaDian {
+  const factor = linea.cantidad > 0 ? cantidad / linea.cantidad : 0;
+  return {
+    ...linea,
+    cantidad,
+    subtotal: redondear2(linea.subtotal * factor),
+    impuestos: linea.impuestos?.map((t) => ({ ...t, valor: redondear2(t.valor * factor) })),
+  };
 }
 
 /** Mensajes de rechazo de la DIAN (ErrorMessage.string) de una respuesta guardada. */
@@ -55,7 +70,7 @@ function motivosDian(respuesta: Record<string, unknown> | undefined): string[] {
   return lista.map(String).filter((m) => /rechazo/i.test(m)).slice(0, 3);
 }
 
-export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoConectado }: Props) {
+export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoConectado, operador }: Props) {
   const [facturas, setFacturas] = useState<FacturaElectronicaDian[]>([]);
   // Notas aprobadas por factura: la columna de estado dice si quedó anulada o ajustada.
   const [notasPorFactura, setNotasPorFactura] = useState<Record<string, NotaConFactura[]>>({});
@@ -74,6 +89,9 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
   const [notasFactura, setNotasFactura] = useState<NotaAjusteDian[]>([]);
   const [formNota, setFormNota] = useState({ tipo: 'credito' as TipoNotaAjuste, resolucionId: '', conceptoCodigo: '', motivo: '', total: '' });
   const [emitiendoNota, setEmitiendoNota] = useState(false);
+  // Devolución parcial: qué productos de la factura vuelven, y cuántos.
+  const [lineasFacturaNota, setLineasFacturaNota] = useState<ItemFacturaDian[]>([]);
+  const [devolverCantidades, setDevolverCantidades] = useState<Record<number, number>>({});
 
   // Nota interna para el contador (no confundir con las notas crédito/débito de la DIAN).
   const [facturaNotaContador, setFacturaNotaContador] = useState<FacturaElectronicaDian | null>(null);
@@ -212,6 +230,8 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
   async function abrirNota(f: FacturaElectronicaDian) {
     setFacturaNota(f);
     setFormNota({ tipo: 'credito', resolucionId: '', conceptoCodigo: '', motivo: '', total: String(f.total) });
+    setDevolverCantidades({});
+    try { setLineasFacturaNota(itemsDeFactura(f)); } catch { setLineasFacturaNota([]); }
     // Las notas no necesitan resolución DIAN: si el perfil no tiene numeración
     // de notas (NC y ND), se crea aquí para que siempre haya con qué emitir.
     await Promise.all([
@@ -234,7 +254,11 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
     if (!formNota.resolucionId) { toast.error('Selecciona la numeración de la nota'); return; }
     if (!formNota.conceptoCodigo) { toast.error('Selecciona el concepto'); return; }
     if (!formNota.motivo.trim()) { toast.error('Escribe el motivo'); return; }
-    const total = parseFloat(formNota.total);
+    const esAnulacion = formNota.tipo === 'credito' && formNota.conceptoCodigo === '2';
+    const lineasDevueltas = esDevolucion ? lineasElegidas : [];
+    const total = esAnulacion ? facturaNota.total
+      : lineasDevueltas.length > 0 ? calcularDocumentoFiscal(lineasDevueltas).total
+      : parseFloat(formNota.total);
     if (!Number.isFinite(total) || total <= 0) { toast.error('Total inválido'); return; }
 
     setEmitiendoNota(true);
@@ -247,10 +271,32 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
         tipo: formNota.tipo,
         conceptoCodigo: formNota.conceptoCodigo,
         motivo: formNota.motivo.trim(),
+        ...(lineasDevueltas.length > 0 ? { items: lineasDevueltas } : {}),
         total,
       });
       toast.success(`Nota ${nota.numeroNota} registrada`);
       setNotasFactura(await listarNotasDeFactura(facturaNota.id));
+
+      // Devolución o anulación: la venta se devuelve y la mercancía vuelve al
+      // inventario (en este equipo o en la nube, según dónde viva la venta).
+      const notaValida = !['rejected', 'error', 'cancelled'].includes(nota.estado);
+      if (notaValida && formNota.tipo === 'credito' && CONCEPTOS_QUE_DEVUELVEN.includes(formNota.conceptoCodigo)) {
+        const porTodo = esAnulacion || Math.abs(total - facturaNota.total) <= 1;
+        if (!porTodo && lineasDevueltas.length === 0) {
+          toast.info('La nota fue solo por valor: el inventario no cambia. Para devolver mercancía elige los productos en la nota.');
+        } else {
+          const r = await devolverVentaPorNotaCredito({
+            factura: facturaNota,
+            conceptoCodigo: formNota.conceptoCodigo,
+            numeroNota: nota.numeroNota,
+            motivo: formNota.motivo.trim(),
+            lineasNota: porTodo && lineasDevueltas.length === 0 ? null : lineasDevueltas,
+            usuario: { id: operador?.id ?? null, nombre: operador?.nombre || 'Facturación' },
+          });
+          const aviso = avisoDevolucionPorNota(r);
+          if (aviso) toast[aviso.tipo](aviso.texto, { duration: 10000 });
+        }
+      }
     } catch (e: any) {
       // Si falta configuración del perfil (PIN/identificador de software),
       // la nota SÍ queda registrada con su número reservado, en 'error'.
@@ -264,6 +310,13 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
       setEmitiendoNota(false);
     }
   }
+
+  const esDevolucion = formNota.tipo === 'credito' && formNota.conceptoCodigo === '1';
+  const lineasElegidas = lineasFacturaNota
+    .map((l, i) => ({ l, c: Math.min(l.cantidad, Math.max(0, devolverCantidades[i] || 0)) }))
+    .filter(({ c }) => c > 0)
+    .map(({ l, c }) => lineaParcial(l, c));
+  const totalElegido = lineasElegidas.length > 0 ? calcularDocumentoFiscal(lineasElegidas).total : 0;
 
   // Ya acreditada por todo su valor: otra nota crédito sería un crédito doble.
   const facturaYaAnulada = !!facturaNota && notasFactura
@@ -626,11 +679,59 @@ export function FacturasEmitidas({ clienteId, recarga = 0, onVerNotas, correoCon
                 className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white text-sm resize-none" />
             </label>
 
-            <label className="block space-y-1.5">
-              <span className="text-xs text-slate-400">Valor de la nota</span>
-              <input type="number" value={formNota.total} onChange={(e) => setFormNota((s) => ({ ...s, total: e.target.value }))} className={`${campo} w-full`} />
-              <span className="block text-xs text-slate-500">Por defecto ajusta la factura completa.</span>
-            </label>
+            {esDevolucion && lineasFacturaNota.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-400">¿Qué devuelve el cliente?</span>
+                  <button
+                    type="button"
+                    onClick={() => setDevolverCantidades(Object.fromEntries(lineasFacturaNota.map((l, i) => [i, l.cantidad])))}
+                    className="text-xs text-amber-400 font-semibold"
+                  >
+                    Devolver todo
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                  {lineasFacturaNota.map((l, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-white truncate">{l.descripcion}</p>
+                        <p className="text-xs text-slate-500">Vendidas: {l.cantidad} · {money(l.precioUnitario)} c/u</p>
+                      </div>
+                      <input
+                        type="number" min={0} max={l.cantidad} step="any"
+                        value={devolverCantidades[i] ?? ''}
+                        placeholder="0"
+                        onChange={(e) => setDevolverCantidades((c) => ({ ...c, [i]: Math.min(l.cantidad, Math.max(0, Number(e.target.value) || 0)) }))}
+                        className="w-20 h-9 px-2 rounded-lg bg-slate-950 border border-slate-700 text-white text-sm text-right"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <span className="block text-xs text-slate-500">
+                  Lo que elijas vuelve al inventario. Si no eliges nada, la nota es solo por valor y el inventario no cambia.
+                </span>
+              </div>
+            )}
+
+            {formNota.tipo === 'credito' && formNota.conceptoCodigo === '2' ? (
+              <div className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-2.5">
+                <p className="text-xs text-slate-400">Valor de la nota</p>
+                <p className="text-white font-bold">{money(facturaNota.total)}</p>
+                <p className="text-xs text-slate-500 mt-1">Anula la factura completa: la venta queda devuelta y todo vuelve al inventario.</p>
+              </div>
+            ) : esDevolucion && lineasElegidas.length > 0 ? (
+              <div className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-2.5">
+                <p className="text-xs text-slate-400">Valor de la nota (con impuestos)</p>
+                <p className="text-white font-bold">{money(totalElegido)}</p>
+              </div>
+            ) : (
+              <label className="block space-y-1.5">
+                <span className="text-xs text-slate-400">Valor de la nota</span>
+                <input type="number" value={formNota.total} onChange={(e) => setFormNota((s) => ({ ...s, total: e.target.value }))} className={`${campo} w-full`} />
+                <span className="block text-xs text-slate-500">Por defecto ajusta la factura completa.</span>
+              </label>
+            )}
 
             {facturaYaAnulada && formNota.tipo === 'credito' && (
               <p className="text-xs text-amber-400">Esta factura ya está anulada con nota crédito aprobada por todo su valor. No se puede emitir otra.</p>

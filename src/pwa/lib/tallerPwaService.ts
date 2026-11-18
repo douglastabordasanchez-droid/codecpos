@@ -13,6 +13,7 @@
  * lista del celular empiezan a contar cosas distintas.
  */
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { crearVentaMovil } from './ventaMovilService';
 import type { EstadoOrden, OrdenServicio, PagoOrden, Prioridad, TipoDispositivo } from '../../app/types/taller';
 
 export interface FilaOrdenTaller {
@@ -39,6 +40,46 @@ export interface FilaOrdenTaller {
 interface Autor {
   clienteId: string;
   nombre: string;
+  /** Para que el cobro quede como venta del empleado (reportes y caja del celular). */
+  empleadoId?: string;
+  tiendaId?: string | null;
+}
+
+/**
+ * Registra el cobro como venta en la nube: sale en Reportes, en la caja del
+ * celular y baja a los equipos como cualquier venta móvil. Devuelve el id de
+ * la venta, o undefined si no se pudo (el pago igual queda en la orden).
+ */
+async function ventaDelCobro(
+  autor: Autor,
+  orden: OrdenServicio,
+  monto: number,
+  metodoPago: string,
+  concepto: string
+): Promise<string | undefined> {
+  if (!autor.empleadoId || !(monto > 0)) return undefined;
+  const dispositivo = [orden.dispositivo?.marca, orden.dispositivo?.modelo].filter(Boolean).join(' ');
+  const tecnico = orden.tecnicoAsignado ? ` · Técnico: ${orden.tecnicoAsignado}` : '';
+  try {
+    const r = await crearVentaMovil(
+      autor.clienteId,
+      autor.empleadoId,
+      autor.nombre,
+      [{
+        productoId: `taller-${orden.id}`,
+        nombre: `${concepto} ${orden.numeroOrden}${dispositivo ? ` · ${dispositivo}` : ''}${tecnico}`,
+        cantidad: 1,
+        precio: monto,
+        sinInventario: true,
+      }],
+      metodoPago,
+      undefined, 0, 0, false,
+      autor.tiendaId ?? null,
+    );
+    return r.ok ? r.ventaId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function cliente() {
@@ -80,6 +121,10 @@ function columnasDesde(orden: OrdenServicio) {
  * renumerando desde la caja, y nunca se pierde ni se sobrescribe una orden.
  */
 async function siguienteNumeroOrden(clienteId: string): Promise<string> {
+  // Contador de la nube (0156): el mismo que usan los equipos, nunca repite.
+  const { data: numeroNube, error: errorNube } = await cliente().rpc('siguiente_numero_orden_taller');
+  if (!errorNube && typeof numeroNube === 'string') return numeroNube;
+
   const anio = new Date().getFullYear();
   const { data } = await cliente()
     .from('taller_ordenes')
@@ -107,6 +152,7 @@ export interface DatosNuevaOrden {
   costoEstimado: number;
   anticipo: number;
   tecnicoAsignado?: string;
+  metodoAnticipo?: PagoOrden['metodoPago'];
 }
 
 export async function crearOrdenDesdePwa(autor: Autor, d: DatosNuevaOrden): Promise<FilaOrdenTaller> {
@@ -117,12 +163,13 @@ export async function crearOrdenDesdePwa(autor: Autor, d: DatosNuevaOrden): Prom
   const costoEstimado = Number(d.costoEstimado) || 0;
   const anticipo = Number(d.anticipo) || 0;
 
+  const metodoAnticipo = d.metodoAnticipo || 'efectivo';
   const pagos: PagoOrden[] = anticipo > 0
     ? [{
         id: `pago_${Date.now()}`,
         fecha: ahora,
         monto: anticipo,
-        metodoPago: 'efectivo',
+        metodoPago: metodoAnticipo,
         recibidoPor: autor.nombre,
         referencia: 'Anticipo al recibir (app móvil)',
       }]
@@ -179,6 +226,11 @@ export async function crearOrdenDesdePwa(autor: Autor, d: DatosNuevaOrden): Prom
     notificarCliente: false,
     urgente: d.prioridad === 'urgente',
   };
+
+  if (pagos[0]) {
+    const ventaId = await ventaDelCobro(autor, orden, anticipo, metodoAnticipo, 'Anticipo');
+    if (ventaId) pagos[0].ventaId = ventaId;
+  }
 
   const { data, error } = await cliente()
     .from('taller_ordenes')
@@ -282,16 +334,21 @@ export interface DatosCobro {
  * SUMA REAL de pagos, no sumando sobre el valor anterior: así un pago repetido
  * por doble toque no descuadra la cuenta.
  */
-export function registrarPagoOrden(fila: FilaOrdenTaller, autor: Autor, cobro: DatosCobro) {
+export async function registrarPagoOrden(fila: FilaOrdenTaller, autor: Autor, cobro: DatosCobro) {
+  const base = fila.datos || ({} as OrdenServicio);
+  const monto = Number(cobro.monto) || 0;
+  const saldo = Number(base.saldoPendiente) || 0;
+  const ventaId = await ventaDelCobro(autor, base, monto, cobro.metodoPago, monto >= saldo && saldo > 0 ? 'Pago final' : 'Abono');
   return mutar(fila, autor, (o, ahora) => {
     const pagos = Array.isArray(o.pagos) ? o.pagos : [];
     const nuevoPago: PagoOrden = {
       id: `pago_${Date.now()}`,
       fecha: ahora,
-      monto: Number(cobro.monto) || 0,
+      monto,
       metodoPago: cobro.metodoPago,
       referencia: cobro.referencia || undefined,
       recibidoPor: autor.nombre,
+      ...(ventaId ? { ventaId } : {}),
     };
     const todosLosPagos = [...pagos, nuevoPago];
     const pagado = todosLosPagos.reduce((s, p) => s + (Number(p.monto) || 0), 0);

@@ -10,6 +10,8 @@ import { TIPOS_DISPOSITIVO, PRIORIDADES, type TipoDispositivo, type Prioridad } 
 import { usePOS } from '../../contexts/POSContext';
 import { useLanContext } from '../../contexts/LanContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { registrarCobroTallerEnCaja } from '../../lib/tallerCaja';
+import type { PagoOrden } from '../../types/taller';
 
 const STEPS = [
   { num: 1 as const, label: 'Cliente',     icon: User       },
@@ -26,7 +28,9 @@ interface RecepcionDispositivoFormProps {
 export default function RecepcionDispositivoForm({ onClose, onSuccess }: RecepcionDispositivoFormProps) {
   const { darkMode } = usePOS();
   const { emitLanEvent } = useLanContext();
-  const { usuarios } = useAuth();
+  const { usuarios, usuarioActual } = useAuth();
+  const usuarioNombre = usuarioActual?.nombreCompleto || usuarioActual?.username || 'Sistema';
+  const [metodoAnticipo, setMetodoAnticipo] = useState<PagoOrden['metodoPago']>('efectivo');
 
   const input = darkMode
     ? 'w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm'
@@ -168,19 +172,30 @@ export default function RecepcionDispositivoForm({ onClose, onSuccess }: Recepci
         fechaEstimadaEntrega: ordenData.fechaEstimadaEntrega || undefined,
         tecnicoAsignado: ordenData.tecnicoAsignado || undefined,
         notasInternas: ordenData.observaciones
-          ? [{ id: `nota_${Date.now()}`, fecha: new Date().toISOString(), usuario: 'Sistema', nota: ordenData.observaciones, tipo: 'info' }]
+          ? [{ id: `nota_${Date.now()}`, fecha: new Date().toISOString(), usuario: usuarioNombre, nota: ordenData.observaciones, tipo: 'info' }]
           : [],
-        creadoPor: 'Sistema',
+        creadoPor: usuarioNombre,
         notificarCliente: true,
         urgente: ordenData.prioridad === 'urgente',
       });
 
+      // El anticipo entra a la caja del turno como venta de servicio.
       if (ordenData.anticipo > 0) {
+        const caja = await registrarCobroTallerEnCaja({
+          orden,
+          monto: ordenData.anticipo,
+          metodoPago: metodoAnticipo,
+          usuario: usuarioActual as any,
+          concepto: 'Anticipo',
+        });
         await tallerService.registrarPago(orden.id, {
           monto: ordenData.anticipo,
-          metodoPago: 'efectivo',
-          recibidoPor: 'Sistema',
+          metodoPago: metodoAnticipo,
+          recibidoPor: usuarioNombre,
+          referencia: 'Anticipo al recibir',
+          ...(caja ? { ventaId: caja.ventaId, sesionCajaId: caja.sesionCajaId } : {}),
         });
+        if (!caja) toast.warning('El anticipo quedó en la orden, pero no se pudo registrar en la caja');
       }
 
       // 🛡️ FIX: la orden se guardaba SOLO en el IndexedDB local de esta
@@ -457,6 +472,20 @@ export default function RecepcionDispositivoForm({ onClose, onSuccess }: Recepci
             onChange={(e) => setOrdenData({ ...ordenData, anticipo: Number(e.target.value) })}
             className={input} placeholder="0" min="0" max={ordenData.costoEstimado} />
         </div>
+        {ordenData.anticipo > 0 && (
+          <div>
+            <label className={label}>¿Cómo pagó el anticipo?</label>
+            <select value={metodoAnticipo}
+              onChange={(e) => setMetodoAnticipo(e.target.value as PagoOrden['metodoPago'])}
+              className={select}>
+              <option value="efectivo">Efectivo</option>
+              <option value="nequi">Nequi</option>
+              <option value="daviplata">Daviplata</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="tarjeta">Tarjeta</option>
+            </select>
+          </div>
+        )}
         <div>
           <label className={`${label} flex items-center gap-1.5`}>
             <Calendar className="w-3.5 h-3.5" />

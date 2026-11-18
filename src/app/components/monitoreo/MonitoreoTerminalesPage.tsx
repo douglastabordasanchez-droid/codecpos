@@ -85,7 +85,7 @@ async function collectTransferData(tipo: TransferTipo): Promise<unknown> {
       // El Taller usa IndexedDB (codec_pos_taller) — leer via tallerService
       try {
         await tallerService.init();
-        const ordenes = await tallerService.getOrdenes({});
+        const ordenes = await tallerService.buscarOrdenes({});
         return { ordenes, clientes: [] };
       } catch {
         return { ordenes: [], clientes: [] };
@@ -107,7 +107,7 @@ async function collectTransferData(tipo: TransferTipo): Promise<unknown> {
       // Incluir también snapshot de Taller (IndexedDB)
       try {
         await tallerService.init();
-        const ordenes = await tallerService.getOrdenes({});
+        const ordenes = await tallerService.buscarOrdenes({});
         data['__taller_ordenes_idb__'] = ordenes;
       } catch {}
       return data;

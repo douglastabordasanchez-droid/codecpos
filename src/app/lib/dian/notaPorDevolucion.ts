@@ -85,7 +85,10 @@ export async function emitirNotaCreditoPorDevolucion(datos: {
     if (!resolucion?.id) return { estado: 'sin_numeracion' };
 
     // Devolución completa: la nota toma la factura entera (sin detalle explícito).
-    const items = datos.devolucionTotal ? undefined : lineasDevueltas(factura, datos.items);
+    // Si ya hubo notas crédito parciales, solo se acredita lo que faltaba:
+    // anular la factura entera daría un crédito doble ante la DIAN.
+    const anulaTodo = datos.devolucionTotal && acreditadas.length === 0;
+    const items = anulaTodo ? undefined : lineasDevueltas(factura, datos.items);
     const fiscal = calcularDocumentoFiscal(items ?? itemsDeFactura(factura));
     const nota = await emitirNotaAjuste({
       clienteId: datos.clienteId,
@@ -94,7 +97,7 @@ export async function emitirNotaCreditoPorDevolucion(datos: {
       resolucionId: resolucion.id,
       tipo: 'credito',
       // 1 = devolución de parte de los bienes; 2 = anulación (se devolvió todo).
-      conceptoCodigo: datos.devolucionTotal ? '2' : '1',
+      conceptoCodigo: anulaTodo ? '2' : '1',
       motivo: datos.motivo || 'Devolución de mercancía',
       items,
       subtotal: fiscal.brutoLineas,

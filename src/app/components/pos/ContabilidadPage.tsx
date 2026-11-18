@@ -537,6 +537,9 @@ export default function ContabilidadPage() {
         if (cancelado) return;
         const pagos: { fecha: string; monto: number }[] = [];
         ordenes.forEach((o) => (o.pagos || []).forEach((p: any) => {
+          // El pago que ya entró como venta de servicio (tallerCaja.ts) está
+          // sumado en las ventas: contarlo aquí lo duplicaría.
+          if (p?.ventaId) return;
           pagos.push({ fecha: String(p?.fecha || '').split('T')[0], monto: Number(p?.monto) || 0 });
         }));
         setPagosTallerCache(pagos);
