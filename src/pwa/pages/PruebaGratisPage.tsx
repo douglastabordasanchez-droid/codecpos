@@ -1,12 +1,13 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router';
-import { Sparkles, Loader2, Eye, EyeOff, CheckCircle2, Smartphone, Monitor, Share, PlusSquare, Download, Fingerprint } from 'lucide-react';
+import { Loader2, Eye, EyeOff, CheckCircle2, Smartphone, Monitor, Share, PlusSquare, Download, Fingerprint } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { TIPOS_NEGOCIO } from '../../data/tipos-negocio';
+import logo from '/logo.png';
 
 const OPCIONES_TIPO_NEGOCIO = Object.values(TIPOS_NEGOCIO).map((t) => t.nombre);
 const URL_DESCARGA_WINDOWS = 'https://pos.codecstudio.online/descargar/';
@@ -198,8 +199,8 @@ export default function PruebaGratisPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-4 shadow-xl shadow-orange-500/30">
-        <Sparkles className="w-8 h-8 text-white" />
+      <div className="w-20 h-20 rounded-3xl bg-white flex items-center justify-center mb-4 p-3 shadow-xl shadow-orange-500/20 ring-1 ring-black/5">
+        <img src={logo} alt="Codec Studio" className="w-full h-full object-contain" />
       </div>
       <h1 className="text-white text-xl font-black mb-1">Probar 14 días gratis</h1>
       <p className="text-slate-400 text-sm mb-6 text-center max-w-xs">

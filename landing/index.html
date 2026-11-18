@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,700;9..40,800&family=Inter:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="./home.css?v=20261118b">
+<link rel="stylesheet" href="./home.css?v=20261118c">
 <link rel="preload" as="image" href="./assets/web-inicio.webp">
 
 <script type="application/ld+json">
@@ -92,7 +92,6 @@
   <section class="hero">
     <div class="wrap hero-grid">
       <div class="hero-copy">
-        <a href="#facturacion" class="pill-new"><b>Nuevo</b> Facturación electrónica DIAN integrada</a>
         <h1>El POS inteligente que <span class="grad">vende, factura</span> y confirma tus pagos.</h1>
         <p class="hero-sub">Factura electrónica en un toque, pagos de Nequi y Bre-B verificados solos y ventas que no se detienen aunque se vaya el internet.</p>
         <div class="hero-ctas">
@@ -112,14 +111,6 @@
           <img src="./assets/web-inicio.webp" width="1600" height="887" alt="Panel de inicio de Codec POS con utilidad neta, ingresos, ventas del día y alertas de stock">
         </div>
         <div class="phone hero-phone"><img src="./assets/cel-vender.webp" width="560" height="1093" alt="Pantalla de venta de Codec POS en el celular"></div>
-        <div class="toast toast-dian">
-          <span class="toast-ico"><i data-lucide="badge-check"></i></span>
-          <span><strong>Factura FAC14</strong><small>Aceptada por la DIAN</small></span>
-        </div>
-        <div class="toast toast-pay">
-          <span class="toast-ico"><i data-lucide="bell-ring"></i></span>
-          <span><strong>+$35.000 Nequi</strong><small>Verificado por Codec Verify</small></span>
-        </div>
       </div>
     </div>
   </section>
@@ -188,6 +179,8 @@
             <li><i data-lucide="circle-check"></i>Sale desde el correo de tu negocio</li>
             <li><i data-lucide="circle-check"></i>Te ayudamos a activarla paso a paso</li>
           </ul>
+          <p class="fe-note"><i data-lucide="info"></i>El valor de la implementación de la facturación electrónica se cotiza con un asesor.</p>
+          <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20cotizar%20la%20implementaci%C3%B3n%20de%20facturaci%C3%B3n%20electr%C3%B3nica%20en%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-wa btn-sm fe-cta" data-event="click_whatsapp" data-event-loc="facturacion"><i data-lucide="message-circle"></i> Hablar con un asesor</a>
         </div>
         <div class="browser reveal">
           <div class="browser-bar"><i></i><i></i><i></i><span>Facturación</span></div>
@@ -263,18 +256,44 @@
     <div class="wrap verify-grid">
       <div class="verify-copy reveal">
         <span class="kicker dark"><i data-lucide="shield-check"></i> Exclusivo · Codec Verify</span>
-        <h2>Adiós a los comprobantes falsos.</h2>
-        <p>Cuando el cliente transfiere, Codec POS detecta el pago real en la cuenta del negocio, suena la confirmación y cierra la venta solo.</p>
-        <ul class="checks">
-          <li><i data-lucide="circle-check"></i>Nadie revisa el celular ni pregunta “¿ya llegó?”</li>
-          <li><i data-lucide="circle-check"></i>Sin comisión por transacción ni cuenta de comercio</li>
-          <li><i data-lucide="circle-check"></i>Funciona con la app cerrada, en Android y iPhone</li>
-        </ul>
-        <div class="banks"><span>Nequi</span><span>Daviplata</span><span>Bancolombia</span><span>Bre-B</span><span>Cualquier banco</span></div>
+        <h2>Confirma tus pagos <span class="grad">sin pagar comisiones.</span></h2>
+        <p>El cliente transfiere, Codec POS detecta el pago real en la cuenta del negocio y te avisa con sonido. Adiós a los comprobantes falsos.</p>
+
+        <ol class="vsteps" id="vSteps">
+          <li data-step="0"><span class="vnum">1</span>El cliente transfiere</li>
+          <li data-step="1"><span class="vnum">2</span>Codec Verify lo detecta</li>
+          <li data-step="2"><span class="vnum">3</span>Suena la confirmación y se cierra la venta</li>
+        </ol>
+
+        <button class="vsound" id="vSound" type="button" aria-pressed="false">
+          <i data-lucide="volume-2"></i><span>Escuchar cómo suena</span>
+        </button>
       </div>
-      <div class="verify-phones reveal">
-        <div class="phone"><img src="./assets/cel-esperando.webp" width="560" height="1090" alt="Codec Verify esperando un pago por Nequi" loading="lazy"></div>
-        <div class="phone"><img src="./assets/cel-recibido.webp" width="560" height="1090" alt="Codec Verify confirmando un pago recibido" loading="lazy"></div>
+
+      <div class="vdemo reveal" id="vDemo">
+        <div class="vdemo-top"><span class="dots"><i></i><i></i><i></i></span><span>Codec Verify</span></div>
+        <div class="vdemo-body">
+          <div class="vcircle" id="vCircle">
+            <i data-lucide="shield" class="v-idle"></i>
+            <span class="v-spin"></span>
+            <i data-lucide="check" class="v-ok"></i>
+          </div>
+          <div class="vamount" id="vAmount">+$45.000</div>
+          <div class="vsource" id="vSource">Transferencia Nequi</div>
+          <div class="vapps" id="vApps">
+            <span class="is-active" style="--c:#d6097f"><b>N</b>Nequi</span>
+            <span style="--c:#ea580c"><b>D</b>Daviplata</span>
+            <span style="--c:#eab308"><b>B</b>Bancolombia</span>
+            <span style="--c:#22c55e"><b>B</b>Bre-B</span>
+          </div>
+        </div>
+        <div class="vstatus" id="vStatus">Esperando el pago…</div>
+      </div>
+
+      <div class="vperks reveal">
+        <div><i data-lucide="badge-percent"></i><b>$0 de comisión</b><span>Ni por transacción ni por mes.</span></div>
+        <div><i data-lucide="landmark"></i><b>Sin cuenta de comercio</b><span>Usa la cuenta que ya tienes.</span></div>
+        <div><i data-lucide="smartphone"></i><b>Android y iPhone</b><span>Funciona con la app cerrada.</span></div>
       </div>
     </div>
   </section>
@@ -374,7 +393,7 @@
           <p class="plan-note" data-annual-note data-mensual="Paga anual y te regalamos 1 mes" data-anual="12 meses por el precio de 11">Paga anual y te regalamos 1 mes</p>
           <a href="/app/prueba-gratis" class="btn btn-brand btn-block" id="trialCtaFinal" data-event="click_precios" data-event-loc="premium">Empezar prueba gratis</a>
           <ul class="checks">
-            <li><i data-lucide="check"></i><span><b>Facturación electrónica DIAN</b></span></li>
+            <li><i data-lucide="check"></i><span><b>Facturación electrónica DIAN</b> <small class="fe-impl">(implementación: consulta con un asesor)</small></span></li>
             <li><i data-lucide="check"></i><span><b>Codec Verify:</b> pagos confirmados solos</span></li>
             <li><i data-lucide="check"></i>App móvil completa</li>
             <li><i data-lucide="check"></i>Usuarios ilimitados y hasta 3 sucursales</li>
@@ -386,7 +405,11 @@
 
       <div class="extras" style="text-align:left">
         <div class="extra reveal">
-          <div><h4>¿Más sedes, otro país o un plan a la medida?</h4><p>Sucursal adicional $12.990/mes. Instalación y soporte técnico opcional: $50.000 por servicio.</p></div>
+          <div><h4>Implementación de facturación electrónica</h4><p>El valor de la implementación se cotiza con un asesor según tu negocio. Te acompañamos con el certificado digital y la resolución DIAN.</p></div>
+          <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20cotizar%20la%20implementaci%C3%B3n%20de%20facturaci%C3%B3n%20electr%C3%B3nica%20en%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-wa btn-sm" data-event="click_precios" data-event-loc="implementacion_fe"><i data-lucide="message-circle"></i> Hablar con un asesor</a>
+        </div>
+        <div class="extra reveal">
+          <div><h4>¿Más sedes, otro país o un plan a la medida?</h4><p>Sucursal adicional: Básico $29.990/mes · Premium $49.990/mes. Instalación y soporte técnico opcional: $50.000 por servicio.</p></div>
           <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20plan%20personalizado%20de%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-wa btn-sm" data-event="click_precios" data-event-loc="personalizado"><i data-lucide="message-circle"></i> Escríbenos</a>
         </div>
       </div>
@@ -406,7 +429,7 @@
         <h2>Preguntas frecuentes</h2>
       </div>
       <div class="faq reveal">
-        <details><summary>¿Codec POS hace facturación electrónica DIAN? <i data-lucide="plus"></i></summary><p>Sí. Factura directo con la DIAN desde la misma caja: factura electrónica con CUFE y QR, notas crédito y débito y documento soporte. La envías al cliente por WhatsApp o correo. Te ayudamos a configurar tu certificado digital y tu resolución.</p></details>
+        <details><summary>¿Codec POS hace facturación electrónica DIAN? <i data-lucide="plus"></i></summary><p>Sí. Factura directo con la DIAN desde la misma caja: factura electrónica con CUFE y QR, notas crédito y débito y documento soporte. La envías al cliente por WhatsApp o correo. Te ayudamos a configurar tu certificado digital y tu resolución. El valor de la implementación lo cotizas con un asesor por WhatsApp.</p></details>
         <details><summary>¿Necesito otro proveedor para facturar? <i data-lucide="plus"></i></summary><p>No. Codec Studio es el fabricante del software y la conexión con la DIAN va incluida en Codec POS, sin intermediarios.</p></details>
         <details><summary>¿Funciona sin internet? <i data-lucide="plus"></i></summary><p>Sí. Sigues vendiendo aunque se corte la conexión y, cuando vuelve, todo se sincroniza con respaldo en la nube.</p></details>
         <details><summary>¿Necesito instalar algo? <i data-lucide="plus"></i></summary><p>No es obligatorio. Úsalo desde el navegador, instálalo en Windows para vender sin internet o usa la app en el celular. Todo se sincroniza.</p></details>
@@ -449,6 +472,6 @@
 </a>
 
 <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
-<script src="./home.js?v=20261118b"></script>
+<script src="./home.js?v=20261118c"></script>
 </body>
 </html>
