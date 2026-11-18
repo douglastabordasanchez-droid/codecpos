@@ -52,11 +52,42 @@ export default function RecepcionDispositivoForm({ onClose, onSuccess }: Recepci
   const [guardando, setGuardando] = useState(false);
   const [tecnicosList, setTecnicosList] = useState<Array<{ id: string; nombre: string }>>([]);
 
+  // Técnicos de la nube: los que el administrador creó desde otro equipo, la web o el
+  // celular no existen como usuarios locales de este PC, pero sí deben poder recibir órdenes.
+  const [empleadosNube, setEmpleadosNube] = useState<Array<{ id: string; nombre: string; rol: string; activo: boolean }>>([]);
   useEffect(() => {
-    const aptos = usuarios
+    let cancelado = false;
+    (async () => {
+      try {
+        const { getSupabaseClient } = await import('../../lib/supabase/config');
+        const { getLinkedClienteId } = await import('../../lib/supabase/tenantLink');
+        const client = getSupabaseClient();
+        const clienteId = getLinkedClienteId();
+        if (!client || !clienteId || !navigator.onLine) return;
+        const { data } = await client.from('empleados')
+          .select('id, nombre_completo, rol, activo').eq('cliente_id', clienteId);
+        if (cancelado || !data) return;
+        setEmpleadosNube((data as Array<{ id: string; nombre_completo: string | null; rol: string; activo: boolean }>)
+          .filter((e) => e.nombre_completo)
+          .map((e) => ({ id: e.id, nombre: e.nombre_completo!.trim(), rol: e.rol, activo: e.activo !== false })));
+      } catch { /* sin nube: solo los usuarios de este equipo */ }
+    })();
+    return () => { cancelado = true; };
+  }, []);
+
+  useEffect(() => {
+    const clave = (n: string) => n.trim().toLowerCase();
+    // Desactivado en la nube = no recibe órdenes, aunque siga como usuario en este PC.
+    const inactivosNube = new Set(empleadosNube.filter((e) => !e.activo).map((e) => clave(e.nombre)));
+    const locales = usuarios
       .filter((u) => (u.rol === 'tecnico' || u.rol === 'super_usuario') && u.activo !== false)
-      .map((u) => ({ id: u.id || u.username || '', nombre: u.nombreCompleto || u.username || '' }))
-      .filter((u) => u.id && u.nombre);
+      .map((u) => ({ id: u.id || u.username || '', nombre: u.nombreCompleto || u.username || '', esTecnico: u.rol === 'tecnico' }))
+      .filter((u) => u.id && u.nombre && !inactivosNube.has(clave(u.nombre)));
+    const nombres = new Set(locales.map((u) => clave(u.nombre)));
+    const deLaNube = empleadosNube
+      .filter((e) => e.activo && e.rol === 'tecnico' && !nombres.has(clave(e.nombre)))
+      .map((e) => ({ id: e.id, nombre: e.nombre, esTecnico: true }));
+    const aptos = [...locales, ...deLaNube];
     // Fallback: si no hay técnicos configurados, mostrar todos los usuarios activos
     if (aptos.length === 0) {
       const fallback = usuarios
@@ -64,10 +95,15 @@ export default function RecepcionDispositivoForm({ onClose, onSuccess }: Recepci
         .map((u) => ({ id: u.id || u.username || '', nombre: u.nombreCompleto || u.username || '' }))
         .filter((u) => u.id && u.nombre);
       setTecnicosList(fallback);
-    } else {
-      setTecnicosList(aptos);
+      return;
     }
-  }, [usuarios]);
+    setTecnicosList(aptos.map(({ id, nombre }) => ({ id, nombre })));
+    // Un solo técnico en el negocio: cada orden nueva le llega a él sin tener que elegirlo.
+    const tecnicos = aptos.filter((t) => t.esTecnico);
+    if (tecnicos.length === 1) {
+      setOrdenData((o) => (o.tecnicoAsignadoId ? o : { ...o, tecnicoAsignadoId: tecnicos[0].id, tecnicoAsignado: tecnicos[0].nombre }));
+    }
+  }, [usuarios, empleadosNube]);
 
   const [clienteData, setClienteData] = useState({
     nombre: '', cedula: '', telefono: '', email: '', direccion: '',

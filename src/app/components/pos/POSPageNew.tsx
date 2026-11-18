@@ -721,9 +721,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   const validarEstadoCaja = useCallback(() => {
     const fechaHoy = getFechaLocalISO();
     const sesionActiva = cajaDiariaService.getSesionActiva(usuarioActual?.id, fechaHoy);
-    const esAdmin = usuarioActual?.rol === 'super_usuario';
+    const esAdmin = usuarioActual?.rol === 'super_usuario' || usuarioActual?.rol === 'tecnico'; // el técnico no maneja caja: no se le pide apertura
 
-    if (!sesionActiva && !alertaAdminCajaMostradaRef.current) {
+    if (!sesionActiva && !alertaAdminCajaMostradaRef.current && usuarioActual?.rol !== 'tecnico') {
       if (esAdmin) {
         toast.info('Sin apertura de caja activa. Como administrador puedes operar con normalidad.');
       } else {
@@ -1933,7 +1933,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     try {
       const fechaOperativa = getFechaLocalISO();
       const sesionCajaActiva = cajaDiariaService.getSesionActiva(usuarioActual?.id, fechaOperativa);
-      const esAdmin = usuarioActual?.rol === 'super_usuario';
+      const esAdmin = usuarioActual?.rol === 'super_usuario' || usuarioActual?.rol === 'tecnico'; // el técnico no maneja caja: no se le pide apertura
       const config: any = leerConfigEmpresaCacheada();
       // 🛡️ FIX: el número de factura salía SOLO de un contador en
       // localStorage, que puede desincronizarse de lo que realmente hay en
@@ -2449,7 +2449,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       const total = calcularTotal();
       const fechaOperativa = getFechaLocalISO();
       const sesionCajaActiva = cajaDiariaService.getSesionActiva(usuarioActual?.id, fechaOperativa);
-      const esAdmin = usuarioActual?.rol === 'super_usuario';
+      const esAdmin = usuarioActual?.rol === 'super_usuario' || usuarioActual?.rol === 'tecnico'; // el técnico no maneja caja: no se le pide apertura
       // 🚨 FIX: usaba la clave legacy 'pos-config-empresa' — el resto de la app
       // (incluida procesarVenta) usa 'codec_pos_config' como fuente única de
       // verdad, así que el prefijo de factura configurado nunca se aplicaba aquí.
@@ -2697,7 +2697,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       const total = calcularTotal();
       const fechaOperativa = getFechaLocalISO();
       const sesionCajaActiva = cajaDiariaService.getSesionActiva(usuarioActual?.id, fechaOperativa);
-      const esAdmin = usuarioActual?.rol === 'super_usuario';
+      const esAdmin = usuarioActual?.rol === 'super_usuario' || usuarioActual?.rol === 'tecnico'; // el técnico no maneja caja: no se le pide apertura
       const config: any = leerConfigEmpresaCacheada();
       const ultimaFacturaLS = parseInt(localStorage.getItem('pos-ultima-factura') || '0') || 0;
       let ultimoNumeroDB = 0;
