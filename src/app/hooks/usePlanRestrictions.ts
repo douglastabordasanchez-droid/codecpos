@@ -302,8 +302,8 @@ export function usePlanRestrictions() {
         return 'Las analíticas en tiempo real requieren el Plan Premium';
       case 'multi_usuario_5':
         return planInfo.plan === 'PREMIUM'
-          ? 'Tu plan Premium permite usuarios ilimitados'
-          : 'Tu plan Básico permite hasta 5 usuarios. Actualiza a Premium para usuarios ilimitados';
+          ? 'Tu plan Premium permite hasta 10 usuarios'
+          : 'Tu plan Básico permite hasta 5 usuarios. Actualiza a Premium para tener hasta 10 usuarios';
       case 'inventario_20k':
         return planInfo.plan === 'PREMIUM'
           ? 'Tu plan Premium permite productos ilimitados'

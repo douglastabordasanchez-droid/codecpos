@@ -1,48 +1,43 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="no-js">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Codec POS en Bello: sistema POS, inventario y caja</title>
-<meta name="description" content="Codec POS en Bello: punto de venta, inventario, caja, reportes y facturación electrónica DIAN. Funciona online y offline. Prueba 14 días gratis.">
+<title>Codec POS en Bello: sistema POS con facturación, inventario y caja</title>
+<meta name="description" content="Codec POS en Bello: punto de venta, inventario, caja, reportes y confirmación de pagos. Funciona con o sin internet. Prueba 14 días gratis.">
 <meta name="author" content="Codec Studio">
 <link rel="canonical" href="https://pos.codecstudio.online/pos-bello/">
 <link rel="icon" href="/assets/favicon.ico">
 <link rel="apple-touch-icon" href="/assets/logo.png">
-<meta name="theme-color" content="#0F172A">
+<meta name="theme-color" content="#fbfaf7">
 
-<!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Codec POS">
-<meta property="og:title" content="Codec POS en Bello: sistema POS, inventario y caja">
-<meta property="og:description" content="Codec POS en Bello: punto de venta, inventario, caja, reportes y facturación electrónica DIAN. Funciona online y offline. Prueba 14 días gratis.">
+<meta property="og:title" content="Codec POS en Bello: sistema POS con facturación, inventario y caja">
+<meta property="og:description" content="Codec POS en Bello: punto de venta, inventario, caja, reportes y confirmación de pagos. Funciona con o sin internet. Prueba 14 días gratis.">
 <meta property="og:url" content="https://pos.codecstudio.online/pos-bello/">
-<meta property="og:image" content="https://pos.codecstudio.online/assets/dashboard-dark.webp">
+<meta property="og:image" content="https://pos.codecstudio.online/assets/web-inicio.webp">
 <meta property="og:locale" content="es_CO">
-
-<!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Codec POS en Bello: sistema POS, inventario y caja">
-<meta name="twitter:description" content="Codec POS en Bello: punto de venta, inventario, caja, reportes y facturación electrónica DIAN. Funciona online y offline. Prueba 14 días gratis.">
-<meta name="twitter:image" content="https://pos.codecstudio.online/assets/dashboard-dark.webp">
+<meta name="twitter:title" content="Codec POS en Bello: sistema POS con facturación, inventario y caja">
+<meta name="twitter:description" content="Codec POS en Bello: punto de venta, inventario, caja, reportes y confirmación de pagos. Funciona con o sin internet. Prueba 14 días gratis.">
+<meta name="twitter:image" content="https://pos.codecstudio.online/assets/web-inicio.webp">
 
-<!-- Fuentes: preconnect para no bloquear el render -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,700;9..40,800&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/home.css?v=20261118c">
+<link rel="preload" as="image" href="/assets/web-inicio.webp">
 
-<link rel="stylesheet" href="/styles.css?v=20261013">
-
-<!-- Schema.org -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Codec POS",
   "applicationCategory": "BusinessApplication",
-  "operatingSystem": "Windows, Web, Android, iOS",
-  "description": "Sistema de punto de venta con inventario, contabilidad, facturación electrónica DIAN, confirmación automática de pagos (Codec Verify) y funcionamiento online/offline.",
   "areaServed": { "@type": "City", "name": "Bello", "containedInPlace": { "@type": "Country", "name": "Colombia" } },
+  "operatingSystem": "Windows, Web, Android, iOS",
+  "description": "Sistema POS inteligente con facturación electrónica DIAN, inventario, caja, reportes, confirmación automática de pagos (Codec Verify) y funcionamiento online/offline.",
   "offers": [
     { "@type": "Offer", "name": "Básico", "price": "49990", "priceCurrency": "COP", "priceValidUntil": "2027-12-31" },
     { "@type": "Offer", "name": "Premium", "price": "79990", "priceCurrency": "COP", "priceValidUntil": "2027-12-31" }
@@ -50,715 +45,445 @@
   "publisher": { "@type": "Organization", "name": "Codec Studio" }
 }
 </script>
-
-<!-- Schema.org: FAQPage (para rich snippets en resultados de búsqueda) -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    { "@type": "Question", "name": "¿Qué es Codec POS?", "acceptedAnswer": { "@type": "Answer", "text": "Es un sistema de punto de venta que además incluye inventario, contabilidad, facturación electrónica DIAN y confirmación automática de pagos, todo integrado, para que no necesites contratar varios sistemas separados." } },
+    { "@type": "Question", "name": "¿Codec POS hace facturación electrónica DIAN?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. Codec POS factura directo con la DIAN desde la misma caja: emite factura electrónica con CUFE y QR, notas crédito y débito y documento soporte, y la envía al cliente por WhatsApp o correo. Te ayudamos a configurar tu certificado digital y tu resolución." } },
+    { "@type": "Question", "name": "¿Necesito otro proveedor para facturar?", "acceptedAnswer": { "@type": "Answer", "text": "No. Codec Studio es el fabricante del software y la conexión con la DIAN va incluida en Codec POS, sin intermediarios." } },
     { "@type": "Question", "name": "¿Funciona sin internet?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. Puedes seguir vendiendo aunque se corte la conexión. Cuando vuelve el internet, todo se sincroniza con respaldo en la nube." } },
+    { "@type": "Question", "name": "¿Qué tipo de negocios pueden usarlo?", "acceptedAnswer": { "@type": "Answer", "text": "Minimercados, droguerías, tiendas de ropa, ferreterías, papelerías, panaderías, restaurantes, carnicerías, licoreras, veterinarias, talleres de reparación, imprentas y más. Codec POS se adapta a tu tipo de negocio desde la configuración." } },
     { "@type": "Question", "name": "¿Cuánto dura la prueba gratuita?", "acceptedAnswer": { "@type": "Answer", "text": "14 días completos, sin necesidad de ingresar tarjeta de crédito." } },
-    { "@type": "Question", "name": "¿Necesito instalar algo?", "acceptedAnswer": { "@type": "Answer", "text": "No es obligatorio. Puedes usar Codec POS desde el navegador sin instalar nada, instalarlo en Windows para seguir vendiendo sin internet, o usar la app para Android. Todo se sincroniza entre sí." } },
-    { "@type": "Question", "name": "¿Puedo usarlo desde el celular?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, con la app móvil de Codec POS (plan Premium) puedes operar tu negocio, no solo consultarlo." } },
-    { "@type": "Question", "name": "¿Puedo administrar varias tiendas?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, desde un solo login puedes ver las métricas de todas tus tiendas vinculadas, disponible en el plan Premium." } },
-    { "@type": "Question", "name": "¿Qué diferencia hay entre Básico y Premium?", "acceptedAnswer": { "@type": "Answer", "text": "Básico cubre la operación esencial de un solo negocio con un módulo especializado. Premium suma usuarios ilimitados, varias sucursales, app móvil completa, Codec Verify, facturación electrónica DIAN y más de un módulo especializado." } },
-    { "@type": "Question", "name": "¿Puedo cancelar?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, sin permanencia forzada." } },
-    { "@type": "Question", "name": "¿Qué ocurre después de los 14 días?", "acceptedAnswer": { "@type": "Answer", "text": "El sistema te pide elegir tu plan. Lo pagas desde el mismo Codec POS con Wompi (Nequi, PSE, tarjeta o Bancolombia) o con Mercado Pago, y se activa en cuanto se aprueba el pago. Tus productos, ventas y clientes se conservan." } },
-    { "@type": "Question", "name": "¿Puedo pasar de Básico a Premium?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, en cualquier momento que tu negocio lo necesite." } },
-    { "@type": "Question", "name": "¿Cómo pago mi plan?", "acceptedAnswer": { "@type": "Answer", "text": "Desde el mismo Codec POS, con Wompi (Nequi, PSE, tarjeta o Bancolombia) o con Mercado Pago. El plan se activa en cuanto se aprueba el pago." } },
-    { "@type": "Question", "name": "¿Codec POS funciona con la DIAN?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, la facturación electrónica está preparada para trabajar con la DIAN. Para activarla escríbenos por WhatsApp y te ayudamos a configurar la firma digital de tu negocio." } }
+    { "@type": "Question", "name": "¿Necesito instalar algo?", "acceptedAnswer": { "@type": "Answer", "text": "No es obligatorio. Puedes usar Codec POS desde el navegador, instalarlo en Windows para vender sin internet o usar la app en el celular. Todo se sincroniza entre sí." } },
+    { "@type": "Question", "name": "¿Cuánto cuestan los planes?", "acceptedAnswer": { "@type": "Answer", "text": "Básico $49.990 al mes y Premium $79.990 al mes. Si pagas el año completo te regalamos un mes." } },
+    { "@type": "Question", "name": "¿Puedo cancelar?", "acceptedAnswer": { "@type": "Answer", "text": "Sí, sin permanencia forzada. Tus productos, ventas y clientes se conservan." } }
   ]
 }
 </script>
-
-<!-- TODO Fase 5: activar cuando existan credenciales reales.
-<script>!function(f,b,e,v,n,t,s){...}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','PIXEL_ID');fbq('track','PageView');</script>
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXX"></script>
--->
 </head>
 <body>
 
 <header class="nav" id="nav">
   <div class="wrap nav-inner">
-    <a href="#top" class="brand">
-      <img src="/assets/logo-icon.png" width="32" height="32" alt="" class="brand-mark-img">
+    <a href="#top" class="brand" aria-label="Codec POS, inicio">
+      <img src="/assets/logo-icon.png" width="34" height="34" alt="">
       <span>Codec<b>POS</b></span>
     </a>
-    <div class="nav-mobile-panel">
-      <nav class="nav-links" id="navLinks">
-        <a href="#verify">Codec Verify</a>
-        <a href="#offline">Online/Offline</a>
-        <a href="#pantallas">Por dentro</a>
-        <a href="#modulos">Módulos</a>
+    <div class="nav-panel">
+      <nav class="nav-links" aria-label="Secciones">
+        <a href="#facturacion">Facturación DIAN</a>
+        <a href="#inteligente">Funciones</a>
+        <a href="#negocios">Negocios</a>
         <a href="#precios">Precios</a>
         <a href="#faq">Preguntas</a>
-        <a href="/descargar/" data-event="click_descargar" data-event-loc="nav">Descargar</a>
       </nav>
       <div class="nav-cta">
         <a href="/app/login" class="nav-login" data-event="click_login">Iniciar sesión</a>
-        <a href="/app/prueba-gratis" class="btn btn-brand btn-md" id="trialCtaNav" data-event="click_prueba_gratis" data-event-loc="nav">Probar gratis</a>
+        <a href="/app/prueba-gratis" class="btn btn-brand btn-sm" id="trialCtaNav" data-event="click_prueba_gratis" data-event-loc="nav">Probar gratis</a>
       </div>
     </div>
-    <button class="nav-burger" id="navBurger" aria-label="Abrir menú" aria-expanded="false">
-      <span></span><span></span><span></span>
-    </button>
+    <button class="nav-burger" id="navBurger" aria-label="Abrir menú" aria-expanded="false"><i data-lucide="menu"></i></button>
   </div>
 </header>
 
 <main id="top">
 
-  <!-- ═══════════════ HERO ═══════════════ -->
+  <!-- ═══════════ HERO ═══════════ -->
   <section class="hero">
-    <div class="grid-fade"></div>
-    <div class="glow" style="width:420px;height:420px;top:100px;right:8%;background:radial-gradient(circle,rgba(234,88,12,.12) 0%,transparent 70%)"></div>
-    <div class="glow" style="width:380px;height:380px;bottom:0;left:6%;background:radial-gradient(circle,rgba(5,150,105,.1) 0%,transparent 70%)"></div>
-
-    <div class="wrap hero-inner">
-      <h1 class="reveal in">Tu negocio. <span class="gradient-text">Todo bajo control.</span></h1>
-
-      <p class="hero-lede reveal in">
-        Codec POS es el sistema que reúne ventas, inventario, caja y reportes en un solo lugar,
-        pensado para negocios en el norte del Valle de Aburrá, y que sigue funcionando aunque se vaya el internet.
-      </p>
-
-      <div class="hero-chips reveal in">
-        <span>Ventas</span><span class="dot"></span>
-        <span>Inventario</span><span class="dot"></span>
-        <span>Caja</span><span class="dot"></span>
-        <span>Reportes</span><span class="dot"></span>
-        <span>Online + Offline</span><span class="dot"></span>
-        <span>App móvil</span>
-      </div>
-
-      <div class="hero-ctas reveal in">
-        <a href="/app/prueba-gratis" class="btn btn-brand btn-lg" id="trialCtaHero" data-event="click_prueba_gratis" data-event-loc="hero">
-          Probar 14 días gratis →
-        </a>
-        <a href="#verify" class="btn btn-outline btn-lg" data-event="click_demo">
-          ▷ Ver cómo funciona
-        </a>
-      </div>
-
-      <div class="hero-microcopy reveal in">
-        <span>✓ Sin tarjeta de crédito</span>
-        <span>✓ Sin permanencia</span>
-        <span>✓ Soporte en español</span>
-      </div>
-
-      <div class="hero-platforms reveal in">
-        <span class="hero-platforms-label">Úsalo en</span>
-        <a href="/app/" data-event="click_plataforma" data-event-loc="web">Navegador</a>
-        <a href="/descargar/" data-event="click_descargar" data-event-loc="hero">Windows</a>
-        <a href="/download" data-event="click_descargar_apk" data-event-loc="hero">Android</a>
-      </div>
-
-      <div class="hero-visual reveal in">
-        <div class="device-frame">
-          <div class="device-topbar device-topbar-desktop">
-            <div class="device-dots">
-              <span style="background:#EF4444"></span><span style="background:#FBBF24"></span><span style="background:#22C55E"></span>
-            </div>
-            <div class="device-live"><span class="pulse"></span>Codec POS · Panel real</div>
-          </div>
-          <div class="device-notch"></div>
-          <div class="device-viewport">
-            <picture>
-              <source media="(max-width: 760px)" srcset="/assets/app-inicio.webp">
-              <img class="device-shot" src="/assets/dashboard-dark.webp" width="1400" height="643" alt="Codec POS en uso real: ventas, utilidad y alertas en tiempo real" loading="eager" fetchpriority="high">
-            </picture>
-          </div>
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <h1>El POS inteligente que <span class="grad">vende, factura</span> y confirma tus pagos.</h1>
+        <p class="hero-sub">Factura electrónica en un toque, pagos de Nequi y Bre-B verificados solos y ventas que no se detienen aunque se vaya el internet. Pensado para negocios en el norte del Valle de Aburrá.</p>
+        <div class="hero-ctas">
+          <a href="/app/prueba-gratis" class="btn btn-brand" id="trialCtaHero" data-event="click_prueba_gratis" data-event-loc="hero">Probar 14 días gratis <i data-lucide="arrow-right"></i></a>
+          <a href="#facturacion" class="btn btn-ghost"><i data-lucide="play"></i> Ver cómo factura</a>
         </div>
-
-        <div class="hero-badge hero-badge-verify">
-          <span class="hero-badge-icon" style="background:#ECFDF5;color:#059669">
-            <svg width="16" height="16" viewBox="0 0 22 22" fill="none"><path d="M11 2L4 5.5V10.5C4 14.5 7 18.1 11 19.5C15 18.1 18 14.5 18 10.5V5.5L11 2Z" stroke="currentColor" stroke-width="1.8"/><path d="M7.5 11L9.5 13L14.5 8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-          </span>
-          <div><b>Codec Verify</b><div class="sub">Nequi confirmado automáticamente</div></div>
-        </div>
-
-        <div class="hero-badge hero-badge-offline">
-          <span class="hero-badge-icon" style="background:#FFF7ED;color:#C2410C">
-            <svg width="16" height="16" viewBox="0 0 22 22" fill="none"><path d="M8 15C9.1 13.9 10.1 13.5 11 13.5C11.9 13.5 12.9 13.9 14 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="18" r="1.2" fill="currentColor"/><path d="M3 3L19 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-          </span>
-          <div><b>Sistema activo</b><div class="sub" style="color:#C2410C">Offline seguro</div></div>
+        <div class="hero-trust">
+          <span><i data-lucide="check"></i>Sin tarjeta de crédito</span>
+          <span><i data-lucide="check"></i>Sin permanencia</span>
+          <span><i data-lucide="check"></i>Soporte por WhatsApp</span>
         </div>
       </div>
 
-      <div class="hero-social reveal in">
-        <div class="hero-avatars">
-          <span style="background:#EA580C">JR</span>
-          <span style="background:#059669">MC</span>
-          <span style="background:#7C3AED">PL</span>
-          <span style="background:#B45309">AV</span>
+      <div class="hero-visual">
+        <div class="browser">
+          <div class="browser-bar"><i></i><i></i><i></i><span>pos.codecstudio.online</span></div>
+          <img src="/assets/web-inicio.webp" width="1600" height="887" alt="Panel de inicio de Codec POS con utilidad neta, ingresos, ventas del día y alertas de stock">
         </div>
-        <div style="text-align:left">
-          <div class="hero-stars">★★★★★</div>
-          <p style="font-size:13px;color:var(--muted)">Ya lo usan <strong style="color:var(--ink-soft)">negocios en toda Colombia</strong></p>
-        </div>
+        <div class="phone hero-phone"><img src="/assets/cel-vender.webp" width="560" height="1093" alt="Pantalla de venta de Codec POS en el celular"></div>
       </div>
     </div>
   </section>
 
-  <!-- ═══════════════ CIUDAD (contenido local, señal SEO) ═══════════════ -->
-  <section class="section-tight" id="ciudad">
-    <div class="wrap" style="text-align:center;max-width:760px;margin:0 auto">
-      <span class="kicker on-brand">Codec POS en Bello</span>
-      <h2 style="margin-top:12px">Hecho para negocios en Bello</h2>
-      <p class="lede" style="margin:16px auto 0">
-        Negocios de Bello y alrededores ya usan Codec POS para vender, controlar el inventario
-        y llevar la caja al día. Funciona con o sin internet, ideal para las zonas de Bello
-        donde la conexión no siempre es estable.
-      </p>
+  <div class="strip">
+    <div class="strip-inner">
+      <span class="label">Úsalo en</span>
+      <span><i data-lucide="globe"></i>Navegador</span>
+      <span><i data-lucide="monitor"></i>Windows</span>
+      <span><i data-lucide="smartphone"></i>Android</span>
+      <span><i data-lucide="smartphone"></i>iPhone</span>
+      <span><i data-lucide="wifi-off"></i>Con o sin internet</span>
     </div>
-  </section>
+  </div>
 
-  <!-- ═══════════════ CODEC VERIFY (prioritario, justo después del hero) ═══════════════ -->
-  <section class="section section-warm" id="verify">
-    <div class="glow" style="width:360px;height:360px;top:20%;left:-6%;background:radial-gradient(circle,rgba(234,88,12,.1) 0%,transparent 70%)"></div>
-    <div class="glow" style="width:360px;height:360px;bottom:10%;right:-6%;background:radial-gradient(circle,rgba(5,150,105,.1) 0%,transparent 70%)"></div>
-    <div class="wrap" style="position:relative">
-      <div class="section-head reveal">
-        <span class="kicker on-emerald">Exclusivo de Codec POS</span>
-        <h2>Verifica tus pagos<br>al instante.</h2>
-        <p class="lede" style="margin:0 auto">
-          Comprobantes falsos, capturas editadas o transferencias que nunca llegaron: Codec Verify confirma
-          automáticamente el pago real en la cuenta del negocio, protegiendo al tendero y al cliente por igual.
-        </p>
-      </div>
-
-      <div class="verify-layout reveal" id="verifyGrid">
-        <div class="verify-titles">
-          <div class="verify-title-item" data-step="0">
-            <span class="verify-title-num">1</span>
-            <span class="verify-title-text">El cliente transfiere</span>
-          </div>
-          <div class="verify-title-item" data-step="1">
-            <span class="verify-title-num">2</span>
-            <span class="verify-title-text">Verificando automáticamente</span>
-          </div>
-          <div class="verify-title-item" data-step="2">
-            <span class="verify-title-num">3</span>
-            <span class="verify-title-text">Pago confirmado al instante</span>
-          </div>
-
-          <button class="verify-sound-btn" id="verifySoundBtn" type="button" aria-label="Escuchar la confirmación de pago">
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 7H6L10 3.5V16.5L6 13H3V7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13.5 6.5C14.5 7.5 15 8.7 15 10C15 11.3 14.5 12.5 13.5 13.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-            Escuchar confirmación
-          </button>
-        </div>
-
-        <div class="verify-demo-card">
-          <div class="verify-terminal-top">
-            <div class="device-dots">
-              <span style="background:#EF4444"></span><span style="background:#FBBF24"></span><span style="background:#22C55E"></span>
-            </div>
-            <span style="font-family:var(--font-mono);font-size:11px;color:#64748B">Codec Verify</span>
-          </div>
-
-          <div class="verify-terminal-body">
-            <div class="verify-circle" id="verifyCircle" style="background:rgba(255,255,255,.06)">
-              <svg id="verifyIconIdle" width="26" height="26" viewBox="0 0 22 22" fill="none"><path d="M11 2L4 5.5V10.5C4 14.5 7 18.1 11 19.5C15 18.1 18 14.5 18 10.5V5.5L11 2Z" stroke="#475569" stroke-width="1.7"/></svg>
-              <div id="verifySpin" class="spinner" style="width:30px;height:30px;border-width:3px;display:none"></div>
-              <svg id="verifyCheck" width="34" height="34" viewBox="0 0 36 36" fill="none" style="display:none"><path d="M7 18L14 25L29 11" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </div>
-            <div class="verify-amount" id="verifyAmount">+$45.000</div>
-            <div class="verify-source">Transferencia Nequi</div>
-            <div class="verify-apps">
-              <div class="verify-app is-active"><div class="verify-app-dot" style="background:rgba(109,40,217,.15);color:#6D28D9">N</div><span>Nequi</span></div>
-              <div class="verify-app"><div class="verify-app-dot" style="background:rgba(234,88,12,.15);color:#EA580C">D</div><span>Daviplata</span></div>
-              <div class="verify-app"><div class="verify-app-dot" style="background:rgba(251,191,36,.15);color:#B45309">B</div><span>Bancolombia</span></div>
-            </div>
-          </div>
-
-          <div class="verify-caption" id="verifyCaption">El cliente paga por Nequi, Daviplata o Bancolombia y Codec Verify detecta la transferencia por notificación push del celular del negocio.</div>
-        </div>
-      </div>
-
-      <div class="phone-flow reveal">
-        <p class="phone-flow-title">Así se ve en el celular del negocio</p>
-        <div class="phone-flow-grid">
-          <figure class="phone-step">
-            <div class="verify-phone"><img src="/assets/celular-cobrar.webp" alt="Codec POS en el celular: el cajero elige Nequi y cobra $12.345" loading="lazy" width="560" height="1090"></div>
-            <figcaption><b>1. Cobras</b> Eliges Nequi, Daviplata, Bre-B o transferencia y tocas cobrar.</figcaption>
-          </figure>
-          <figure class="phone-step">
-            <div class="verify-phone"><img src="/assets/celular-esperando.webp" alt="Codec POS esperando el pago de Nequi" loading="lazy" width="560" height="1090"></div>
-            <figcaption><b>2. Esperas tranquilo</b> El cliente transfiere y Codec POS queda atento al pago.</figcaption>
-          </figure>
-          <figure class="phone-step">
-            <div class="verify-phone"><img src="/assets/celular-recibido.webp" alt="Codec Verify confirma el pago recibido por Nequi" loading="lazy" width="560" height="1090"></div>
-            <figcaption><b>3. Pago confirmado</b> Llega el aviso, suena la confirmación y la venta se cierra sola.</figcaption>
-          </figure>
-        </div>
-      </div>
-
-      <div class="card-grid cols-3 reveal" style="margin-top:64px">
-        <div class="feature-card">
-          <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M11 2L4 5.5V10.5C4 14.5 7 18.1 11 19.5C15 18.1 18 14.5 18 10.5V5.5L11 2Z" stroke="currentColor" stroke-width="1.7"/></svg></div>
-          <h3>Sin comisión por transacción</h3>
-          <p>No pagas nada extra por cada pago verificado. Sin cuenta de comercio.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 7L10 3.5L17 7V14L10 17.5L3 14V7Z" stroke="currentColor" stroke-width="1.7"/><path d="M10 3.5V17.5" stroke="currentColor" stroke-width="1.7"/></svg></div>
-          <h3>Menos errores humanos en caja</h3>
-          <p>Nadie tiene que revisar el celular ni preguntar si ya llegó el pago.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1V4M8 12V15M1 8H4M12 8H15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
-          <h3>Nequi, Daviplata y Bancolombia</h3>
-          <p>Las transferencias más usadas en Colombia, integradas desde el primer día.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ CARRUSEL DE PANTALLAS (solo escritorio) ═══════════════ -->
-  <section class="section section-tight screens-section" id="pantallas">
+  <!-- ═══════════ CIUDAD (contenido local) ═══════════ -->
+  <section class="section" id="ciudad" style="padding-bottom:0">
     <div class="wrap">
-      <div class="section-head reveal">
-        <span class="kicker">Por dentro</span>
-        <h2>Vender nunca fue más fácil</h2>
-        <p class="lede" style="margin:0 auto">Capturas reales de Codec POS: la misma pantalla que vas a usar en tu negocio.</p>
+      <div class="head reveal" style="margin-bottom:0">
+        <span class="kicker"><i data-lucide="map-pin"></i> Codec POS en Bello</span>
+        <h2>Hecho para negocios en Bello.</h2>
+        <p>Vende, controla el inventario y lleva la caja al día desde Bello. Funciona con o sin internet, ideal donde la conexión no siempre es estable, y te acompañamos por WhatsApp desde cualquier lugar de Colombia.</p>
       </div>
-
-      <div class="screens-carousel reveal" id="screensCarousel">
-        <button type="button" class="screens-arrow screens-arrow-prev" id="screensPrev" aria-label="Pantalla anterior">‹</button>
-        <div class="screens-frame">
-          <div class="screens-topbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="screens-topbar-label" id="screensLabel">Punto de venta</span></div>
-          <div class="screens-viewport">
-            <div class="screens-track" id="screensTrack">
-              <div class="screens-slide"><img src="/assets/carousel-pos.webp" alt="Pantalla de Punto de Venta de Codec POS" loading="lazy" width="1680" height="945"></div>
-              <div class="screens-slide"><img src="/assets/carousel-mesas.webp" alt="Cuentas por mesa en Codec POS" loading="lazy" width="1680" height="945"></div>
-              <div class="screens-slide"><img src="/assets/carousel-contabilidad.webp" alt="Panel de contabilidad de Codec POS" loading="lazy" width="1680" height="945"></div>
-              <div class="screens-slide"><img src="/assets/carousel-reportes.webp" alt="Reportes del negocio en Codec POS" loading="lazy" width="1680" height="945"></div>
-              <div class="screens-slide"><img src="/assets/carousel-importar.webp" alt="Importación masiva de productos en Codec POS" loading="lazy" width="1680" height="945"></div>
-              <div class="screens-slide"><img src="/assets/carousel-configuracion.webp" alt="Configuración del sistema en Codec POS" loading="lazy" width="1680" height="945"></div>
-              <div class="screens-slide"><img src="/assets/carousel-factura.webp" alt="Factura de venta generada por Codec POS" loading="lazy" width="1680" height="945"></div>
-            </div>
-          </div>
-        </div>
-        <button type="button" class="screens-arrow screens-arrow-next" id="screensNext" aria-label="Siguiente pantalla">›</button>
-      </div>
-
-      <div class="screens-dots" id="screensDots"></div>
     </div>
   </section>
 
-  <!-- ═══════════════ VERSIÓN WEB ═══════════════ -->
-  <section class="section section-warm" id="web">
+  <!-- ═══════════ FACTURACIÓN ELECTRÓNICA ═══════════ -->
+  <section class="section fe" id="facturacion">
     <div class="wrap">
-      <div class="section-head reveal">
-        <span class="kicker on-brand">Nuevo · Codec POS Web</span>
-        <h2>Abre tu caja desde<br>cualquier computador</h2>
-        <p class="lede" style="margin:0 auto">Sin instalar nada: entra desde el navegador, vende, cobra e imprime la factura. Todo queda sincronizado con tu celular y tus otras cajas.</p>
+      <div class="head reveal">
+        <span class="kicker ok"><i data-lucide="file-check-2"></i> Facturación electrónica DIAN</span>
+        <h2>Factura electrónica sin salir de la caja.</h2>
+        <p>Cobras como siempre y Codec POS emite, firma y valida la factura con la DIAN en segundos. Sin otro sistema ni intermediarios.</p>
       </div>
 
-      <div class="web-showcase reveal">
-        <div class="web-main">
-          <div class="screens-topbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="screens-topbar-label">pos.codecstudio.online</span></div>
-          <img src="/assets/web-vender.webp" alt="Pantalla Vender de Codec POS en el navegador" loading="lazy" width="1600" height="691">
-        </div>
-        <div class="web-steps">
-          <figure class="web-step">
-            <img src="/assets/web-cobrar.webp" alt="Confirmar venta con efectivo, Nequi, Daviplata, Bre-B, tarjeta o crédito" loading="lazy" width="1600" height="696">
-            <figcaption><b>Cobra con cualquier medio</b> Efectivo con cambio rápido, Nequi, Daviplata, Bre-B, tarjeta, Rappi, mixto o crédito.</figcaption>
-          </figure>
-          <figure class="web-step">
-            <img src="/assets/web-venta-registrada.webp" alt="Venta registrada con opciones de imprimir ticket, ver factura y compartir" loading="lazy" width="1600" height="693">
-            <figcaption><b>Venta lista en un toque</b> Imprime el ticket, comparte la factura por WhatsApp o empieza la siguiente venta.</figcaption>
-          </figure>
-          <figure class="web-step">
-            <img src="/assets/web-factura.webp" alt="Factura de venta de Codec POS con código QR" loading="lazy" width="1600" height="696">
-            <figcaption><b>Factura profesional</b> Con los datos de tu negocio y código QR. Imprímela, descárgala o compártela.</figcaption>
-          </figure>
-          <figure class="web-step">
-            <img src="/assets/web-dashboard.webp" alt="Dashboard con ventas, utilidad, ticket promedio y gastos" loading="lazy" width="1600" height="695">
-            <figcaption><b>Sabes cuánto ganas</b> Ventas, utilidad, ticket promedio y gastos de hoy, 7 o 30 días.</figcaption>
-          </figure>
-        </div>
-      </div>
-
-      <div class="web-ctas reveal">
-        <a href="/app/prueba-gratis" class="btn btn-brand btn-lg" id="trialCtaWeb" data-event="click_prueba_gratis" data-event-loc="web">Probar 14 días gratis →</a>
-        <a href="/descargar/" class="btn btn-outline btn-lg" data-event="click_descargar" data-event-loc="web">Descargar para Windows</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ ONLINE + OFFLINE ═══════════════ -->
-  <section class="section section-dark" id="offline">
-    <div class="grid-fade on-dark"></div>
-    <div class="glow" style="width:380px;height:380px;left:0;top:40%;background:radial-gradient(circle,rgba(234,88,12,.15) 0%,transparent 65%)"></div>
-    <div class="glow" style="width:380px;height:380px;right:0;top:40%;background:radial-gradient(circle,rgba(5,150,105,.12) 0%,transparent 65%)"></div>
-
-    <div class="wrap" style="position:relative">
-      <div class="section-head reveal">
-        <span class="kicker on-light">La base de todo</span>
-        <h2>Tu negocio no se detiene<br>porque se caiga internet</h2>
-        <p class="lede" style="margin:0 auto">La mayoría de sistemas se detienen apenas se va la conexión. Codec POS no.</p>
-      </div>
-
-      <div class="offline-grid">
-        <div class="offline-steps reveal">
-          <button class="offline-step is-active" data-step="0">
-            <div class="offline-step-inner">
-              <div class="offline-step-icon"><svg width="20" height="20" viewBox="0 0 22 22" fill="none"><path d="M2 9C5.31 5.69 9.43 4 11 4C12.57 4 16.69 5.69 20 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M5 12C7.24 9.76 9.26 9 11 9C12.74 9 14.76 9.76 17 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="18" r="1.2" fill="currentColor"/></svg></div>
-              <div><h4>Hay internet</h4><p>Codec POS sincroniza tus ventas, inventario y reportes con la nube.</p></div>
-            </div>
+      <div class="fe-flow">
+        <div class="fe-steps reveal" id="feSteps">
+          <button class="fe-step is-active" data-step="0">
+            <span class="fe-num">1</span>
+            <span><h3>Vendes y tocas “Sí”</h3><p>Al cobrar eliges el medio de pago y si la venta lleva factura electrónica.</p><span class="fe-bar"><i></i></span></span>
           </button>
-          <button class="offline-step" data-step="1">
-            <div class="offline-step-inner">
-              <div class="offline-step-icon"><svg width="20" height="20" viewBox="0 0 22 22" fill="none"><path d="M8 15C9.1 13.9 10.1 13.5 11 13.5C11.9 13.5 12.9 13.9 14 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="18" r="1.2" fill="currentColor"/><path d="M3 3L19 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
-              <div><h4>Se corta la conexión</h4><p>Tu negocio sigue vendiendo sin interrupciones. Nada se detiene en la caja.</p></div>
-            </div>
+          <button class="fe-step" data-step="1">
+            <span class="fe-num">2</span>
+            <span><h3>Eliges el cliente</h3><p>Búscalo por nombre, cédula o NIT. Sin datos, sale a consumidor final.</p><span class="fe-bar"><i></i></span></span>
           </button>
-          <button class="offline-step" data-step="2">
-            <div class="offline-step-inner">
-              <div class="offline-step-icon"><svg width="20" height="20" viewBox="0 0 22 22" fill="none"><path d="M16 15H6a4 4 0 01-.5-7.9A5.5 5.5 0 0116.5 9H17a3 3 0 010 6H16z" stroke="currentColor" stroke-width="1.7"/></svg></div>
-              <div><h4>Vuelve el internet</h4><p>Todo se sincroniza según llega la conexión, con respaldo automático. No se pierde el trabajo hecho sin internet.</p></div>
-            </div>
+          <button class="fe-step" data-step="2">
+            <span class="fe-num">3</span>
+            <span><h3>La DIAN la acepta</h3><p>Con CUFE y QR, lista para imprimir o enviar por WhatsApp y correo.</p><span class="fe-bar"><i></i></span></span>
           </button>
         </div>
 
-        <div class="reveal">
-          <div class="offline-orbit">
-            <div class="orbit-ring" style="inset:0"></div>
-            <div class="orbit-ring" style="inset:22px"></div>
-            <div class="orbit-ring" style="inset:44px"></div>
-            <div class="orbit-center" id="orbitCenter" style="color:#10B981">
-              <svg width="30" height="30" viewBox="0 0 22 22" fill="none" id="orbitIcon"><path d="M2 9C5.31 5.69 9.43 4 11 4C12.57 4 16.69 5.69 20 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M5 12C7.24 9.76 9.26 9 11 9C12.74 9 14.76 9.76 17 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="18" r="1.2" fill="currentColor"/></svg>
-            </div>
-          </div>
+        <div class="fe-stage reveal" id="feStage">
+          <img class="is-active" src="/assets/fe-confirmar.webp" width="900" height="1143" alt="Confirmar venta: medios de pago y opción de factura electrónica" loading="lazy">
+          <img src="/assets/fe-cliente.webp" width="900" height="1166" alt="Selección del cliente por cédula o NIT para la factura electrónica" loading="lazy">
+          <img src="/assets/fe-aceptada.webp" width="900" height="1002" alt="Venta registrada con factura electrónica aceptada por la DIAN" loading="lazy">
+          <div class="fe-seal"><i data-lucide="shield-check"></i> Validada por la DIAN</div>
         </div>
       </div>
 
-      <div class="offline-stats reveal">
-        <div class="offline-stat"><b style="color:#FB923C">Sin límite</b><span>Ventas offline almacenadas localmente</span></div>
-        <div class="offline-stat"><b style="color:#60A5FA">Automático</b><span>Sincronización al reconectar</span></div>
-        <div class="offline-stat"><b style="color:#10B981">Diario</b><span>Backup local automático de tu información</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ APP MÓVIL ═══════════════ -->
-  <section class="section section-navy2" id="app-movil">
-    <div class="wrap app-grid">
-      <div class="reveal">
-        <span class="kicker on-light">En tu bolsillo</span>
-        <h2 style="margin-top:18px">Tu negocio también<br><span style="color:#FB923C">desde tu celular</span></h2>
-        <p class="lede" style="margin-bottom:26px">
-          La app móvil de Codec POS no es una versión "solo para mirar": puedes vender, revisar
-          inventario, registrar productos y ver tus métricas del día desde donde estés.
-        </p>
-        <ul class="check-list on-dark" style="margin-bottom:26px">
-          <li><span class="tick">✓</span>Vende directamente desde el celular, con descuento de inventario real</li>
-          <li><span class="tick">✓</span>Revisa utilidad, ventas y alertas de stock sin estar frente al computador</li>
-          <li><span class="tick">✓</span>Misma información, sincronizada con tu sistema principal</li>
-        </ul>
-        <a href="#trial" class="btn btn-brand btn-lg" data-event="click_app" data-event-loc="app-movil">Probar 14 días gratis</a>
-        <a href="/download" class="btn btn-light-solid btn-lg" style="margin-left:10px" data-event="click_descargar_apk" data-event-loc="app-movil">Descargar app Android</a>
-        <div><span class="app-plan-tag">★ Disponible en el plan Premium</span></div>
+      <div class="fe-feats">
+        <div class="feat reveal"><span class="ico-box"><i data-lucide="qr-code"></i></span><h4>CUFE y código QR</h4><p>Cada factura con su firma digital y su consulta en la DIAN.</p></div>
+        <div class="feat reveal"><span class="ico-box"><i data-lucide="send"></i></span><h4>WhatsApp y correo</h4><p>Envíala al cliente con el PDF y el XML en un toque.</p></div>
+        <div class="feat reveal"><span class="ico-box"><i data-lucide="printer"></i></span><h4>Tirilla o carta</h4><p>Impresora térmica, hoja carta o PDF descargable.</p></div>
+        <div class="feat reveal"><span class="ico-box"><i data-lucide="file-minus"></i></span><h4>Notas crédito y débito</h4><p>Anula o ajusta una factura sin enredos.</p></div>
+        <div class="feat reveal"><span class="ico-box"><i data-lucide="inbox"></i></span><h4>Documento soporte y compras</h4><p>Registra lo que compras y las facturas que recibes.</p></div>
+        <div class="feat reveal"><span class="ico-box"><i data-lucide="percent"></i></span><h4>ReteFuente y ReteICA</h4><p>Retenciones automáticas o por venta.</p></div>
+        <div class="feat reveal"><span class="ico-box"><i data-lucide="key-round"></i></span><h4>Tu certificado digital</h4><p>Firma desde la web con el certificado de tu negocio.</p></div>
+        <div class="feat reveal"><span class="ico-box"><i data-lucide="contact"></i></span><h4>Clientes y terceros</h4><p>Base de clientes, proveedores y productos lista para facturar.</p></div>
       </div>
 
-      <div class="reveal">
-        <div class="phone-stack">
-          <div class="phone-frame p-left"><img src="/assets/app-producto.webp" width="700" height="1518" alt="App móvil de Codec POS: formulario para crear un producto nuevo" loading="lazy"></div>
-          <div class="phone-frame p-main"><img src="/assets/app-inicio.webp" width="700" height="1518" alt="App móvil de Codec POS: inicio con utilidad neta, ventas del día y alertas de stock" loading="lazy"></div>
-          <div class="phone-frame p-right"><img src="/assets/app-vender.webp" width="700" height="1518" alt="App móvil de Codec POS: pantalla de vender con búsqueda de productos" loading="lazy"></div>
+      <div class="fe-panel">
+        <div class="fe-panel-copy reveal">
+          <h3>Todo tu módulo de facturación, en un solo lugar.</h3>
+          <p>Facturas emitidas, estados DIAN, notas y compras recibidas, con filtros por fecha y cliente.</p>
+          <ul class="checks">
+            <li><i data-lucide="circle-check"></i>Conexión directa con la DIAN</li>
+            <li><i data-lucide="circle-check"></i>Sale desde el correo de tu negocio</li>
+            <li><i data-lucide="circle-check"></i>Te ayudamos a activarla paso a paso</li>
+          </ul>
+          <p class="fe-note"><i data-lucide="info"></i>El valor de la implementación de la facturación electrónica se cotiza con un asesor.</p>
+          <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20cotizar%20la%20implementaci%C3%B3n%20de%20facturaci%C3%B3n%20electr%C3%B3nica%20en%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-wa btn-sm fe-cta" data-event="click_whatsapp" data-event-loc="facturacion"><i data-lucide="message-circle"></i> Hablar con un asesor</a>
+        </div>
+        <div class="browser reveal">
+          <div class="browser-bar"><i></i><i></i><i></i><span>Facturación</span></div>
+          <img src="/assets/web-facturacion.webp" width="1600" height="800" alt="Módulo de facturación electrónica de Codec POS" loading="lazy">
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ═══════════════ TODO TU NEGOCIO EN UN SOLO SISTEMA ═══════════════ -->
-  <section class="section" style="padding-bottom:60px">
+  <!-- ═══════════ INTELIGENTE ═══════════ -->
+  <section class="section" id="inteligente">
     <div class="wrap">
-      <div class="section-head reveal">
-        <span class="kicker on-brand">No necesitas contratar 5 herramientas distintas</span>
-        <h2>Todo tu negocio,<br>en un solo sistema</h2>
-        <p class="lede" style="margin:0 auto">
-          Ventas, inventario, caja, reportes, facturación, módulos especializados, varias sucursales
-          y confirmación automática de pagos, administrado desde un solo lugar, en línea o sin internet.
-        </p>
+      <div class="head reveal">
+        <span class="kicker"><i data-lucide="sparkles"></i> POS inteligente</span>
+        <h2>Un sistema que trabaja <span class="grad">por ti.</span></h2>
+        <p>Codec POS revisa, avisa y confirma para que tú solo te ocupes de vender.</p>
       </div>
 
-      <div class="ecosystem-strip reveal">
-        <div class="eco-item"><div class="feature-icon" style="margin:0"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M2 2.5H4L6.5 13.5H15.5L17.5 7H5" stroke="currentColor" stroke-width="1.7"/></svg></div><span>Ventas</span></div>
-        <div class="eco-item"><div class="feature-icon" style="margin:0"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 7L10 3.5L17 7V14L10 17.5L3 14V7Z" stroke="currentColor" stroke-width="1.7"/></svg></div><span>Inventario</span></div>
-        <div class="eco-item"><div class="feature-icon" style="margin:0"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 5H16C16.55 5 17 5.45 17 6V15C17 15.55 16.55 16 16 16H4C3.45 16 3 15.55 3 15V6C3 5.45 3.45 5 4 5H16" stroke="currentColor" stroke-width="1.7"/></svg></div><span>Caja</span></div>
-        <div class="eco-item"><div class="feature-icon" style="margin:0"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 17V7M8 17V10M13 17V4M18 17V11" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></div><span>Reportes</span></div>
-        <div class="eco-item"><div class="feature-icon" style="margin:0"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="5" y="2" width="10" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/></svg></div><span>App móvil</span></div>
-        <div class="eco-item"><div class="feature-icon" style="margin:0"><svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M11 2L4 5.5V10.5C4 14.5 7 18.1 11 19.5C15 18.1 18 14.5 18 10.5V5.5L11 2Z" stroke="currentColor" stroke-width="1.7"/></svg></div><span>Codec Verify</span></div>
-        <div class="eco-item"><div class="feature-icon" style="margin:0"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 17V4H11V17M11 8H17V17" stroke="currentColor" stroke-width="1.7"/></svg></div><span>Multisucursal</span></div>
-        <div class="eco-item"><div class="feature-icon" style="margin:0"><svg width="18" height="18" viewBox="0 0 22 22" fill="none"><path d="M16 15H6a4 4 0 01-.5-7.9A5.5 5.5 0 0116.5 9H17a3 3 0 010 6H16z" stroke="currentColor" stroke-width="1.7"/></svg></div><span>Sincronización</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ MÓDULOS ESPECIALIZADOS ═══════════════ -->
-  <section class="section section-tight" id="modulos" style="background:var(--surface-2)">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="kicker on-brand">Para negocios con operación especializada</span>
-        <h2>Módulos hechos para<br>tu tipo de negocio</h2>
-        <p class="lede" style="margin:0 auto">Si tu negocio necesita algo más que un POS genérico, Codec POS ya lo trae.</p>
-      </div>
-      <div class="modules-marquee reveal">
-        <div class="modules-track">
-          <div class="modules-card">
-            <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M13.5 3C11.02 3 9 5.02 9 7.5C9 8.06 9.11 8.59 9.3 9.07L3 15.37L4.63 17L10.93 10.7C11.41 10.89 11.94 11 12.5 11C14.98 11 17 8.98 17 6.5" stroke="currentColor" stroke-width="1.6"/></svg></div>
-            <h3>Taller de Reparaciones</h3>
-            <p>Recepción de equipos, cotización, cobro y técnico asignado, de principio a fin.</p>
-          </div>
-          <div class="modules-card">
-            <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 3C6.13 3 3 6.13 3 10C3 13.87 6.13 17 10 17C10.55 17 11 16.55 11 16" stroke="currentColor" stroke-width="1.7"/><circle cx="7" cy="9" r="1.2" fill="currentColor"/><circle cx="10" cy="6.5" r="1.2" fill="currentColor"/></svg></div>
-            <h3>Artes Gráficas</h3>
-            <p>Catálogo por escalas de precio y facturación con abono, para imprentas y talleres gráficos.</p>
-          </div>
-          <div class="modules-card">
-            <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><ellipse cx="10" cy="8.5" rx="5.5" ry="6" stroke="currentColor" stroke-width="1.7"/><path d="M10 14.5V18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
-            <h3>Papelería y Piñatería</h3>
-            <p>Globos por calibre y color, carga masiva de inventario, pensado para este tipo de negocio.</p>
-          </div>
-          <!-- Se repite una vez más para que el desplazamiento sea continuo, sin salto -->
-          <div class="modules-card" aria-hidden="true">
-            <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M13.5 3C11.02 3 9 5.02 9 7.5C9 8.06 9.11 8.59 9.3 9.07L3 15.37L4.63 17L10.93 10.7C11.41 10.89 11.94 11 12.5 11C14.98 11 17 8.98 17 6.5" stroke="currentColor" stroke-width="1.6"/></svg></div>
-            <h3>Taller de Reparaciones</h3>
-            <p>Recepción de equipos, cotización, cobro y técnico asignado, de principio a fin.</p>
-          </div>
-          <div class="modules-card" aria-hidden="true">
-            <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 3C6.13 3 3 6.13 3 10C3 13.87 6.13 17 10 17C10.55 17 11 16.55 11 16" stroke="currentColor" stroke-width="1.7"/><circle cx="7" cy="9" r="1.2" fill="currentColor"/><circle cx="10" cy="6.5" r="1.2" fill="currentColor"/></svg></div>
-            <h3>Artes Gráficas</h3>
-            <p>Catálogo por escalas de precio y facturación con abono, para imprentas y talleres gráficos.</p>
-          </div>
-          <div class="modules-card" aria-hidden="true">
-            <div class="feature-icon"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><ellipse cx="10" cy="8.5" rx="5.5" ry="6" stroke="currentColor" stroke-width="1.7"/><path d="M10 14.5V18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
-            <h3>Papelería y Piñatería</h3>
-            <p>Globos por calibre y color, carga masiva de inventario, pensado para este tipo de negocio.</p>
-          </div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-top:36px;flex-wrap:wrap">
-        <span style="font-family:var(--font-mono);font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:999px;background:#fff;border:1px solid var(--border);color:var(--ink-soft)">1 módulo especializado → Básico</span>
-        <span style="color:var(--muted)">＋</span>
-        <span style="font-family:var(--font-mono);font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:999px;background:var(--brand-dim);border:1px solid #FDE1C7;color:var(--brand-hover)">2 o más módulos → Premium</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ MULTISUCURSAL (compacta, tipo cajón) ═══════════════ -->
-  <section class="section-tight" id="multitienda">
-    <div class="wrap">
-      <div class="multistore-card reveal">
-        <div class="multistore-text">
-          <span class="kicker on-brand">Para negocios que crecen</span>
-          <h2 style="margin-top:12px">Crece sin cambiar de sistema</h2>
-          <p class="lede" style="margin-bottom:16px">
-            Con un solo inicio de sesión desde tu celular puedes ver las métricas de cada una de tus
-            tiendas, sin tener que entrar local por local.
-          </p>
-          <div class="check-list on-light" style="margin-bottom:14px">
-            <li><span class="tick">✓</span>Básico: 1 sucursal. Premium: hasta 3</li>
-            <li><span class="tick">✓</span>Sucursal adicional: Básico $29.990 · Premium $49.990 COP/mes</li>
-          </div>
-          <p style="font-size:12px;color:var(--muted)">¿Muchas sedes? <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20plan%20personalizado%20de%20Codec%20POS" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">Contáctanos</a> y armamos un plan personalizado.</p>
+      <div class="bento">
+        <div class="card card-iva b-3 reveal">
+          <span class="ico-box"><i data-lucide="scan-search"></i></span>
+          <h3>Detecta errores antes de cobrar</h3>
+          <p>Si un producto tiene el IVA mal configurado, te avisa en la misma venta. Cero sorpresas con la DIAN.</p>
+          <div class="iva-alert"><i data-lucide="triangle-alert"></i><span>Este producto tiene IVA 0 % en su ficha. Como tu negocio cobra IVA a todos los productos, se le cobra el 19 %.</span></div>
         </div>
 
-        <div class="multistore-drawer">
-          <button class="store-chip">
-            <span class="d"></span>Tienda Centro
-          </button>
-          <button class="store-chip">
-            <span class="d"></span>Tienda Norte
-          </button>
-          <button class="store-chip is-warn">
-            <span class="d"></span>Tienda Sur
-          </button>
-          <button class="store-chip is-add">+ Vincular</button>
+        <div class="card card-profit b-3 reveal">
+          <span class="ico-box"><i data-lucide="trending-up"></i></span>
+          <h3>Sabes cuánto ganas, hoy</h3>
+          <p>Utilidad neta, ingresos y ventas en tiempo real, por sede y por empleado.</p>
+          <div class="rings" aria-hidden="true">
+            <div><div class="ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="3.2"/><circle cx="18" cy="18" r="15.9" fill="none" stroke="#4ade80" stroke-width="3.2" stroke-dasharray="78 100" stroke-linecap="round"/></svg><b>78%</b></div><small>Margen</small></div>
+            <div><div class="ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="3.2"/><circle cx="18" cy="18" r="15.9" fill="none" stroke="#60a5fa" stroke-width="3.2" stroke-dasharray="62 100" stroke-linecap="round"/></svg><b>62</b></div><small>Ventas</small></div>
+            <div><div class="ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="3.2"/><circle cx="18" cy="18" r="15.9" fill="none" stroke="#f87171" stroke-width="3.2" stroke-dasharray="24 100" stroke-linecap="round"/></svg><b>12</b></div><small>Por agotarse</small></div>
+          </div>
+        </div>
+
+        <div class="card b-2 reveal">
+          <span class="ico-box"><i data-lucide="wifi-off"></i></span>
+          <h3>Vende sin internet</h3>
+          <p>Si se cae la conexión sigues vendiendo. Al volver, todo se sincroniza solo.</p>
+        </div>
+        <div class="card b-2 reveal">
+          <span class="ico-box"><i data-lucide="package-search"></i></span>
+          <h3>Inventario que avisa</h3>
+          <p>Alertas de stock bajo, códigos de barras e importación desde Excel.</p>
+        </div>
+        <div class="card b-2 reveal">
+          <span class="ico-box"><i data-lucide="chef-hat"></i></span>
+          <h3>Recetas y cocina</h3>
+          <p>Descuenta ingredientes por receta y envía comandas a las estaciones de cocina.</p>
+        </div>
+
+        <div class="card b-4 reveal">
+          <span class="ico-box"><i data-lucide="layout-grid"></i></span>
+          <h3>Todo lo que tu negocio necesita</h3>
+          <p>Sin pagar cinco herramientas distintas.</p>
+          <div class="mini-list">
+            <span>Caja y cierres</span><span>Gastos</span><span>Contabilidad</span><span>Cartera y créditos</span><span>Devoluciones</span><span>Fidelización</span><span>Promociones</span><span>Proveedores</span><span>Personal y permisos</span><span>Turnos</span><span>Reportes</span><span>Acceso para tu contador</span>
+          </div>
+        </div>
+        <div class="card b-2 reveal">
+          <span class="ico-box"><i data-lucide="building-2"></i></span>
+          <h3>Varias sedes, una vista</h3>
+          <p>Cambia de sucursal con un toque y compara cada tienda.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ═══════════════ BÁSICO VS PREMIUM ═══════════════ -->
-  <section class="section section-tight" style="background:var(--surface-2)">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="kicker on-brand">¿Cuál elegir?</span>
-        <h2>Básico vs. Premium</h2>
+  <!-- ═══════════ CODEC VERIFY ═══════════ -->
+  <section class="section verify" id="verify">
+    <div class="wrap verify-grid">
+      <div class="verify-copy reveal">
+        <span class="kicker dark"><i data-lucide="shield-check"></i> Exclusivo · Codec Verify</span>
+        <h2>Confirma tus pagos <span class="grad">sin pagar comisiones.</span></h2>
+        <p>El cliente transfiere, Codec POS detecta el pago real en la cuenta del negocio y te avisa con sonido. Adiós a los comprobantes falsos.</p>
+
+        <ol class="vsteps" id="vSteps">
+          <li data-step="0"><span class="vnum">1</span>El cliente transfiere</li>
+          <li data-step="1"><span class="vnum">2</span>Codec Verify lo detecta</li>
+          <li data-step="2"><span class="vnum">3</span>Suena la confirmación y se cierra la venta</li>
+        </ol>
+
+        <button class="vsound" id="vSound" type="button" aria-pressed="false">
+          <i data-lucide="volume-2"></i><span>Escuchar cómo suena</span>
+        </button>
       </div>
-      <div class="compare-wrap reveal">
-        <table class="compare-table">
-          <thead><tr><th></th><th>Básico</th><th class="hl">Premium</th></tr></thead>
-          <tbody>
-            <tr><td>Usuarios</td><td>Administrador + hasta 5</td><td class="hl">Ilimitados</td></tr>
-            <tr><td>Sucursales / instalaciones</td><td>1</td><td class="hl">Hasta 3</td></tr>
-            <tr><td>Ventas, inventario, clientes, gastos, contabilidad</td><td class="yes">✔</td><td class="yes">✔</td></tr>
-            <tr><td>Funcionamiento online/offline</td><td class="yes">✔</td><td class="yes">✔</td></tr>
-            <tr><td>Módulos especializados</td><td>1 incluido</td><td class="hl">2 o más</td></tr>
-            <tr><td>App móvil completa</td><td class="no">✕</td><td class="yes">✔</td></tr>
-            <tr><td>Multisucursal</td><td class="no">✕</td><td class="yes">✔</td></tr>
-            <tr><td>Codec Verify</td><td class="no">✕</td><td class="yes">✔</td></tr>
-            <tr><td>Facturación electrónica DIAN</td><td class="no">✕</td><td class="yes">✔</td></tr>
-            <tr><td>Reportes avanzados</td><td class="no">✕</td><td class="yes">✔</td></tr>
-            <tr><td>Respaldo automático en la nube</td><td class="no">✕</td><td class="yes">✔</td></tr>
-          </tbody>
-        </table>
+
+      <div class="vdemo reveal" id="vDemo">
+        <div class="vdemo-top"><span class="dots"><i></i><i></i><i></i></span><span>Codec Verify</span></div>
+        <div class="vdemo-body">
+          <div class="vcircle" id="vCircle">
+            <i data-lucide="shield" class="v-idle"></i>
+            <span class="v-spin"></span>
+            <i data-lucide="check" class="v-ok"></i>
+          </div>
+          <div class="vamount" id="vAmount">+$45.000</div>
+          <div class="vsource" id="vSource">Transferencia Nequi</div>
+          <div class="vapps" id="vApps">
+            <span class="is-active" style="--c:#d6097f"><b>N</b>Nequi</span>
+            <span style="--c:#ea580c"><b>D</b>Daviplata</span>
+            <span style="--c:#eab308"><b>B</b>Bancolombia</span>
+            <span style="--c:#22c55e"><b>B</b>Bre-B</span>
+          </div>
+        </div>
+        <div class="vstatus" id="vStatus">Esperando el pago…</div>
       </div>
-      <p class="price-footnote">Estructura del motor comercial de Codec POS, la misma fuente que usan la app, el panel de administración y este sitio.</p>
+
+      <div class="vperks reveal">
+        <div><i data-lucide="badge-percent"></i><b>$0 de comisión</b><span>Ni por transacción ni por mes.</span></div>
+        <div><i data-lucide="landmark"></i><b>Sin cuenta de comercio</b><span>Usa la cuenta que ya tienes.</span></div>
+        <div><i data-lucide="smartphone"></i><b>Android y iPhone</b><span>Funciona con la app cerrada.</span></div>
+      </div>
     </div>
   </section>
 
-  <!-- ═══════════════ PRECIOS ═══════════════ -->
+  <!-- ═══════════ NEGOCIOS ═══════════ -->
+  <section class="section" id="negocios">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="kicker"><i data-lucide="store"></i> Para tu negocio</span>
+        <h2>Se adapta a lo que vendes.</h2>
+        <p>Eliges tu tipo de negocio y Codec POS se configura con las categorías, impuestos y herramientas que necesitas.</p>
+      </div>
+      <div class="biz reveal">
+        <a href="#precios"><span class="ico-box"><i data-lucide="shopping-basket"></i></span>Minimercados y tiendas</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="pill"></i></span>Droguerías y farmacias</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="shirt"></i></span>Ropa y boutiques</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="hammer"></i></span>Ferreterías</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="utensils"></i></span>Restaurantes y comidas rápidas</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="croissant"></i></span>Panaderías y cafeterías</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="beef"></i></span>Carnicerías</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="wine"></i></span>Licoreras</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="paw-print"></i></span>Veterinarias y mascotas</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="pencil-ruler"></i></span>Papelerías y piñaterías</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="smartphone"></i></span>Tecnología y celulares</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="wrench"></i></span>Talleres de reparación</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="printer"></i></span>Imprentas y artes gráficas</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="sparkles"></i></span>Belleza y cosméticos</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="wheat"></i></span>Graneros y a granel</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="dumbbell"></i></span>Artículos deportivos</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="blocks"></i></span>Jugueterías</a>
+        <a href="#precios"><span class="ico-box"><i data-lucide="book-open"></i></span>Librerías</a>
+      </div>
+      <div class="modules reveal">
+        <span class="label">Con módulos especializados como</span>
+        <span>Mesas y comandas</span><span>Estaciones de cocina</span><span>Ficha clínica veterinaria</span><span>Órdenes de taller</span><span>Precios por escala</span><span>Agenda y citas</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ APP MÓVIL ═══════════ -->
+  <section class="section app" id="app">
+    <div class="wrap">
+      <div class="head reveal">
+        <span class="kicker"><i data-lucide="smartphone"></i> App móvil</span>
+        <h2>Tu negocio completo, en el bolsillo.</h2>
+        <p>No es una app para mirar: vendes, creas productos con foto y revisas todo desde el celular.</p>
+      </div>
+      <div class="app-row reveal">
+        <div class="app-item"><div class="phone"><img src="/assets/cel-vender.webp" width="560" height="1093" alt="Vender desde el celular" loading="lazy"></div><span>Vende y escanea</span></div>
+        <div class="app-item"><div class="phone"><img src="/assets/cel-producto.webp" width="560" height="1095" alt="Crear un producto con foto desde el celular" loading="lazy"></div><span>Crea productos con foto</span></div>
+        <div class="app-item"><div class="phone"><img src="/assets/cel-modulos.webp" width="560" height="1091" alt="Módulos de Codec POS en el celular" loading="lazy"></div><span>Todos tus módulos</span></div>
+        <div class="app-item"><div class="phone"><img src="/assets/cel-herramientas.webp" width="560" height="1095" alt="Herramientas de Codec POS en el celular" loading="lazy"></div><span>Cartera, gastos y más</span></div>
+      </div>
+      <div class="app-ctas">
+        <a href="/download" class="btn btn-ghost" data-event="click_descargar" data-event-loc="app"><i data-lucide="download"></i> Descargar para Android</a>
+        <a href="/descargar/" class="btn btn-ghost" data-event="click_descargar" data-event-loc="app-windows"><i data-lucide="monitor"></i> Descargar para Windows</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ PRECIOS ═══════════ -->
   <section class="section" id="precios">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="kicker on-brand">Planes</span>
-        <h2>Un plan para cada<br>etapa de tu negocio</h2>
-        <p class="lede" style="margin:0 auto">Empieza gratis 14 días. Sin tarjeta de crédito.</p>
+    <div class="wrap" style="text-align:center">
+      <div class="head reveal">
+        <span class="kicker"><i data-lucide="tag"></i> Planes</span>
+        <h2>Precios claros. Sin sorpresas.</h2>
+        <p>Empieza gratis 14 días. Sin tarjeta de crédito.</p>
       </div>
 
-      <div class="pricing-toggle reveal" id="pricingToggle">
+      <div class="toggle reveal" id="pricingToggle" role="group" aria-label="Periodo de pago">
         <button class="is-active" data-mode="mensual">Mensual</button>
-        <button data-mode="anual">Anual <span class="save-tag">1 mes gratis</span></button>
+        <button data-mode="anual">Anual <em>1 mes gratis</em></button>
       </div>
 
       <!-- Anual = 12 meses pagando 11 (el mes 12 es de regalo). -->
-      <div class="pricing-grid reveal">
-        <div class="price-card">
-          <div class="price-name">Básico</div>
-          <p class="price-desc">Todo lo esencial para operar tu negocio del día a día.</p>
-          <div class="price-tag-wrap">
-            <span class="price-tag" data-price-basico data-mensual="49.990" data-anual="549.890">$49.990</span>
-            <span class="price-period" data-period>/mes</span>
-          </div>
-          <p class="price-promo-note" data-annual-note data-mensual="Paga anual y te regalamos 1 mes" data-anual="12 meses por el precio de 11 · ahorras $49.990">Paga anual y te regalamos 1 mes</p>
-          <a href="#trial" class="btn btn-outline btn-block" data-event="click_precios" data-event-loc="basico">Empezar prueba gratis</a>
-          <ul class="price-features">
-            <li><span class="tick">✓</span>Administrador + hasta 5 usuarios</li>
-            <li><span class="tick">✓</span>1 sucursal / instalación</li>
-            <li><span class="tick">✓</span>Ventas, inventario, clientes, gastos, contabilidad</li>
-            <li><span class="tick">✓</span>1 módulo especializado incluido</li>
-            <li><span class="tick">✓</span>Funciona online y offline</li>
+      <div class="plans" style="text-align:left">
+        <div class="plan reveal">
+          <h3>Básico</h3>
+          <p class="plan-desc">Lo esencial para operar tu negocio día a día.</p>
+          <div class="price"><strong data-price data-mensual="49.990" data-anual="549.890">$49.990</strong><span data-period>/mes</span></div>
+          <p class="plan-note" data-annual-note data-mensual="Paga anual y te regalamos 1 mes" data-anual="12 meses por el precio de 11">Paga anual y te regalamos 1 mes</p>
+          <a href="/app/prueba-gratis" class="btn btn-ghost btn-block" id="trialCta" data-event="click_precios" data-event-loc="basico">Empezar prueba gratis</a>
+          <ul class="checks">
+            <li><i data-lucide="check"></i>Administrador + hasta 5 usuarios</li>
+            <li><i data-lucide="check"></i>1 sucursal</li>
+            <li><i data-lucide="check"></i>Ventas, inventario, caja, gastos y contabilidad</li>
+            <li><i data-lucide="check"></i>1 módulo especializado</li>
+            <li><i data-lucide="check"></i>Funciona online y offline</li>
           </ul>
         </div>
 
-        <div class="price-card is-featured">
-          <span class="price-badge">Más elegido</span>
-          <div class="price-name">Premium</div>
-          <p class="price-desc">Para negocios que necesitan todo el poder de Codec POS.</p>
-          <div class="price-tag-wrap">
-            <span class="price-tag" data-price-premium data-mensual="79.990" data-anual="879.890">$79.990</span>
-            <span class="price-period" data-period>/mes</span>
-          </div>
-          <p class="price-promo-note" data-annual-note data-mensual="Paga anual y te regalamos 1 mes" data-anual="12 meses por el precio de 11 · ahorras $79.990">Paga anual y te regalamos 1 mes</p>
-          <a href="#trial" class="btn btn-brand btn-block" data-event="click_precios" data-event-loc="premium">Empezar prueba gratis</a>
-          <ul class="price-features">
-            <li><span class="tick">✓</span>Usuarios ilimitados</li>
-            <li><span class="tick">✓</span>Hasta 3 sucursales / instalaciones</li>
-            <li><span class="tick">✓</span>App móvil completa</li>
-            <li><span class="tick">✓</span>Codec Verify: confirmación automática de pagos</li>
-            <li><span class="tick">✓</span>Facturación electrónica DIAN: escríbenos por WhatsApp</li>
-            <li><span class="tick">✓</span>Multisucursal, reportes avanzados y respaldo automático</li>
-            <li><span class="tick">✓</span>2 o más módulos especializados</li>
+        <div class="plan is-featured reveal">
+          <span class="plan-badge">Más elegido</span>
+          <h3>Premium</h3>
+          <p class="plan-desc">Todo el poder de Codec POS, con facturación electrónica.</p>
+          <div class="price"><strong data-price data-mensual="79.990" data-anual="879.890">$79.990</strong><span data-period>/mes</span></div>
+          <p class="plan-note" data-annual-note data-mensual="Paga anual y te regalamos 1 mes" data-anual="12 meses por el precio de 11">Paga anual y te regalamos 1 mes</p>
+          <a href="/app/prueba-gratis" class="btn btn-brand btn-block" id="trialCtaFinal" data-event="click_precios" data-event-loc="premium">Empezar prueba gratis</a>
+          <ul class="checks">
+            <li><i data-lucide="check"></i><span><b>Facturación electrónica DIAN</b> <small class="fe-impl">(implementación: consulta con un asesor)</small></span></li>
+            <li><i data-lucide="check"></i><span><b>Codec Verify:</b> pagos confirmados solos</span></li>
+            <li><i data-lucide="check"></i>App móvil completa</li>
+            <li><i data-lucide="check"></i>Administrador + hasta 10 usuarios</li>
+            <li><i data-lucide="check"></i>Reportes avanzados y respaldo en la nube</li>
+            <li><i data-lucide="check"></i>2 o más módulos especializados</li>
           </ul>
         </div>
       </div>
 
-      <div class="lifetime-card reveal">
-        <div>
-          <h4>Instalación y soporte técnico: $50.000</h4>
-          <p>Si prefieres que te instalemos y configuremos Codec POS, o necesitas soporte técnico, tiene un valor de $50.000 COP por servicio. Es opcional: puedes instalarlo tú mismo sin costo.</p>
+      <div class="extras" style="text-align:left">
+        <div class="extra reveal">
+          <div><h4>Implementación de facturación electrónica</h4><p>El valor de la implementación se cotiza con un asesor según tu negocio. Te acompañamos con el certificado digital y la resolución DIAN.</p></div>
+          <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20cotizar%20la%20implementaci%C3%B3n%20de%20facturaci%C3%B3n%20electr%C3%B3nica%20en%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-wa btn-sm" data-event="click_precios" data-event-loc="implementacion_fe"><i data-lucide="message-circle"></i> Hablar con un asesor</a>
+        </div>
+        <div class="extra reveal">
+          <div><h4>¿Más sedes, otro país o un plan a la medida?</h4><p>Sucursal adicional: Básico $29.990/mes · Premium $49.990/mes. Instalación y soporte técnico opcional: $50.000 por servicio.</p></div>
+          <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20plan%20personalizado%20de%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-wa btn-sm" data-event="click_precios" data-event-loc="personalizado"><i data-lucide="message-circle"></i> Escríbenos</a>
         </div>
       </div>
 
-      <div class="lifetime-card reveal" style="margin-top:16px">
-        <div>
-          <h4>¿Facturación electrónica, otro país o un plan personalizado?</h4>
-          <p>Si necesitas facturación electrónica DIAN, tu negocio está fuera de Colombia o quieres más sucursales y módulos a la medida, escríbenos por WhatsApp y te armamos un buen paquete.</p>
+      <div class="pay reveal">
+        <span>Al terminar la prueba pagas desde el mismo sistema con</span>
+        <div><span>Nequi</span><span>PSE</span><span>Tarjeta</span><span>Bancolombia</span><span>Daviplata</span><span>Mercado Pago</span></div>
+        <span>Precios en pesos colombianos (COP).</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ FAQ ═══════════ -->
+  <section class="section" id="faq" style="padding-top:0">
+    <div class="wrap">
+      <div class="head reveal">
+        <h2>Preguntas frecuentes</h2>
+      </div>
+      <div class="faq reveal">
+        <details><summary>¿Codec POS hace facturación electrónica DIAN? <i data-lucide="plus"></i></summary><p>Sí. Factura directo con la DIAN desde la misma caja: factura electrónica con CUFE y QR, notas crédito y débito y documento soporte. La envías al cliente por WhatsApp o correo. Te ayudamos a configurar tu certificado digital y tu resolución. El valor de la implementación lo cotizas con un asesor por WhatsApp.</p></details>
+        <details><summary>¿Necesito otro proveedor para facturar? <i data-lucide="plus"></i></summary><p>No. Codec Studio es el fabricante del software y la conexión con la DIAN va incluida en Codec POS, sin intermediarios.</p></details>
+        <details><summary>¿Funciona sin internet? <i data-lucide="plus"></i></summary><p>Sí. Sigues vendiendo aunque se corte la conexión y, cuando vuelve, todo se sincroniza con respaldo en la nube.</p></details>
+        <details><summary>¿Necesito instalar algo? <i data-lucide="plus"></i></summary><p>No es obligatorio. Úsalo desde el navegador, instálalo en Windows para vender sin internet o usa la app en el celular. Todo se sincroniza.</p></details>
+        <details><summary>¿Qué pasa después de los 14 días? <i data-lucide="plus"></i></summary><p>Eliges tu plan y lo pagas desde el mismo Codec POS con Nequi, PSE, tarjeta, Bancolombia o Mercado Pago. Se activa en cuanto se aprueba el pago y conservas todos tus datos.</p></details>
+        <details><summary>¿Puedo cancelar cuando quiera? <i data-lucide="plus"></i></summary><p>Sí, sin permanencia. Y puedes pasar de Básico a Premium en cualquier momento.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ CTA FINAL ═══════════ -->
+  <section class="final">
+    <div class="wrap">
+      <div class="final-box reveal">
+        <h2>Vende, factura y cobra con tranquilidad desde hoy.</h2>
+        <p>14 días gratis. Sin tarjeta. Sin permanencia.</p>
+        <div class="hero-ctas">
+          <a href="/app/prueba-gratis" class="btn btn-brand" id="trialCtaWeb" data-event="click_prueba_gratis" data-event-loc="final">Probar Codec POS gratis <i data-lucide="arrow-right"></i></a>
+          <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-light" data-event="click_whatsapp" data-event-loc="final"><i data-lucide="message-circle"></i> Hablar por WhatsApp</a>
         </div>
-        <a href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20plan%20personalizado%20de%20Codec%20POS" target="_blank" rel="noopener" class="btn btn-light" data-event="click_precios" data-event-loc="personalizado">Escríbenos por WhatsApp</a>
       </div>
-
-      <div class="pay-methods reveal">
-        <span class="pay-methods-label">Al terminar la prueba pagas desde el mismo sistema con</span>
-        <div class="pay-chips"><span class="pay-chip">Nequi</span><span class="pay-chip">PSE</span><span class="pay-chip">Tarjeta</span><span class="pay-chip">Bancolombia</span><span class="pay-chip">Daviplata</span><span class="pay-chip">Mercado Pago</span></div>
-        <span class="pay-methods-note">Pagos seguros con Wompi y Mercado Pago. Tu plan se activa en cuanto se aprueba el pago.</span>
-      </div>
-
-      <p class="price-footnote">Precios en pesos colombianos (COP). Prueba gratis de 14 días en cualquiera de los dos planes.</p>
-    </div>
-  </section>
-
-  <!-- ═══════════════ TRIAL STRIP ═══════════════ -->
-  <section class="section section-tight" id="trial">
-    <div class="wrap">
-      <div class="trial-strip reveal">
-        <span class="kicker on-light">14 días gratis</span>
-        <h2 style="margin-top:14px">Prueba Codec POS durante 14 días</h2>
-        <p>Sin tarjeta de crédito. Sin permanencia. Cancela cuando quieras.</p>
-        <a href="#" class="btn btn-light-solid btn-lg" id="trialCta" data-event="click_registro">Probar Codec POS gratis</a>
-        <p style="margin-top:14px;font-size:14px">¿Lo quieres en tu computador? <a href="/descargar/" style="color:#fff;font-weight:700;text-decoration:underline" data-event="click_descargar" data-event-loc="trial">Descarga Codec POS para Windows</a></p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ FAQ ═══════════════ -->
-  <section class="section" id="faq">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="kicker on-brand">Preguntas frecuentes</span>
-        <h2>Todo lo que quieres saber<br>antes de empezar</h2>
-      </div>
-      <div class="faq-list reveal">
-        <div class="faq-item"><button class="faq-q">¿Qué es Codec POS?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Es un sistema de punto de venta que además incluye inventario, contabilidad, facturación electrónica DIAN y confirmación automática de pagos, todo integrado, para que no necesites contratar varios sistemas separados.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Funciona sin internet?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí. Puedes seguir vendiendo aunque se corte la conexión. Cuando vuelve el internet, todo se sincroniza con respaldo en la nube.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Cuánto dura la prueba gratuita?<span class="faq-caret">＋</span></button><div class="faq-a"><p>14 días completos, sin necesidad de ingresar tarjeta de crédito.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Necesito instalar algo?<span class="faq-caret">＋</span></button><div class="faq-a"><p>No es obligatorio. Puedes usar Codec POS desde el navegador sin instalar nada, instalarlo en Windows para seguir vendiendo sin internet, o usar la app para Android. Todo se sincroniza entre sí.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Puedo usarlo desde el celular?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, con la app móvil de Codec POS (plan Premium) puedes operar tu negocio, no solo consultarlo.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Puedo administrar varias tiendas?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, desde un solo login puedes ver las métricas de todas tus tiendas vinculadas, disponible en el plan Premium.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Qué diferencia hay entre Básico y Premium?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Básico cubre la operación esencial de un solo negocio con un módulo especializado. Premium suma usuarios ilimitados, varias sucursales, app móvil completa, Codec Verify, facturación electrónica DIAN y más de un módulo especializado.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Puedo cancelar?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, sin permanencia forzada.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Qué ocurre después de los 14 días?<span class="faq-caret">＋</span></button><div class="faq-a"><p>El sistema te pide elegir tu plan. Lo pagas desde el mismo Codec POS con Wompi (Nequi, PSE, tarjeta o Bancolombia) o con Mercado Pago, y se activa en cuanto se aprueba el pago. Tus productos, ventas y clientes se conservan.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Cuánto cuestan los planes?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Básico $49.990 al mes y Premium $79.990 al mes. Si pagas el año completo te regalamos un mes: pagas 11 y usas 12. La instalación o el soporte técnico, si lo necesitas, tiene un valor de $50.000 por servicio. Si necesitas facturación electrónica, estás en otro país o quieres un plan personalizado, escríbenos por WhatsApp al +57 323 864 6844.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Puedo pasar de Básico a Premium?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, en cualquier momento que tu negocio lo necesite.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Cómo pago mi plan?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Desde el mismo Codec POS, con Wompi (Nequi, PSE, tarjeta o Bancolombia) o con Mercado Pago. El plan se activa en cuanto se aprueba el pago. Si prefieres, también puedes pagar por Nequi directo y enviarnos el comprobante por WhatsApp.</p></div></div>
-        <div class="faq-item"><button class="faq-q">¿Codec POS funciona con la DIAN?<span class="faq-caret">＋</span></button><div class="faq-a"><p>Sí, la facturación electrónica está preparada para trabajar con la DIAN. Para activarla escríbenos por WhatsApp y te ayudamos a configurar la firma digital de tu negocio.</p></div></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ CTA FINAL ═══════════════ -->
-  <section class="section section-tight final-cta">
-    <div class="wrap">
-      <span class="kicker on-brand">Empieza hoy</span>
-      <h2 style="margin-top:14px">Empieza a controlar<br>tu negocio hoy</h2>
-      <p style="margin-bottom:26px">Prueba Codec POS gratis durante 14 días. Sin tarjeta y sin permanencia.</p>
-      <a href="#" class="btn btn-brand btn-lg" id="trialCtaFinal" data-event="click_registro" data-event-loc="final">Probar gratis →</a>
     </div>
   </section>
 </main>
 
 <footer class="footer">
   <div class="wrap footer-inner">
-    <div class="footer-brand">
-      <img src="/assets/logo-icon.png" width="24" height="24" alt="" style="border-radius:6px">
-      Codec POS
-    </div>
-    <p>Un producto de <a href="https://codecstudio.online/" rel="noopener">Codec Studio</a></p>
-    <p><a href="/descargar/" data-event="click_descargar" data-event-loc="footer">Descargar Codec POS para Windows</a></p>
-    <p><a href="/ciudades/" data-event="click_ciudades" data-event-loc="footer">Codec POS en tu ciudad</a></p>
-    <p class="footer-copy">Codec POS también está disponible en Bello y en toda Colombia.</p>
-    <p class="footer-copy">© <span id="year"></span> Codec Studio. Todos los derechos reservados.</p>
+    <a href="#top" class="brand"><img src="/assets/logo-icon.png" width="26" height="26" alt=""><span>Codec<b>POS</b></span></a>
+    <nav aria-label="Pie de página">
+      <a href="https://codecstudio.online/" rel="noopener">Un producto de Codec Studio</a>
+      <a href="/descargar/" data-event="click_descargar" data-event-loc="footer">Descargar para Windows</a>
+      <a href="/ciudades/" data-event="click_ciudades" data-event-loc="footer">Codec POS en tu ciudad</a>
+      <a href="/app/login">Iniciar sesión</a>
+    </nav>
+    <span>Codec POS en Bello, Colombia · © <span id="year"></span> Codec Studio</span>
   </div>
 </footer>
 
 <a class="wa-float" href="https://wa.me/573238646844?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20Codec%20POS" target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp" data-event="click_whatsapp" data-event-loc="flotante">
-  <span class="wa-float-tip">¿Hablamos por WhatsApp?</span>
   <svg width="30" height="30" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><path d="M16.04 3C9.4 3 4 8.4 4 15.04c0 2.12.55 4.2 1.6 6.02L4 29l8.13-1.56a12 12 0 0 0 3.91.65h.01C22.68 28.09 28 22.69 28 16.05 28 9.4 22.68 3 16.04 3Zm0 22.9h-.01a9.9 9.9 0 0 1-5.05-1.38l-.36-.21-4.83.93.96-4.7-.24-.38a9.84 9.84 0 0 1-1.52-5.12c0-5.45 4.44-9.89 9.9-9.89 2.64 0 5.12 1.03 6.99 2.9a9.82 9.82 0 0 1 2.89 7c0 5.45-4.44 9.85-9.73 9.85Zm5.43-7.4c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.27.49 1.7.63.71.23 1.36.2 1.88.12.57-.09 1.76-.72 2-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35Z"/></svg>
 </a>
-<script src="/script.js"></script>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script src="/home.js?v=20261118c"></script>
 </body>
 </html>

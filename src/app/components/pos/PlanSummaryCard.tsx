@@ -631,7 +631,7 @@ export function PlanSummaryCard() {
                         <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
                           <Check className="w-4 h-4 text-white" />
                         </div>
-                        <span className="text-sm font-semibold">Productos y usuarios ilimitados</span>
+                        <span className="text-sm font-semibold">Productos ilimitados y hasta 10 usuarios</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
