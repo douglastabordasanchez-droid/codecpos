@@ -246,11 +246,11 @@ export default function PanaderiaPage() {
     return () => { cancelado = true; unsubscribe?.(); };
   }, [empleado?.cliente_id, mostrarAlertaComanda, tiendaEfectiva]);
 
-  const guardar = async (mesa: PanaderiaMesa, items: ItemCuenta[], destinos: Record<string, string | null>) => {
+  const guardar = async (mesa: PanaderiaMesa, items: ItemCuenta[], destinos: Record<string, string | null>, notas: NotasPedido = { porProducto: {}, general: '' }) => {
     if (!empleado) return;
     // El delta de comanda se calcula ANTES de sobrescribir `cuentas` con el
     // estado optimista, porque compara contra lo que ya estaba guardado.
-    const enviarComandaPromise = enviarComandaMesa(mesa, items, destinos);
+    const enviarComandaPromise = enviarComandaMesa(mesa, items, destinos, notas);
 
     // La mesa sigue siendo de quien la abrió (aunque la edite un administrador);
     // si queda vacía, se libera.
@@ -286,20 +286,22 @@ export default function PanaderiaPage() {
   // 🍽️ Con estaciones (migración 0148) lo nuevo se reparte: una comanda por
   // estación con solo sus productos; lo marcado "solo cuenta" no se envía.
   // La elección queda aprendida para el próximo pedido de cualquier mesero.
-  const enviarComandaMesa = async (mesa: PanaderiaMesa, nuevos: ItemCuenta[], destinos: Record<string, string | null>) => {
+  const enviarComandaMesa = async (mesa: PanaderiaMesa, nuevos: ItemCuenta[], destinos: Record<string, string | null>, notas: NotasPedido) => {
+    const notaGeneral = notas.general.trim() || undefined;
     if (!empleado) return;
     const anteriores = cuentas[mesa.id]?.items ?? [];
     const delta: Array<ItemComanda & { productoId: string }> = nuevos.reduce<Array<ItemComanda & { productoId: string }>>((acc, it) => {
       const previo = anteriores.find((p) => p.producto.id === it.producto.id);
       const diferencia = it.cantidad - (previo?.cantidad || 0);
-      if (diferencia > 0) acc.push({ productoId: it.producto.id, nombre: it.producto.nombre, cantidad: diferencia });
+      const nota = notas.porProducto[it.producto.id]?.trim();
+      if (diferencia > 0) acc.push({ productoId: it.producto.id, nombre: it.producto.nombre, cantidad: diferencia, ...(nota ? { nota } : {}) });
       return acc;
     }, []);
     if (delta.length === 0) return;
 
     const activas = estaciones.filter((e) => e.activa);
     if (activas.length === 0) {
-      await enviarComanda(empleado.cliente_id, mesa.id, mesa.nombre, delta.map(({ productoId: _p, ...i }) => i), empleado.nombre_completo, undefined, mesa.tiendaId).catch(() => {});
+      await enviarComanda(empleado.cliente_id, mesa.id, mesa.nombre, delta.map(({ productoId: _p, ...i }) => i), empleado.nombre_completo, notaGeneral, mesa.tiendaId).catch(() => {});
       return;
     }
 
@@ -309,7 +311,7 @@ export default function PanaderiaPage() {
       const destino = destinos[d.productoId] ?? null;
       elecciones[d.productoId] = destino;
       if (!destino) continue;
-      porEstacion.set(destino, [...(porEstacion.get(destino) || []), { nombre: d.nombre, cantidad: d.cantidad }]);
+      porEstacion.set(destino, [...(porEstacion.get(destino) || []), { nombre: d.nombre, cantidad: d.cantidad, ...(d.nota ? { nota: d.nota } : {}) }]);
     }
     setAprendidas((prev) => ({ ...prev, ...elecciones }));
     await Promise.all([
@@ -317,7 +319,7 @@ export default function PanaderiaPage() {
       ...[...porEstacion.entries()].map(([estacionId, itemsEstacion]) => {
         const est = activas.find((e) => e.id === estacionId);
         return enviarComanda(
-          empleado.cliente_id, mesa.id, mesa.nombre, itemsEstacion, empleado.nombre_completo, undefined, mesa.tiendaId,
+          empleado.cliente_id, mesa.id, mesa.nombre, itemsEstacion, empleado.nombre_completo, notaGeneral, mesa.tiendaId,
           est ? { id: est.id, nombre: est.nombre } : null,
         ).catch(() => toast.error(`No se pudo enviar a ${est?.nombre || 'la estación'}`));
       }),
@@ -611,7 +613,7 @@ export default function PanaderiaPage() {
                 onCerrar={() => setMesaAbierta(null)}
                 estaciones={estaciones.filter((e) => e.activa)}
                 aprendidas={aprendidas}
-                onGuardar={(items, destinos) => guardar(mesaAbierta, items, destinos)}
+                onGuardar={(items, destinos, notas) => guardar(mesaAbierta, items, destinos, notas)}
               />
             </motion.div>
           </motion.div>
@@ -623,6 +625,18 @@ export default function PanaderiaPage() {
 
 // ── Cuenta de una mesa ───────────────────────────────────────────────────────
 
+/** Notas de este envío: por producto (cómo lo quiere el cliente) y una general para la estación. */
+type NotasPedido = { porProducto: Record<string, string>; general: string };
+
+/** Atajos de nota según el producto: los de huevo ofrecen cómo prepararlos. */
+function atajosDeNota(p?: { nombre?: string; descripcion?: string }): string[] {
+  const texto = `${p?.nombre || ''} ${p?.descripcion || ''}`.toLowerCase();
+  const atajos: string[] = [];
+  if (/huevo|desayuno|combo|calentado|omelet/.test(texto)) atajos.push('Pericos', 'Rancheros', 'Revueltos', 'Fritos', 'Cocidos');
+  atajos.push('Sin cebolla', 'Sin salsa', 'Para llevar');
+  return atajos;
+}
+
 function CuentaDeMesa({
   mesa, items: itemsIniciales, categorias, productos, estaciones, aprendidas, onCerrar, onGuardar,
 }: {
@@ -633,9 +647,19 @@ function CuentaDeMesa({
   estaciones: Estacion[];
   aprendidas: Record<string, string | null>;
   onCerrar: () => void;
-  onGuardar: (items: ItemCuenta[], destinos: Record<string, string | null>) => void;
+  onGuardar: (items: ItemCuenta[], destinos: Record<string, string | null>, notas: NotasPedido) => void;
 }) {
   const [items, setItems] = useState<ItemCuenta[]>(itemsIniciales);
+  // Notas de este envío: por producto nuevo y una general para la estación.
+  const [notasProducto, setNotasProducto] = useState<Record<string, string>>({});
+  const [notaGeneral, setNotaGeneral] = useState('');
+  const [notaAbierta, setNotaAbierta] = useState<string | null>(null);
+  const productoDe = (id: string) => productos.find((p) => p.id === id);
+  const alternarAtajo = (productoId: string, atajo: string) => setNotasProducto((prev) => {
+    const partes = (prev[productoId] || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const siguiente = partes.includes(atajo) ? partes.filter((x) => x !== atajo) : [...partes, atajo];
+    return { ...prev, [productoId]: siguiente.join(', ') };
+  });
   // Estación elegida para cada producto nuevo en este envío (null = solo cuenta).
   const [destinos, setDestinos] = useState<Record<string, string | null>>({});
   const hayEstaciones = estaciones.length > 0;
@@ -703,7 +727,9 @@ function CuentaDeMesa({
     setEnviando(true);
     const elegidos: Record<string, string | null> = {};
     for (const id of nuevos) { const d = destinoDe(id); if (d !== undefined) elegidos[id] = d; }
-    await onGuardar(items, elegidos);
+    const porProducto: Record<string, string> = {};
+    for (const id of nuevos) if (notasProducto[id]?.trim()) porProducto[id] = notasProducto[id].trim();
+    await onGuardar(items, elegidos, { porProducto, general: notaGeneral });
     setEnviando(false);
     onCerrar();
   };
@@ -740,8 +766,22 @@ function CuentaDeMesa({
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-white text-sm font-semibold truncate">{it.producto.nombre}</p>
+                  {nuevos.has(it.producto.id) && productoDe(it.producto.id)?.descripcion && (
+                    <p className="text-slate-400 text-[11px] leading-snug line-clamp-2">{productoDe(it.producto.id)?.descripcion}</p>
+                  )}
                   <p className="text-slate-500 text-xs">{money(it.producto.precio)} c/u</p>
+                  {nuevos.has(it.producto.id) && notasProducto[it.producto.id]?.trim() && notaAbierta !== it.producto.id && (
+                    <p className="text-amber-300 text-xs font-semibold">Nota: {notasProducto[it.producto.id]}</p>
+                  )}
                 </div>
+                {nuevos.has(it.producto.id) && (
+                  <button
+                    onClick={() => setNotaAbierta((a) => (a === it.producto.id ? null : it.producto.id))}
+                    className={`h-7 px-2 rounded-lg text-[11px] font-bold shrink-0 border ${notasProducto[it.producto.id]?.trim() ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+                  >
+                    Nota
+                  </button>
+                )}
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => cambiarCantidad(it.producto.id, -1)}
@@ -763,6 +803,27 @@ function CuentaDeMesa({
                 <button onClick={() => quitar(it.producto.id)} className="text-slate-600 p-1 shrink-0">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
+                {nuevos.has(it.producto.id) && notaAbierta === it.producto.id && (
+                  <div className="basis-full space-y-1.5 pt-1">
+                    <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+                      {atajosDeNota(productoDe(it.producto.id)).map((a) => {
+                        const activo = (notasProducto[it.producto.id] || '').split(',').map((x) => x.trim()).includes(a);
+                        return (
+                          <button key={a} onClick={() => alternarAtajo(it.producto.id, a)}
+                            className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border ${activo ? 'bg-amber-500 border-transparent text-[#fff]' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>
+                            {a}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <Input
+                      value={notasProducto[it.producto.id] || ''}
+                      onChange={(e) => setNotasProducto((prev) => ({ ...prev, [it.producto.id]: e.target.value.slice(0, 160) }))}
+                      placeholder="Ej: 1 pericos y 1 rancheros, sin cebolla"
+                      className="h-9 bg-slate-950 border-slate-700 text-white text-sm placeholder:text-slate-600"
+                    />
+                  </div>
+                )}
                 {hayEstaciones && nuevos.has(it.producto.id) && (
                   <div className="basis-full flex gap-1.5 overflow-x-auto pt-1 [scrollbar-width:none]">
                     {estaciones.map((e) => {
@@ -864,6 +925,14 @@ function CuentaDeMesa({
 
       {/* Enviar */}
       <div className="px-5 py-3 border-t border-slate-800 bg-slate-950 shrink-0">
+        {nuevos.size > 0 && (
+          <Input
+            value={notaGeneral}
+            onChange={(e) => setNotaGeneral(e.target.value.slice(0, 200))}
+            placeholder="Nota para la estación (opcional)"
+            className="h-10 mb-2.5 bg-slate-900 border-slate-700 text-white text-sm placeholder:text-slate-600"
+          />
+        )}
         <div className="flex items-center justify-between mb-2.5">
           <span className="text-slate-400 text-sm font-semibold">Total de la mesa</span>
           <span className="text-white text-2xl font-black tabular-nums">{money(total)}</span>

@@ -620,6 +620,23 @@ export default function PanaderiaOncesPage() {
         guardarCategorias([]);
         guardarProductosPos([]);
         setCatSeleccionada('');
+      } else if (nube.productos.length > 0 && dueno === clienteId && borradosPendientes.current.productos.size === 0) {
+        // Mismo negocio: se suma lo que se agregó desde otro equipo o desde la nube
+        // (no se cambia ni se borra nada de lo que ya tiene este equipo).
+        const idsProd = new Set(productosPos.map((p) => p.id));
+        const idsCat = new Set(categoriasPos.map((c) => c.id));
+        const prodsNuevos = nube.productos.filter((p) => !idsProd.has(p.id)).map((p) => ({
+          id: p.id, categoriaId: p.categoriaId, nombre: p.nombre, precio: p.precio, costo: p.costo || 0, stock: p.stock || 0,
+          icono: (p.icono || 'general') as IconKey, color: p.color || '#2563eb', codigo: p.codigo || '',
+          tipoInventario: p.tipoInventario, recipeId: p.recipeId, descripcion: p.descripcion,
+        }));
+        const catsNuevas = nube.categorias.filter((c) => !idsCat.has(c.id) && prodsNuevos.some((p) => p.categoriaId === c.id))
+          .map((c) => ({ id: c.id, nombre: c.nombre, icono: (c.icono || 'general') as IconKey, color: c.color || '#2563eb' }));
+        if (catsNuevas.length) guardarCategorias([...categoriasPos, ...catsNuevas]);
+        if (prodsNuevos.length) {
+          guardarProductosPos([...productosPos, ...prodsNuevos]);
+          toast.info(`${prodsNuevos.length === 1 ? 'Llegó 1 producto nuevo' : `Llegaron ${prodsNuevos.length} productos nuevos`} al menú`);
+        }
       }
       localStorage.setItem(CLAVE_DUENO_MENU, clienteId);
       menuListoParaNube.current = true;
