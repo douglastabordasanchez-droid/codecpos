@@ -777,6 +777,12 @@ function CuentaDeMesa({
   const [itemAbierto, setItemAbierto] = useState<string | null>(null);
   const [notaGeneralAbierta, setNotaGeneralAbierta] = useState(false);
   const productoDe = (id: string) => productos.find((p) => p.id === id);
+  /** Producto «ADICIONAL <atajo>» del menú (p. ej. ADICIONAL RANCHEROS $2.000), si existe. */
+  const productoAdicionalDe = (atajo: string) => {
+    const buscado = `adicional ${atajo}`.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
+    return productos.find((p) => p.nombre.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim() === buscado
+      || p.nombre.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim() === buscado.replace(/^adicional /, 'adicional de '));
+  };
   const alternarAtajo = (productoId: string, atajo: string) => setNotasProducto((prev) => {
     const partes = (prev[productoId] || '').split(',').map((x) => x.trim()).filter(Boolean);
     const siguiente = partes.includes(atajo) ? partes.filter((x) => x !== atajo) : [...partes, atajo];
@@ -1035,10 +1041,20 @@ function CuentaDeMesa({
                       <div className="flex flex-wrap gap-1.5">
                         {atajosDeNota(productoDe(id)).map((a) => {
                           const marcado = (notasProducto[id] || '').split(',').map((x) => x.trim()).includes(a);
+                          // Atajo con costo: si existe «ADICIONAL <atajo>» en el menú, se cobra aparte.
+                          const extra = productoAdicionalDe(a);
                           return (
-                            <button key={a} onClick={() => { alternarAtajo(id, a); setNotaAbierta(null); }}
+                            <button key={a}
+                              onClick={() => {
+                                alternarAtajo(id, a);
+                                setNotaAbierta(null);
+                                if (extra) {
+                                  if (!marcado) agregarDirecto(extra);
+                                  else if (items.some((it) => it.producto.id === extra.id)) cambiarCantidad(extra.id, -1);
+                                }
+                              }}
                               className={`h-8 px-3 rounded-full text-xs font-bold border ${marcado ? 'bg-amber-500 border-transparent text-[#fff]' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>
-                              {a}
+                              {a}{extra ? <span className={marcado ? '' : 'text-amber-400'}> +{money(extra.precio)}</span> : null}
                             </button>
                           );
                         })}

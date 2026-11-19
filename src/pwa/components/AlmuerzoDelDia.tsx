@@ -149,7 +149,13 @@ export function EditorAlmuerzo({
     return { menu: null, etiqueta: '' };
   };
   const [fuente, setFuente] = useState<{ menu: MenuGuardado | null; etiqueta: string }>(fuenteInicial);
-  const gruposDe = (m: MenuGuardado | null): GrupoAlmuerzo[] => (m?.grupos.length ? m.grupos : GRUPOS_SUGERIDOS).map((g) => ({ ...g, opciones: [...g.opciones] }));
+  // Las partes sugeridas que falten (p. ej. Ensalada) se agregan vacías para llenarlas.
+  const gruposDe = (m: MenuGuardado | null): GrupoAlmuerzo[] => {
+    const base = (m?.grupos.length ? m.grupos : GRUPOS_SUGERIDOS).map((g) => ({ ...g, opciones: [...g.opciones] }));
+    const faltan = GRUPOS_SUGERIDOS.filter((s) => !base.some((g) => g.nombre.toLowerCase() === s.nombre.toLowerCase()))
+      .map((g) => ({ nombre: g.nombre, opciones: [] as string[] }));
+    return [...base, ...faltan];
+  };
   const gruposIniciales = (): GrupoAlmuerzo[] => gruposDe(fuenteInicial().menu);
   const adicionalesDe = (m: MenuGuardado | null): AdicionalEditable[] => {
     const actuales = (m?.adicionales ?? []).map((a) => ({ nombre: a.nombre, precio: String(a.precio) }));

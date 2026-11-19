@@ -69,6 +69,7 @@ export const GRUPOS_SUGERIDOS: GrupoAlmuerzo[] = [
   { nombre: 'Principio', opciones: [] },
   { nombre: 'Proteína', opciones: [] },
   { nombre: 'Acompañante', opciones: [] },
+  { nombre: 'Ensalada', opciones: [] },
   { nombre: 'Jugo', opciones: [] },
 ];
 
