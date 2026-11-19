@@ -52,15 +52,23 @@ async function leerTexto(req: Request, url: URL): Promise<string> {
   // Atajos de iPhone con «Formulario» manda multipart/form-data. Se toma el campo
   // «texto» (o cualquier campo con texto, aunque no le hayan puesto nombre).
   if (tipo.includes('multipart/form-data')) {
-    try {
-      const f = await req.formData();
-      const valores = [...f.entries()].map(([, v]) => (typeof v === 'string' ? v : '')).filter((v) => v.trim());
-      const cuerpo = String(f.get('texto') || f.get('text') || f.get('mensaje') || '') || valores.join(' — ');
-      const titulo = String(f.get('titulo') || f.get('title') || '');
-      return [titulo, cuerpo].filter(Boolean).join(' — ');
-    } catch {
-      return '';
+    // Se lee a mano: un campo sin nombre (name="") se pierde con formData().
+    const limite = /boundary="?([^";]+)"?/i.exec(tipo)?.[1];
+    const cuerpoCrudo = await req.text();
+    if (!limite) return '';
+    const campos: Array<{ nombre: string; valor: string }> = [];
+    for (const parte of cuerpoCrudo.split(`--${limite}`)) {
+      const corte = parte.search(/\r?\n\r?\n/);
+      if (corte < 0) continue;
+      const cabecera = parte.slice(0, corte);
+      if (/filename=/i.test(cabecera) && !/content-type:\s*text\//i.test(cabecera)) continue;
+      const nombre = /name="([^"]*)"/i.exec(cabecera)?.[1] ?? '';
+      const valor = parte.slice(corte).replace(/^\r?\n\r?\n/, '').replace(/\r?\n$/, '').trim();
+      if (valor && valor !== '--') campos.push({ nombre: nombre.toLowerCase(), valor });
     }
+    const de = (...n: string[]) => campos.find((c) => n.includes(c.nombre))?.valor || '';
+    const cuerpo = de('texto', 'text', 'mensaje') || campos.filter((c) => !['titulo', 'title'].includes(c.nombre)).map((c) => c.valor).join(' — ');
+    return [de('titulo', 'title'), cuerpo].filter(Boolean).join(' — ');
   }
   const crudo = await req.text();
   if (!crudo) return '';
