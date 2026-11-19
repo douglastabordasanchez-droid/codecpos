@@ -771,7 +771,9 @@ function CuentaDeMesa({
                   )}
                   <p className="text-slate-500 text-xs">{money(it.producto.precio)} c/u</p>
                   {nuevos.has(it.producto.id) && notasProducto[it.producto.id]?.trim() && notaAbierta !== it.producto.id && (
-                    <p className="text-amber-300 text-xs font-semibold">Nota: {notasProducto[it.producto.id]}</p>
+                    <button onClick={() => setNotaAbierta(it.producto.id)} className="block text-left text-amber-300 text-xs font-semibold break-words">
+                      Nota: {notasProducto[it.producto.id]}
+                    </button>
                   )}
                 </div>
                 {nuevos.has(it.producto.id) && (
@@ -779,7 +781,7 @@ function CuentaDeMesa({
                     onClick={() => setNotaAbierta((a) => (a === it.producto.id ? null : it.producto.id))}
                     className={`h-7 px-2 rounded-lg text-[11px] font-bold shrink-0 border ${notasProducto[it.producto.id]?.trim() ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
                   >
-                    Nota
+                    {notaAbierta === it.producto.id ? 'Listo' : notasProducto[it.producto.id]?.trim() ? 'Cambiar' : 'Nota'}
                   </button>
                 )}
                 <div className="flex items-center gap-1 shrink-0">
@@ -809,7 +811,7 @@ function CuentaDeMesa({
                       {atajosDeNota(productoDe(it.producto.id)).map((a) => {
                         const activo = (notasProducto[it.producto.id] || '').split(',').map((x) => x.trim()).includes(a);
                         return (
-                          <button key={a} onClick={() => alternarAtajo(it.producto.id, a)}
+                          <button key={a} onClick={() => { alternarAtajo(it.producto.id, a); setNotaAbierta(null); }}
                             className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border ${activo ? 'bg-amber-500 border-transparent text-[#fff]' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>
                             {a}
                           </button>
