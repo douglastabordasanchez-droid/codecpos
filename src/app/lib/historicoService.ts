@@ -461,6 +461,19 @@ class HistoricoService {
     }
   }
 
+  /** Borra solo las ventas del histórico local (Configuración › Borrar ventas de este equipo). */
+  async limpiarVentasHistorico(): Promise<number> {
+    await this.ensureDB();
+    if (!this.db) return 0;
+    try {
+      const n = await this.db.count(STORES.VENTAS);
+      await this.db.clear(STORES.VENTAS);
+      return n;
+    } catch {
+      return 0;
+    }
+  }
+
   /**
    * Eliminar TODO el histórico (usar solo tras respaldo)
    */

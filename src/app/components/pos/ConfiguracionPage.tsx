@@ -21,6 +21,7 @@ import { getRealMachineUUID } from '../../utils/machineId';
 import { SyncStatusCard } from '../electron/SyncStatusCard';
 import { ArchivoHistorialCard } from '../retencion/ArchivoHistorialCard';
 import { VinculacionNubeCard } from '../electron/VinculacionNubeCard';
+import { BorrarVentasEquipoCard } from '../electron/BorrarVentasEquipoCard';
 import { MiContador } from '../contador/MiContador';
 import { ModulosAppWebCard } from '../electron/ModulosAppWebCard';
 import { CodecLogoHorizontal, CodecFavicon } from '../shared/CodecLogos';
@@ -2334,6 +2335,12 @@ export default function ConfiguracionPage() {
             <VinculacionNubeCard />
             <SyncStatusCard />
           </div>
+          {/* Ventas de prueba: dejarlas en cero en este equipo antes de operar de verdad. */}
+          {esSuperUsuario && (
+            <div className="mt-4">
+              <BorrarVentasEquipoCard />
+            </div>
+          )}
         </AccordionSection>
 
         {/* 8️⃣.4b MI CONTADOR (Codec Document) */}
