@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
-  obtenerComandasActivas, suscribirComandas, actualizarEstadoComanda, type Comanda, type EstadoComanda,
+  obtenerComandasActivas, suscribirComandas, actualizarEstadoComanda, marcarItemComanda, type Comanda, type EstadoComanda,
 } from '../../lib/supabase/panaderiaSyncService';
 import {
   type Estacion, COLORES_ESTACION, ESTACIONES_SUGERIDAS,
@@ -191,6 +191,16 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
     catch (e) { toast.error(`No se pudo actualizar: ${(e as Error).message}`); }
   };
 
+  // ✅ Tocar una línea la marca como sacada (verde); otro toque la desmarca.
+  const marcarLinea = async (c: Comanda, indice: number) => {
+    const hecho = !c.items[indice]?.hecho;
+    setComandas((prev) => prev.map((x) => (x.id === c.id
+      ? { ...x, items: x.items.map((it, i) => (i === indice ? { ...it, hecho } : it)) }
+      : x)));
+    try { await marcarItemComanda(c.id, indice, hecho); }
+    catch (e) { toast.error(`No se pudo marcar: ${(e as Error).message}`); }
+  };
+
   const pendientes = useMemo(() => comandas.filter((c) => c.estado !== 'listo'), [comandas]);
   const listos = useMemo(() => comandas.filter((c) => c.estado === 'listo'), [comandas]);
 
@@ -300,11 +310,28 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
                       <Clock className="w-4 h-4" />{min} min
                     </span>
                   </div>
+                  {c.items.length > 1 && (
+                    <p className="text-slate-400 text-xs font-bold mb-1.5">
+                      {c.items.filter((it) => it.hecho).length} de {c.items.length} listos · toca cada uno al sacarlo
+                    </p>
+                  )}
                   <ul className="space-y-1.5 mb-4">
                     {c.items.map((it, i) => (
-                      <li key={i} className="flex gap-3 text-white text-lg">
-                        <span className="font-black w-8 text-right" style={{ color: estacion.color }}>{it.cantidad}×</span>
-                        <span className="font-semibold">{it.nombre}{it.nota ? <span className="block text-sm text-amber-500 whitespace-pre-line">{it.nota}</span> : null}</span>
+                      <li key={i}>
+                        <button
+                          type="button"
+                          onClick={() => void marcarLinea(c, i)}
+                          className={`w-full text-left flex gap-3 text-lg rounded-2xl px-2 py-1.5 border-2 transition-all active:scale-[0.98] ${
+                            it.hecho ? 'bg-emerald-600 border-emerald-600 text-[#fff]' : 'border-transparent text-white'}`}
+                        >
+                          <span className="font-black w-8 text-right shrink-0" style={it.hecho ? undefined : { color: estacion.color }}>
+                            {it.hecho ? <Check className="w-6 h-6 inline" /> : `${it.cantidad}×`}
+                          </span>
+                          <span className={`font-semibold min-w-0 ${it.hecho ? 'line-through decoration-2' : ''}`}>
+                            {it.hecho ? `${it.cantidad}× ` : ''}{it.nombre}
+                            {it.nota ? <span className={`block text-sm whitespace-pre-line no-underline ${it.hecho ? 'text-[#fff] opacity-90' : 'text-amber-500'}`}>{it.nota}</span> : null}
+                          </span>
+                        </button>
                       </li>
                     ))}
                   </ul>

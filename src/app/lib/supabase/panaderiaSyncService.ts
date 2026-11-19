@@ -412,6 +412,8 @@ export interface ItemComanda {
   nombre: string;
   cantidad: number;
   nota?: string;
+  /** La estación ya lo sacó (se marca tocando la línea; queda verde). */
+  hecho?: boolean;
 }
 
 export interface Comanda {
@@ -486,6 +488,23 @@ export async function actualizarEstadoComanda(comandaId: string, estado: EstadoC
     .update({ estado, updated_at: new Date().toISOString() })
     .eq('id', comandaId);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * La estación marca (o desmarca) una línea del pedido como ya sacada. Se guarda
+ * en la nube para que siga en verde si la pantalla se recarga o hay otra pantalla.
+ */
+export async function marcarItemComanda(comandaId: string, indice: number, hecho: boolean): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('nuestra base de datos no está configurada');
+  const { data, error } = await client.from('panaderia_comandas').select('items').eq('id', comandaId).maybeSingle();
+  if (error) throw new Error(error.message);
+  const items = Array.isArray((data as any)?.items) ? [...(data as any).items] : [];
+  if (!items[indice]) return;
+  items[indice] = { ...items[indice], hecho };
+  const { error: e2 } = await client.from('panaderia_comandas')
+    .update({ items, updated_at: new Date().toISOString() }).eq('id', comandaId);
+  if (e2) throw new Error(e2.message);
 }
 
 /**
