@@ -48,6 +48,8 @@ export interface VentaParaTicket {
   metodoPago: string;
   cambio?: number;
   cajero?: string;
+  clienteFactura?: { nombre?: string; documento?: string; telefono?: string; email?: string };
+  descripcionFactura?: string;
 }
 
 export async function armarTicketVenta(clienteId: string, v: VentaParaTicket): Promise<TicketData> {
@@ -76,6 +78,8 @@ export async function armarTicketVenta(clienteId: string, v: VentaParaTicket): P
     cajero: v.cajero,
     metodoPago: nombreMedioPago(v.metodoPago) || v.metodoPago,
     cambio: v.cambio || undefined,
+    clienteFactura: v.clienteFactura,
+    descripcionFactura: v.descripcionFactura,
     mensajeTirillaArriba: datos.mensajeTirillaArriba || undefined,
     mensajeTirillaBajo: datos.mensajeTirillaBajo || datos.mensajeTirilla || undefined,
   };

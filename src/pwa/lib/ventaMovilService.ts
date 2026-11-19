@@ -42,6 +42,27 @@ export interface MetodosMultiplesMovil {
   rappi?: number;
 }
 
+export interface CompradorFactura {
+  nombre?: string;
+  documento?: string;
+  telefono?: string;
+  email?: string;
+  descripcion?: string;
+}
+
+/** Columnas de 0158; vacío si no se pidió factura a nombre de alguien. */
+export function columnasComprador(c?: CompradorFactura): Record<string, string> {
+  if (!c) return {};
+  const fila: Record<string, string> = {};
+  const poner = (col: string, v?: string) => { const t = (v || '').trim(); if (t) fila[col] = t; };
+  poner('cliente_nombre', c.nombre);
+  poner('cliente_documento', c.documento);
+  poner('cliente_telefono', c.telefono);
+  poner('cliente_email', c.email);
+  poner('observaciones', c.descripcion);
+  return fila;
+}
+
 export async function crearVentaMovil(
   clienteId: string,
   empleadoId: string,
@@ -56,6 +77,8 @@ export async function crearVentaMovil(
    *  el stock de ESA sucursal (tiendas_stock) en vez de Tienda Principal.
    *  undefined/null/'tienda_principal' => comportamiento de siempre. */
   tiendaId?: string | null,
+  /** Factura a nombre de un cliente sin facturación electrónica (0158). */
+  comprador?: CompradorFactura,
 ): Promise<{ ok: boolean; error?: string; numero?: number; ventaId?: string }> {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
@@ -100,6 +123,7 @@ export async function crearVentaMovil(
       metodos_multiples: metodoPago === 'mixto' ? (metodosMultiples || null) : null,
       estado: 'completada',
       tienda_id: tiendaId && tiendaId !== 'tienda_principal' ? tiendaId : null,
+      ...columnasComprador(comprador),
     })
     .select('id')
     .single();

@@ -92,7 +92,7 @@ export async function obtenerDatosFactura(clienteId: string, venta: VentaParaCom
   const [config, { data: items }, { data: ventaFila }] = await Promise.all([
     configDelNegocio(clienteId),
     client.from('venta_items').select('nombre, cantidad, precio_unitario, subtotal').eq('venta_id', venta.id),
-    client.from('ventas').select('numero, local_id, descuento, propina, metodos_multiples').eq('id', venta.id).maybeSingle(),
+    client.from('ventas').select('*').eq('id', venta.id).maybeSingle(),
   ]);
 
   const v = (ventaFila as Record<string, any> | null) || {};
@@ -120,6 +120,12 @@ export async function obtenerDatosFactura(clienteId: string, venta: VentaParaCom
     metodoPago: venta.metodo_pago || 'No especificado',
     pagoMixto,
     cajero: venta.cajero_nombre || '',
+    // Factura a nombre de un cliente sin facturación electrónica (0158).
+    ...(v.cliente_nombre ? { cliente: String(v.cliente_nombre) } : {}),
+    clienteDocumento: v.cliente_documento || undefined,
+    clienteTelefono: v.cliente_telefono || undefined,
+    clienteEmail: v.cliente_email || undefined,
+    observaciones: v.observaciones || undefined,
   };
 
   // ¿La venta tiene factura electrónica? Se enlaza por el número de la venta

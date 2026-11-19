@@ -882,6 +882,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     };
   };
 
+  // Lo mismo para el ticket que se muestra e imprime apenas se cobra.
+  const ticketCompradorFactura = () => {
+    const d = datosCompradorFactura() as { cliente?: string; clienteDocumento?: string; clienteTelefono?: string; clienteEmail?: string; observaciones?: string };
+    if (!d.cliente && !d.clienteDocumento && !d.clienteTelefono && !d.clienteEmail && !d.observaciones) return {};
+    return {
+      clienteFactura: { nombre: d.cliente, documento: d.clienteDocumento, telefono: d.clienteTelefono, email: d.clienteEmail },
+      descripcionFactura: d.observaciones,
+    };
+  };
+
   // 🙋 Mesera o mesero que atendió la mesa que se está cobrando (sale en la tirilla).
   const meseroDeMesaEnCobro = (): string | undefined => {
     try {
@@ -2045,6 +2055,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
         referencia_mesa: referenciaMesaTransfer ?? undefined,
         mesero: meseroDeMesaEnCobro(),
+        ...ticketCompradorFactura(),
       };
 
       try {
@@ -2561,6 +2572,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
         referencia_mesa: referenciaMesaTransfer ?? undefined,
         mesero: meseroDeMesaEnCobro(),
+        ...ticketCompradorFactura(),
       };
 
       try {
@@ -2829,6 +2841,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
         referencia_mesa: referenciaMesaTransfer ?? undefined,
         mesero: meseroDeMesaEnCobro(),
+        ...ticketCompradorFactura(),
       };
 
       try { setVentaActual(ventaParaTicket); setMostrarTicket(true); } catch { /* UI no crítica */ }

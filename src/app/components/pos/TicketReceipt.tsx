@@ -69,6 +69,9 @@ interface Venta {
   cajero?: string;
   /** Mesera o mesero que atendió la mesa. */
   mesero?: string;
+  /** Factura a nombre de un cliente sin facturación electrónica (opcional). */
+  clienteFactura?: { nombre?: string; documento?: string; telefono?: string; email?: string };
+  descripcionFactura?: string;
   mesa?: string;
   referencia_mesa?: string;
   // Facturación electrónica
@@ -102,6 +105,11 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
   const [panelCompartir, setPanelCompartir] = useState<'whatsapp' | 'email' | null>(null);
   const [telefono, setTelefono] = useState('');
   const [emailDestino, setEmailDestino] = useState('');
+  // Factura a nombre de un cliente: su celular y correo quedan listos para compartir.
+  useEffect(() => {
+    if (venta?.clienteFactura?.telefono) setTelefono(venta.clienteFactura.telefono);
+    if (venta?.clienteFactura?.email) setEmailDestino(venta.clienteFactura.email);
+  }, [venta]);
   const [enviando, setEnviando] = useState<'whatsapp' | 'email' | null>(null);
   const [imprimiendo, setImprimiendo] = useState(false);
   const [configCargada, setConfigCargada] = useState(false);
@@ -258,6 +266,8 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
       fecha: venta.fecha,
       cajero: cajeroDisplay,
       mesero: venta.mesero,
+      clienteFactura: venta.clienteFactura,
+      descripcionFactura: venta.descripcionFactura,
       mesa: venta.mesa,
       referencia_mesa: mesaDisplay ?? undefined,
       facturaElectronica: !!config.facturaElectronica,
@@ -355,6 +365,11 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
     if (mesaDisplay) center(`UBICACIÓN: ${mesaDisplay}`, 8);
     if (venta.mesero) center(`Atendido por: ${venta.mesero}`, 8);
     center(`Cajero: ${cajeroDisplay}`, 8);
+    if (venta.clienteFactura?.nombre) center(`Cliente: ${venta.clienteFactura.nombre}`, 8);
+    if (venta.clienteFactura?.documento) center(`CC/NIT: ${venta.clienteFactura.documento}`, 8);
+    if (venta.clienteFactura?.telefono) center(`Cel: ${venta.clienteFactura.telefono}`, 8);
+    if (venta.clienteFactura?.email) center(venta.clienteFactura.email, 8);
+    if (venta.descripcionFactura) center(`Descripción: ${venta.descripcionFactura}`, 8);
     const fechaVentaLocal = new Date(venta.fecha);
     center(fechaVentaLocal.toLocaleDateString('es-CO', { year: 'numeric', month: '2-digit', day: '2-digit' }) + '  ' +
       fechaVentaLocal.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }), 8);
@@ -489,7 +504,11 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
         cufe: (venta! as any).cufe || null,
         qrUrl: (venta! as any).qrUrl || null,
         numeroElectronico: (venta! as any).folioElectronico || null,
-        cliente: (venta as any)?.cliente || undefined,
+        cliente: venta!.clienteFactura?.nombre || (typeof (venta as any)?.cliente === 'string' ? (venta as any).cliente : undefined),
+        clienteDocumento: venta!.clienteFactura?.documento,
+        clienteTelefono: venta!.clienteFactura?.telefono,
+        clienteEmail: venta!.clienteFactura?.email,
+        observaciones: venta!.descripcionFactura,
         mesa: venta!.mesa,
         referencia_mesa: mesaDisplay ?? undefined,
       },
@@ -647,6 +666,11 @@ function TicketReceiptComponent({ venta }: TicketReceiptProps) {
           )}
           {venta.mesero && <div>Atendido por: {venta.mesero}</div>}
           <div>Cajero: {cajeroDisplay}</div>
+          {venta.clienteFactura?.nombre && <div>Cliente: {venta.clienteFactura.nombre}</div>}
+          {venta.clienteFactura?.documento && <div>CC/NIT: {venta.clienteFactura.documento}</div>}
+          {venta.clienteFactura?.telefono && <div>Cel: {venta.clienteFactura.telefono}</div>}
+          {venta.clienteFactura?.email && <div style={{ wordBreak: 'break-all' }}>{venta.clienteFactura.email}</div>}
+          {venta.descripcionFactura && <div style={{ whiteSpace: 'pre-wrap' }}>Descripción: {venta.descripcionFactura}</div>}
           <div>Fecha: {fechaVenta.toLocaleDateString('es-CO', {
             year: 'numeric',
             month: '2-digit',

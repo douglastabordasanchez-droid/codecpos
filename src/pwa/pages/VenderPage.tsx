@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { traerTodo } from '../lib/nubeConsultas';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
-import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil } from '../lib/ventaMovilService';
+import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil, type CompradorFactura } from '../lib/ventaMovilService';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { crearCuentaCarteraMovil } from '../lib/carteraMovilService';
@@ -115,6 +115,7 @@ interface VentaCompletada {
   items: ItemCarritoMovil[];
   propina: number;
   verificado: boolean;
+  comprador?: CompradorFactura;
 }
 
 /**
@@ -169,6 +170,9 @@ export default function VenderPage() {
   // Cada venta se pregunta: hay clientes que no quieren factura electrónica.
   // Arranca en «No» y vuelve a «No» después de cobrar.
   const [emitirFE, setEmitirFE] = useState(false);
+  // Factura a nombre de un cliente SIN facturación electrónica (opcional, 0158).
+  const [facturaANombre, setFacturaANombre] = useState(false);
+  const [comprador, setComprador] = useState<CompradorFactura>({});
   // IVA del negocio: también lo necesitan los ítems que no son productos del inventario (servicios de Veterinaria).
   const [configIvaNegocio, setConfigIvaNegocio] = useState<ConfigIva>(CONFIG_IVA_APAGADO);
   const { tieneModuloDePago, tieneModulo, cargando: cargandoModulos } = useModulosActivos();
@@ -514,7 +518,8 @@ export default function VenderPage() {
         }, {} as MetodosMultiplesMovil)
       : undefined;
     const items = itemsCarrito;
-    const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, items, metodoPago, metodosMultiples, propinaAplicada, configPropina.porcentaje, propinaManual !== null, tiendaEfectiva);
+    const compradorVenta = facturaANombre && !(facturacionDisponible && emitirFE) ? comprador : undefined;
+    const resultado = await crearVentaMovil(empleado.cliente_id, empleado.id, empleado.nombre_completo, items, metodoPago, metodosMultiples, propinaAplicada, configPropina.porcentaje, propinaManual !== null, tiendaEfectiva, compradorVenta);
 
     // La venta ya quedó registrada -- crear la cuenta de cartera es un paso aparte, igual que en
     // Electron. Si falla, la venta no se pierde, pero se avisa.
@@ -547,7 +552,7 @@ export default function VenderPage() {
       }
       const completada: VentaCompletada = {
         id: resultado.ventaId, numero: resultado.numero, total: totalAPagar, metodoPago, cambio: Math.max(0, cambio),
-        items, propina: propinaAplicada, verificado: !!pagoVerificado,
+        items, propina: propinaAplicada, verificado: !!pagoVerificado, comprador: compradorVenta,
       };
       setVentaCompletada(completada);
       setMostrarCheckout(true);
@@ -611,6 +616,8 @@ export default function VenderPage() {
         actualizarFE({ estado: 'fallida', aviso: `La factura electrónica no salió: ${(e as Error)?.message || 'revisa Facturación'}. La venta sí quedó registrada.` });
       });
       setClienteFactura(CLIENTE_COBRO_VACIO);
+      setFacturaANombre(false);
+      setComprador({});
       setAvisoRetencionFE('');
       setEmitirFE(false);
       setRetencionesFE(retencionesIniciales());
@@ -641,6 +648,8 @@ export default function VenderPage() {
     if (!empleado) return;
     const ticket = await armarTicketVenta(empleado.cliente_id, {
       numero: v.numero, items: v.items, total: v.total, propina: v.propina, metodoPago: v.metodoPago, cambio: v.cambio, cajero: empleado.nombre_completo,
+      clienteFactura: v.comprador ? { nombre: v.comprador.nombre, documento: v.comprador.documento, telefono: v.comprador.telefono, email: v.comprador.email } : undefined,
+      descripcionFactura: v.comprador?.descripcion?.trim() || undefined,
     });
     await imprimirTicket(ticket);
   };
@@ -1005,6 +1014,25 @@ export default function VenderPage() {
                 />
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {!(facturacionDisponible && emitirFE) && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 space-y-2">
+          <label className="flex items-center gap-2 text-slate-300 text-xs font-bold select-none">
+            <input type="checkbox" checked={facturaANombre} onChange={(e) => setFacturaANombre(e.target.checked)} className="w-4 h-4 accent-emerald-500" />
+            Factura a nombre de un cliente (opcional)
+          </label>
+          {facturaANombre && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input value={comprador.nombre || ''} onChange={(e) => setComprador((c) => ({ ...c, nombre: e.target.value }))} placeholder="Nombre" className="w-full h-10 rounded-xl bg-slate-900 border border-slate-700 px-3 text-sm text-white placeholder:text-slate-500" />
+              <input value={comprador.documento || ''} onChange={(e) => setComprador((c) => ({ ...c, documento: e.target.value }))} placeholder="Cédula o NIT" inputMode="numeric" className="w-full h-10 rounded-xl bg-slate-900 border border-slate-700 px-3 text-sm text-white placeholder:text-slate-500" />
+              <input value={comprador.telefono || ''} onChange={(e) => setComprador((c) => ({ ...c, telefono: e.target.value }))} placeholder="Celular" inputMode="tel" className="w-full h-10 rounded-xl bg-slate-900 border border-slate-700 px-3 text-sm text-white placeholder:text-slate-500" />
+              <input value={comprador.email || ''} onChange={(e) => setComprador((c) => ({ ...c, email: e.target.value }))} placeholder="Correo" type="email" className="w-full h-10 rounded-xl bg-slate-900 border border-slate-700 px-3 text-sm text-white placeholder:text-slate-500" />
+              <textarea value={comprador.descripcion || ''} onChange={(e) => setComprador((c) => ({ ...c, descripcion: e.target.value }))} placeholder="Descripción (sale en la factura)" rows={3} className="sm:col-span-2 w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-white placeholder:text-slate-500" />
+              <p className="sm:col-span-2 text-slate-500 text-[11px]">Todo es opcional. No es factura electrónica: no va a la DIAN.</p>
+            </div>
           )}
         </div>
       )}

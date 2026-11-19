@@ -1917,6 +1917,15 @@ class SyncService {
             cajero_nombre: v.cajero,
             // Quién atendió la mesa (0154): para el reporte de meseros en la web y el celular.
             mesero_nombre: (v as any).mesero || null,
+            // Factura a nombre de un cliente sin facturación electrónica (0158).
+            ...(v.clienteDocumento || v.clienteTelefono || v.clienteEmail || v.observaciones
+              || (v.cliente && !/^consumidor final$/i.test(v.cliente)) ? {
+              cliente_nombre: v.cliente && !/^consumidor final$/i.test(v.cliente) ? v.cliente : null,
+              cliente_documento: v.clienteDocumento || null,
+              cliente_telefono: v.clienteTelefono || null,
+              cliente_email: v.clienteEmail || null,
+              observaciones: v.observaciones || null,
+            } : {}),
             total: v.total,
             descuento: v.descuento || 0,
             propina: v.propina || 0,

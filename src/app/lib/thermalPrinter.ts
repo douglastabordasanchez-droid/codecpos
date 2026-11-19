@@ -97,6 +97,10 @@ export interface TicketData {
   folioElectronico?: string;
   cufe?: string;
   referencia_mesa?: string;
+  /** Factura a nombre de un cliente, sin facturación electrónica (opcional). */
+  clienteFactura?: { nombre?: string; documento?: string; telefono?: string; email?: string };
+  /** Descripción escrita al cobrar. */
+  descripcionFactura?: string;
 }
 
 export interface VentaTicketInput {
@@ -123,6 +127,8 @@ export interface VentaTicketInput {
   cajero?: string;
   /** Mesera o mesero que atendió la mesa. */
   mesero?: string;
+  clienteFactura?: { nombre?: string; documento?: string; telefono?: string; email?: string };
+  descripcionFactura?: string;
   mesa?: string;
   referencia_mesa?: string;
   fecha?: string;
@@ -626,6 +632,16 @@ export class ThermalPrinter {
       }
       if (data.cajero) {
         bytes.push(...this.addLine(`Cajero: ${data.cajero}`));
+      }
+      if (data.clienteFactura && Object.values(data.clienteFactura).some(Boolean)) {
+        const c = data.clienteFactura;
+        if (c.nombre) this.wrapText(`Cliente: ${c.nombre}`).forEach((line) => bytes.push(...this.addLine(line)));
+        if (c.documento) bytes.push(...this.addLine(`CC/NIT: ${c.documento}`));
+        if (c.telefono) bytes.push(...this.addLine(`Cel: ${c.telefono}`));
+        if (c.email) this.wrapText(`Correo: ${c.email}`).forEach((line) => bytes.push(...this.addLine(line)));
+      }
+      if (data.descripcionFactura) {
+        this.wrapText(`Descripción: ${data.descripcionFactura}`).forEach((line) => bytes.push(...this.addLine(line)));
       }
       const fechaVenta = data.fecha ? new Date(data.fecha) : new Date();
       bytes.push(...this.addLine(`Fecha: ${fechaVenta.toLocaleDateString('es-CO', { year: 'numeric', month: '2-digit', day: '2-digit' })}`));
@@ -1307,6 +1323,8 @@ export async function printSaleReceipt(
     fecha: venta.fecha,
     cajero: venta.cajero,
     mesero: venta.mesero,
+    clienteFactura: venta.clienteFactura,
+    descripcionFactura: venta.descripcionFactura,
     // Nombres reales guardados por ConfiguracionPage.tsx (no "regimenTributario"/
     // "resolucionDian" — esos nunca existieron en el config real, por lo que
     // esta sección jamás se imprimía aunque el usuario la configurara).
