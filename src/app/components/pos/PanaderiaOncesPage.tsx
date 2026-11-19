@@ -2169,13 +2169,15 @@ export default function PanaderiaOncesPage() {
                             Agregar a Mesa <ChevronDown className="w-4 h-4 ml-1 inline-block" />
                           </Button>
                           {showAgregarMesaDropdown && (
-                            <div className={`absolute right-0 bottom-12 z-50 rounded-2xl border shadow-2xl py-2 min-w-[160px] ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                              {mesasVisibles.map((m) => (
+                            <div className={`absolute right-0 bottom-12 z-50 rounded-2xl border shadow-2xl p-2 w-[min(340px,85vw)] max-h-[60vh] overflow-y-auto grid grid-cols-2 gap-1 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                              {/* Todas las mesas: alto máximo con desplazamiento (antes la lista crecía
+                                  hacia arriba y las primeras quedaban cortadas) y en orden 1, 2… 10. */}
+                              {[...mesasVisibles].sort((x, y) => x.nombre.localeCompare(y.nombre, 'es', { numeric: true, sensitivity: 'base' })).map((m) => (
                                 <button
                                   key={m.id}
                                   type="button"
                                   onClick={() => { transferirCarritoAuxiliarAMesa(m.id, m.nombre); abrirModalMesa(m); }}
-                                  className={`w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-2 transition-colors ${darkMode ? 'text-slate-200 hover:bg-slate-700' : 'text-slate-800 hover:bg-amber-50'}`}
+                                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors ${darkMode ? 'text-slate-200 hover:bg-slate-700' : 'text-slate-800 hover:bg-amber-50'}`}
                                 >
                                   <Armchair className="w-4 h-4 opacity-60 flex-shrink-0" />
                                   {m.nombre}

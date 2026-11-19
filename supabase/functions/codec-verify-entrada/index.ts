@@ -107,7 +107,8 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, mensaje: `Conexión correcta con ${negocio.nombre_negocio || 'tu negocio'}. Codec Verify está listo para recibir pagos desde este iPhone.` });
   }
 
-  const texto = (await leerTexto(req, url)).replace(/\s+/g, ' ').trim().slice(0, 1000);
+  // La notificación de iOS llega como «Texto» + el mensaje («TextoTe enviaron…»): se quita esa etiqueta.
+  const texto = (await leerTexto(req, url)).replace(/\s+/g, ' ').trim().replace(/^Texto(?=[A-ZÁÉÍÓÚÑ¡¿$])/, '').trim().slice(0, 1000);
   if (!texto) {
     // Constancia del intento vacío (se ve en Configuración > Codec Verify): así se nota
     // cuando el atajo del iPhone corre pero no manda el texto de la notificación.

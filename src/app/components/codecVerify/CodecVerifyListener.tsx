@@ -32,6 +32,26 @@ export function CodecVerifyListener() {
     return () => window.removeEventListener('codecverify:config-changed', actualizar);
   }, []);
 
+  // 🔔 Si el negocio tiene Codec Verify encendido en la nube y este equipo nunca lo
+  // prendió ni lo apagó a mano, se enciende solo: la caja empieza a escuchar los
+  // pagos sin buscar el interruptor. Si alguien lo apagó en este equipo, se respeta.
+  useEffect(() => {
+    let cfg: Record<string, unknown> = {};
+    try { cfg = JSON.parse(localStorage.getItem('codecverify_config') || '{}') || {}; } catch { cfg = {}; }
+    if (typeof cfg.enabled === 'boolean') return;
+    void Promise.all([import('../../lib/supabase/config'), import('../../lib/supabase/tenantLink')])
+      .then(async ([{ getSupabaseClient }, { getLinkedClienteId }]) => {
+        const client = getSupabaseClient();
+        const clienteId = getLinkedClienteId();
+        if (!client || !clienteId) return;
+        const { data } = await client.from('clientes_pos').select('codec_verify_activo').eq('id', clienteId).maybeSingle();
+        if (!(data as { codec_verify_activo?: boolean } | null)?.codec_verify_activo) return;
+        localStorage.setItem('codecverify_config', JSON.stringify({ ...cfg, enabled: true }));
+        window.dispatchEvent(new Event('codecverify:config-changed'));
+      })
+      .catch(() => { /* sin nube: se deja como está */ });
+  }, []);
+
   // Si no está habilitado, no renderizar nada
   if (!isEnabled) {
     return null;
