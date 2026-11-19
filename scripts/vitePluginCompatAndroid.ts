@@ -78,7 +78,7 @@ function scriptDiagnostico(url: string): string {
   return `<script>
 (function(){
   var U=${JSON.stringify(url)}, n=0;
-  function env(t,d){ if(n++>300)return; try{ var x=new XMLHttpRequest(); x.open('POST',U,true); x.setRequestHeader('Content-Type','text/plain;charset=utf-8'); x.send(t+' | '+String(d).slice(0,3000)); }catch(e){} }
+  function env(t,d){ if(n++>3000)return; try{ var x=new XMLHttpRequest(); x.open('POST',U,true); x.setRequestHeader('Content-Type','text/plain;charset=utf-8'); x.send(t+' | '+String(d).slice(0,3000)); }catch(e){} }
   window.__diag=env;
   env('INICIO', navigator.userAgent+' | pantalla '+screen.width+'x'+screen.height+' dpr '+devicePixelRatio);
   window.addEventListener('error',function(e){ env('ERROR', (e.message||'')+' @ '+(e.filename||(e.target&&(e.target.src||e.target.href))||'')+':'+(e.lineno||'')+' '+(e.error&&e.error.stack||'')); },true);
@@ -94,6 +94,11 @@ function scriptDiagnostico(url: string): string {
     env('ESTADO '+k*5+'s', location.href+' | texto: '+(document.body?document.body.innerText.replace(/[\\s]+/g,' ').slice(0,300):''));
     if(k>=6) clearInterval(iv);
   },5000);
+  // Memoria cada minuto: si sube sin parar, Android cierra el motor web y la app se reinicia.
+  setInterval(function(){
+    var m=performance&&performance.memory;
+    env('MEMORIA', (m?Math.round(m.usedJSHeapSize/1048576)+' MB usados de '+Math.round(m.jsHeapSizeLimit/1048576)+' MB':'sin dato')+' | nodos '+document.getElementsByTagName('*').length+' | '+location.hash+location.pathname);
+  },60000);
 })();
 </script>`;
 }

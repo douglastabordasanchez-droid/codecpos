@@ -232,7 +232,8 @@ export function useCodecVerify() {
     // negocio) ya llega verificado — no tiene sentido pedirle al cajero que
     // "confirme" algo que el propio dueño ya recibió en su celular/correo.
     // Solo se avisa; el flujo manual sí sigue abriendo el modal de 30s.
-    if (row.origen === 'automatizacion') {
+    // iPhone (Atajos) y correo del banco también llegan ya verificados: van al aviso grande.
+    if (['automatizacion', 'iphone', 'correo'].includes(String(row.origen))) {
       // Misma ventana grande "Pago recibido" de la web (PopupPagoRecibido). Si una venta está
       // esperando justo ese monto, su propia ventana lo muestra y aquí no se repite.
       // Con la ventana de espera abierta, ella misma muestra el pago (no se abre otro aviso detrás).
