@@ -692,7 +692,8 @@ class SyncService {
         const { data: cfg } = await client.rpc('obtener_config_multitienda');
         if (cfg && typeof cfg === 'object') localStorage.setItem(CLAVE_MULTITIENDA_NUBE, (cfg as any).nube ? '1' : '0');
         const tiendas = await descargarTiendas();
-        if (tiendas?.length) {
+        // null = no se pudo consultar; [] = el negocio no tiene sedes en la nube.
+        if (tiendas) {
           // 🚀 FIX rendimiento: antes se avisaba "tiendas sincronizadas" en
           // CADA ciclo (cada 30s) aunque nada hubiera cambiado, y eso hacía
           // re-renderizar toda la pantalla de venta (usa useMultitienda).

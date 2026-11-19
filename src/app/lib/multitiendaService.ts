@@ -142,7 +142,21 @@ function saveTiendas(tiendas: Tienda[], publicar = true) {
 
 /** Reemplazo controlado tras un pull remoto; no lo vuelve a publicar y evita bucles. */
 export function reemplazarTiendasDesdeNube(tiendas: Tienda[]): void {
-  if (tiendas.length === 0) return;
+  // La nube no tiene sedes de este negocio: aquí solo queda la principal. Antes
+  // se dejaba la lista local tal cual y un equipo que estuvo en otro negocio
+  // mostraba sus sedes (Tierra Colombiana veía «Brazil y su moda» de MEGA CAN).
+  if (tiendas.length === 0) {
+    let actuales: Tienda[] = [];
+    try { actuales = JSON.parse(localStorage.getItem(KEY_TIENDAS) || '[]'); } catch { actuales = []; }
+    const principal = actuales.find((t) => t.esPrincipal || t.id === 'tienda_principal');
+    if (actuales.length <= 1 && (!principal || principal.id === 'tienda_principal')) return;
+    const soloPrincipal: Tienda = principal
+      ? { ...principal, id: 'tienda_principal', esPrincipal: true, activo: true }
+      : crearTiendaPrincipalDefault();
+    saveTiendas([soloPrincipal], false);
+    setTiendaActivaId('tienda_principal');
+    return;
+  }
   saveTiendas(tiendas, false);
   const activa = getTiendaActivaId();
   if (!tiendas.some((t) => t.id === activa && t.activo !== false)) {
