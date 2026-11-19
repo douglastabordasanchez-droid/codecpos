@@ -86,6 +86,9 @@ contextBridge.exposeInMainWorld('electron', {
    */
   showMessageBox: (opts) => ipcRenderer.invoke('show-message-box', opts),
 
+  /** Devuelve el teclado a la ventana tras alert, confirm o prompt (ver preload.cjs). */
+  reenfocarVentana: () => ipcRenderer.invoke('reenfocar-ventana'),
+
   /**
    * Voz embebida (Piper TTS, es_AR-daniela-high). true si el motor y el
    * modelo están presentes en este build.

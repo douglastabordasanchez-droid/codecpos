@@ -130,7 +130,11 @@ async function reautenticarVinculoSync(
     } else {
       console.error('[TenantSwap] No se pudo reautenticar la sincronización archivada:', error.message);
     }
-  } else if (credenciales) {
+  }
+  // Las claves guardadas pueden ser de un usuario o contraseña de licencia
+  // anterior (TecnoStark, 2026-11-18): con la licencia recién escrita se
+  // vuelve a vincular en vez de dejar la caja sin sincronizar.
+  if (credenciales) {
     const { vincularNegocio } = await import('./supabase/tenantLink');
     const resultado = await vincularNegocio(clienteId, credenciales.usuario, credenciales.password);
     if (resultado.ok) return;

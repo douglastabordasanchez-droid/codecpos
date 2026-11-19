@@ -802,6 +802,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     try {
       const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS);
       const map = raw ? JSON.parse(raw) : {};
+      // Un cambio hecho aquí (quitar o vaciar) gana sobre la copia de la nube:
+      // la recuperación automática sube esta versión en vez de traer la vieja.
+      // Se compara solo producto y cantidad: al abrir una cuenta que llegó del
+      // celular se completan campos del producto y eso no es un cambio real.
+      const huella = (items: any[]) => JSON.stringify((Array.isArray(items) ? items : [])
+        .map((it) => `${it?.producto?.id}:${Number(it?.cantidad) || 0}`));
+      if (mesaId !== 'general' && huella(map[mesaId]) !== huella(cart)) {
+        marcarCambioLocalMesa(mesaId);
+      }
       map[mesaId] = cart;
       localStorage.setItem(STORAGE_CUENTAS_MESAS, JSON.stringify(map));
       setVersionCuentasMesas((version) => version + 1);
@@ -3395,6 +3404,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
               <Button
                 variant="outline"
                 onClick={() => {
+                  // Vaciar es a propósito: la cuenta de la mesa también se libera en la
+                  // nube y se marca como cambio de esta caja, para que la recuperación
+                  // automática (useSyncModulosNube › pullCuentas) no la vuelva a traer.
+                  const origen = localStorage.getItem('codecpos_panaderia_origen')
+                    || (mesaActivaId && mesaActivaId !== 'general' ? mesaActivaId : null);
+                  if (origen) {
+                    localStorage.setItem('codecpos_panaderia_origen', origen);
+                    limpiarCuentaPanaderia();
+                  }
                   setCarrito([]);
                   toast.success('Carrito limpiado');
                 }}

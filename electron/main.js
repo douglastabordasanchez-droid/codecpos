@@ -2117,6 +2117,9 @@ ipcMain.handle('open-external', async (_, url) => {
   }
 });
 
+// alert, confirm y prompt del renderer (ver src/app/lib/dialogosSinTrabar.ts).
+ipcMain.handle('reenfocar-ventana', () => { refocusMainWindow(); return true; });
+
 ipcMain.handle('show-message-box', async (_, opts) => {
   const result = await dialog.showMessageBox(mainWindow, opts);
   refocusMainWindow();

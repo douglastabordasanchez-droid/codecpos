@@ -215,8 +215,12 @@ export function useSyncModulosNube() {
       // Colombiana 2026-11-16). Al abrir, al volver internet y cada minuto se compara con
       // la nube: se trae la cuenta que en la nube sea más nueva que el último cambio hecho
       // en esta caja (lo que la caja cambió sin internet no se pisa).
+      // Sin solaparse: con internet lento una revisión puede tardar más de un
+      // minuto y antes se apilaban, dejando la terminal cada vez más pesada.
+      let cuentasEnCurso = false;
       const pullCuentas = async () => {
-        if (cancelado || !navigator.onLine) return;
+        if (cancelado || cuentasEnCurso || !navigator.onLine) return;
+        cuentasEnCurso = true;
         try {
           const nube = await obtenerCuentasMesa(clienteId, tiendaActivaId ?? undefined);
           const raw = localStorage.getItem(STORAGE_CUENTAS_MESAS);
@@ -224,7 +228,11 @@ export function useSyncModulosNube() {
           let traidas = 0;
           for (const cuenta of nube) {
             const local = mapa[cuenta.mesaLocalId] || [];
-            if (JSON.stringify(local) === JSON.stringify(cuenta.items)) continue;
+            // Igual si tienen los mismos productos y cantidades (la caja completa
+            // campos del producto al abrir la cuenta; eso no es una diferencia).
+            const huella = (items: any[]) => JSON.stringify((Array.isArray(items) ? items : [])
+              .map((it) => `${it?.producto?.id}:${Number(it?.cantidad) || 0}`));
+            if (huella(local as any[]) === huella(cuenta.items as any[])) continue;
             const enNube = Date.parse(cuenta.updatedAt) || 0;
             if (enNube <= cambioLocalDeMesa(cuenta.mesaLocalId)) {
               // La caja la cambió después (por ejemplo, sin internet): se sube su versión.
@@ -245,6 +253,8 @@ export function useSyncModulosNube() {
           if (traidas > 0) toast.info(`Se recuperaron ${traidas} pedido(s) de mesa que llegaron mientras no había internet`);
         } catch (e) {
           console.warn('[SyncNube] No se pudieron revisar las cuentas de mesa:', e);
+        } finally {
+          cuentasEnCurso = false;
         }
       };
       void pullCuentas();
@@ -253,9 +263,13 @@ export function useSyncModulosNube() {
       window.addEventListener('online', alVolverInternet);
 
       // ── Recetario (ingredientes, recetas y combos) en la nube, 0155 ──────────
+      let recetarioEnCurso = false;
       const syncRecetario = () => {
-        if (cancelado || !navigator.onLine) return;
-        sincronizarRecetario().catch((e) => console.warn('[SyncNube] Recetario:', e));
+        if (cancelado || recetarioEnCurso || !navigator.onLine) return;
+        recetarioEnCurso = true;
+        sincronizarRecetario()
+          .catch((e) => console.warn('[SyncNube] Recetario:', e))
+          .finally(() => { recetarioEnCurso = false; });
       };
       syncRecetario();
       intervaloRecetario = window.setInterval(syncRecetario, 180_000);

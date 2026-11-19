@@ -5,12 +5,36 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | und
 
 let client: SupabaseClient | null = null;
 
+/**
+ * Ninguna consulta a la nube espera para siempre. Con internet que se cae a
+ * medias (wifi débil de la terminal o de la caja) una petición podía quedar
+ * colgada sin fin y la sincronización detrás de ella no volvía a correr.
+ * Las subidas de archivos y las funciones (la DIAN puede tardar) tienen más margen. Si quien llama ya trae su propia
+ * señal de cancelación, se respetan las dos.
+ */
+const ESPERA_MAXIMA_MS = 45_000;
+const ESPERA_MAXIMA_ARCHIVOS_MS = 180_000;
+function fetchConLimite(entrada: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (typeof AbortController === 'undefined') return fetch(entrada, init);
+  const url = typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+  const limite = url.includes('/storage/v1/') || url.includes('/functions/v1/') ? ESPERA_MAXIMA_ARCHIVOS_MS : ESPERA_MAXIMA_MS;
+  const control = new AbortController();
+  const reloj = setTimeout(() => control.abort(), limite);
+  const externa = init?.signal;
+  if (externa) {
+    if (externa.aborted) control.abort();
+    else externa.addEventListener('abort', () => control.abort(), { once: true });
+  }
+  return fetch(entrada, { ...init, signal: control.signal }).finally(() => clearTimeout(reloj));
+}
+
 if (SUPABASE_URL && SUPABASE_ANON_KEY) {
   client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
     },
+    global: { fetch: fetchConLimite },
   });
 } else {
   console.warn(

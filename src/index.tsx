@@ -15,8 +15,10 @@ import { mostrarArranqueAndroid } from './app/lib/arranqueAndroid';
 import { instalarImpresionAndroid } from './app/lib/impresionHtmlAndroid';
 import { instalarVozAndroid } from './app/lib/vozAndroid';
 import { instalarTecladoAndroid } from './app/lib/tecladoAndroid';
+import { instalarDialogosSinTrabar } from './app/lib/dialogosSinTrabar';
 
 recargarSiFaltaPantalla();
+instalarDialogosSinTrabar();
 
 // ⚡ Modo liviano de la caja (Electron): sin vidrio esmerilado, animaciones decorativas
 // limitadas y transiciones instantáneas. Las animaciones infinitas obligaban a redibujar
