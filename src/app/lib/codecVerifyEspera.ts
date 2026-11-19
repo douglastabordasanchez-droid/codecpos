@@ -14,6 +14,11 @@ export function esperandoMonto(): number | null {
   return montoEsperado;
 }
 
+/** Hay una ventana «Esperando el pago» abierta en pantalla (no minimizada): ella muestra el pago. */
+export function hayEsperaVisible(): boolean {
+  try { return !!document.querySelector('[data-esperando-pago="1"]'); } catch { return false; }
+}
+
 /** Colores de cada medio de pago, iguales en la web y en Electron. */
 export const COLORES_MEDIO_PAGO: Record<string, { color: string; fondo: string }> = {
   nequi: { color: '#da0081', fondo: '#fde7f3' },

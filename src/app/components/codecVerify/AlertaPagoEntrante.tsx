@@ -20,7 +20,7 @@ import {
 import { isLinked } from '../../lib/supabase/tenantLink';
 import { anunciarPagoRecibido, nombreMedioPago } from '../../lib/voz';
 import { abrirPopupPago, esPantallaDeEstacion } from '../../../pwa/components/PopupPagoRecibido';
-import { esperandoMonto } from '../../lib/codecVerifyEspera';
+import { esperandoMonto, hayEsperaVisible } from '../../lib/codecVerifyEspera';
 
 export interface PagoEntrante {
   id: string;
@@ -235,7 +235,8 @@ export function useCodecVerify() {
     if (row.origen === 'automatizacion') {
       // Misma ventana grande "Pago recibido" de la web (PopupPagoRecibido). Si una venta está
       // esperando justo ese monto, su propia ventana lo muestra y aquí no se repite.
-      if (esperandoMonto() !== Math.round(Number(row.monto))) abrirPopupPago(row);
+      // Con la ventana de espera abierta, ella misma muestra el pago (no se abre otro aviso detrás).
+      if (esperandoMonto() !== Math.round(Number(row.monto)) && !hayEsperaVisible()) abrirPopupPago(row);
       return;
     }
 

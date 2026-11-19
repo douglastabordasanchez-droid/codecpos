@@ -2413,7 +2413,9 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             } catch { /* anti-fraude no crítico */ }
           }
 
-          if (metodoPago === 'efectivo') {
+          // El cajón se abre en efectivo y también en los pagos por transferencia (Bre-B, Nequi…):
+          // el cajero suele dar vuelto o guardar el comprobante.
+          if (['efectivo', 'nequi', 'daviplata', 'transferencia', 'bancolombia', 'bre_b'].includes(metodoPago)) {
             try { openCashDrawer(); } catch { /* cajón no crítico */ }
           }
 

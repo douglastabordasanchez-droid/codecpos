@@ -21,10 +21,10 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '../ui/button';
 import { ModalPagoRecibidoNequi, PagoConfirmado } from './ModalPagoRecibidoNequi';
-import { suscribirPagoEsperado } from '../../lib/supabase/codecVerifyService';
+import { suscribirPagoEsperado, reclamarNotificacionPago, type NotificacionPagoRow } from '../../lib/supabase/codecVerifyService';
 import { marcarMontoEsperado, colorMedioPago } from '../../lib/codecVerifyEspera';
 import { createPortal } from 'react-dom';
-import { Check, Loader2, BellRing } from 'lucide-react';
+import { Check, Loader2, BellRing, Minimize2, Plus } from 'lucide-react';
 import { getSupabaseClient } from '../../lib/supabase/config';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 
@@ -54,6 +54,18 @@ export function guardarBypassLog(entry: Omit<BypassLogEntry, 'id' | 'fecha' | 'h
     // Conservar últimos 500 registros
     localStorage.setItem(BYPASS_LOG_KEY, JSON.stringify(log.slice(0, 500)));
   } catch { /* silent */ }
+}
+
+/** Contenedor abajo a la izquierda donde se apilan las esperas minimizadas (una por caja). */
+function contenedorEsperas(): HTMLElement {
+  let el = document.getElementById('codec-esperas-minimizadas');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'codec-esperas-minimizadas';
+    el.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:8900;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  return el;
 }
 
 // ─── Verificar si CODEC Verify está activo ────────────
@@ -212,6 +224,11 @@ function NequiVerifyModalComponent({
   const [errorBypass, setErrorBypass] = useState('');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Minimizada: queda una burbuja abajo y el cajero atiende otra caja; el pago se sigue esperando.
+  const [minimizado, setMinimizado] = useState(false);
+  // Pago que llegó con otro valor mientras se espera: se pregunta si es de este cliente.
+  const [pagoOtro, setPagoOtro] = useState<NotificacionPagoRow | null>(null);
+  const [tomandoOtro, setTomandoOtro] = useState(false);
   // Clave única de esta espera de pago (no depende de `numeroFactura`, que
   // puede venir vacío) — se regenera cada vez que el modal se abre.
   const claveEsperaRef = useRef<string>('');
@@ -239,7 +256,7 @@ function NequiVerifyModalComponent({
         referencia: row.referencia || undefined,
         timestamp: new Date(row.created_at),
       });
-    });
+    }, undefined, (row) => setPagoOtro(row));
     desuscribirRef.current = cancelar;
 
     return () => {
@@ -316,6 +333,42 @@ function NequiVerifyModalComponent({
     onConfirmar();
   };
 
+  /** El cajero confirma que el pago con otro valor es de este cliente: se toma y se cobra. */
+  const aceptarPagoOtro = async () => {
+    const row = pagoOtro;
+    if (!row) return;
+    setTomandoOtro(true);
+    const ok = await reclamarNotificacionPago(row.id, claveEsperaRef.current);
+    setTomandoOtro(false);
+    if (!ok) {
+      toast.error('Ese pago ya lo tomó otra caja');
+      setPagoOtro(null);
+      return;
+    }
+    setPagoOtro(null);
+    recibirPago({
+      monto: Number(row.monto) || monto,
+      banco: ENTIDAD_CONFIG[row.entidad as EntidadPago]?.label || config.label,
+      remitente: row.referencia || undefined,
+      referencia: row.referencia || undefined,
+      timestamp: new Date(row.created_at),
+    });
+  };
+
+  // Al llegar el pago, la ventana vuelve a mostrarse aunque estuviera minimizada.
+  useEffect(() => { if (estado === 'verificado') setMinimizado(false); }, [estado]);
+  useEffect(() => { if (!visible) { setMinimizado(false); setPagoOtro(null); } }, [visible]);
+
+  /** Minimiza esta espera y abre otra caja para atender al siguiente cliente. */
+  const atenderOtraCaja = () => {
+    setMinimizado(true);
+    window.dispatchEvent(new Event('codecpos:nueva-factura'));
+  };
+  const volverAEstaCaja = () => {
+    setMinimizado(false);
+    if (numeroFactura) window.dispatchEvent(new CustomEvent('codecpos:ir-factura', { detail: { id: numeroFactura } }));
+  };
+
   // Mientras se espera este monto, el aviso general de "Pago recibido" no se abre encima.
   useEffect(() => {
     if (!visible || !codecActivo) return;
@@ -343,10 +396,28 @@ function NequiVerifyModalComponent({
   const tiempo = `${Math.floor(segundosEspera / 60)}:${String(segundosEspera % 60).padStart(2, '0')}`;
   const recibido = estado === 'verificado' && pagoConfirmado;
 
+  if (minimizado && !recibido) {
+    return createPortal(
+      <button
+        onClick={volverAEstaCaja}
+        className="pointer-events-auto flex items-center gap-2 rounded-full pl-2 pr-4 py-2 shadow-xl text-sm font-bold"
+        style={{ background: '#ffffff', border: `2px solid ${estilo.color}`, color: '#0f172a' }}
+        title="Volver a esta caja"
+      >
+        <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: estilo.color }}>
+          <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#fff' }} />
+        </span>
+        Esperando ${Math.round(monto).toLocaleString('es-CO')} · {config.label}
+        {pagoOtro && <span className="ml-1 px-2 py-0.5 rounded-full text-[11px]" style={{ background: '#10b981', color: '#fff' }}>llegó un pago</span>}
+      </button>,
+      contenedorEsperas(),
+    );
+  }
+
   return (
     <>
       {createPortal(
-        <div className="fixed inset-0 z-[9000] flex items-center justify-center p-5" style={{ background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(3px)' }} role="dialog" aria-modal="true" aria-label="Esperando el pago">
+        <div data-esperando-pago="1" className="fixed inset-0 z-[9000] flex items-center justify-center p-5" style={{ background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(3px)' }} role="dialog" aria-modal="true" aria-label="Esperando el pago">
           <style>{`
             @keyframes esperaOnda { 0% { transform: scale(.85); opacity: .7 } 100% { transform: scale(1.9); opacity: 0 } }
             @keyframes esperaEntrada { from { opacity: 0; transform: translateY(12px) scale(.97) } to { opacity: 1; transform: none } }
@@ -392,6 +463,36 @@ function NequiVerifyModalComponent({
 
             {!recibido && (
               <div className="px-7 pb-6 space-y-2.5">
+                {codecActivo && pagoOtro && (
+                  <div className="rounded-2xl px-4 py-3 text-left space-y-2.5" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                    <p className="text-sm font-bold flex items-center gap-2" style={{ color: '#047857' }}>
+                      <BellRing className="w-4 h-4" /> Llegó ${Math.round(Number(pagoOtro.monto)).toLocaleString('es-CO')} por {ENTIDAD_CONFIG[pagoOtro.entidad as EntidadPago]?.label || pagoOtro.entidad}
+                    </p>
+                    <p className="text-xs" style={{ color: '#065f46' }}>
+                      {Math.round(Number(pagoOtro.monto)) < Math.round(monto)
+                        ? `Es menos que la venta: faltan $${Math.round(monto - Number(pagoOtro.monto)).toLocaleString('es-CO')}. Si es de este cliente, puedes aceptarlo igual.`
+                        : '¿Es de este cliente? Si sí, la venta se cobra con este pago.'}
+                    </p>
+                    <div className="flex gap-2">
+                      <button onClick={() => void aceptarPagoOtro()} disabled={tomandoOtro} className="flex-1 h-11 rounded-xl text-sm font-bold disabled:opacity-60" style={{ background: '#10b981', color: '#ffffff' }}>
+                        Sí, cobrar con este pago
+                      </button>
+                      <button onClick={() => setPagoOtro(null)} className="h-11 px-3 rounded-xl text-sm font-semibold" style={{ background: '#f1f5f9', color: '#0f172a' }}>
+                        No es de aquí
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {codecActivo && (
+                  <div className="flex gap-2">
+                    <button onClick={atenderOtraCaja} className="flex-1 h-11 rounded-2xl text-sm font-bold flex items-center justify-center gap-1.5" style={{ background: estilo.fondo, color: estilo.color }}>
+                      <Plus className="w-4 h-4" /> Atender otra caja
+                    </button>
+                    <button onClick={() => setMinimizado(true)} className="h-11 px-3 rounded-2xl text-sm font-semibold flex items-center gap-1.5" style={{ background: '#f1f5f9', color: '#0f172a' }} title="Minimizar y seguir esperando">
+                      <Minimize2 className="w-4 h-4" /> Minimizar
+                    </button>
+                  </div>
+                )}
                 {codecActivo && avisoSinValor && (
                   <div className="rounded-2xl px-4 py-3 text-left space-y-2.5" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
                     <p className="text-sm font-bold flex items-center gap-2" style={{ color: '#047857' }}>

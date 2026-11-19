@@ -156,6 +156,8 @@ export function suscribirPagoEsperado(
   onMatch: (row: NotificacionPagoRow) => void,
   /** La web/celular pasa el negocio del usuario; Electron usa el de la instalación vinculada. */
   clienteIdExplicito?: string | null,
+  /** Pago que llegó mientras se espera pero con OTRO valor: la caja pregunta si es de este cliente. */
+  onOtroMonto?: (row: NotificacionPagoRow) => void,
 ): (() => void) | null {
   const client = getSupabaseClient();
   const clienteId = clienteIdExplicito || getLinkedClienteId();
@@ -163,11 +165,20 @@ export function suscribirPagoEsperado(
 
   let resuelto = false;
   const montoRedondeado = Math.round(monto);
+  const inicio = Date.now() - 60_000;
+  const avisados = new Set<string>();
 
   const intentarReclamar = async (row: NotificacionPagoRow) => {
     if (resuelto) return;
     if (row.estado !== 'confirmado' || row.numero_factura_local) return;
-    if (Math.round(Number(row.monto)) !== montoRedondeado) return;
+    if (Math.round(Number(row.monto)) !== montoRedondeado) {
+      // Solo pagos que llegaron mientras esta caja espera (no los viejos sin reclamar).
+      if (onOtroMonto && !avisados.has(row.id) && Date.parse(row.created_at) >= inicio) {
+        avisados.add(row.id);
+        onOtroMonto(row);
+      }
+      return;
+    }
     const reclamada = await reclamarNotificacionPago(row.id, numeroFacturaLocal);
     if (reclamada && !resuelto) {
       resuelto = true;

@@ -43,6 +43,18 @@ export default function MultiFacturasPOS() {
   useEffect(() => { facturaActivaIdRef.current = facturaActivaId; }, [facturaActivaId]);
 
   // 🆕 AGREGAR NUEVA FACTURA
+  const agregarFacturaRef = useRef<() => void>(() => {});
+  // La ventana «Esperando el pago» pide abrir otra caja o volver a la suya (ver NequiVerifyModal).
+  useEffect(() => {
+    const nueva = () => agregarFacturaRef.current();
+    const ir = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) setFacturaActivaId(id); };
+    window.addEventListener('codecpos:nueva-factura', nueva);
+    window.addEventListener('codecpos:ir-factura', ir);
+    return () => {
+      window.removeEventListener('codecpos:nueva-factura', nueva);
+      window.removeEventListener('codecpos:ir-factura', ir);
+    };
+  }, []);
   const agregarFactura = () => {
     if (facturas.length >= 10) {
       // Máximo 10 facturas abiertas
@@ -60,6 +72,7 @@ export default function MultiFacturasPOS() {
     setFacturaActivaId(nuevaFactura.id);
     setContadorFacturas(nuevoNumero);
   };
+  agregarFacturaRef.current = agregarFactura;
 
   // 🗑️ CERRAR FACTURA
   const cerrarFactura = (id: string) => {
