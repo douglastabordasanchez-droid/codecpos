@@ -1,23 +1,28 @@
 /**
- * Almuerzo del día en el celular (migración 0161, menuDelDiaService.ts).
- *  - TarjetaAlmuerzo: resumen en el salón; el administrador lo edita desde ahí.
- *  - EditorAlmuerzo: el administrador publica en la mañana precio y opciones.
- *  - ElegirAlmuerzo: el mesero elige una opción de cada grupo al pedirlo.
+ * Almuerzo del día en el celular (migraciones 0161 y 0162, menuDelDiaService.ts).
+ *  - TarjetaAlmuerzo: resumen en el salón; quien tiene permiso lo edita desde ahí.
+ *  - BotonAlmuerzoDelDia: acceso para quien publica (Inicio, Estaciones).
+ *  - EditorAlmuerzo: precio, opciones, adicionales y (solo administrador) quién publica.
+ *  - ElegirAlmuerzo: el mesero elige una opción de cada grupo, adicionales y nota.
  */
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, Plus, X, UtensilsCrossed, Pencil, Check, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '../../app/components/ui/input';
 import { Button } from '../../app/components/ui/button';
 import {
-  GRUPOS_SUGERIDOS, hoyColombia, publicarMenuDelDia, type GrupoAlmuerzo, type MenuDelDia,
+  ADICIONALES_SUGERIDOS, GRUPOS_SUGERIDOS, NOMBRES_DIA, diaSemanaColombia, guardarEditoresAlmuerzo, hoyColombia,
+  listarEmpleadosParaAlmuerzo, obtenerMenuDelDia, publicarMenuDelDia, puedePublicarAlmuerzo,
+  type AdicionalAlmuerzo, type GrupoAlmuerzo, type MenuDelDia, type MenuGuardado,
 } from '../../app/lib/supabase/menuDelDiaService';
 
 /** Pedidos frecuentes del almuerzo; el resto se escribe a mano. */
-const ATAJOS_NOTA_ALMUERZO = ['Sin sopa', 'Sin ensalada', 'Sin principio', 'Solo seco', 'Adicional de arroz', 'Adicional de huevo', 'Para llevar'];
+const ATAJOS_NOTA_ALMUERZO = ['Sin sopa', 'Sin ensalada', 'Sin principio', 'Solo seco', 'Para llevar'];
 
 const money = (v: number) => `$${Math.round(v || 0).toLocaleString('es-CO')}`;
+const soloDigitos = (v: string) => v.replace(/\D/g, '');
+const conPuntos = (v: string) => (soloDigitos(v) ? Number(soloDigitos(v)).toLocaleString('es-CO') : '');
 
 function Hoja({ abierta, onCerrar, children }: { abierta: boolean; onCerrar: () => void; children: React.ReactNode }) {
   return (
@@ -43,10 +48,10 @@ function Hoja({ abierta, onCerrar, children }: { abierta: boolean; onCerrar: () 
 
 // ── Resumen en el salón ──────────────────────────────────────────────────────
 
-export function TarjetaAlmuerzo({ menu, esAdmin, onEditar }: { menu: MenuDelDia | null; esAdmin: boolean; onEditar: () => void }) {
+export function TarjetaAlmuerzo({ menu, puedeEditar, onEditar }: { menu: MenuDelDia | null; puedeEditar: boolean; onEditar: () => void }) {
   const deHoy = !!menu && menu.fecha === hoyColombia();
   const conOpciones = menu?.grupos.filter((g) => g.opciones.length) ?? [];
-  if (!esAdmin && (!deHoy || conOpciones.length === 0)) return null;
+  if (!puedeEditar && (!deHoy || conOpciones.length === 0)) return null;
   return (
     <div className="px-5 mb-5">
       <div className="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-2xl p-4">
@@ -57,12 +62,12 @@ export function TarjetaAlmuerzo({ menu, esAdmin, onEditar }: { menu: MenuDelDia 
           <div className="min-w-0 flex-1">
             <p className="text-white text-sm font-black leading-tight">Almuerzo del día</p>
             <p className="text-slate-500 text-xs">
-              {!menu ? 'Sin publicar' : deHoy ? `Hoy · ${money(menu.precio)}` : 'Es el menú de otro día: actualízalo'}
+              {!menu || conOpciones.length === 0 ? 'Sin publicar' : deHoy ? `Hoy · ${money(menu.precio)}` : 'Es el menú de otro día: actualízalo'}
             </p>
           </div>
-          {esAdmin && (
+          {puedeEditar && (
             <button onClick={onEditar} className="h-9 px-3 rounded-xl bg-emerald-600 text-[#fff] text-xs font-bold flex items-center gap-1.5 shrink-0">
-              <Pencil className="w-3.5 h-3.5" /> {menu ? 'Editar' : 'Publicar'}
+              <Pencil className="w-3.5 h-3.5" /> {conOpciones.length ? 'Editar' : 'Publicar'}
             </button>
           )}
         </div>
@@ -73,6 +78,11 @@ export function TarjetaAlmuerzo({ menu, esAdmin, onEditar }: { menu: MenuDelDia 
                 <span className="font-bold">{g.nombre}:</span> {g.opciones.join(' · ')}
               </p>
             ))}
+            {!!menu?.adicionales.length && (
+              <p className={`text-xs leading-snug ${deHoy ? 'text-slate-300' : 'text-slate-500'}`}>
+                <span className="font-bold">Adicionales:</span> {menu.adicionales.map((a) => `${a.nombre} ${money(a.precio)}`).join(' · ')}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -80,27 +90,108 @@ export function TarjetaAlmuerzo({ menu, esAdmin, onEditar }: { menu: MenuDelDia 
   );
 }
 
-// ── Editor del administrador ─────────────────────────────────────────────────
+// ── Acceso para quien publica (Inicio, Estaciones) ───────────────────────────
+
+/** Muestra el almuerzo con su botón de editar solo a quien puede publicarlo. */
+export function BotonAlmuerzoDelDia({ empleado, flotante = false }: {
+  empleado: { id: string; rol: string; cliente_id: string } | null | undefined; flotante?: boolean;
+}) {
+  const [menu, setMenu] = useState<MenuDelDia | null>(null);
+  const [cargado, setCargado] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const traer = useCallback(() => {
+    if (!empleado) return;
+    obtenerMenuDelDia(empleado.cliente_id).then((m) => { setMenu(m); setCargado(true); }).catch(() => setCargado(true));
+  }, [empleado?.cliente_id]);
+  useEffect(() => { traer(); }, [traer]);
+  if (!empleado || !cargado || !puedePublicarAlmuerzo(menu, empleado)) return null;
+  return (
+    <>
+      {flotante ? (
+        <button
+          onClick={() => setAbierto(true)}
+          className="fixed bottom-5 right-5 z-50 h-12 px-4 rounded-2xl bg-emerald-600 text-[#fff] text-sm font-black shadow-xl flex items-center gap-2"
+        >
+          <UtensilsCrossed className="w-4 h-4" /> Almuerzo del día
+        </button>
+      ) : (
+        <TarjetaAlmuerzo menu={menu} puedeEditar onEditar={() => setAbierto(true)} />
+      )}
+      <EditorAlmuerzo
+        abierto={abierto}
+        clienteId={empleado.cliente_id}
+        menu={menu}
+        esAdmin={['admin', 'super_usuario'].includes(empleado.rol)}
+        onCerrar={() => setAbierto(false)}
+        onPublicado={traer}
+      />
+    </>
+  );
+}
+
+// ── Editor (administrador o quien tenga permiso) ─────────────────────────────
+
+type AdicionalEditable = { nombre: string; precio: string };
 
 export function EditorAlmuerzo({
-  abierto, clienteId, menu, onCerrar, onPublicado,
+  abierto, clienteId, menu, esAdmin, onCerrar, onPublicado,
 }: {
-  abierto: boolean; clienteId: string; menu: MenuDelDia | null; onCerrar: () => void; onPublicado: () => void;
+  abierto: boolean; clienteId: string; menu: MenuDelDia | null; esAdmin: boolean; onCerrar: () => void; onPublicado: () => void;
 }) {
-  const inicial = (): GrupoAlmuerzo[] => (menu?.grupos.length ? menu.grupos : GRUPOS_SUGERIDOS).map((g) => ({ ...g, opciones: [...g.opciones] }));
-  const [grupos, setGrupos] = useState<GrupoAlmuerzo[]>(inicial);
-  const [precio, setPrecio] = useState(menu?.precio ? String(menu.precio) : '');
+  // De dónde arranca el editor: el de hoy si ya se publicó; si no, el último de este
+  // mismo día de la semana (el lunes pasado para un lunes); si no, el último publicado.
+  const hoy = diaSemanaColombia();
+  const fuenteInicial = (): { menu: MenuGuardado | null; etiqueta: string } => {
+    if (menu && menu.fecha === hoyColombia()) return { menu, etiqueta: 'El de hoy' };
+    const mismoDia = menu?.porDia[String(hoy)];
+    if (mismoDia) return { menu: mismoDia, etiqueta: `El del ${NOMBRES_DIA[hoy].toLowerCase()} pasado` };
+    if (menu?.grupos.length) return { menu, etiqueta: 'El último publicado' };
+    return { menu: null, etiqueta: '' };
+  };
+  const [fuente, setFuente] = useState<{ menu: MenuGuardado | null; etiqueta: string }>(fuenteInicial);
+  const gruposDe = (m: MenuGuardado | null): GrupoAlmuerzo[] => (m?.grupos.length ? m.grupos : GRUPOS_SUGERIDOS).map((g) => ({ ...g, opciones: [...g.opciones] }));
+  const gruposIniciales = (): GrupoAlmuerzo[] => gruposDe(fuenteInicial().menu);
+  const adicionalesDe = (m: MenuGuardado | null): AdicionalEditable[] => {
+    const actuales = (m?.adicionales ?? []).map((a) => ({ nombre: a.nombre, precio: String(a.precio) }));
+    const sugeridos = ADICIONALES_SUGERIDOS.filter((s) => !actuales.some((a) => a.nombre.toLowerCase() === s.toLowerCase()))
+      .map((nombre) => ({ nombre, precio: '' }));
+    return [...actuales, ...sugeridos];
+  };
+  const adicionalesIniciales = (): AdicionalEditable[] => adicionalesDe(fuenteInicial().menu);
+  /** Carga en el editor el menú guardado de otro día de la semana. */
+  const cargarDia = (dia: string) => {
+    const m = menu?.porDia[dia];
+    if (!m) return;
+    setGrupos(gruposDe(m));
+    setAdicionales(adicionalesDe(m));
+    if (m.precio) setPrecio(String(m.precio));
+    setNuevaOpcion({});
+    setFuente({ menu: m, etiqueta: `El del ${NOMBRES_DIA[Number(dia)].toLowerCase()}` });
+  };
+  const [grupos, setGrupos] = useState<GrupoAlmuerzo[]>(gruposIniciales);
+  const [adicionales, setAdicionales] = useState<AdicionalEditable[]>(adicionalesIniciales);
+  const [nuevoAdicional, setNuevoAdicional] = useState('');
+  const precioInicial = () => { const f = fuenteInicial().menu; return f?.precio ? String(f.precio) : menu?.precio ? String(menu.precio) : ''; };
+  const [precio, setPrecio] = useState(precioInicial);
   const [nuevaOpcion, setNuevaOpcion] = useState<Record<number, string>>({});
   const [nuevoGrupo, setNuevoGrupo] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [preparado, setPreparado] = useState(false);
+  const [empleados, setEmpleados] = useState<Array<{ id: string; nombre: string; rol: string }>>([]);
+  const [editores, setEditores] = useState<string[]>([]);
   if (abierto && !preparado) {
-    setGrupos(inicial());
-    setPrecio(menu?.precio ? String(menu.precio) : '');
+    setGrupos(gruposIniciales());
+    setAdicionales(adicionalesIniciales());
+    setPrecio(precioInicial());
+    setFuente(fuenteInicial());
     setNuevaOpcion({});
+    setEditores(menu?.editores ?? []);
     setPreparado(true);
   }
   if (!abierto && preparado) setPreparado(false);
+  useEffect(() => {
+    if (abierto && esAdmin) listarEmpleadosParaAlmuerzo(clienteId).then(setEmpleados).catch(() => {});
+  }, [abierto, esAdmin, clienteId]);
 
   const agregarOpcion = (i: number) => {
     const texto = (nuevaOpcion[i] || '').trim();
@@ -116,9 +207,15 @@ export function EditorAlmuerzo({
     setGrupos((prev) => [...prev, { nombre, opciones: [] }]);
     setNuevoGrupo('');
   };
+  const agregarAdicional = () => {
+    const nombre = nuevoAdicional.trim();
+    if (!nombre || adicionales.some((a) => a.nombre.toLowerCase() === nombre.toLowerCase())) { setNuevoAdicional(''); return; }
+    setAdicionales((prev) => [...prev, { nombre, precio: '' }]);
+    setNuevoAdicional('');
+  };
 
   const publicar = async () => {
-    const valor = Number(precio.replace(/\D/g, '')) || 0;
+    const valor = Number(soloDigitos(precio)) || 0;
     if (valor <= 0) { toast.error('Pon el precio del almuerzo'); return; }
     // Lo escrito en una casilla sin tocar «+» también cuenta.
     const finales = grupos.map((g, i) => {
@@ -126,9 +223,16 @@ export function EditorAlmuerzo({
       return pendiente && !g.opciones.includes(pendiente) ? { ...g, opciones: [...g.opciones, pendiente] } : g;
     });
     if (!finales.some((g) => g.opciones.length)) { toast.error('Agrega al menos una opción'); return; }
+    // Solo se ofrecen los adicionales con precio.
+    const conPrecio: AdicionalAlmuerzo[] = adicionales
+      .map((a) => ({ nombre: a.nombre.trim(), precio: Number(soloDigitos(a.precio)) || 0 }))
+      .filter((a) => a.nombre && a.precio > 0);
     setGuardando(true);
     try {
-      await publicarMenuDelDia(clienteId, finales, valor);
+      await publicarMenuDelDia(clienteId, finales, valor, conPrecio);
+      if (esAdmin && JSON.stringify([...editores].sort()) !== JSON.stringify([...(menu?.editores ?? [])].sort())) {
+        await guardarEditoresAlmuerzo(clienteId, editores);
+      }
       toast.success('Almuerzo del día publicado', { description: 'Los meseros ya ven las opciones de hoy.' });
       onPublicado();
       onCerrar();
@@ -149,12 +253,33 @@ export function EditorAlmuerzo({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {/* Menús guardados por día de la semana: un toque y queda cargado. */}
+        {Object.keys(menu?.porDia ?? {}).length > 0 && (
+          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-2">
+            <p className="text-white text-sm font-black">
+              {fuente.etiqueta ? `Cargado: ${fuente.etiqueta.toLowerCase()}` : 'Menús guardados'}
+            </p>
+            <p className="text-slate-400 text-xs">Toca un día para usar su menú y cambia solo lo nuevo.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 5, 6, 0].filter((d) => menu?.porDia[String(d)]).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => cargarDia(String(d))}
+                  className={`h-9 px-3 rounded-full text-xs font-bold border ${d === hoy ? 'bg-emerald-600 border-transparent text-[#fff]' : 'bg-slate-950 border-slate-700 text-slate-300'}`}
+                >
+                  {NOMBRES_DIA[d]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
           <p className="text-slate-400 text-xs font-bold mb-1.5">Precio del almuerzo</p>
           <Input
             inputMode="numeric"
-            value={precio ? Number(precio.replace(/\D/g, '') || 0).toLocaleString('es-CO') : ''}
-            onChange={(e) => setPrecio(e.target.value.replace(/\D/g, ''))}
+            value={conPuntos(precio)}
+            onChange={(e) => setPrecio(soloDigitos(e.target.value))}
             placeholder="Ej: 15.000"
             className="h-12 bg-slate-900 border-slate-700 text-white text-lg font-black"
           />
@@ -203,6 +328,65 @@ export function EditorAlmuerzo({
           />
           <button onClick={agregarGrupo} className="h-10 px-3 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold shrink-0">Agregar parte</button>
         </div>
+
+        {/* Adicionales con precio: se cobran como productos aparte. */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3 space-y-2">
+          <p className="text-white text-sm font-black">Adicionales</p>
+          <p className="text-slate-500 text-xs">Pon precio a los que se ofrecen hoy. Los que queden sin precio no salen.</p>
+          {adicionales.map((a, i) => (
+            <div key={`${a.nombre}-${i}`} className="flex items-center gap-2">
+              <p className="text-slate-200 text-sm font-semibold flex-1 min-w-0 truncate">{a.nombre}</p>
+              <Input
+                inputMode="numeric"
+                value={conPuntos(a.precio)}
+                onChange={(e) => setAdicionales((prev) => prev.map((x, j) => (j === i ? { ...x, precio: soloDigitos(e.target.value) } : x)))}
+                placeholder="Precio"
+                className="h-10 w-28 bg-slate-950 border-slate-700 text-white text-sm font-bold"
+              />
+              <button onClick={() => setAdicionales((prev) => prev.filter((_, j) => j !== i))} className="text-slate-500 p-1 shrink-0" aria-label={`Quitar ${a.nombre}`}>
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <Input
+              value={nuevoAdicional}
+              onChange={(e) => setNuevoAdicional(e.target.value.slice(0, 40))}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregarAdicional(); } }}
+              placeholder="Otro adicional (ej: Aguacate)"
+              className="h-10 bg-slate-950 border-slate-700 text-white text-sm"
+            />
+            <button onClick={agregarAdicional} className="w-10 h-10 rounded-xl bg-emerald-600 text-[#fff] flex items-center justify-center shrink-0" aria-label="Agregar adicional">
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Solo el administrador decide quién más publica el almuerzo. */}
+        {esAdmin && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3 space-y-2">
+            <p className="text-white text-sm font-black">¿Quién más puede publicar el almuerzo?</p>
+            <p className="text-slate-500 text-xs">Los administradores siempre pueden. Marca a las personas que lo suben en la mañana.</p>
+            {empleados.length === 0 ? (
+              <p className="text-slate-500 text-xs">Cargando empleados…</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {empleados.map((e) => {
+                  const marcado = editores.includes(e.id);
+                  return (
+                    <button
+                      key={e.id}
+                      onClick={() => setEditores((prev) => (marcado ? prev.filter((x) => x !== e.id) : [...prev, e.id]))}
+                      className={`min-h-10 px-3 rounded-full text-xs font-bold border-2 flex items-center gap-1.5 ${marcado ? 'bg-emerald-600 border-emerald-600 text-[#fff]' : 'bg-slate-950 border-slate-700 text-slate-300'}`}
+                    >
+                      {marcado && <Check className="w-3.5 h-3.5" />}{e.nombre}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="px-5 py-3 border-t border-slate-800 shrink-0">
@@ -220,33 +404,55 @@ export function EditorAlmuerzo({
 export function ElegirAlmuerzo({
   abierto, menu, onCerrar, onElegir,
 }: {
-  abierto: boolean; menu: MenuDelDia | null; onCerrar: () => void; onElegir: (texto: string) => void;
+  abierto: boolean; menu: MenuDelDia | null; onCerrar: () => void;
+  /** seguir = true: la persona siguiente de la mesa pide otro almuerzo (la hoja queda abierta). */
+  onElegir: (texto: string, adicionales: AdicionalAlmuerzo[], seguir: boolean) => void;
 }) {
   const grupos = (menu?.grupos ?? []).filter((g) => g.opciones.length);
+  const ofrecidos = menu?.adicionales ?? [];
   const [eleccion, setEleccion] = useState<Record<string, string>>({});
+  const [extras, setExtras] = useState<string[]>([]);
   const [nota, setNota] = useState('');
   const [preparado, setPreparado] = useState(false);
-  if (abierto && !preparado) {
+  // Almuerzos ya agregados en esta hoja (una mesa de 4 pide 4 distintos).
+  const [agregados, setAgregados] = useState(0);
+  const limpiar = () => {
     setNota('');
+    setExtras([]);
     // Si un grupo tiene una sola opción, va marcada de una vez.
     setEleccion(Object.fromEntries(grupos.filter((g) => g.opciones.length === 1).map((g) => [g.nombre, g.opciones[0]])));
+  };
+  if (abierto && !preparado) {
+    limpiar();
+    setAgregados(0);
     setPreparado(true);
   }
   if (!abierto && preparado) setPreparado(false);
 
   const faltan = grupos.filter((g) => !eleccion[g.nombre]).length;
-  const confirmar = () => {
+  const elegidos = ofrecidos.filter((a) => extras.includes(a.nombre));
+  const total = (menu?.precio || 0) + elegidos.reduce((s, a) => s + a.precio, 0);
+  const confirmar = (seguir: boolean) => {
     const partes = grupos.filter((g) => eleccion[g.nombre]).map((g) => `${g.nombre}: ${eleccion[g.nombre]}`);
+    if (elegidos.length) partes.push(`Adicional: ${elegidos.map((a) => a.nombre).join(', ')}`);
     if (nota.trim()) partes.push(`Nota: ${nota.trim()}`);
-    onElegir(partes.join(', '));
+    onElegir(partes.join(', '), elegidos, seguir);
+    if (seguir) {
+      setAgregados((n) => n + 1);
+      limpiar();
+      toast.success(`Almuerzo ${agregados + 1} agregado`, { description: 'Ahora el de la siguiente persona.', duration: 1800 });
+    }
   };
 
   return (
     <Hoja abierta={abierto} onCerrar={onCerrar}>
       <div className="px-5 pt-4 pb-3 border-b border-slate-800 shrink-0 flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-white font-black text-lg leading-tight">Almuerzo del día</p>
-          <p className="text-slate-400 text-xs">Toca una opción de cada parte · {money(menu?.precio || 0)}</p>
+          <p className="text-white font-black text-lg leading-tight">Almuerzo {agregados + 1}</p>
+          <p className="text-slate-400 text-xs">
+            Toca una opción de cada parte · {money(menu?.precio || 0)}
+            {agregados > 0 ? ` · ya van ${agregados}` : ''}
+          </p>
         </div>
         <button onClick={onCerrar} className="text-slate-400 p-1 shrink-0"><X className="w-5 h-5" /></button>
       </div>
@@ -271,6 +477,27 @@ export function ElegirAlmuerzo({
           </div>
         ))}
 
+        {ofrecidos.length > 0 && (
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-1.5">Adicionales (se cobran aparte)</p>
+            <div className="flex flex-wrap gap-2">
+              {ofrecidos.map((a) => {
+                const activo = extras.includes(a.nombre);
+                return (
+                  <button
+                    key={a.nombre}
+                    onClick={() => setExtras((prev) => (activo ? prev.filter((x) => x !== a.nombre) : [...prev, a.nombre]))}
+                    className={`min-h-11 px-4 rounded-2xl text-sm font-bold border-2 flex items-center gap-2 transition-all ${activo ? 'bg-sky-600 border-sky-600 text-[#fff]' : 'bg-slate-900 border-slate-700 text-slate-200'}`}
+                  >
+                    {activo ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {a.nombre} <span className={activo ? 'opacity-90' : 'text-amber-400'}>{money(a.precio)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div>
           <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-1.5">Nota (opcional)</p>
           <div className="flex flex-wrap gap-2 mb-2">
@@ -293,15 +520,24 @@ export function ElegirAlmuerzo({
           <Input
             value={nota}
             onChange={(e) => setNota(e.target.value.slice(0, 160))}
-            placeholder="Ej: adicional de huevo, sin ensalada"
+            placeholder="Ej: arroz sin sal, jugo sin azúcar"
             className="h-11 bg-slate-900 border-slate-700 text-white text-sm"
           />
         </div>
       </div>
-      <div className="px-5 py-3 border-t border-slate-800 shrink-0">
-        <Button onClick={confirmar} className="w-full h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600">
-          <Check className="w-5 h-5 mr-2" />
-          {faltan > 0 ? `Agregar (faltan ${faltan === 1 ? '1 parte' : `${faltan} partes`})` : 'Agregar almuerzo'}
+      <div className="px-5 py-3 border-t border-slate-800 shrink-0 flex gap-2">
+        <button
+          onClick={() => confirmar(true)}
+          className="h-14 px-4 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm font-black flex items-center gap-1.5 shrink-0"
+        >
+          <Plus className="w-5 h-5" /> Otro
+        </button>
+        <Button onClick={() => confirmar(false)} className="flex-1 min-w-0 h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600 flex items-center justify-between px-4">
+          <span className="flex items-center min-w-0">
+            <Check className="w-5 h-5 mr-2 shrink-0" />
+            <span className="truncate">{faltan > 0 ? `Agregar (faltan ${faltan})` : agregados > 0 ? 'Agregar y terminar' : 'Agregar almuerzo'}</span>
+          </span>
+          <span className="tabular-nums font-black shrink-0 ml-2">{money(total)}</span>
         </Button>
       </div>
     </Hoja>

@@ -59,8 +59,11 @@ import {
 } from '../lib/comandasAutorizadas';
 import { EscanerTiendaQR, type QRPayloadTienda } from '../components/EscanerTiendaQR';
 import { SucursalFiltro } from '../components/SucursalFiltro';
-import { TarjetaAlmuerzo, EditorAlmuerzo, ElegirAlmuerzo } from '../components/AlmuerzoDelDia';
-import { obtenerMenuDelDia, hoyColombia, ALMUERZO_PRODUCTO_ID, type MenuDelDia } from '../../app/lib/supabase/menuDelDiaService';
+import { TarjetaAlmuerzo, EditorAlmuerzo, ElegirAlmuerzo, BotonAlmuerzoDelDia } from '../components/AlmuerzoDelDia';
+import {
+  obtenerMenuDelDia, hoyColombia, ALMUERZO_PRODUCTO_ID, puedePublicarAlmuerzo, idProductoAdicional, nombreProductoAdicional,
+  type MenuDelDia, type AdicionalAlmuerzo,
+} from '../../app/lib/supabase/menuDelDiaService';
 import {
   type Estacion, listarEstaciones, suscribirEstaciones, estacionesAprendidas, recordarEstaciones,
 } from '../../app/lib/supabase/estacionesService';
@@ -383,6 +386,7 @@ export default function PanaderiaPage() {
   if (!puedeComandar) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center px-8 text-center">
+        <BotonAlmuerzoDelDia empleado={empleado} flotante />
         {escaneandoComandas ? (
           <EscanerTiendaQR
             clienteIdEsperado={empleado?.cliente_id || ''}
@@ -531,7 +535,7 @@ export default function PanaderiaPage() {
       </div>
 
       {!cargando && empleado && (
-        <TarjetaAlmuerzo menu={menuDia} esAdmin={esAdmin} onEditar={() => setEditorAlmuerzo(true)} />
+        <TarjetaAlmuerzo menu={menuDia} puedeEditar={puedePublicarAlmuerzo(menuDia, empleado)} onEditar={() => setEditorAlmuerzo(true)} />
       )}
 
       {/* ── Salón ── */}
@@ -678,11 +682,12 @@ export default function PanaderiaPage() {
         )}
       </AnimatePresence>
 
-      {empleado && esAdmin && (
+      {empleado && puedePublicarAlmuerzo(menuDia, empleado) && (
         <EditorAlmuerzo
           abierto={editorAlmuerzo}
           clienteId={empleado.cliente_id}
           menu={menuDia}
+          esAdmin={esAdmin}
           onCerrar={() => setEditorAlmuerzo(false)}
           onPublicado={() => { obtenerMenuDelDia(empleado.cliente_id).then(setMenuDia).catch(() => {}); void cargar(); }}
         />
@@ -872,14 +877,21 @@ function CuentaDeMesa({
     if (p.id === ALMUERZO_PRODUCTO_ID && menuDeHoy) { setAlmuerzoPendiente(p); return; }
     agregarDirecto(p);
   };
-  const confirmarAlmuerzo = (texto: string) => {
+  const confirmarAlmuerzo = (texto: string, adicionales: AdicionalAlmuerzo[], seguir: boolean) => {
     const p = almuerzoPendiente;
-    setAlmuerzoPendiente(null);
+    if (!seguir) setAlmuerzoPendiente(null);
     if (!p) return;
-    const previos = (notasProducto[p.id] || '').split(' | ').map((x) => x.trim()).filter(Boolean);
-    const numero = previos.length + 1;
-    if (texto) setNotasProducto((prev) => ({ ...prev, [p.id]: [...previos, `${numero}) ${texto}`].join(' | ') }));
+    // Numerado por persona: «1) Sopa: Ajiaco… | 2) Sopa: Sancocho…».
+    setNotasProducto((prev) => {
+      const previos = (prev[p.id] || '').split(' | ').map((x) => x.trim()).filter(Boolean);
+      return { ...prev, [p.id]: [...previos, `${previos.length + 1}) ${texto || 'Sin cambios'}`].join(' | ') };
+    });
     agregarDirecto(p);
+    // Los adicionales se cobran como productos aparte en la misma cuenta.
+    for (const a of adicionales) {
+      const id = idProductoAdicional(a.nombre);
+      agregarDirecto(productos.find((x) => x.id === id) ?? ({ id, nombre: nombreProductoAdicional(a.nombre), precio: a.precio, categoriaId: p.categoriaId } as PanaderiaProducto));
+    }
   };
   const agregarDirecto = (p: PanaderiaProducto) => {
     const yaEsta = items.some((it) => it.producto.id === p.id);

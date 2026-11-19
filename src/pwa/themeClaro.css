@@ -32,6 +32,10 @@
 [data-theme='light'] .bg-amber-500\/20 { background-color: #ffedd5 !important; }
 [data-theme='light'] .border-amber-500\/60 { border-color: #f59e0b !important; }
 [data-theme='light'] .text-amber-300 { color: #b45309 !important; }
+/* Almuerzo del día: cajas verdes suaves. */
+[data-theme='light'] .bg-emerald-500\/10 { background-color: #ecfdf5 !important; }
+[data-theme='light'] .bg-emerald-500\/15 { background-color: #d1fae5 !important; }
+[data-theme='light'] .border-emerald-500\/40 { border-color: #6ee7b7 !important; }
 [data-theme='light'] .bg-slate-800 { background-color: #ece8e3 !important; }
 [data-theme='light'] .bg-slate-800\/80 { background-color: rgb(236 232 227 / 0.8) !important; }
 [data-theme='light'] .bg-slate-950\/80 { background-color: rgb(243 241 238 / 0.9) !important; }

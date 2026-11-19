@@ -4,16 +4,21 @@
  */
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { PantallaEstaciones } from '../../app/components/estaciones/PantallaEstaciones';
+import { BotonAlmuerzoDelDia } from '../components/AlmuerzoDelDia';
 
 export default function EstacionesPage() {
   const { empleado } = usePwaAuth();
   if (!empleado) return null;
   const esAdmin = ['admin', 'super_usuario'].includes(empleado.rol);
   return (
-    <PantallaEstaciones
-      clienteId={empleado.cliente_id}
-      esAdmin={esAdmin}
-      tienda={esAdmin ? undefined : (empleado.tienda_id ?? null)}
-    />
+    <>
+      <PantallaEstaciones
+        clienteId={empleado.cliente_id}
+        esAdmin={esAdmin}
+        tienda={esAdmin ? undefined : (empleado.tienda_id ?? null)}
+      />
+      {/* La cocina (o quien tenga permiso) sube aquí el almuerzo del día. */}
+      <BotonAlmuerzoDelDia empleado={empleado} flotante />
+    </>
   );
 }

@@ -623,15 +623,18 @@ export default function PanaderiaOncesPage() {
       } else if (nube.productos.length > 0 && dueno === clienteId && borradosPendientes.current.productos.size === 0) {
         // Mismo negocio: se suma lo que se agregó desde otro equipo o desde la nube
         // (no se cambia ni se borra nada de lo que ya tiene este equipo).
-        // El almuerzo del día cambia a diario (precio y opciones): siempre se toma el de la nube.
-        const almuerzoNube = nube.productos.find((p) => p.id === 'almuerzo-del-dia');
-        const baseProductos = almuerzoNube
-          ? productosPos.map((p) => (p.id === 'almuerzo-del-dia'
-            ? { ...p, nombre: almuerzoNube.nombre, precio: almuerzoNube.precio, descripcion: almuerzoNube.descripcion, categoriaId: almuerzoNube.categoriaId }
-            : p))
-          : productosPos;
-        const almuerzoCambio = baseProductos !== productosPos
-          && JSON.stringify(baseProductos.find((p) => p.id === 'almuerzo-del-dia')) !== JSON.stringify(productosPos.find((p) => p.id === 'almuerzo-del-dia'));
+        // El almuerzo del día y sus adicionales cambian a diario (precio, opciones, cuáles
+        // se ofrecen): siempre manda la nube. Los que la nube ya no tiene activos se quitan.
+        const deAlmuerzo = (id: string) => id.startsWith('almuerzo-');
+        const almuerzoNube = new Map<string, (typeof nube.productos)[number]>(nube.productos.filter((p) => deAlmuerzo(p.id)).map((p) => [p.id, p]));
+        const baseProductos = productosPos
+          .filter((p) => !deAlmuerzo(p.id) || almuerzoNube.has(p.id))
+          .map((p) => {
+            const n = almuerzoNube.get(p.id);
+            return n ? { ...p, nombre: n.nombre, precio: n.precio, descripcion: n.descripcion, categoriaId: n.categoriaId } : p;
+          });
+        const almuerzoCambio = JSON.stringify(baseProductos.filter((p) => deAlmuerzo(p.id)))
+          !== JSON.stringify(productosPos.filter((p) => deAlmuerzo(p.id)));
         const idsProd = new Set(productosPos.map((p) => p.id));
         const idsCat = new Set(categoriasPos.map((c) => c.id));
         const prodsNuevos = nube.productos.filter((p) => !idsProd.has(p.id)).map((p) => ({

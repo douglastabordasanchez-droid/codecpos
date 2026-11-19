@@ -16,6 +16,7 @@ import { EmpleadoSelector, ResumenEmpleados, useEmpleadosNube } from '../compone
 import { FILTRO_TIENDA_PRINCIPAL, claveEmpleado, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { AvisoSedesCobro } from '../components/AvisoSedesCobro';
+import { BotonAlmuerzoDelDia } from '../components/AlmuerzoDelDia';
 import { useMiNegocio } from '../hooks/useMiNegocio';
 import { negocioConMeseros } from '../../data/tipos-negocio';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
@@ -344,6 +345,8 @@ export default function InicioPage() {
 
       {esAdmin && <SucursalFiltro />}
       {esAdmin && <AvisoSedesCobro className="mx-5 mb-4" />}
+      {/* Almuerzo del día: solo lo ve quien puede publicarlo (administrador o con permiso). */}
+      <BotonAlmuerzoDelDia empleado={empleado} />
 
       {esAdmin && (
         <motion.div
