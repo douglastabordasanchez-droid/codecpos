@@ -28,6 +28,7 @@ import {
   obtenerCuentasMesa,
   suscribirCuentasMesa,
   enviarComanda,
+  actualizarAlmuerzoEnComanda,
   obtenerComandasActivas,
   suscribirComandas,
   type CuentaMesa,
@@ -358,6 +359,22 @@ export default function PanaderiaPage() {
       if (diferencia > 0) acc.push({ productoId: it.producto.id, nombre: it.producto.nombre, cantidad: diferencia, ...(nota ? { nota } : {}) });
       return acc;
     }, []);
+    if (delta.length === 0) return;
+
+    // 🍛 Cambios y cancelaciones de almuerzos ya enviados: se actualiza su línea en el
+    // pedido que la estación ya tiene; solo si ese pedido ya no está, va uno nuevo.
+    const marcaCambio = /^(CAMBIO|QUITAR) · ALMUERZO (\d+)$/;
+    const sinActualizar: typeof delta = [];
+    let actualizados = 0;
+    for (const d of delta) {
+      const m = d.nombre.match(marcaCambio);
+      if (!m) { sinActualizar.push(d); continue; }
+      const ok = await actualizarAlmuerzoEnComanda(empleado.cliente_id, mesa.id, Number(m[2]), m[1] === 'QUITAR' ? null : (d.nota || '')).catch(() => false);
+      if (ok) actualizados++;
+      else sinActualizar.push(d);
+    }
+    if (actualizados) toast.success(actualizados === 1 ? 'Cambio enviado a la estación' : `${actualizados} cambios enviados a la estación`);
+    delta.splice(0, delta.length, ...sinActualizar);
     if (delta.length === 0) return;
 
     const activas = estaciones.filter((e) => e.activa);

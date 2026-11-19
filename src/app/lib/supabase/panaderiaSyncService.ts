@@ -414,6 +414,10 @@ export interface ItemComanda {
   nota?: string;
   /** La estación ya lo sacó (se marca tocando la línea; queda verde). */
   hecho?: boolean;
+  /** La mesera lo cambió después de enviado (se muestra «CAMBIÓ»). */
+  cambiado?: boolean;
+  /** La mesera lo quitó después de enviado (se muestra tachado «CANCELADO»). */
+  cancelado?: boolean;
 }
 
 export interface Comanda {
@@ -488,6 +492,39 @@ export async function actualizarEstadoComanda(comandaId: string, estado: EstadoC
     .update({ estado, updated_at: new Date().toISOString() })
     .eq('id', comandaId);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Cambio o cancelación de un almuerzo ya enviado: se actualiza su línea dentro
+ * del pedido que la estación ya tiene (no se crea otro, para no confundir).
+ * Devuelve false si ese pedido ya no está activo (entregado): entonces se envía
+ * uno nuevo con el cambio.
+ */
+export async function actualizarAlmuerzoEnComanda(
+  clienteId: string, mesaLocalId: string, numero: number, texto: string | null,
+): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  const { data, error } = await client.from('panaderia_comandas').select('id, items, estado')
+    .eq('cliente_id', clienteId).eq('mesa_local_id', mesaLocalId)
+    .in('estado', ['pendiente', 'preparando', 'listo'])
+    .order('created_at', { ascending: false });
+  if (error || !data) return false;
+  const nombre = `ALMUERZO ${numero}`;
+  for (const fila of data as Array<{ id: string; items: unknown; estado: string }>) {
+    const items = Array.isArray(fila.items) ? [...(fila.items as ItemComanda[])] : [];
+    const i = items.findIndex((it) => it?.nombre === nombre);
+    if (i < 0) continue;
+    items[i] = texto === null
+      ? { ...items[i], cancelado: true, hecho: false }
+      : { ...items[i], nota: texto, cambiado: true, cancelado: false, hecho: false };
+    // Si ya estaba en «Listos», vuelve a la lista principal para que lo vean.
+    const estado = texto !== null && fila.estado === 'listo' ? 'preparando' : fila.estado;
+    const { error: e2 } = await client.from('panaderia_comandas')
+      .update({ items, estado, updated_at: new Date().toISOString() }).eq('id', fila.id);
+    return !e2;
+  }
+  return false;
 }
 
 /**

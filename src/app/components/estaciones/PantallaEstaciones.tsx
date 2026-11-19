@@ -159,6 +159,15 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
           setAlerta(c);
           if (prefsRef.current.sonido) timbre();
         }
+        // Un almuerzo cambiado o cancelado en un pedido que ya estaba: también suena.
+        if (existe) {
+          const marcas = (x?: Comanda) => (x?.items || []).filter((it) => it.cambiado || it.cancelado).map((it) => `${it.nombre}|${it.nota || ''}|${it.cancelado ? 1 : 0}`).join('~');
+          const antes = prev.find((x) => x.id === c.id);
+          if (marcas(c) !== marcas(antes) && marcas(c)) {
+            if (prefsRef.current.sonido) timbre();
+            toast.warning(`Cambio en ${c.mesaNombre || 'una mesa'}`, { description: 'Revisa la línea marcada «CAMBIÓ» o «CANCELADO».', duration: 8000 });
+          }
+        }
         return existe ? prev.map((x) => (x.id === c.id ? c : x)) : [...prev, c];
       });
     }, tienda);
@@ -327,8 +336,10 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
                           <span className="font-black w-8 text-right shrink-0" style={it.hecho ? undefined : { color: estacion.color }}>
                             {it.hecho ? <Check className="w-6 h-6 inline" /> : `${it.cantidad}×`}
                           </span>
-                          <span className={`font-semibold min-w-0 ${it.hecho ? 'line-through decoration-2' : ''}`}>
+                          <span className={`font-semibold min-w-0 ${it.hecho || it.cancelado ? 'line-through decoration-2' : ''} ${it.cancelado ? 'text-red-500' : ''}`}>
                             {it.hecho ? `${it.cantidad}× ` : ''}{it.nombre}
+                            {it.cancelado && <span className="ml-2 align-middle text-[11px] font-black px-2 py-0.5 rounded-full bg-red-600 text-[#fff] no-underline inline-block">CANCELADO</span>}
+                            {it.cambiado && !it.cancelado && <span className="ml-2 align-middle text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-500 text-[#fff] no-underline inline-block animate-pulse">CAMBIÓ</span>}
                             {it.nota ? <span className={`block text-sm whitespace-pre-line no-underline ${it.hecho ? 'text-[#fff] opacity-90' : 'text-amber-500'}`}>{it.nota}</span> : null}
                           </span>
                         </button>
