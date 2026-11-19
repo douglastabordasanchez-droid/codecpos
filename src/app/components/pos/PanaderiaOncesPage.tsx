@@ -1134,7 +1134,7 @@ export default function PanaderiaOncesPage() {
       const puntaje = nombre.startsWith(q) ? 0 : nombre.split(/\s+/).some((w) => w.startsWith(palabras[0])) ? 1 : 2;
       return [{ p, puntaje, nombre }];
     });
-    return conPuntaje.sort((a, b) => a.puntaje - b.puntaje || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 40).map((x) => x.p);
+    return conPuntaje.sort((a, b) => a.puntaje - b.puntaje || a.nombre.localeCompare(b.nombre, 'es', { numeric: true })).slice(0, 40).map((x) => x.p);
   }, [busquedaMesa, productos]);
 
   const agregarItemMesa = (productoElegido?: any) => {

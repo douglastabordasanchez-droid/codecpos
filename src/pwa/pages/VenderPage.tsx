@@ -324,6 +324,13 @@ export default function VenderPage() {
     const q = busqueda.toLowerCase();
     return !q || p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q) || (p.codigo_barras || '').includes(busqueda);
   });
+  // Al buscar: primero los que empiezan por lo escrito y en orden alfabético natural (COMBO 2 antes de COMBO 10).
+  if (busqueda.trim()) {
+    const q = busqueda.toLowerCase().trim();
+    filtrados.sort((a, b) =>
+      Number(b.nombre.toLowerCase().startsWith(q)) - Number(a.nombre.toLowerCase().startsWith(q))
+      || a.nombre.localeCompare(b.nombre, 'es', { numeric: true, sensitivity: 'base' }));
+  }
 
   const itemsCarrito = Object.values(carrito);
   /** Tarifa de IVA de un ítem; lo que no es producto del inventario (servicios de Veterinaria) lleva la del negocio. */

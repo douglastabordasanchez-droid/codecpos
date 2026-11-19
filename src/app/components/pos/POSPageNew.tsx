@@ -1446,12 +1446,24 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             textos: productos.map(p => [p.codigo, p.nombre, p.keyword, p.categoria, p.marca, p.talla, p.color]
               .map(v => String(v || '').toLowerCase()).join('')),
           }).textos;
-      const coincidencias: typeof productos = [];
       const exacto = productos.find(p => String(p.codigo || '').toLowerCase() === t);
-      if (exacto) coincidencias.push(exacto);
-      for (let i = 0; i < productos.length && coincidencias.length < 8; i++) {
-        if (productos[i] !== exacto && indice[i].includes(t)) coincidencias.push(productos[i]);
+      // Orden alfabético siempre (y natural: COMBO 2 antes de COMBO 10). Primero los que
+      // empiezan por lo escrito, luego los que lo tienen en otra parte. Se ordena sobre
+      // todas las coincidencias, no sobre las primeras del catálogo.
+      const encontrados: Array<{ p: Producto; empieza: boolean; nombre: string }> = [];
+      for (let i = 0; i < productos.length && encontrados.length < 500; i++) {
+        const p = productos[i];
+        if (p === exacto || !indice[i].includes(t)) continue;
+        const nombre = String(p.nombre || '').toLowerCase();
+        encontrados.push({ p, empieza: nombre.startsWith(t), nombre });
       }
+      encontrados.sort((a, b) =>
+        Number(b.empieza) - Number(a.empieza)
+        || a.nombre.localeCompare(b.nombre, 'es', { numeric: true, sensitivity: 'base' }));
+      const coincidencias: typeof productos = [
+        ...(exacto ? [exacto] : []),
+        ...encontrados.slice(0, exacto ? 11 : 12).map(x => x.p),
+      ];
 
       if (coincidencias.length > 0) {
         setProductosSugeridos(coincidencias);
