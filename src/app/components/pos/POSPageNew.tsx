@@ -437,6 +437,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   // Cada venta se pregunta: hay clientes que no quieren factura electrónica.
   // Arranca en «No» y vuelve a «No» después de cobrar.
   const [emitirFE, setEmitirFE] = useState(false);
+  // Factura a nombre de alguien SIN facturación electrónica (opcional): nombre,
+  // cédula, celular, correo y una descripción que salen en la factura impresa y en el PDF.
+  const [facturaANombre, setFacturaANombre] = useState(false);
+  const [datosFacturaNombre, setDatosFacturaNombre] = useState({ nombre: '', documento: '', celular: '', correo: '', descripcion: '' });
   const [clienteFERecordado, setClienteFERecordado] = useState(false);
   const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
   const [retencionesFE, setRetencionesFE] = useState(retencionesIniciales);
@@ -862,6 +866,21 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         : 'Pedido cargado para continuar o facturar.',
     });
   }, [cargarCarritoMesa, estadosMesasCocina, mesasDisponibles]);
+
+  // 🧾 Datos del comprador para la factura sin facturación electrónica (vacío si no se pidió).
+  const datosCompradorFactura = () => {
+    const usaFE = getConfigFacturacion().feActiva && emitirFE;
+    const d = datosFacturaNombre;
+    if (usaFE || !facturaANombre) return {};
+    const limpio = (v: string) => v.trim() || undefined;
+    return {
+      ...(limpio(d.nombre) ? { cliente: d.nombre.trim() } : {}),
+      clienteDocumento: limpio(d.documento),
+      clienteTelefono: limpio(d.celular),
+      clienteEmail: limpio(d.correo),
+      observaciones: limpio(d.descripcion),
+    };
+  };
 
   // 🙋 Mesera o mesero que atendió la mesa que se está cobrando (sale en la tirilla).
   const meseroDeMesaEnCobro = (): string | undefined => {
@@ -2143,6 +2162,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setEfectivoRecibido('');
       // Los datos del cliente eran de esta venta: la siguiente no los hereda.
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
+      setFacturaANombre(false);
+      setDatosFacturaNombre({ nombre: '', documento: '', celular: '', correo: '', descripcion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
       setTipoDocFE('13');
@@ -2211,6 +2232,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
             referencia_mesa: referenciaMesaTransfer ?? undefined,
         mesero: meseroDeMesaEnCobro(),
+            ...datosCompradorFactura(),
           });
         } catch (persistError) {
           // 🚨 Esta venta ya se mostró como exitosa al cajero pero NO quedó guardada.
@@ -2567,6 +2589,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setEfectivoRecibido('');
       // Los datos del cliente eran de esta venta: la siguiente no los hereda.
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
+      setFacturaANombre(false);
+      setDatosFacturaNombre({ nombre: '', documento: '', celular: '', correo: '', descripcion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
       setTipoDocFE('13');
@@ -2618,6 +2642,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
             referencia_mesa: referenciaMesaTransfer ?? undefined,
         mesero: meseroDeMesaEnCobro(),
+            ...datosCompradorFactura(),
           });
         } catch (persistError) {
           // 🚨 Ver comentario equivalente en procesarVenta(): venta mostrada como exitosa
@@ -2813,6 +2838,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       setEfectivoRecibido('');
       // Los datos del cliente eran de esta venta: la siguiente no los hereda.
       setClienteFE({ nombre: '', nitCedula: '', email: '', direccion: '' });
+      setFacturaANombre(false);
+      setDatosFacturaNombre({ nombre: '', documento: '', celular: '', correo: '', descripcion: '' });
       setEmitirFE(false);
       setClienteFERecordado(false);
       setTipoDocFE('13');
@@ -2867,6 +2894,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
             mesa: mesasDisponibles.find(m => m.id === mesaActivaId)?.nombre || 'General',
             referencia_mesa: referenciaMesaTransfer ?? undefined,
         mesero: meseroDeMesaEnCobro(),
+            ...datosCompradorFactura(),
           });
 
           // La cuenta de cartera es lo que hace cobrable el saldo — si esto
@@ -4182,6 +4210,63 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       </p>
                     )}
                     </>)}
+                  </div>
+                )}
+
+                {/* Factura a nombre de alguien, sin facturación electrónica: opcional. */}
+                {!(getConfigFacturacion().feActiva && emitirFE) && (
+                  <div className={`p-3 rounded-2xl border ${darkMode ? 'bg-slate-800/60 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={facturaANombre}
+                        onChange={(e) => setFacturaANombre(e.target.checked)}
+                        className="w-4 h-4 accent-emerald-500"
+                      />
+                      <span className={`text-sm font-semibold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>
+                        Factura a nombre de un cliente (opcional)
+                      </span>
+                    </label>
+                    {facturaANombre && (
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <Input
+                          value={datosFacturaNombre.nombre}
+                          onChange={(e) => setDatosFacturaNombre((d) => ({ ...d, nombre: e.target.value }))}
+                          placeholder="Nombre"
+                          className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
+                        />
+                        <Input
+                          value={datosFacturaNombre.documento}
+                          onChange={(e) => setDatosFacturaNombre((d) => ({ ...d, documento: e.target.value }))}
+                          placeholder="Cédula o NIT"
+                          className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
+                        />
+                        <Input
+                          value={datosFacturaNombre.celular}
+                          onChange={(e) => setDatosFacturaNombre((d) => ({ ...d, celular: e.target.value }))}
+                          placeholder="Celular"
+                          inputMode="tel"
+                          className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
+                        />
+                        <Input
+                          value={datosFacturaNombre.correo}
+                          onChange={(e) => setDatosFacturaNombre((d) => ({ ...d, correo: e.target.value }))}
+                          placeholder="Correo"
+                          type="email"
+                          className={darkMode ? 'bg-slate-900 border-slate-500 text-white' : ''}
+                        />
+                        <textarea
+                          value={datosFacturaNombre.descripcion}
+                          onChange={(e) => setDatosFacturaNombre((d) => ({ ...d, descripcion: e.target.value }))}
+                          placeholder="Descripción (sale en la factura)"
+                          rows={3}
+                          className={`md:col-span-2 w-full rounded-md border px-3 py-2 text-sm ${darkMode ? 'bg-slate-900 border-slate-500 text-white placeholder:text-slate-400' : 'bg-white border-gray-300 text-gray-900'}`}
+                        />
+                        <p className={`md:col-span-2 text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Todos los campos son opcionales. No es factura electrónica: no se envía a la DIAN.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 

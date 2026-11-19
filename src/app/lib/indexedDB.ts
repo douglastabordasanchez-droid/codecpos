@@ -183,6 +183,12 @@ export interface Venta {
   cajero: string;
   cajeroId?: string;
   cliente?: string;
+  /** Factura a nombre de alguien sin facturación electrónica (opcional, POSPageNew). */
+  clienteDocumento?: string;
+  clienteTelefono?: string;
+  clienteEmail?: string;
+  /** Descripción escrita al cobrar; sale en la factura PDF. */
+  observaciones?: string;
   mesa?: string;
   referencia_mesa?: string;
   /** Mesera o mesero que atendió la mesa (sale en la tirilla y va a la nube, 0154). */

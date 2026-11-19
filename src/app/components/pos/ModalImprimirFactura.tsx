@@ -1,7 +1,7 @@
 // CODEC POS v2.0 — Modal Vista Previa e Impresión de Factura de Venta
 // Misma tecnología que ModalImprimirOrdenTaller y ModalExportarReporte
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, Printer, FileText, Receipt, User, Calendar, CreditCard, MessageCircle, Mail, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -72,6 +72,7 @@ function FacturaPreview({ venta }: { venta: Venta }) {
   const subtotal = (venta as any).subtotal || venta.total;
   const iva      = (venta as any).iva      || 0;
   const nFactura = (venta as any).numeroFactura || venta.id;
+  const v = venta as any;
   const mesaDisplay = (venta as any).referencia_mesa
     || (venta.mesa && venta.mesa !== 'General' && venta.mesa !== 'general' ? venta.mesa : null);
   const nitStr   = empresa.nit
@@ -147,6 +148,17 @@ function FacturaPreview({ venta }: { venta: Venta }) {
         </div>
       </div>
 
+      {/* Factura a nombre de un cliente (sin facturación electrónica) */}
+      {(v.clienteDocumento || v.clienteTelefono || v.clienteEmail || (v.cliente && !/^consumidor final$/i.test(String(v.cliente)))) && (
+        <div style={{ padding: '6px 18px', borderBottom: '1px solid #000', fontSize: 10, color: '#000', background: '#fff' }}>
+          <div style={{ fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 2 }}>Cliente</div>
+          {v.cliente && <div style={{ fontWeight: 'bold' }}>{String(v.cliente)}</div>}
+          {v.clienteDocumento && <div>CC / NIT: {v.clienteDocumento}</div>}
+          {v.clienteTelefono && <div>Cel: {v.clienteTelefono}</div>}
+          {v.clienteEmail && <div style={{ wordBreak: 'break-all' }}>{v.clienteEmail}</div>}
+        </div>
+      )}
+
       {/* Ubicación mesa (si aplica) */}
       {mesaDisplay && (
         <div style={{ padding: '7px 18px', borderBottom: '1px solid #000', textAlign: 'center', background: '#1e293b' }}>
@@ -180,6 +192,14 @@ function FacturaPreview({ venta }: { venta: Venta }) {
           </div>
         ))}
       </div>
+
+      {/* Descripción escrita al cobrar */}
+      {v.observaciones && (
+        <div style={{ padding: '6px 18px', borderBottom: '1px solid #000', fontSize: 10, color: '#000', background: '#fff' }}>
+          <div style={{ fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 2 }}>Descripción</div>
+          <div style={{ whiteSpace: 'pre-wrap' }}>{v.observaciones}</div>
+        </div>
+      )}
 
       {/* Totales */}
       <div style={{ padding: '6px 18px', borderBottom: '2px solid #000', background: '#fff' }}>
@@ -286,6 +306,12 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
   const [emailDestino, setEmailDestino] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
 
+  // Factura a nombre de un cliente: su celular y correo quedan listos para compartir.
+  useEffect(() => {
+    setTelefono(String((venta as any)?.clienteTelefono || ''));
+    setEmailDestino(String((venta as any)?.clienteEmail || ''));
+  }, [venta]);
+
   if (!venta) return null;
 
   const nFactura = (venta as any).numeroFactura || venta.id;
@@ -318,6 +344,10 @@ export default function ModalImprimirFactura({ open, venta, onClose, darkMode }:
         qrUrl: (venta! as any).qrUrl || null,
         numeroElectronico: (venta! as any).folioElectronico || null,
         cliente: (venta as any).cliente || 'Consumidor Final',
+        clienteDocumento: (venta as any).clienteDocumento || undefined,
+        clienteTelefono: (venta as any).clienteTelefono || undefined,
+        clienteEmail: (venta as any).clienteEmail || undefined,
+        observaciones: (venta as any).observaciones || undefined,
         mesa: venta!.mesa,
         referencia_mesa: (venta as any).referencia_mesa || undefined,
       },
