@@ -654,6 +654,9 @@ function CuentaDeMesa({
   const [notasProducto, setNotasProducto] = useState<Record<string, string>>({});
   const [notaGeneral, setNotaGeneral] = useState('');
   const [notaAbierta, setNotaAbierta] = useState<string | null>(null);
+  // Pedido en burbujas: solo una se abre a la vez para no tapar el menú.
+  const [itemAbierto, setItemAbierto] = useState<string | null>(null);
+  const [notaGeneralAbierta, setNotaGeneralAbierta] = useState(false);
   const productoDe = (id: string) => productos.find((p) => p.id === id);
   const alternarAtajo = (productoId: string, atajo: string) => setNotasProducto((prev) => {
     const partes = (prev[productoId] || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -698,6 +701,8 @@ function CuentaDeMesa({
   }, [productos, catActiva, busqueda]);
 
   const agregar = (p: PanaderiaProducto) => {
+    const yaEsta = items.some((it) => it.producto.id === p.id);
+    if (!yaEsta && hayEstaciones && destinoDe(p.id) === undefined) setItemAbierto(p.id);
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.producto.id === p.id);
       if (idx >= 0) {
@@ -754,106 +759,137 @@ function CuentaDeMesa({
         </div>
       </div>
 
-      {/* Cuenta actual */}
-      {items.length > 0 && (
-        <div className="px-5 py-3 border-b border-slate-800 max-h-[40vh] overflow-y-auto overflow-x-hidden shrink-0">
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wide mb-2">Pedido</p>
-          <div className="space-y-1.5">
-            {items.map((it) => (
-              <div
-                key={it.producto.id}
-                className={`w-full min-w-0 flex flex-wrap items-center gap-2 bg-slate-900/70 border rounded-xl p-2 ${hayEstaciones && nuevos.has(it.producto.id) && destinoDe(it.producto.id) === undefined ? 'border-amber-500/70' : 'border-slate-800'}`}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-white text-sm font-semibold truncate">{it.producto.nombre}</p>
-                  {nuevos.has(it.producto.id) && productoDe(it.producto.id)?.descripcion && (
-                    <p className="text-slate-400 text-[11px] leading-snug line-clamp-2">{productoDe(it.producto.id)?.descripcion}</p>
-                  )}
-                  <p className="text-slate-500 text-xs">{money(it.producto.precio)} c/u</p>
-                  {nuevos.has(it.producto.id) && notasProducto[it.producto.id]?.trim() && notaAbierta !== it.producto.id && (
-                    <button onClick={() => setNotaAbierta(it.producto.id)} className="block text-left text-amber-300 text-xs font-semibold break-words">
-                      Nota: {notasProducto[it.producto.id]}
-                    </button>
-                  )}
-                </div>
-                {nuevos.has(it.producto.id) && (
+      {/* Pedido en burbujas: cada producto es una burbuja; al tocarla se abre su caja. */}
+      {items.length > 0 && (() => {
+        const abierto = items.find((it) => it.producto.id === itemAbierto);
+        return (
+          <div className="px-4 py-2.5 border-b border-slate-800 shrink-0">
+            <div className="flex flex-wrap gap-1.5 max-h-[18vh] overflow-y-auto overflow-x-hidden">
+              {items.map((it) => {
+                const id = it.producto.id;
+                const esNuevo = nuevos.has(id);
+                const falta = hayEstaciones && esNuevo && destinoDe(id) === undefined;
+                const est = estaciones.find((e) => e.id === destinoDe(id));
+                const activo = itemAbierto === id;
+                return (
                   <button
-                    onClick={() => setNotaAbierta((a) => (a === it.producto.id ? null : it.producto.id))}
-                    className={`h-7 px-2 rounded-lg text-[11px] font-bold shrink-0 border ${notasProducto[it.producto.id]?.trim() ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+                    key={id}
+                    onClick={() => { setItemAbierto(activo ? null : id); setNotaAbierta(null); }}
+                    className={`max-w-full min-w-0 h-9 pl-1.5 pr-3 rounded-full border flex items-center gap-1.5 text-xs font-bold transition-all ${
+                      activo ? 'bg-amber-500 border-transparent text-[#fff]'
+                        : falta ? 'bg-amber-500/10 border-amber-500 text-amber-300 animate-pulse'
+                          : 'bg-slate-900 border-slate-700 text-slate-200'}`}
                   >
-                    {notaAbierta === it.producto.id ? 'Listo' : notasProducto[it.producto.id]?.trim() ? 'Cambiar' : 'Nota'}
+                    <span className={`min-w-6 h-6 px-1 rounded-full flex items-center justify-center text-[11px] font-black ${activo ? 'bg-white/25' : 'bg-slate-800 text-white'}`}>{it.cantidad}</span>
+                    <span className="truncate">{it.producto.nombre}</span>
+                    {esNuevo && notasProducto[id]?.trim() && <span className={activo ? '' : 'text-amber-400'}>✎</span>}
+                    {est && <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: est.color }} />}
+                    {esNuevo && hayEstaciones && destinoDe(id) === null && <span className="text-[10px] opacity-70 shrink-0">cuenta</span>}
                   </button>
-                )}
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => cambiarCantidad(it.producto.id, -1)}
-                    className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center active:scale-90 transition-transform"
-                  >
-                    <Minus className="w-3.5 h-3.5 text-slate-300" />
-                  </button>
-                  <span className="text-white font-black text-sm w-6 text-center tabular-nums">{it.cantidad}</span>
-                  <button
-                    onClick={() => cambiarCantidad(it.producto.id, 1)}
-                    className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center active:scale-90 transition-transform"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-white" />
-                  </button>
-                </div>
-                <p className="text-amber-400 font-bold text-sm w-16 text-right shrink-0 tabular-nums">
-                  {money(it.producto.precio * it.cantidad)}
-                </p>
-                <button onClick={() => quitar(it.producto.id)} className="text-slate-600 p-1 shrink-0">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-                {nuevos.has(it.producto.id) && notaAbierta === it.producto.id && (
-                  <div className="basis-full min-w-0 space-y-1.5 pt-1">
-                    <div className="flex flex-wrap gap-1.5">
-                      {atajosDeNota(productoDe(it.producto.id)).map((a) => {
-                        const activo = (notasProducto[it.producto.id] || '').split(',').map((x) => x.trim()).includes(a);
-                        return (
-                          <button key={a} onClick={() => { alternarAtajo(it.producto.id, a); setNotaAbierta(null); }}
-                            className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border ${activo ? 'bg-amber-500 border-transparent text-[#fff]' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>
-                            {a}
-                          </button>
-                        );
-                      })}
+                );
+              })}
+            </div>
+
+            {abierto && (() => {
+              const it = abierto;
+              const id = it.producto.id;
+              const esNuevo = nuevos.has(id);
+              return (
+                <div className="mt-2 rounded-2xl border border-slate-700 bg-slate-900/80 p-3 space-y-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white text-sm font-bold leading-snug break-words">{it.producto.nombre}</p>
+                      {esNuevo && productoDe(id)?.descripcion && (
+                        <p className="text-slate-400 text-[11px] leading-snug">{productoDe(id)?.descripcion}</p>
+                      )}
+                      <p className="text-slate-500 text-xs">{money(it.producto.precio)} c/u · <span className="text-amber-400 font-bold">{money(it.producto.precio * it.cantidad)}</span></p>
                     </div>
-                    <Input
-                      value={notasProducto[it.producto.id] || ''}
-                      onChange={(e) => setNotasProducto((prev) => ({ ...prev, [it.producto.id]: e.target.value.slice(0, 160) }))}
-                      placeholder="Ej: 1 pericos y 1 rancheros, sin cebolla"
-                      className="h-9 bg-slate-950 border-slate-700 text-white text-sm placeholder:text-slate-600"
-                    />
+                    <button onClick={() => setItemAbierto(null)} className="h-8 px-3 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold shrink-0">Listo</button>
                   </div>
-                )}
-                {hayEstaciones && nuevos.has(it.producto.id) && (
-                  <div className="basis-full min-w-0 flex flex-wrap gap-1.5 pt-1">
-                    {estaciones.map((e) => {
-                      const activo = destinoDe(it.producto.id) === e.id;
-                      return (
-                        <button
-                          key={e.id}
-                          onClick={() => setDestinos((prev) => ({ ...prev, [it.producto.id]: e.id }))}
-                          className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border transition-all ${activo ? 'text-[#fff] border-transparent' : 'bg-slate-950 border-slate-700 text-slate-300'}`}
-                          style={activo ? { background: e.color } : undefined}
-                        >
-                          {e.nombre}
-                        </button>
-                      );
-                    })}
-                    <button
-                      onClick={() => setDestinos((prev) => ({ ...prev, [it.producto.id]: null }))}
-                      className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border transition-all ${destinoDe(it.producto.id) === null ? 'bg-slate-200 text-slate-900 border-transparent' : 'bg-slate-950 border-slate-700 text-slate-400'}`}
-                    >
-                      Solo cuenta
+
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { if (it.cantidad <= 1) setItemAbierto(null); cambiarCantidad(id, -1); }}
+                      className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center active:scale-90 transition-transform">
+                      <Minus className="w-4 h-4 text-slate-300" />
+                    </button>
+                    <span className="text-white font-black text-base w-8 text-center tabular-nums">{it.cantidad}</span>
+                    <button onClick={() => cambiarCantidad(id, 1)}
+                      className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center active:scale-90 transition-transform">
+                      <Plus className="w-4 h-4 text-white" />
+                    </button>
+                    {esNuevo && (
+                      <button
+                        onClick={() => setNotaAbierta((a) => (a === id ? null : id))}
+                        className={`h-10 px-3 rounded-xl text-xs font-bold border ${notasProducto[id]?.trim() ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+                      >
+                        {notasProducto[id]?.trim() ? 'Cambiar nota' : 'Nota'}
+                      </button>
+                    )}
+                    <button onClick={() => { quitar(id); setItemAbierto(null); }} className="ml-auto w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-red-400">
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {esNuevo && notasProducto[id]?.trim() && notaAbierta !== id && (
+                    <button onClick={() => setNotaAbierta(id)} className="block text-left text-amber-300 text-xs font-semibold break-words">
+                      Nota: {notasProducto[id]}
+                    </button>
+                  )}
+
+                  {esNuevo && notaAbierta === id && (
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {atajosDeNota(productoDe(id)).map((a) => {
+                          const marcado = (notasProducto[id] || '').split(',').map((x) => x.trim()).includes(a);
+                          return (
+                            <button key={a} onClick={() => { alternarAtajo(id, a); setNotaAbierta(null); }}
+                              className={`h-8 px-3 rounded-full text-xs font-bold border ${marcado ? 'bg-amber-500 border-transparent text-[#fff]' : 'bg-slate-950 border-slate-700 text-slate-300'}`}>
+                              {a}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <Input
+                        value={notasProducto[id] || ''}
+                        onChange={(e) => setNotasProducto((prev) => ({ ...prev, [id]: e.target.value.slice(0, 160) }))}
+                        placeholder="Ej: 1 pericos y 1 rancheros, sin cebolla"
+                        className="h-9 bg-slate-950 border-slate-700 text-white text-sm placeholder:text-slate-600"
+                      />
+                    </div>
+                  )}
+
+                  {hayEstaciones && esNuevo && (
+                    <div>
+                      <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wide mb-1">¿A dónde va?</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {estaciones.map((e) => {
+                          const elegido = destinoDe(id) === e.id;
+                          return (
+                            <button
+                              key={e.id}
+                              onClick={() => { setDestinos((prev) => ({ ...prev, [id]: e.id })); if (notaAbierta !== id) setItemAbierto(null); }}
+                              className={`h-9 px-3 rounded-full text-xs font-bold border transition-all ${elegido ? 'text-[#fff] border-transparent' : 'bg-slate-950 border-slate-700 text-slate-300'}`}
+                              style={elegido ? { background: e.color } : undefined}
+                            >
+                              {e.nombre}
+                            </button>
+                          );
+                        })}
+                        <button
+                          onClick={() => { setDestinos((prev) => ({ ...prev, [id]: null })); if (notaAbierta !== id) setItemAbierto(null); }}
+                          className={`h-9 px-3 rounded-full text-xs font-bold border transition-all ${destinoDe(id) === null ? 'bg-slate-200 text-slate-900 border-transparent' : 'bg-slate-950 border-slate-700 text-slate-400'}`}
+                        >
+                          Solo cuenta
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Catálogo */}
       <div className="px-5 pt-3 shrink-0">
@@ -926,38 +962,40 @@ function CuentaDeMesa({
       </div>
 
       {/* Enviar */}
-      <div className="px-5 py-3 border-t border-slate-800 bg-slate-950 shrink-0">
-        {nuevos.size > 0 && (
+      <div className="px-4 py-2.5 border-t border-slate-800 bg-slate-950 shrink-0 space-y-2">
+        {nuevos.size > 0 && (notaGeneralAbierta || notaGeneral) ? (
           <Input
+            autoFocus={notaGeneralAbierta && !notaGeneral}
             value={notaGeneral}
             onChange={(e) => setNotaGeneral(e.target.value.slice(0, 200))}
-            placeholder="Nota para la estación (opcional)"
-            className="h-10 mb-2.5 bg-slate-900 border-slate-700 text-white text-sm placeholder:text-slate-600"
+            onBlur={() => { if (!notaGeneral.trim()) setNotaGeneralAbierta(false); }}
+            placeholder="Nota para la estación"
+            className="h-10 bg-slate-900 border-slate-700 text-white text-sm placeholder:text-slate-600"
           />
-        )}
-        <div className="flex items-center justify-between mb-2.5">
-          <span className="text-slate-400 text-sm font-semibold">Total de la mesa</span>
-          <span className="text-white text-2xl font-black tabular-nums">{money(total)}</span>
-        </div>
+        ) : nuevos.size > 0 ? (
+          <button onClick={() => setNotaGeneralAbierta(true)} className="text-slate-400 text-xs font-bold">
+            + Nota para la estación
+          </button>
+        ) : null}
         <Button
           onClick={enviar}
           disabled={enviando || !sucio || sinDestino > 0}
-          className="w-full h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50"
+          className="w-full h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50 flex items-center justify-between px-4"
         >
-          {enviando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
-          {enviando
-            ? 'Enviando…'
-            : !sucio
-              ? 'Sin cambios'
-              : sinDestino > 0
-                ? `Elige a dónde va ${sinDestino === 1 ? '1 producto' : `${sinDestino} productos`}`
-                : hayEstaciones ? 'Enviar pedido' : 'Enviar a caja y cocina'}
+          <span className="flex items-center min-w-0">
+            {enviando ? <Loader2 className="w-5 h-5 mr-2 animate-spin shrink-0" /> : <Check className="w-5 h-5 mr-2 shrink-0" />}
+            <span className="truncate">
+              {enviando
+                ? 'Enviando…'
+                : !sucio
+                  ? 'Sin cambios'
+                  : sinDestino > 0
+                    ? `Elige a dónde va ${sinDestino === 1 ? '1 producto' : `${sinDestino} productos`}`
+                    : hayEstaciones ? 'Enviar pedido' : 'Enviar a caja y cocina'}
+            </span>
+          </span>
+          <span className="tabular-nums font-black shrink-0 ml-2">{money(total)}</span>
         </Button>
-        <p className="text-slate-600 text-[11px] text-center mt-2">
-          {hayEstaciones
-            ? 'Cada estación recibe solo lo suyo; todo queda en la misma cuenta de la mesa.'
-            : 'La caja ve el pedido al instante y Cocina/Bar recibe lo nuevo para preparar.'}
-        </p>
       </div>
     </>
   );
