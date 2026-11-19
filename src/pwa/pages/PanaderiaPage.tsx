@@ -205,6 +205,43 @@ export default function PanaderiaPage() {
 
   useEffect(() => { cargar(); }, [cargar]);
 
+  // 🔄 Mesas al día aunque el aviso en vivo se pierda: iPhone y Android cortan la
+  // conexión en vivo con la app en segundo plano o la pantalla apagada, y si la
+  // caja cobra en ese momento la mesa seguía ocupada en el celular. Se vuelven a
+  // pedir cuentas y pedidos (sin recargar la página ni tocar lo que se está
+  // escribiendo) al volver a la app, al volver internet y cada 20 s si está abierta.
+  const ultimaEscrituraRef = useRef(0);
+  const refrescarMesas = useCallback(async () => {
+    if (!empleado || document.visibilityState !== 'visible' || !navigator.onLine) return;
+    // Recién enviado un pedido: se espera a que la nube lo tenga para no
+    // mostrar por un instante la cuenta anterior.
+    if (Date.now() - ultimaEscrituraRef.current < 6000) return;
+    try {
+      const [listaCuentas, comandas] = await Promise.all([
+        obtenerCuentasMesa(empleado.cliente_id, tiendaEfectiva),
+        obtenerComandasActivas(empleado.cliente_id, tiendaEfectiva),
+      ]);
+      if (Date.now() - ultimaEscrituraRef.current < 6000) return;
+      setCuentas(Object.fromEntries(listaCuentas.map((c) => [c.mesaLocalId, c])));
+      setComandasPorMesa(Object.fromEntries(comandas.map((c) => [c.mesaLocalId, c])));
+    } catch { /* sin conexión: se reintenta en el próximo turno */ }
+  }, [empleado?.cliente_id, tiendaEfectiva]);
+  useEffect(() => {
+    const alVolver = () => { if (document.visibilityState === 'visible') void refrescarMesas(); };
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('online', alVolver);
+    window.addEventListener('focus', alVolver);
+    window.addEventListener('pageshow', alVolver);
+    const turno = window.setInterval(() => { void refrescarMesas(); }, 20000);
+    return () => {
+      document.removeEventListener('visibilitychange', alVolver);
+      window.removeEventListener('online', alVolver);
+      window.removeEventListener('focus', alVolver);
+      window.removeEventListener('pageshow', alVolver);
+      window.clearInterval(turno);
+    };
+  }, [refrescarMesas]);
+
   // Realtime: si la caja cobra una mesa, el mesero la ve liberarse al momento.
   // 🏪 Filtrado por sucursal — sin esto, el celular de una sucursal recibía
   // (y sonaba) los avisos de cuentas/comandas de OTRA sucursal del mismo negocio.
@@ -250,6 +287,7 @@ export default function PanaderiaPage() {
     if (!empleado) return;
     // El delta de comanda se calcula ANTES de sobrescribir `cuentas` con el
     // estado optimista, porque compara contra lo que ya estaba guardado.
+    ultimaEscrituraRef.current = Date.now();
     const enviarComandaPromise = enviarComandaMesa(mesa, items, destinos, notas);
 
     // La mesa sigue siendo de quien la abrió (aunque la edite un administrador);
@@ -275,6 +313,7 @@ export default function PanaderiaPage() {
         guardarCuentaMesa(empleado.cliente_id, mesa.id, items, 'pwa', dueno, mesa.tiendaId),
         enviarComandaPromise,
       ]);
+      ultimaEscrituraRef.current = Date.now();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo enviar el pedido');
       cargar();
