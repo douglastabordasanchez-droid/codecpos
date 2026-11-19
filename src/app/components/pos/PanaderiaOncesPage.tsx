@@ -1134,6 +1134,8 @@ export default function PanaderiaOncesPage() {
                   codigo: it.producto.codigo,
                 },
                 cantidad: Number(it.cantidad) || 0,
+                // Almuerzos numerados del celular: la caja no los borra al guardar la mesa.
+                ...(Array.isArray((it as any).detalles) && (it as any).detalles.length ? { detalles: (it as any).detalles } : {}),
               })),
               'electron',
               meseros[mesaId],

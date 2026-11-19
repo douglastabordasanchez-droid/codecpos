@@ -243,6 +243,8 @@ export function useSyncModulosNube() {
               const items = (local as any[]).map((it) => ({
                 producto: { id: it.producto?.id, nombre: it.producto?.nombre, precio: Number(it.producto?.precio) || 0, codigo: it.producto?.codigo },
                 cantidad: Number(it.cantidad) || 0,
+                // Almuerzos numerados del celular: se conservan.
+                ...(Array.isArray(it.detalles) && it.detalles.length ? { detalles: it.detalles } : {}),
               }));
               void guardarCuentaMesa(clienteId, cuenta.mesaLocalId, items as any, 'electron', mesero, tienda).catch(() => {});
               continue;

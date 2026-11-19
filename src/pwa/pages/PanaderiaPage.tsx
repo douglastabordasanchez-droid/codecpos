@@ -341,6 +341,18 @@ export default function PanaderiaPage() {
     const anteriores = cuentas[mesa.id]?.items ?? [];
     const delta: Array<ItemComanda & { productoId: string }> = nuevos.reduce<Array<ItemComanda & { productoId: string }>>((acc, it) => {
       const previo = anteriores.find((p) => p.producto.id === it.producto.id);
+      // 🍛 Almuerzos numerados: a la estación le llega «ALMUERZO 3» con cada parte en su
+      // renglón, y si alguien cambia o cancela el suyo, «CAMBIO · ALMUERZO 3».
+      if (it.detalles?.length || previo?.detalles?.length) {
+        const antes = new Map((previo?.detalles ?? []).map((d) => [d.n, d.texto]));
+        const ahora = new Map((it.detalles ?? []).map((d) => [d.n, d.texto]));
+        for (const [n, texto] of ahora) {
+          if (!antes.has(n)) acc.push({ productoId: it.producto.id, nombre: `ALMUERZO ${n}`, cantidad: 1, nota: texto });
+          else if (antes.get(n) !== texto) acc.push({ productoId: it.producto.id, nombre: `CAMBIO · ALMUERZO ${n}`, cantidad: 1, nota: texto });
+        }
+        for (const n of antes.keys()) if (!ahora.has(n)) acc.push({ productoId: it.producto.id, nombre: `QUITAR · ALMUERZO ${n}`, cantidad: 1 });
+        return acc;
+      }
       const diferencia = it.cantidad - (previo?.cantidad || 0);
       const nota = notas.porProducto[it.producto.id]?.trim();
       if (diferencia > 0) acc.push({ productoId: it.producto.id, nombre: it.producto.nombre, cantidad: diferencia, ...(nota ? { nota } : {}) });
@@ -356,9 +368,18 @@ export default function PanaderiaPage() {
 
     const porEstacion = new Map<string, ItemComanda[]>();
     const elecciones: Record<string, string | null> = {};
+    // Un cambio de almuerzo ya enviado va a donde fue el almuerzo (aprendido) o a la cocina.
+    const estacionCocina = activas.find((e) => /cocina/i.test(e.nombre))?.id ?? activas[0]?.id ?? null;
     for (const d of delta) {
-      const destino = destinos[d.productoId] ?? null;
-      elecciones[d.productoId] = destino;
+      let destino: string | null;
+      if (d.productoId in destinos) {
+        destino = destinos[d.productoId] ?? null;
+        elecciones[d.productoId] = destino;
+      } else if (d.productoId === ALMUERZO_PRODUCTO_ID) {
+        destino = aprendidas[d.productoId] !== undefined ? aprendidas[d.productoId] : estacionCocina;
+      } else {
+        destino = null;
+      }
       if (!destino) continue;
       porEstacion.set(destino, [...(porEstacion.get(destino) || []), { nombre: d.nombre, cantidad: d.cantidad, ...(d.nota ? { nota: d.nota } : {}) }]);
     }
@@ -704,7 +725,7 @@ type NotasPedido = { porProducto: Record<string, string>; general: string };
 /** Pedido marcado y aún no enviado, guardado en el celular por mesa. */
 type BorradorPedido = {
   ts: number;
-  extras: Array<{ producto: ItemCuenta['producto']; extra: number }>;
+  extras: Array<{ producto: ItemCuenta['producto']; extra: number; detalles?: ItemCuenta['detalles'] }>;
   destinos: Record<string, string | null>;
   notas: Record<string, string>;
   notaGeneral: string;
@@ -728,11 +749,13 @@ function leerBorrador(clave: string): BorradorPedido | null {
 function aplicarBorrador(base: ItemCuenta[], borrador: BorradorPedido | null): ItemCuenta[] {
   if (!borrador?.extras.length) return base;
   const resultado = base.map((it) => ({ ...it }));
-  for (const { producto, extra } of borrador.extras) {
+  for (const { producto, extra, detalles } of borrador.extras) {
     if (!producto?.id || !(extra > 0)) continue;
     const existente = resultado.find((it) => it.producto.id === producto.id);
-    if (existente) existente.cantidad += extra;
-    else resultado.push({ producto, cantidad: extra });
+    if (existente) {
+      existente.cantidad += extra;
+      if (detalles?.length) existente.detalles = detalles;
+    } else resultado.push({ producto, cantidad: extra, ...(detalles?.length ? { detalles } : {}) });
   }
   return resultado;
 }
@@ -794,7 +817,7 @@ function CuentaDeMesa({
   // Cada cambio actualiza el borrador; sin nada pendiente se borra.
   useEffect(() => {
     const extras = items
-      .map((it) => ({ producto: it.producto, extra: it.cantidad - (itemsIniciales.find((p) => p.producto.id === it.producto.id)?.cantidad || 0) }))
+      .map((it) => ({ producto: it.producto, extra: it.cantidad - (itemsIniciales.find((p) => p.producto.id === it.producto.id)?.cantidad || 0), ...(it.detalles?.length ? { detalles: it.detalles } : {}) }))
       .filter((x) => x.extra > 0);
     try {
       if (extras.length === 0) localStorage.removeItem(claveBorrador);
@@ -878,6 +901,15 @@ function CuentaDeMesa({
   // 🍛 Almuerzo del día con opciones publicadas hoy: primero se eligen las opciones
   // y van como nota (una línea por almuerzo) a la estación.
   const [almuerzoPendiente, setAlmuerzoPendiente] = useState<PanaderiaProducto | null>(null);
+  const [almuerzoEditando, setAlmuerzoEditando] = useState<{ n: number; texto: string } | null>(null);
+  const productoAlmuerzo = (): PanaderiaProducto => productos.find((x) => x.id === ALMUERZO_PRODUCTO_ID)
+    ?? ({ id: ALMUERZO_PRODUCTO_ID, nombre: 'ALMUERZO DEL DÍA', precio: menuDia?.precio || 0, categoriaId: '' } as PanaderiaProducto);
+  /** Quita el almuerzo de una persona (y baja la cantidad). */
+  const quitarAlmuerzo = (n: number) => setItems((prev) => prev
+    .map((it) => (it.producto.id === ALMUERZO_PRODUCTO_ID
+      ? { ...it, cantidad: it.cantidad - 1, detalles: (it.detalles ?? []).filter((d) => d.n !== n) }
+      : it))
+    .filter((it) => it.cantidad > 0));
   const menuDeHoy = !!menuDia && menuDia.fecha === hoyColombia() && menuDia.grupos.some((g) => g.opciones.length > 0);
   const agregar = (p: PanaderiaProducto) => {
     if (p.id === ALMUERZO_PRODUCTO_ID && menuDeHoy) { setAlmuerzoPendiente(p); return; }
@@ -887,12 +919,35 @@ function CuentaDeMesa({
     const p = almuerzoPendiente;
     if (!seguir) setAlmuerzoPendiente(null);
     if (!p) return;
-    // Numerado por persona: «1) Sopa: Ajiaco… | 2) Sopa: Sancocho…».
-    setNotasProducto((prev) => {
-      const previos = (prev[p.id] || '').split(' | ').map((x) => x.trim()).filter(Boolean);
-      return { ...prev, [p.id]: [...previos, `${previos.length + 1}) ${texto || 'Sin cambios'}`].join(' | ') };
-    });
-    agregarDirecto(p);
+    const textoFinal = texto || 'Como viene';
+    if (almuerzoEditando) {
+      // Cambio de una persona: mismo número, lo nuevo que eligió.
+      const n = almuerzoEditando.n;
+      setAlmuerzoEditando(null);
+      setItems((prev) => prev.map((it) => (it.producto.id === p.id
+        ? { ...it, detalles: (it.detalles ?? []).map((d) => (d.n === n ? { ...d, texto: textoFinal } : d)) }
+        : it)));
+    } else {
+      // Almuerzo nuevo: número siguiente al último de la mesa (incluye los ya enviados).
+      const yaEsta = items.some((it) => it.producto.id === p.id);
+      if (!yaEsta && hayEstaciones && destinoDe(p.id) === undefined) setItemAbierto(p.id);
+      setItems((prev) => {
+        const idx = prev.findIndex((it) => it.producto.id === p.id);
+        if (idx >= 0) {
+          const it = prev[idx];
+          const dets = it.detalles ?? [];
+          const n = Math.max(it.cantidad, 0, ...dets.map((d) => d.n)) + 1;
+          const copia = [...prev];
+          copia[idx] = { ...it, cantidad: it.cantidad + 1, detalles: [...dets, { n, texto: textoFinal }] };
+          return copia;
+        }
+        return [...prev, {
+          producto: { id: p.id, nombre: p.nombre, precio: Number(p.precio) || 0, codigo: p.codigo },
+          cantidad: 1,
+          detalles: [{ n: 1, texto: textoFinal }],
+        }];
+      });
+    }
     // Los adicionales se cobran como productos aparte en la misma cuenta.
     for (const a of adicionales) {
       const id = idProductoAdicional(a.nombre);
@@ -1008,12 +1063,15 @@ function CuentaDeMesa({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button onClick={() => { if (it.cantidad <= 1) setItemAbierto(null); cambiarCantidad(id, -1); }}
+                    <button onClick={() => {
+                      if (id === ALMUERZO_PRODUCTO_ID && it.detalles?.length) { quitarAlmuerzo(Math.max(...it.detalles.map((d) => d.n))); if (it.cantidad <= 1) setItemAbierto(null); return; }
+                      if (it.cantidad <= 1) setItemAbierto(null); cambiarCantidad(id, -1);
+                    }}
                       className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center active:scale-90 transition-transform">
                       <Minus className="w-4 h-4 text-slate-300" />
                     </button>
                     <span className="text-white font-black text-base w-8 text-center tabular-nums">{it.cantidad}</span>
-                    <button onClick={() => cambiarCantidad(id, 1)}
+                    <button onClick={() => (id === ALMUERZO_PRODUCTO_ID && menuDeHoy ? agregar(productoAlmuerzo()) : cambiarCantidad(id, 1))}
                       className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center active:scale-90 transition-transform">
                       <Plus className="w-4 h-4 text-white" />
                     </button>
@@ -1029,6 +1087,30 @@ function CuentaDeMesa({
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+
+                  {id === ALMUERZO_PRODUCTO_ID && !!it.detalles?.length && (
+                    <div className="space-y-1.5">
+                      {it.detalles.map((d) => (
+                        <div key={d.n} className="rounded-xl bg-slate-950 border border-slate-800 p-2 flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white text-xs font-black">Almuerzo {d.n}</p>
+                            <p className="text-slate-400 text-[11px] leading-snug whitespace-pre-line break-words">{d.texto}</p>
+                          </div>
+                          {menuDeHoy && (
+                            <button
+                              onClick={() => { setAlmuerzoEditando(d); setAlmuerzoPendiente(productoAlmuerzo()); }}
+                              className="h-8 px-2.5 rounded-lg bg-slate-800 text-slate-200 text-[11px] font-bold shrink-0"
+                            >
+                              Cambiar
+                            </button>
+                          )}
+                          <button onClick={() => quitarAlmuerzo(d.n)} className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-red-400 shrink-0" aria-label={`Quitar almuerzo ${d.n}`}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {esNuevo && notasProducto[id]?.trim() && notaAbierta !== id && (
                     <button onClick={() => setNotaAbierta(id)} className="block text-left text-amber-300 text-xs font-semibold break-words">
@@ -1174,8 +1256,9 @@ function CuentaDeMesa({
       <ElegirAlmuerzo
         abierto={!!almuerzoPendiente}
         menu={menuDia ?? null}
-        onCerrar={() => setAlmuerzoPendiente(null)}
+        onCerrar={() => { setAlmuerzoPendiente(null); setAlmuerzoEditando(null); }}
         onElegir={confirmarAlmuerzo}
+        editando={almuerzoEditando}
       />
 
       {/* Enviar */}

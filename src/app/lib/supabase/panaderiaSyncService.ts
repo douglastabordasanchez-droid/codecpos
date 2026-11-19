@@ -55,6 +55,8 @@ export interface PanaderiaMesa {
 export interface ItemCuenta {
   producto: { id: string; nombre: string; precio: number; codigo?: string };
   cantidad: number;
+  /** Almuerzo del día: uno por persona, con número fijo y lo que eligió (una parte por renglón). */
+  detalles?: Array<{ n: number; texto: string }>;
 }
 
 export interface CuentaMesa {

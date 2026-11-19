@@ -408,11 +408,13 @@ export function EditorAlmuerzo({
 // ── Selector del mesero ──────────────────────────────────────────────────────
 
 export function ElegirAlmuerzo({
-  abierto, menu, onCerrar, onElegir,
+  abierto, menu, onCerrar, onElegir, editando,
 }: {
   abierto: boolean; menu: MenuDelDia | null; onCerrar: () => void;
   /** seguir = true: la persona siguiente de la mesa pide otro almuerzo (la hoja queda abierta). */
   onElegir: (texto: string, adicionales: AdicionalAlmuerzo[], seguir: boolean) => void;
+  /** Cambiar un almuerzo ya pedido: su número y lo que tenía. */
+  editando?: { n: number; texto: string } | null;
 }) {
   const grupos = (menu?.grupos ?? []).filter((g) => g.opciones.length);
   const ofrecidos = menu?.adicionales ?? [];
@@ -426,7 +428,19 @@ export function ElegirAlmuerzo({
     setNota('');
     setExtras([]);
     // Si un grupo tiene una sola opción, va marcada de una vez.
-    setEleccion(Object.fromEntries(grupos.filter((g) => g.opciones.length === 1).map((g) => [g.nombre, g.opciones[0]])));
+    const base: Record<string, string> = Object.fromEntries(grupos.filter((g) => g.opciones.length === 1).map((g) => [g.nombre, g.opciones[0]]));
+    // Al cambiar un almuerzo, arranca con lo que la persona ya había elegido.
+    if (editando) {
+      for (const renglon of editando.texto.split('\n')) {
+        const i = renglon.indexOf(':');
+        if (i < 0) continue;
+        const parte = renglon.slice(0, i).trim();
+        const valor = renglon.slice(i + 1).trim();
+        if (parte === 'Nota') setNota(valor);
+        else if (grupos.some((g) => g.nombre === parte && g.opciones.includes(valor))) base[parte] = valor;
+      }
+    }
+    setEleccion(base);
   };
   if (abierto && !preparado) {
     limpiar();
@@ -442,7 +456,7 @@ export function ElegirAlmuerzo({
     const partes = grupos.filter((g) => eleccion[g.nombre]).map((g) => `${g.nombre}: ${eleccion[g.nombre]}`);
     if (elegidos.length) partes.push(`Adicional: ${elegidos.map((a) => a.nombre).join(', ')}`);
     if (nota.trim()) partes.push(`Nota: ${nota.trim()}`);
-    onElegir(partes.join(', '), elegidos, seguir);
+    onElegir(partes.join('\n'), elegidos, seguir);
     if (seguir) {
       setAgregados((n) => n + 1);
       limpiar();
@@ -454,7 +468,7 @@ export function ElegirAlmuerzo({
     <Hoja abierta={abierto} onCerrar={onCerrar}>
       <div className="px-5 pt-4 pb-3 border-b border-slate-800 shrink-0 flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-white font-black text-lg leading-tight">Almuerzo {agregados + 1}</p>
+          <p className="text-white font-black text-lg leading-tight">{editando ? `Cambiar almuerzo ${editando.n}` : `Almuerzo ${agregados + 1}`}</p>
           <p className="text-slate-400 text-xs">
             Toca una opción de cada parte · {money(menu?.precio || 0)}
             {agregados > 0 ? ` · ya van ${agregados}` : ''}
@@ -532,16 +546,16 @@ export function ElegirAlmuerzo({
         </div>
       </div>
       <div className="px-5 py-3 border-t border-slate-800 shrink-0 flex gap-2">
-        <button
+        {!editando && <button
           onClick={() => confirmar(true)}
           className="h-14 px-4 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm font-black flex items-center gap-1.5 shrink-0"
         >
           <Plus className="w-5 h-5" /> Otro
-        </button>
+        </button>}
         <Button onClick={() => confirmar(false)} className="flex-1 min-w-0 h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600 flex items-center justify-between px-4">
           <span className="flex items-center min-w-0">
             <Check className="w-5 h-5 mr-2 shrink-0" />
-            <span className="truncate">{faltan > 0 ? `Agregar (faltan ${faltan})` : agregados > 0 ? 'Agregar y terminar' : 'Agregar almuerzo'}</span>
+            <span className="truncate">{editando ? 'Guardar cambio' : faltan > 0 ? `Agregar (faltan ${faltan})` : agregados > 0 ? 'Agregar y terminar' : 'Agregar almuerzo'}</span>
           </span>
           <span className="tabular-nums font-black shrink-0 ml-2">{money(total)}</span>
         </Button>

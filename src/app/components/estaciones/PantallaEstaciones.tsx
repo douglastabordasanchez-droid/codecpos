@@ -304,7 +304,7 @@ export function PantallaEstaciones({ clienteId, esAdmin, tienda, onSalir }: Prop
                     {c.items.map((it, i) => (
                       <li key={i} className="flex gap-3 text-white text-lg">
                         <span className="font-black w-8 text-right" style={{ color: estacion.color }}>{it.cantidad}×</span>
-                        <span className="font-semibold">{it.nombre}{it.nota ? <span className="block text-sm text-amber-500">{it.nota}</span> : null}</span>
+                        <span className="font-semibold">{it.nombre}{it.nota ? <span className="block text-sm text-amber-500 whitespace-pre-line">{it.nota}</span> : null}</span>
                       </li>
                     ))}
                   </ul>
