@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { obtenerInventarioUniversal, productoEnSede } from '../../app/lib/inventarioSede';
 import { useNavigate } from 'react-router';
-import { Plus, Search, Package, Upload } from 'lucide-react';
+import { Plus, Search, Package, Upload, PackagePlus } from 'lucide-react';
 import { Input } from '../../app/components/ui/input';
 import { Button } from '../../app/components/ui/button';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
@@ -99,6 +99,15 @@ export default function InventarioPage() {
           <p className="text-slate-400 text-sm">{productos.length} productos</p>
         </div>
         <div className="flex items-center gap-2">
+        {!soloAgregar(empleado) && (
+          <button
+            onClick={() => navigate('/inventario/entrada')}
+            className="h-11 px-3 rounded-full bg-emerald-600 text-[#fff] text-sm font-bold inline-flex items-center gap-1.5"
+            title="Sumar al inventario lo que llegó del proveedor"
+          >
+            <PackagePlus className="w-4 h-4" /> Entrada
+          </button>
+        )}
         {esAdmin && (
           <button
             onClick={() => navigate('/inventario/importar')}

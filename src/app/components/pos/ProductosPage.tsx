@@ -27,6 +27,7 @@ import { useDebounce } from '../../hooks/useDebounce';
 import { ImportMasivaCSV } from './ImportMasivaCSV';
 import { ModalNuevoProducto } from './ModalNuevoProducto';
 import { EditProductModal } from './EditProductModal';
+import { ModalEntradaMercancia } from './ModalEntradaMercancia';
 import { ModalMargenGanancia } from './ModalMargenGanancia';
 import { IngredienteEditorModal } from './IngredienteEditorModal';
 import { EVENTO_RECETARIO_ACTUALIZADO } from '../../lib/recetarioLocal';
@@ -98,6 +99,7 @@ export default function ProductosPage() {
   const debouncedSearchTerm = useDebounce(searchTerm, 200);
   const [loading, setLoading] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showEntradaModal, setShowEntradaModal] = useState(false);
   const [showNewProductModal, setShowNewProductModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -590,6 +592,15 @@ export default function ProductosPage() {
               )}
             </div>
             
+            <Button
+              onClick={() => setShowEntradaModal(true)}
+              className="rounded-2xl bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700"
+              title="Sumar al inventario lo que llegó del proveedor"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Entrada
+            </Button>
+
             <Button
               onClick={() => setShowImportModal(true)}
               className="rounded-2xl bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
@@ -1456,6 +1467,13 @@ export default function ProductosPage() {
         isOpen={showNewProductModal}
         onClose={() => setShowNewProductModal(false)}
         onProductCreated={handleProductCreated}
+      />
+
+      <ModalEntradaMercancia
+        darkMode={darkMode}
+        isOpen={showEntradaModal}
+        onClose={() => setShowEntradaModal(false)}
+        onGuardado={handleProductUpdated}
       />
 
       <EditProductModal
