@@ -25,6 +25,13 @@
 [data-theme='light'] .bg-slate-950\/60 { background-color: #f3f1ee !important; }
 [data-theme='light'] .bg-slate-950\/50 { background-color: rgb(243 241 238 / 0.85) !important; }
 [data-theme='light'] .bg-slate-900\/40 { background-color: rgb(255 255 255 / 0.7) !important; }
+/* Caja abierta del pedido del mesero (burbuja tocada). */
+[data-theme='light'] .bg-slate-900\/80 { background-color: #ffffff !important; box-shadow: 0 8px 24px -14px rgba(28, 25, 23, 0.25); }
+/* Fondos ámbar suaves (burbuja que falta estación, nota marcada): en claro se ven como crema. */
+[data-theme='light'] .bg-amber-500\/10 { background-color: #fff7ed !important; }
+[data-theme='light'] .bg-amber-500\/20 { background-color: #ffedd5 !important; }
+[data-theme='light'] .border-amber-500\/60 { border-color: #f59e0b !important; }
+[data-theme='light'] .text-amber-300 { color: #b45309 !important; }
 [data-theme='light'] .bg-slate-800 { background-color: #ece8e3 !important; }
 [data-theme='light'] .bg-slate-800\/80 { background-color: rgb(236 232 227 / 0.8) !important; }
 [data-theme='light'] .bg-slate-950\/80 { background-color: rgb(243 241 238 / 0.9) !important; }
