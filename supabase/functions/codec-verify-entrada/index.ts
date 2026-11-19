@@ -49,6 +49,19 @@ async function leerTexto(req: Request, url: URL): Promise<string> {
   if (desdeUrl) return desdeUrl;
   if (req.method !== 'POST') return '';
   const tipo = req.headers.get('content-type') || '';
+  // Atajos de iPhone con «Formulario» manda multipart/form-data. Se toma el campo
+  // «texto» (o cualquier campo con texto, aunque no le hayan puesto nombre).
+  if (tipo.includes('multipart/form-data')) {
+    try {
+      const f = await req.formData();
+      const valores = [...f.entries()].map(([, v]) => (typeof v === 'string' ? v : '')).filter((v) => v.trim());
+      const cuerpo = String(f.get('texto') || f.get('text') || f.get('mensaje') || '') || valores.join(' — ');
+      const titulo = String(f.get('titulo') || f.get('title') || '');
+      return [titulo, cuerpo].filter(Boolean).join(' — ');
+    } catch {
+      return '';
+    }
+  }
   const crudo = await req.text();
   if (!crudo) return '';
   if (tipo.includes('application/json') || /^\s*[{[]/.test(crudo)) {
@@ -63,7 +76,9 @@ async function leerTexto(req: Request, url: URL): Promise<string> {
   if (tipo.includes('application/x-www-form-urlencoded')) {
     const f = new URLSearchParams(crudo);
     // La notificación de iOS 27 se envía como título + mensaje.
-    const cuerpo = f.get('texto') || f.get('text') || f.get('mensaje') || '';
+    // Si el campo quedó sin nombre, se toma cualquier valor con texto.
+    const cualquiera = [...f.values()].filter((v) => v.trim()).join(' — ');
+    const cuerpo = f.get('texto') || f.get('text') || f.get('mensaje') || cualquiera;
     const titulo = f.get('titulo') || f.get('title') || '';
     return [titulo, cuerpo].filter(Boolean).join(' — ') || crudo;
   }
