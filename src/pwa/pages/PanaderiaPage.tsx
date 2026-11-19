@@ -565,6 +565,8 @@ export default function PanaderiaPage() {
               // paguen en caja. El administrador sí puede entrar.
               const atiende = ocupada ? cuenta?.meseroNombre : undefined;
               const deOtro = !!atiende && !!empleado && atiende !== empleado.nombre_completo && !esAdmin;
+              // Pedido marcado en este celular que todavía no se envió.
+              const sinEnviar = !deOtro && !!leerBorrador(`codecpos_pedido_sin_enviar_${mesa.id}`)?.extras.length;
               return (
                 <motion.button
                   key={mesa.id}
@@ -588,6 +590,11 @@ export default function PanaderiaPage() {
                       : 'bg-slate-900/70 border-slate-800'
                   }`}
                 >
+                  {sinEnviar && (
+                    <span className="absolute top-1.5 left-1.5 text-[8px] font-black uppercase bg-red-600 text-[#fff] px-1.5 py-0.5 rounded-full animate-pulse">
+                      Sin enviar
+                    </span>
+                  )}
                   {comanda && (
                     <span className="absolute top-1.5 right-1.5 text-[8px] font-black uppercase bg-slate-950/80 text-white px-1.5 py-0.5 rounded-full">
                       {ESTADO_COMANDA_LABEL[comanda.estado] || comanda.estado}
@@ -689,6 +696,42 @@ export default function PanaderiaPage() {
 /** Notas de este envío: por producto (cómo lo quiere el cliente) y una general para la estación. */
 type NotasPedido = { porProducto: Record<string, string>; general: string };
 
+/** Pedido marcado y aún no enviado, guardado en el celular por mesa. */
+type BorradorPedido = {
+  ts: number;
+  extras: Array<{ producto: ItemCuenta['producto']; extra: number }>;
+  destinos: Record<string, string | null>;
+  notas: Record<string, string>;
+  notaGeneral: string;
+};
+const BORRADOR_VIGENCIA_MS = 8 * 60 * 60 * 1000;
+
+function leerBorrador(clave: string): BorradorPedido | null {
+  try {
+    const b = JSON.parse(localStorage.getItem(clave) || 'null') as BorradorPedido | null;
+    if (!b || !Array.isArray(b.extras) || Date.now() - Number(b.ts) > BORRADOR_VIGENCIA_MS) {
+      localStorage.removeItem(clave);
+      return null;
+    }
+    return b;
+  } catch {
+    return null;
+  }
+}
+
+/** Suma lo no enviado sobre la cuenta actual de la mesa (lo ya enviado manda). */
+function aplicarBorrador(base: ItemCuenta[], borrador: BorradorPedido | null): ItemCuenta[] {
+  if (!borrador?.extras.length) return base;
+  const resultado = base.map((it) => ({ ...it }));
+  for (const { producto, extra } of borrador.extras) {
+    if (!producto?.id || !(extra > 0)) continue;
+    const existente = resultado.find((it) => it.producto.id === producto.id);
+    if (existente) existente.cantidad += extra;
+    else resultado.push({ producto, cantidad: extra });
+  }
+  return resultado;
+}
+
 /** Atajos de nota según el producto: los de huevo ofrecen cómo prepararlos. */
 function atajosDeNota(p?: { nombre?: string; descripcion?: string }): string[] {
   const texto = `${p?.nombre || ''} ${p?.descripcion || ''}`.toLowerCase();
@@ -711,10 +754,19 @@ function CuentaDeMesa({
   onGuardar: (items: ItemCuenta[], destinos: Record<string, string | null>, notas: NotasPedido) => void;
   menuDia?: MenuDelDia | null;
 }) {
-  const [items, setItems] = useState<ItemCuenta[]>(itemsIniciales);
+  // 💾 Lo marcado y aún no enviado se guarda en el celular: si la página se recarga
+  // sin querer (o se cierra la mesa), al volver a abrirla sigue ahí. Solo se guarda
+  // lo nuevo (lo que suma sobre la cuenta ya enviada), por 8 horas.
+  const claveBorrador = `codecpos_pedido_sin_enviar_${mesa.id}`;
+  const [borrador] = useState<BorradorPedido | null>(() => leerBorrador(claveBorrador));
+  const [items, setItems] = useState<ItemCuenta[]>(() => aplicarBorrador(itemsIniciales, borrador));
   // Notas de este envío: por producto nuevo y una general para la estación.
-  const [notasProducto, setNotasProducto] = useState<Record<string, string>>({});
-  const [notaGeneral, setNotaGeneral] = useState('');
+  const [notasProducto, setNotasProducto] = useState<Record<string, string>>(() => borrador?.notas || {});
+  const [notaGeneral, setNotaGeneral] = useState(() => borrador?.notaGeneral || '');
+  useEffect(() => {
+    if (borrador?.extras.length) toast.info('Recuperamos lo que no se había enviado', { description: 'Revísalo y toca Enviar pedido.' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [notaAbierta, setNotaAbierta] = useState<string | null>(null);
   // Pedido en burbujas: solo una se abre a la vez para no tapar el menú.
   const [itemAbierto, setItemAbierto] = useState<string | null>(null);
@@ -726,8 +778,18 @@ function CuentaDeMesa({
     return { ...prev, [productoId]: siguiente.join(', ') };
   });
   // Estación elegida para cada producto nuevo en este envío (null = solo cuenta).
-  const [destinos, setDestinos] = useState<Record<string, string | null>>({});
+  const [destinos, setDestinos] = useState<Record<string, string | null>>(() => borrador?.destinos || {});
   const hayEstaciones = estaciones.length > 0;
+  // Cada cambio actualiza el borrador; sin nada pendiente se borra.
+  useEffect(() => {
+    const extras = items
+      .map((it) => ({ producto: it.producto, extra: it.cantidad - (itemsIniciales.find((p) => p.producto.id === it.producto.id)?.cantidad || 0) }))
+      .filter((x) => x.extra > 0);
+    try {
+      if (extras.length === 0) localStorage.removeItem(claveBorrador);
+      else localStorage.setItem(claveBorrador, JSON.stringify({ ts: Date.now(), extras, destinos, notas: notasProducto, notaGeneral } satisfies BorradorPedido));
+    } catch { /* sin almacenamiento: no se guarda */ }
+  }, [items, itemsIniciales, destinos, notasProducto, notaGeneral, claveBorrador]);
   // 🔮 Predicción de estación para productos que nunca se han pedido: se aprende de
   // lo que el negocio ya hizo. Primero productos con el mismo nombre base
   // («AROMÁTICA DE FRUTAS» → «AROMÁTICA DE PANELA»), luego la estación más usada
@@ -854,6 +916,7 @@ function CuentaDeMesa({
     const porProducto: Record<string, string> = {};
     for (const id of nuevos) if (notasProducto[id]?.trim()) porProducto[id] = notasProducto[id].trim();
     await onGuardar(items, elegidos, { porProducto, general: notaGeneral });
+    try { localStorage.removeItem(claveBorrador); } catch { /* ignorar */ }
     setEnviando(false);
     onCerrar();
   };
