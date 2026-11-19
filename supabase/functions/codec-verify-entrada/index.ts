@@ -85,7 +85,16 @@ Deno.serve(async (req: Request) => {
   }
 
   const texto = (await leerTexto(req, url)).replace(/\s+/g, ' ').trim().slice(0, 1000);
-  if (!texto) return json({ ok: false, mensaje: 'No llegó el texto del mensaje.' }, 400);
+  if (!texto) {
+    // Constancia del intento vacío (se ve en Configuración > Codec Verify): así se nota
+    // cuando el atajo del iPhone corre pero no manda el texto de la notificación.
+    const tipo = (req.headers.get('content-type') || 'sin tipo').slice(0, 80);
+    await admin.from('codec_verify_eventos').insert({
+      cliente_id: negocio.id, origen: 'iphone', entidad: url.searchParams.get('e') || 'otro', resultado: 'IGNORADO',
+      detalle: `Llegó vacío (${req.method}, ${tipo}). Revisa en el atajo: Formulario, clave «texto» y valor la variable Notificación.`, texto: '',
+    }).then(() => {}, () => {});
+    return json({ ok: false, mensaje: 'No llegó el texto del mensaje.' }, 400);
+  }
   const entidad = reconocerBanco(texto, url.searchParams.get('e'));
   const referencia = `[iPhone] ${texto}`.slice(0, 300);
 
