@@ -403,6 +403,22 @@ export default function VenderPage() {
   };
 
   /** Busca por código de barras exacto (lector USB/Bluetooth o cámara) y lo agrega. */
+  // Código escaneado que el negocio no tiene: se abre «Producto nuevo» con el código
+  // (y el nombre del catálogo de Codec, si existe). Con productos en el carrito se
+  // pregunta primero, porque salir de Vender deja la venta sin terminar.
+  const carritoConItemsRef = useRef(false);
+  carritoConItemsRef.current = Object.keys(carrito).length > 0;
+  const codigoNoEncontrado = (codigo: string) => {
+    const abrir = () => navigate('/inventario/nuevo', { state: { codigoBarras: codigo } });
+    if (!esAdmin) { toast.error(`No hay un producto con el código ${codigo}`); return; }
+    if (!carritoConItemsRef.current) { abrir(); return; }
+    toast.error(`No hay un producto con el código ${codigo}`, {
+      description: 'Si lo creas ahora, la venta que llevas se pierde.',
+      action: { label: 'Crear producto', onClick: abrir },
+      duration: 8000,
+    });
+  };
+
   const agregarPorCodigo = (codigo: string) => {
     const limpio = codigo.trim();
     if (!limpio) return false;
@@ -427,7 +443,7 @@ export default function VenderPage() {
       ultimo = ahora;
       if (e.key === 'Enter') {
         if (buffer.length >= 4) {
-          if (!agregarPorCodigo(buffer)) toast.error(`No hay un producto con el código ${buffer}`);
+          if (!agregarPorCodigo(buffer)) codigoNoEncontrado(buffer);
           e.preventDefault();
         }
         buffer = '';
@@ -724,7 +740,7 @@ export default function VenderPage() {
             const codigo = result.getText();
             controls.stop();
             setMostrarScanner(false);
-            if (!agregarPorCodigo(codigo)) setBusqueda(codigo);
+            if (!agregarPorCodigo(codigo)) codigoNoEncontrado(codigo);
           }
         })
         .catch(() => setMostrarScanner(false));

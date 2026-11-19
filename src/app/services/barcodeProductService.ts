@@ -9,6 +9,7 @@
  */
 
 import { toast } from 'sonner';
+import { getSupabaseClient } from '../lib/supabase/config';
 
 export interface ProductoExternoInfo {
   codigoBarras: string;
@@ -41,6 +42,10 @@ export async function buscarProductoPorCodigoBarras(
   
   // Intentar en orden de prioridad
   let resultado: ProductoExternoInfo | null = null;
+
+  // 0. Catálogo interno de Codec (productos colombianos que otro negocio ya registró).
+  resultado = await buscarEnCatalogoCodec(codigoBarras);
+  if (resultado) return resultado;
   
   // 1. Intentar UPC Item DB (muy completa y gratuita)
   resultado = await buscarEnUPCItemDB(codigoBarras);
@@ -60,6 +65,23 @@ export async function buscarProductoPorCodigoBarras(
   
   console.log('❌ No se encontró información del código:', codigoBarras);
   return null;
+}
+
+/**
+ * Catálogo interno de Codec (migración 0160): solo nombre, marca y categoría
+ * de un código exacto; nunca precios ni de qué negocio vino.
+ */
+async function buscarEnCatalogoCodec(codigoBarras: string): Promise<ProductoExternoInfo | null> {
+  try {
+    const client = getSupabaseClient();
+    if (!client || !/^\d{12,14}$/.test(codigoBarras.trim())) return null;
+    const { data, error } = await client.rpc('consultar_catalogo_codigo', { p_codigo: codigoBarras.trim() });
+    const fila = Array.isArray(data) ? data[0] : null;
+    if (error || !fila?.nombre) return null;
+    return { codigoBarras, nombre: fila.nombre, marca: fila.marca || undefined, categoria: fila.categoria || undefined };
+  } catch {
+    return null;
+  }
 }
 
 /**

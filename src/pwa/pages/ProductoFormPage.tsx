@@ -133,7 +133,17 @@ export default function ProductoFormPage() {
   useEffect(() => {
     if (esNuevo) {
       const codigoPrellenado = (location.state as { codigoBarras?: string } | null)?.codigoBarras;
-      if (codigoPrellenado) setForm((f) => ({ ...f, codigo_barras: codigoPrellenado }));
+      if (codigoPrellenado) {
+        setForm((f) => ({ ...f, codigo_barras: codigoPrellenado }));
+        // Catálogo interno de Codec (0160): sugiere el nombre si otro negocio ya lo registró.
+        void getSupabaseClient()?.rpc('consultar_catalogo_codigo', { p_codigo: codigoPrellenado })
+          .then(({ data }) => {
+            const fila = Array.isArray(data) ? data[0] as { nombre?: string; categoria?: string } | undefined : undefined;
+            if (!fila?.nombre) return;
+            setForm((f) => ({ ...f, nombre: f.nombre || fila.nombre || '', categoria: f.categoria || fila.categoria || '' }));
+            toast.success('Encontramos este producto', { description: 'Revisa el nombre y ponle el precio.' });
+          });
+      }
       // Con el IVA del negocio «a todos los productos», el producto nuevo nace con esa tarifa.
       if (empleado) {
         leerConfigIva(empleado.cliente_id)
