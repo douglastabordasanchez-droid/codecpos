@@ -14,6 +14,9 @@ import {
   GRUPOS_SUGERIDOS, hoyColombia, publicarMenuDelDia, type GrupoAlmuerzo, type MenuDelDia,
 } from '../../app/lib/supabase/menuDelDiaService';
 
+/** Pedidos frecuentes del almuerzo; el resto se escribe a mano. */
+const ATAJOS_NOTA_ALMUERZO = ['Sin sopa', 'Sin ensalada', 'Sin principio', 'Solo seco', 'Adicional de arroz', 'Adicional de huevo', 'Para llevar'];
+
 const money = (v: number) => `$${Math.round(v || 0).toLocaleString('es-CO')}`;
 
 function Hoja({ abierta, onCerrar, children }: { abierta: boolean; onCerrar: () => void; children: React.ReactNode }) {
@@ -221,8 +224,10 @@ export function ElegirAlmuerzo({
 }) {
   const grupos = (menu?.grupos ?? []).filter((g) => g.opciones.length);
   const [eleccion, setEleccion] = useState<Record<string, string>>({});
+  const [nota, setNota] = useState('');
   const [preparado, setPreparado] = useState(false);
   if (abierto && !preparado) {
+    setNota('');
     // Si un grupo tiene una sola opción, va marcada de una vez.
     setEleccion(Object.fromEntries(grupos.filter((g) => g.opciones.length === 1).map((g) => [g.nombre, g.opciones[0]])));
     setPreparado(true);
@@ -231,7 +236,9 @@ export function ElegirAlmuerzo({
 
   const faltan = grupos.filter((g) => !eleccion[g.nombre]).length;
   const confirmar = () => {
-    onElegir(grupos.filter((g) => eleccion[g.nombre]).map((g) => `${g.nombre}: ${eleccion[g.nombre]}`).join(', '));
+    const partes = grupos.filter((g) => eleccion[g.nombre]).map((g) => `${g.nombre}: ${eleccion[g.nombre]}`);
+    if (nota.trim()) partes.push(`Nota: ${nota.trim()}`);
+    onElegir(partes.join(', '));
   };
 
   return (
@@ -263,6 +270,33 @@ export function ElegirAlmuerzo({
             </div>
           </div>
         ))}
+
+        <div>
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-1.5">Nota (opcional)</p>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {ATAJOS_NOTA_ALMUERZO.map((a) => {
+              const marcado = nota.split(',').map((x) => x.trim()).includes(a);
+              return (
+                <button
+                  key={a}
+                  onClick={() => setNota((prev) => {
+                    const partes = prev.split(',').map((x) => x.trim()).filter(Boolean);
+                    return (partes.includes(a) ? partes.filter((x) => x !== a) : [...partes, a]).join(', ');
+                  })}
+                  className={`min-h-9 px-3 rounded-full text-xs font-bold border ${marcado ? 'bg-amber-500 border-transparent text-[#fff]' : 'bg-slate-900 border-slate-700 text-slate-300'}`}
+                >
+                  {a}
+                </button>
+              );
+            })}
+          </div>
+          <Input
+            value={nota}
+            onChange={(e) => setNota(e.target.value.slice(0, 160))}
+            placeholder="Ej: adicional de huevo, sin ensalada"
+            className="h-11 bg-slate-900 border-slate-700 text-white text-sm"
+          />
+        </div>
       </div>
       <div className="px-5 py-3 border-t border-slate-800 shrink-0">
         <Button onClick={confirmar} className="w-full h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600">
