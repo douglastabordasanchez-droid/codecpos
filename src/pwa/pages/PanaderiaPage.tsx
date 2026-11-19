@@ -666,11 +666,51 @@ function CuentaDeMesa({
   // Estación elegida para cada producto nuevo en este envío (null = solo cuenta).
   const [destinos, setDestinos] = useState<Record<string, string | null>>({});
   const hayEstaciones = estaciones.length > 0;
+  // 🔮 Predicción de estación para productos que nunca se han pedido: se aprende de
+  // lo que el negocio ya hizo. Primero productos con el mismo nombre base
+  // («AROMÁTICA DE FRUTAS» → «AROMÁTICA DE PANELA»), luego la estación más usada
+  // en su categoría. Lo que el mesero confirme queda aprendido para ese producto.
+  const prediccion = useMemo(() => {
+    const valida = (id: string | null | undefined) => id === null || (!!id && estaciones.some((e) => e.id === id));
+    const palabraBase = (nombre: string) => (nombre || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+      .split(/[^a-z0-9ñ]+/).find((w) => w.length >= 3 && !['de', 'del', 'con', 'los', 'las', 'para', 'por'].includes(w)) || '';
+    const porPalabra = new Map<string, Map<string, number>>();
+    const porCategoria = new Map<string, Map<string, number>>();
+    const sumar = (mapa: Map<string, Map<string, number>>, clave: string, destino: string) => {
+      if (!clave) return;
+      const conteo = mapa.get(clave) || new Map<string, number>();
+      conteo.set(destino, (conteo.get(destino) || 0) + 1);
+      mapa.set(clave, conteo);
+    };
+    for (const p of productos) {
+      const d = aprendidas[p.id];
+      if (d === undefined || !valida(d)) continue;
+      const clave = d === null ? 'solo' : d;
+      sumar(porPalabra, palabraBase(p.nombre), clave);
+      sumar(porCategoria, p.categoriaId || '', clave);
+    }
+    // Gana la estación con más productos, siempre que sea clara (más de la mitad).
+    const ganador = (conteo?: Map<string, number>): string | null | undefined => {
+      if (!conteo) return undefined;
+      const total = [...conteo.values()].reduce((a, b) => a + b, 0);
+      const [mejor, n] = [...conteo.entries()].sort((a, b) => b[1] - a[1])[0] || [];
+      if (!mejor || n * 2 <= total) return undefined;
+      return mejor === 'solo' ? null : mejor;
+    };
+    return (producto?: PanaderiaProducto): string | null | undefined => {
+      if (!producto) return undefined;
+      // «Solo cuenta» (null) también es una predicción válida: no se confunde con «no sé».
+      const porNombre = ganador(porPalabra.get(palabraBase(producto.nombre)));
+      return porNombre !== undefined ? porNombre : ganador(porCategoria.get(producto.categoriaId || ''));
+    };
+  }, [productos, aprendidas, estaciones]);
+
   const destinoDe = (productoId: string): string | null | undefined => {
     if (productoId in destinos) return destinos[productoId];
     const aprendida = aprendidas[productoId];
     if (aprendida === null) return null;
-    return aprendida && estaciones.some((e) => e.id === aprendida) ? aprendida : undefined;
+    if (aprendida && estaciones.some((e) => e.id === aprendida)) return aprendida;
+    return prediccion(productos.find((p) => p.id === productoId));
   };
   // Lo que se va a enviar: productos nuevos o con más cantidad que lo guardado.
   const nuevos = useMemo(() => new Set(items
