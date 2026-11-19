@@ -59,6 +59,8 @@ import {
 } from '../lib/comandasAutorizadas';
 import { EscanerTiendaQR, type QRPayloadTienda } from '../components/EscanerTiendaQR';
 import { SucursalFiltro } from '../components/SucursalFiltro';
+import { TarjetaAlmuerzo, EditorAlmuerzo, ElegirAlmuerzo } from '../components/AlmuerzoDelDia';
+import { obtenerMenuDelDia, hoyColombia, ALMUERZO_PRODUCTO_ID, type MenuDelDia } from '../../app/lib/supabase/menuDelDiaService';
 import {
   type Estacion, listarEstaciones, suscribirEstaciones, estacionesAprendidas, recordarEstaciones,
 } from '../../app/lib/supabase/estacionesService';
@@ -139,6 +141,9 @@ export default function PanaderiaPage() {
   // 🍳 Comanda más reciente por mesa — para que el mesero vea sin preguntar
   // si cocina/bar ya la está preparando o ya está lista para servir.
   const [comandasPorMesa, setComandasPorMesa] = useState<Record<string, Comanda>>({});
+  // 🍛 Almuerzo del día: lo publica el administrador; el mesero elige opciones al pedirlo.
+  const [menuDia, setMenuDia] = useState<MenuDelDia | null>(null);
+  const [editorAlmuerzo, setEditorAlmuerzo] = useState(false);
   const [permisoAvisos, setPermisoAvisos] = useState(() => permisoAvisosPedidos());
   const [audioAvisosActivo, setAudioAvisosActivo] = useState(() => audioAvisosPedidosActivo());
   const [preferenciasAvisos, setPreferenciasAvisos] = useState(() => obtenerPreferenciasAvisosPedidos());
@@ -196,6 +201,7 @@ export default function PanaderiaPage() {
       setProductos(catalogo.productos);
       setMesas(catalogo.mesas);
       setCuentas(Object.fromEntries(listaCuentas.map((c) => [c.mesaLocalId, c])));
+      obtenerMenuDelDia(empleado.cliente_id).then(setMenuDia).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cargar el salón');
     } finally {
@@ -224,6 +230,7 @@ export default function PanaderiaPage() {
       if (Date.now() - ultimaEscrituraRef.current < 6000) return;
       setCuentas(Object.fromEntries(listaCuentas.map((c) => [c.mesaLocalId, c])));
       setComandasPorMesa(Object.fromEntries(comandas.map((c) => [c.mesaLocalId, c])));
+      obtenerMenuDelDia(empleado.cliente_id).then(setMenuDia).catch(() => {});
     } catch { /* sin conexión: se reintenta en el próximo turno */ }
   }, [empleado?.cliente_id, tiendaEfectiva]);
   useEffect(() => {
@@ -523,6 +530,10 @@ export default function PanaderiaPage() {
         </motion.div>
       </div>
 
+      {!cargando && empleado && (
+        <TarjetaAlmuerzo menu={menuDia} esAdmin={esAdmin} onEditar={() => setEditorAlmuerzo(true)} />
+      )}
+
       {/* ── Salón ── */}
       {cargando ? (
         <div className="flex items-center justify-center gap-2 py-12">
@@ -653,11 +664,22 @@ export default function PanaderiaPage() {
                 estaciones={estaciones.filter((e) => e.activa)}
                 aprendidas={aprendidas}
                 onGuardar={(items, destinos, notas) => guardar(mesaAbierta, items, destinos, notas)}
+                menuDia={menuDia}
               />
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {empleado && esAdmin && (
+        <EditorAlmuerzo
+          abierto={editorAlmuerzo}
+          clienteId={empleado.cliente_id}
+          menu={menuDia}
+          onCerrar={() => setEditorAlmuerzo(false)}
+          onPublicado={() => { obtenerMenuDelDia(empleado.cliente_id).then(setMenuDia).catch(() => {}); void cargar(); }}
+        />
+      )}
     </div>
   );
 }
@@ -677,7 +699,7 @@ function atajosDeNota(p?: { nombre?: string; descripcion?: string }): string[] {
 }
 
 function CuentaDeMesa({
-  mesa, items: itemsIniciales, categorias, productos, estaciones, aprendidas, onCerrar, onGuardar,
+  mesa, items: itemsIniciales, categorias, productos, estaciones, aprendidas, onCerrar, onGuardar, menuDia,
 }: {
   mesa: PanaderiaMesa;
   items: ItemCuenta[];
@@ -687,6 +709,7 @@ function CuentaDeMesa({
   aprendidas: Record<string, string | null>;
   onCerrar: () => void;
   onGuardar: (items: ItemCuenta[], destinos: Record<string, string | null>, notas: NotasPedido) => void;
+  menuDia?: MenuDelDia | null;
 }) {
   const [items, setItems] = useState<ItemCuenta[]>(itemsIniciales);
   // Notas de este envío: por producto nuevo y una general para la estación.
@@ -779,7 +802,24 @@ function CuentaDeMesa({
     });
   }, [productos, catActiva, busqueda]);
 
+  // 🍛 Almuerzo del día con opciones publicadas hoy: primero se eligen las opciones
+  // y van como nota (una línea por almuerzo) a la estación.
+  const [almuerzoPendiente, setAlmuerzoPendiente] = useState<PanaderiaProducto | null>(null);
+  const menuDeHoy = !!menuDia && menuDia.fecha === hoyColombia() && menuDia.grupos.some((g) => g.opciones.length > 0);
   const agregar = (p: PanaderiaProducto) => {
+    if (p.id === ALMUERZO_PRODUCTO_ID && menuDeHoy) { setAlmuerzoPendiente(p); return; }
+    agregarDirecto(p);
+  };
+  const confirmarAlmuerzo = (texto: string) => {
+    const p = almuerzoPendiente;
+    setAlmuerzoPendiente(null);
+    if (!p) return;
+    const previos = (notasProducto[p.id] || '').split(' | ').map((x) => x.trim()).filter(Boolean);
+    const numero = previos.length + 1;
+    if (texto) setNotasProducto((prev) => ({ ...prev, [p.id]: [...previos, `${numero}) ${texto}`].join(' | ') }));
+    agregarDirecto(p);
+  };
+  const agregarDirecto = (p: PanaderiaProducto) => {
     const yaEsta = items.some((it) => it.producto.id === p.id);
     if (!yaEsta && hayEstaciones && destinoDe(p.id) === undefined) setItemAbierto(p.id);
     setItems((prev) => {
@@ -1039,6 +1079,13 @@ function CuentaDeMesa({
           </div>
         )}
       </div>
+
+      <ElegirAlmuerzo
+        abierto={!!almuerzoPendiente}
+        menu={menuDia ?? null}
+        onCerrar={() => setAlmuerzoPendiente(null)}
+        onElegir={confirmarAlmuerzo}
+      />
 
       {/* Enviar */}
       <div className="px-4 py-2.5 border-t border-slate-800 bg-slate-950 shrink-0 space-y-2">

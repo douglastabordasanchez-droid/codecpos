@@ -132,9 +132,12 @@ export async function pushCatalogoPanaderia(datos: {
     if (error) throw new Error(error.message);
   }
 
-  if (datos.productos.length > 0) {
+  // El almuerzo del día lo maneja el administrador desde la web (menuDelDiaService):
+  // una caja nunca lo sube, para no pisar el precio y las opciones de hoy.
+  const productosPropios = datos.productos.filter((p) => p.id !== 'almuerzo-del-dia');
+  if (productosPropios.length > 0) {
     const { error } = await client.from('panaderia_productos').upsert(
-      datos.productos.map((p) => ({
+      productosPropios.map((p) => ({
         cliente_id: clienteId,
         local_id: p.id,
         categoria_local_id: p.categoriaId || null,
@@ -561,15 +564,17 @@ export async function reemplazarMenuAlimentosEnNube(
   const { client, clienteId } = c;
   await pushCatalogoPanaderia({ categorias, productos, mesas: [] });
   // Descripciones (columna aparte para no tocar la firma de pushCatalogoPanaderia).
-  const conDescripcion = productos.filter((p) => p.descripcion);
+  const conDescripcion = productos.filter((p) => p.descripcion && p.id !== 'almuerzo-del-dia');
   for (let i = 0; i < conDescripcion.length; i += 50) {
     await Promise.all(conDescripcion.slice(i, i + 50).map((p) => client.from('panaderia_productos')
       .update({ descripcion: p.descripcion || null })
       .eq('cliente_id', clienteId).eq('local_id', p.id)));
   }
-  if (borrados.productos.length) {
+  // El almuerzo del día solo lo quita el administrador desde la web.
+  const borradosPropios = borrados.productos.filter((id) => id !== 'almuerzo-del-dia');
+  if (borradosPropios.length) {
     await client.from('panaderia_productos').update({ activo: false, updated_at: new Date().toISOString() })
-      .eq('cliente_id', clienteId).in('local_id', borrados.productos);
+      .eq('cliente_id', clienteId).in('local_id', borradosPropios);
   }
   if (borrados.categorias.length) {
     await client.from('panaderia_categorias').delete().eq('cliente_id', clienteId).in('local_id', borrados.categorias);

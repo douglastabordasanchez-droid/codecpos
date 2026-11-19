@@ -623,6 +623,15 @@ export default function PanaderiaOncesPage() {
       } else if (nube.productos.length > 0 && dueno === clienteId && borradosPendientes.current.productos.size === 0) {
         // Mismo negocio: se suma lo que se agregó desde otro equipo o desde la nube
         // (no se cambia ni se borra nada de lo que ya tiene este equipo).
+        // El almuerzo del día cambia a diario (precio y opciones): siempre se toma el de la nube.
+        const almuerzoNube = nube.productos.find((p) => p.id === 'almuerzo-del-dia');
+        const baseProductos = almuerzoNube
+          ? productosPos.map((p) => (p.id === 'almuerzo-del-dia'
+            ? { ...p, nombre: almuerzoNube.nombre, precio: almuerzoNube.precio, descripcion: almuerzoNube.descripcion, categoriaId: almuerzoNube.categoriaId }
+            : p))
+          : productosPos;
+        const almuerzoCambio = baseProductos !== productosPos
+          && JSON.stringify(baseProductos.find((p) => p.id === 'almuerzo-del-dia')) !== JSON.stringify(productosPos.find((p) => p.id === 'almuerzo-del-dia'));
         const idsProd = new Set(productosPos.map((p) => p.id));
         const idsCat = new Set(categoriasPos.map((c) => c.id));
         const prodsNuevos = nube.productos.filter((p) => !idsProd.has(p.id)).map((p) => ({
@@ -633,8 +642,8 @@ export default function PanaderiaOncesPage() {
         const catsNuevas = nube.categorias.filter((c) => !idsCat.has(c.id) && prodsNuevos.some((p) => p.categoriaId === c.id))
           .map((c) => ({ id: c.id, nombre: c.nombre, icono: (c.icono || 'general') as IconKey, color: c.color || '#2563eb' }));
         if (catsNuevas.length) guardarCategorias([...categoriasPos, ...catsNuevas]);
+        if (prodsNuevos.length || almuerzoCambio) guardarProductosPos([...baseProductos, ...prodsNuevos]);
         if (prodsNuevos.length) {
-          guardarProductosPos([...productosPos, ...prodsNuevos]);
           toast.info(`${prodsNuevos.length === 1 ? 'Llegó 1 producto nuevo' : `Llegaron ${prodsNuevos.length} productos nuevos`} al menú`);
         }
       }
