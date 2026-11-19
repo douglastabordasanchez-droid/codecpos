@@ -756,13 +756,13 @@ function CuentaDeMesa({
 
       {/* Cuenta actual */}
       {items.length > 0 && (
-        <div className="px-5 py-3 border-b border-slate-800 max-h-[30vh] overflow-y-auto shrink-0">
+        <div className="px-5 py-3 border-b border-slate-800 max-h-[40vh] overflow-y-auto overflow-x-hidden shrink-0">
           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wide mb-2">Pedido</p>
           <div className="space-y-1.5">
             {items.map((it) => (
               <div
                 key={it.producto.id}
-                className={`flex flex-wrap items-center gap-2 bg-slate-900/70 border rounded-xl p-2 ${hayEstaciones && nuevos.has(it.producto.id) && destinoDe(it.producto.id) === undefined ? 'border-amber-500/70' : 'border-slate-800'}`}
+                className={`w-full min-w-0 flex flex-wrap items-center gap-2 bg-slate-900/70 border rounded-xl p-2 ${hayEstaciones && nuevos.has(it.producto.id) && destinoDe(it.producto.id) === undefined ? 'border-amber-500/70' : 'border-slate-800'}`}
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-white text-sm font-semibold truncate">{it.producto.nombre}</p>
@@ -804,8 +804,8 @@ function CuentaDeMesa({
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
                 {nuevos.has(it.producto.id) && notaAbierta === it.producto.id && (
-                  <div className="basis-full space-y-1.5 pt-1">
-                    <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+                  <div className="basis-full min-w-0 space-y-1.5 pt-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {atajosDeNota(productoDe(it.producto.id)).map((a) => {
                         const activo = (notasProducto[it.producto.id] || '').split(',').map((x) => x.trim()).includes(a);
                         return (
@@ -825,7 +825,7 @@ function CuentaDeMesa({
                   </div>
                 )}
                 {hayEstaciones && nuevos.has(it.producto.id) && (
-                  <div className="basis-full flex gap-1.5 overflow-x-auto pt-1 [scrollbar-width:none]">
+                  <div className="basis-full min-w-0 flex flex-wrap gap-1.5 pt-1">
                     {estaciones.map((e) => {
                       const activo = destinoDe(it.producto.id) === e.id;
                       return (
