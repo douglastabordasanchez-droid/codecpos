@@ -9,7 +9,7 @@
  * y la app. La automatización la tiene que crear la persona (Apple no deja
  * crearla desde afuera): este asistente la guía paso a paso, uno a la vez.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Apple, Copy, Check, Loader2, MessageSquare, Mail, ShieldCheck, Bell, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSupabasePublicConfig } from '../../app/lib/supabase/config';
@@ -35,10 +35,21 @@ function Boton({ children }: { children: React.ReactNode }) {
   return <span className="inline-block px-1.5 rounded-md bg-sky-500/20 text-sky-300 font-bold">{children}</span>;
 }
 
+// El asistente se usa saltando entre la web y Atajos: si iOS recarga la
+// pestaña al volver, se retoma en el mismo paso.
+const CLAVE_ASISTENTE = 'codecpos-asistente-iphone';
+function leerAsistente(): { via?: Via; banco?: string; paso?: number } {
+  try { return JSON.parse(sessionStorage.getItem(CLAVE_ASISTENTE) || '{}') || {}; } catch { return {}; }
+}
+
 export function ConectarIphone({ token }: { token: string }) {
-  const [via, setVia] = useState<Via>('notificacion');
-  const [banco, setBanco] = useState('nequi');
-  const [paso, setPaso] = useState(0);
+  const guardado = leerAsistente();
+  const [via, setVia] = useState<Via>(guardado.via || 'notificacion');
+  const [banco, setBanco] = useState(guardado.banco || 'nequi');
+  const [paso, setPaso] = useState(typeof guardado.paso === 'number' ? guardado.paso : 0);
+  useEffect(() => {
+    try { sessionStorage.setItem(CLAVE_ASISTENTE, JSON.stringify({ via, banco, paso })); } catch { /* sin sessionStorage */ }
+  }, [via, banco, paso]);
   const [copiado, setCopiado] = useState(false);
   const [probando, setProbando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: boolean; mensaje: string } | null>(null);
@@ -121,7 +132,13 @@ export function ConectarIphone({ token }: { token: string }) {
           </a>
           <Grande>Abajo toca <Boton>Automatización</Boton> y luego el <Boton>+</Boton> de arriba.</Grande>
           {via === 'notificacion' ? (
-            <Grande>Busca y toca <Boton>Notificación</Boton>. En <Boton>App</Boton> elige <b>{banco === 'bre_b' ? 'la app de tu banco' : nombreBanco}</b>.</Grande>
+            <>
+              <Grande>Busca y toca <Boton>Notificación</Boton> (la de la campanita). En <Boton>App</Boton> elige <b>{banco === 'bre_b' ? 'la app de tu banco' : nombreBanco}</b>.</Grande>
+              <p className="text-amber-300 text-sm leading-relaxed">
+                No elijas <b>App</b> («Cuando se abra…»): esa corre al abrir {banco === 'bre_b' ? 'la app' : nombreBanco}, no cuando llega la plata.
+                Si no ves <b>Notificación</b>, el iPhone necesita iOS 27: Ajustes › General › Actualización de software.
+              </p>
+            </>
           ) : via === 'sms' ? (
             <Grande>Busca y toca <Boton>Mensaje</Boton>. En <Boton>El mensaje contiene</Boton> escribe <b>Recibiste</b>.</Grande>
           ) : (
@@ -135,7 +152,7 @@ export function ConectarIphone({ token }: { token: string }) {
       titulo: 'Pega el enlace',
       cuerpo: (
         <div className="space-y-3">
-          <Grande>Toca <Boton>Nueva automatización en blanco</Boton>.</Grande>
+          <Grande>Toca <Boton>Crear nuevo atajo</Boton> (en otras versiones dice <Boton>Nueva automatización en blanco</Boton>).</Grande>
           <Grande>En el buscador de abajo escribe <b>URL</b> y toca <Boton>Obtener contenido de URL</Boton>.</Grande>
           <Grande>Toca donde dice <Boton>URL</Boton>, mantén presionado y elige <Boton>Pegar</Boton>.</Grande>
           <button onClick={copiar} className="w-full h-11 rounded-xl bg-slate-800 text-sm font-bold flex items-center justify-center gap-2 text-white">
@@ -151,11 +168,11 @@ export function ConectarIphone({ token }: { token: string }) {
           <Grande>Toca la flechita <Boton>›</Boton> de esa acción.</Grande>
           <Grande>En <Boton>Método</Boton> elige <b>POST</b>. En <Boton>Cuerpo de la solicitud</Boton> elige <b>Formulario</b>.</Grande>
           {via === 'notificacion' ? (
-            <Grande>Toca <Boton>Agregar campo</Boton> › <b>Texto</b>. Clave: <b>texto</b>. Valor: toca y elige la variable <Boton>Notificación</Boton>.</Grande>
+            <Grande>Toca <Boton>Agregar campo</Boton> › <b>Texto</b>. Clave: <b>texto</b>. Valor: toca y elige la variable <Boton>Notificación</Boton> (si no sale, <Boton>Entrada del atajo</Boton>).</Grande>
           ) : (
             <Grande>Toca <Boton>Agregar campo</Boton> › <b>Texto</b>. Clave: <b>texto</b>. Valor: toca y elige la variable <Boton>{via === 'sms' ? 'Mensaje' : 'Correo'}</Boton>.</Grande>
           )}
-          <Grande>Toca <Boton>OK</Boton> arriba. Listo.</Grande>
+          <Grande>Toca el <Boton>✓</Boton> azul de arriba. Listo.</Grande>
         </div>
       ),
     },

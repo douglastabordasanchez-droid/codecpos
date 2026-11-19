@@ -38,21 +38,35 @@ export default function App() {
     // WebKit puede reanudar una PWA suspendida sin disparar `pageshow` ni
     // volver a montar React. Al regresar desde segundo plano se hace un pull
     // inicial nuevo desde Supabase, igual que cuando Android abre la PWA.
-    let estuvoEnSegundoPlano = document.visibilityState === 'hidden';
+    //
+    // Solo se recarga si estuvo un buen rato afuera (10 min). Ir a otra app y
+    // volver enseguida (copiar un enlace, abrir Atajos, mirar Nequi) no puede
+    // recargar: borraba lo que se estaba haciendo en la pantalla.
+    const CLAVE_OCULTA = 'codecpos-pwa-oculta-desde';
+    const MIN_AFUERA_MS = 10 * 60 * 1000;
+    const marcarOculta = () => {
+      try { sessionStorage.setItem(CLAVE_OCULTA, String(Date.now())); } catch { /* sin sessionStorage */ }
+    };
+    const estuvoMuchoAfuera = () => {
+      let desde = 0;
+      try { desde = Number(sessionStorage.getItem(CLAVE_OCULTA) || 0); } catch { /* sin sessionStorage */ }
+      return desde > 0 && Date.now() - desde >= MIN_AFUERA_MS;
+    };
     const recargarDatosCentrales = () => {
-      if (document.visibilityState !== 'visible' || !estuvoEnSegundoPlano || !navigator.onLine) return;
-      estuvoEnSegundoPlano = false;
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+      if (!estuvoMuchoAfuera()) return;
+      try { sessionStorage.removeItem(CLAVE_OCULTA); } catch { /* sin sessionStorage */ }
       window.location.reload();
     };
     const alCambiarVisibilidad = () => {
       if (document.visibilityState === 'hidden') {
-        estuvoEnSegundoPlano = true;
+        marcarOculta();
         return;
       }
       recargarDatosCentrales();
     };
     const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) window.location.reload();
+      if (event.persisted) recargarDatosCentrales();
     };
 
     document.addEventListener('visibilitychange', alCambiarVisibilidad);
