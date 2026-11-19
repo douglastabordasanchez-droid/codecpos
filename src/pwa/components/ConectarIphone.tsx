@@ -136,6 +136,7 @@ export function ConectarIphone({ token }: { token: string }) {
               <Grande>Busca y toca <Boton>Notificación</Boton> (la de la campanita). En <Boton>App</Boton> elige <b>{banco === 'bre_b' ? 'la app de tu banco' : nombreBanco}</b>.</Grande>
               <p className="text-amber-300 text-sm leading-relaxed">
                 No elijas <b>App</b> («Cuando se abra…»): esa corre al abrir {banco === 'bre_b' ? 'la app' : nombreBanco}, no cuando llega la plata.
+                Si ya creaste una así, en Automatización deslízala a la izquierda y toca <b>Eliminar</b>.
                 Si no ves <b>Notificación</b>, el iPhone necesita iOS 27: Ajustes › General › Actualización de software.
               </p>
             </>

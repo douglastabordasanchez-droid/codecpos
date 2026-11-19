@@ -1622,9 +1622,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
-    // El límite solo aplica a cajeros/técnicos; los admins (super_usuario) no tienen cupo
+    // El límite solo aplica a cajeros/técnicos; los admins (super_usuario) no tienen cupo.
+    // Con el equipo vinculado a un negocio en la nube, el cupo lo decide la nube
+    // (plan, usuarios adicionales o excepción del negocio): aquí no se pone otro tope.
     const usuariosOperativos = usuariosVisibles.filter(u => u.rol !== 'super_usuario').length;
-    if (usuario.rol !== 'super_usuario' && usuariosOperativos >= MAX_USUARIOS) {
+    if (!clienteIdSesion && usuario.rol !== 'super_usuario' && usuariosOperativos >= MAX_USUARIOS) {
       return false;
     }
 
