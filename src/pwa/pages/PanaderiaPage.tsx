@@ -572,6 +572,14 @@ export default function PanaderiaPage() {
         </motion.div>
       </div>
 
+      {/* Encargos de tortas: acceso directo (se cobran el abono y el saldo en Vender). */}
+      {!cargando && empleado && (
+        <div className="px-5 mb-3">
+          <button onClick={() => navigate('/encargos')} className="w-full h-12 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-600 text-[#fff] text-sm font-black flex items-center justify-center gap-2">
+            🎂 Encargos de tortas
+          </button>
+        </div>
+      )}
       {!cargando && empleado && (
         <TarjetaAlmuerzo menu={menuDia} puedeEditar={puedePublicarAlmuerzo(menuDia, empleado)} onEditar={() => setEditorAlmuerzo(true)} />
       )}

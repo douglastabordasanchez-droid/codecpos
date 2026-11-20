@@ -32,6 +32,9 @@
 [data-theme='light'] .bg-amber-500\/20 { background-color: #ffedd5 !important; }
 [data-theme='light'] .border-amber-500\/60 { border-color: #f59e0b !important; }
 [data-theme='light'] .text-amber-300 { color: #b45309 !important; }
+/* Encargos de tortas: acentos rosados legibles en claro. */
+[data-theme='light'] .text-pink-400 { color: #db2777 !important; }
+[data-theme='light'] .bg-pink-500\/15 { background-color: #fce7f3 !important; }
 /* Almuerzo del día: cajas verdes suaves. */
 [data-theme='light'] .bg-emerald-500\/10 { background-color: #ecfdf5 !important; }
 [data-theme='light'] .bg-emerald-500\/15 { background-color: #d1fae5 !important; }

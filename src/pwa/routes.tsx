@@ -38,6 +38,7 @@ const InventarioPage = lazyConReintento(() => import('./pages/InventarioPage'));
 const ProductoFormPage = lazyConReintento(() => import('./pages/ProductoFormPage'));
 const ImportarProductosPage = lazyConReintento(() => import('./pages/ImportarProductosPage'));
 const EntradaInventarioPage = lazyConReintento(() => import('./pages/EntradaInventarioPage'));
+const EncargosPage = lazyConReintento(() => import('./pages/EncargosPage'));
 const EscanerPage = lazyConReintento(() => import('./pages/EscanerPage'));
 const PerfilPage = lazyConReintento(() => import('./pages/PerfilPage'));
 const ConfiguracionPage = lazyConReintento(() => import('./pages/ConfiguracionPage'));
@@ -100,6 +101,7 @@ export const router = createBrowserRouter([
       { path: 'alertas', element: <ConSuspense><AlertasPage /></ConSuspense> },
       { path: 'inventario', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PRODUCTOS}><InventarioPage /></ModuloGate></ConSuspense> },
       { path: 'inventario/importar', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PRODUCTOS}><ImportarProductosPage /></ModuloGate></ConSuspense> },
+      { path: 'encargos', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PANADERIA_ONCES}><EncargosPage /></ModuloGate></ConSuspense> },
       { path: 'inventario/entrada', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PRODUCTOS}><EntradaInventarioPage /></ModuloGate></ConSuspense> },
       { path: 'inventario/:id', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PRODUCTOS}><ProductoFormPage /></ModuloGate></ConSuspense> },
       { path: 'escaner', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PRODUCTOS}><EscanerPage /></ModuloGate></ConSuspense> },

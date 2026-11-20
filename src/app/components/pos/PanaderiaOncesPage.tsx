@@ -31,6 +31,7 @@ import type { PlanImportacionMenu } from '../../lib/importarMenuAlimentos';
 import { type Estacion, listarEstaciones, suscribirEstaciones } from '../../lib/supabase/estacionesService';
 import { createPortal } from 'react-dom';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
+import { EncargosPanel } from '../../../pwa/components/EncargosPanel';
 import { rearmarMenuAlimentos } from '../../lib/menuAlimentosDesdeInventario';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -261,9 +262,9 @@ const isColorLight = (hex: string) => {
 };
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
-type SectionId = 'dashboard' | 'pos_tactil' | 'mesas' | 'cocina' | 'ingredientes' | 'recetas' | 'mermas' | 'combos';
+type SectionId = 'dashboard' | 'pos_tactil' | 'mesas' | 'encargos' | 'cocina' | 'ingredientes' | 'recetas' | 'mermas' | 'combos';
 
-const DEFAULT_ORDER: SectionId[] = ['dashboard', 'pos_tactil', 'mesas', 'cocina', 'ingredientes', 'recetas', 'mermas', 'combos'];
+const DEFAULT_ORDER: SectionId[] = ['dashboard', 'pos_tactil', 'mesas', 'encargos', 'cocina', 'ingredientes', 'recetas', 'mermas', 'combos'];
 
 interface MesaConfig { id: string; nombre: string; activa: boolean; tiendaId?: string | null; }
 interface ProductoMesa { id: string; codigo: string; nombre: string; precio: number; stock: number; categoria: string; costo: number; pesable?: boolean; aplicaIVA?: boolean; tipoInventario?: 'directo' | 'receta'; recipeId?: string; }
@@ -545,7 +546,11 @@ export default function PanaderiaOncesPage() {
   const [sectionOrder, setSectionOrder] = useState<SectionId[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('codecpos_panaderia_section_order') || 'null');
-      if (Array.isArray(saved) && saved.length === DEFAULT_ORDER.length) return saved as SectionId[];
+      // Se respeta el orden guardado y se suman al final las secciones nuevas (p. ej. Encargos).
+      if (Array.isArray(saved) && saved.length > 0) {
+        const validas = (saved as string[]).filter((x): x is SectionId => (DEFAULT_ORDER as string[]).includes(x));
+        return [...validas, ...DEFAULT_ORDER.filter((x) => !validas.includes(x))];
+      }
     } catch {}
     return DEFAULT_ORDER;
   });
@@ -1810,6 +1815,7 @@ export default function PanaderiaOncesPage() {
     dashboard:     { label: 'Panel de Control',     icon: <BarChart3 className="w-5 h-5" />,    gradient: 'from-violet-600 to-purple-700'   },
     pos_tactil:    { label: 'Alimentos y Bebidas',     icon: <Croissant className="w-5 h-5" />,    gradient: 'from-amber-500 to-orange-600'    },
     mesas:         { label: 'Cuentas por Mesa',     icon: <Armchair className="w-5 h-5" />,     gradient: 'from-emerald-500 to-teal-600'    },
+    encargos:      { label: 'Encargos de tortas',   icon: <CakeSlice className="w-5 h-5" />,    gradient: 'from-pink-500 to-rose-600'       },
     cocina:        { label: 'Cocina / Bar',         icon: <Flame className="w-5 h-5" />,        gradient: 'from-orange-500 to-red-600'      },
     ingredientes:  { label: 'Ingredientes',         icon: <Package2 className="w-5 h-5" />,     gradient: 'from-green-600 to-emerald-700'   },
     recetas:       { label: 'Recetas',              icon: <BookOpen className="w-5 h-5" />,     gradient: 'from-sky-500 to-cyan-600'        },
@@ -2197,6 +2203,36 @@ export default function PanaderiaOncesPage() {
         );
 
       // ── Mesas ─────────────────────────────────────────────────────────────────
+      // ── Encargos (tortas por pedido): el abono y el saldo se cobran en el POS ──
+      case 'encargos': {
+        const clienteEncargos = getLinkedClienteId();
+        if (!clienteEncargos) {
+          return <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Vincula esta caja a la nube (Configuración › Sincronización) para usar los encargos.</p>;
+        }
+        return (
+          <EncargosPanel
+            clienteId={clienteEncargos}
+            nombreUsuario={usuarioActual?.nombreCompleto || usuarioActual?.username}
+            oscuro={darkMode}
+            onCobrar={(lineas) => {
+              try {
+                localStorage.setItem(STORAGE_TRANSFER_CART, JSON.stringify(lineas.map((l) => ({
+                  producto: { id: l.id, codigo: 'ENCARGO', nombre: l.nombre, precio: l.precio, stock: 0, categoria: 'Encargos', costo: 0 },
+                  cantidad: 1,
+                }))));
+                // No es una mesa: al cobrar no se debe vaciar ninguna cuenta de mesa.
+                localStorage.removeItem('codecpos_panaderia_origen');
+                localStorage.setItem('codecpos_mesa_activa', 'general');
+                localStorage.setItem('codecpos_referencia_mesa', 'Encargo');
+                navigate('/pos');
+              } catch {
+                toast.error('No se pudo pasar el cobro a la caja');
+              }
+            }}
+          />
+        );
+      }
+
       case 'mesas':
         return (
           <div className="space-y-4">
