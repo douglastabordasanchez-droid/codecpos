@@ -39,7 +39,7 @@ export function CredencialesLicenciaModal({ clienteId, nombreNegocio, onCerrar }
         {listo ? (
           <div className="space-y-3">
             <p className="text-emerald-400 text-sm bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
-              Listo -- ya puede entrar en Electron y en la PWA con este usuario y contraseña.
+              Listo: ya puede entrar en Electron y en la web con este usuario y contraseña.
             </p>
             <button onClick={onCerrar} className="w-full h-9 rounded-lg text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700">Cerrar</button>
           </div>

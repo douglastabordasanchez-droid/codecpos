@@ -14,6 +14,8 @@ import { useModulosActivos } from '../hooks/useModulosActivos';
 import { PantallaBloqueoLicencia } from '../../app/components/licencia/PantallaBloqueoLicencia';
 import { tituloAvisoLicencia } from '../../app/lib/bloqueoLicencia';
 import { useAvisoNumeracionDian } from '../../app/hooks/useAvisoNumeracionDian';
+import { cambioPasswordPendiente } from '../../app/lib/supabase/authService';
+import { CambiarPasswordModal } from './CambiarPasswordModal';
 
 /**
  * Mismo enlace, misma app, mismo login — en pantallas ≥1024px (12" en
@@ -27,6 +29,15 @@ export function PwaLayout() {
   const esEscritorio = useIsDesktop();
   const [navInferiorVisible, setNavInferiorVisible] = useState(true);
   const navigate = useNavigate();
+  // 🔑 Contraseña genérica puesta por Codec (0166): no se sigue sin poner una propia.
+  const [debeCambiarPassword, setDebeCambiarPassword] = useState(false);
+
+  useEffect(() => {
+    if (!empleado) { setDebeCambiarPassword(false); return; }
+    let vivo = true;
+    cambioPasswordPendiente().then((p) => { if (vivo) setDebeCambiarPassword(p); });
+    return () => { vivo = false; };
+  }, [empleado?.id]);
 
   // 🧾 Numeración DIAN que vence en 15 días o menos: aviso diario al administrador.
   useAvisoNumeracionDian(empleado?.es_staff_codec ? null : empleado?.cliente_id, empleado?.rol === 'super_usuario' || empleado?.rol === 'admin');
@@ -69,6 +80,18 @@ export function PwaLayout() {
 
   if (!empleado) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (debeCambiarPassword) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+        <CambiarPasswordModal
+          obligatorio
+          onListo={() => setDebeCambiarPassword(false)}
+          onCerrarSesion={cerrarSesion}
+        />
+      </div>
+    );
   }
 
   // 🔒 Negocio suspendido o con la licencia vencida: no se puede usar la app.

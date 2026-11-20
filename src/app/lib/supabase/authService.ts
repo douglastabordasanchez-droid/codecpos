@@ -125,3 +125,28 @@ export async function solicitarRecuperacionPassword(
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
+
+/** La cuenta con sesión tiene una contraseña genérica puesta por Codec (migración 0166). */
+export async function cambioPasswordPendiente(): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  const { data, error } = await client.rpc('mi_cambio_password_pendiente');
+  if (error) return false;
+  return data === true;
+}
+
+/**
+ * Cambia la contraseña de la cuenta con sesión. Con contraseña genérica
+ * pendiente no exige la actual. Para el dueño por usuario de licencia
+ * también actualiza la clave de Electron (ver migración 0166).
+ */
+export async function cambiarMiPassword(
+  actual: string | null,
+  nueva: string
+): Promise<{ ok: boolean; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'nuestra base de datos no está configurada' };
+  const { error } = await client.rpc('cambiar_mi_password', { p_actual: actual, p_nueva: nueva });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}

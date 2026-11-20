@@ -6,7 +6,7 @@ import imageCompression from 'browser-image-compression';
 import { toast } from 'sonner';
 import {
   LogOut, User, Settings, ChevronRight, Crown, Zap, Users, Plus, X, Loader2, ShieldCheck, Check,
-  Pencil, Camera, Cake, Phone as PhoneIcon, Fingerprint,
+  Pencil, Camera, Cake, Phone as PhoneIcon, Fingerprint, KeyRound,
 } from 'lucide-react';
 import { Button } from '../../app/components/ui/button';
 import { Input } from '../../app/components/ui/input';
@@ -21,6 +21,7 @@ import {
 import logo from '/logo.png';
 import { TarjetaSoporte } from '../components/TarjetaSoporte';
 import { AjustesAlertasPago } from '../components/AjustesAlertasPago';
+import { CambiarPasswordModal } from '../components/CambiarPasswordModal';
 
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -67,6 +68,15 @@ export default function PerfilPage() {
   const { tieneModulo } = useModulosActivos();
 
   const [editandoPerfil, setEditandoPerfil] = useState(false);
+  const [cambiandoPassword, setCambiandoPassword] = useState(false);
+  // La clave de licencia del dueño (owner+…@codecpos.internal) solo la cambia Codec: arma la sync de Electron.
+  const [puedeCambiarPassword, setPuedeCambiarPassword] = useState(false);
+  useEffect(() => {
+    getSupabaseClient()?.auth.getSession().then(({ data }) => {
+      const correo = data.session?.user?.email || '';
+      setPuedeCambiarPassword(!!correo && !/@codecpos\.internal$/i.test(correo));
+    });
+  }, [empleado?.id]);
   const [plan, setPlan] = useState<string | null>(null);
   const [equipo, setEquipo] = useState<EmpleadoFila[]>([]);
   const [cargandoEquipo, setCargandoEquipo] = useState(true);
@@ -371,6 +381,28 @@ export default function PerfilPage() {
             )}
           </button>
         </div>
+      )}
+
+      {puedeCambiarPassword && (
+      <button
+        onClick={() => setCambiandoPassword(true)}
+        className="w-full bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl p-4 mb-3 flex items-center justify-between gap-3 text-left"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+            <KeyRound className="w-5 h-5 text-amber-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-white font-semibold text-sm">Cambiar contraseña</p>
+            <p className="text-slate-500 text-xs">Pon una que solo tú conozcas</p>
+          </div>
+        </div>
+        <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+      </button>
+      )}
+
+      {cambiandoPassword && (
+        <CambiarPasswordModal onListo={() => setCambiandoPassword(false)} onCerrar={() => setCambiandoPassword(false)} />
       )}
 
       <Button

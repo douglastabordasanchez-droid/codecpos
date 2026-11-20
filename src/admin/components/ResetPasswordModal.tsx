@@ -72,7 +72,8 @@ export function ResetPasswordModal({ empleadoId, nombre, onCerrar }: { empleadoI
 
         <p className="text-slate-500 text-[11px] mb-3 bg-slate-800/50 border border-slate-800 rounded-lg px-3 py-2">
           Esto fija una contraseña NUEVA. No es posible ver la contraseña actual — está cifrada de forma
-          irreversible, ni siquiera Codec Studio puede leerla.
+          irreversible, ni siquiera Codec Studio puede leerla. Al entrar a la web o al celular le pedirá
+          cambiarla por una propia.
         </p>
 
         <button
