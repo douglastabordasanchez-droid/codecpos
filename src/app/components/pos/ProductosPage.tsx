@@ -99,6 +99,8 @@ export default function ProductosPage() {
   const debouncedSearchTerm = useDebounce(searchTerm, 200);
   const [loading, setLoading] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
+  // Alertas de stock y vencimiento: un solo botón; al tocarlo se abre la lista.
+  const [verAlertas, setVerAlertas] = useState(false);
   const [showEntradaModal, setShowEntradaModal] = useState(false);
   const [showNewProductModal, setShowNewProductModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
@@ -688,17 +690,25 @@ export default function ProductosPage() {
               ))}
             </div>
 
-            {/* Barra de alertas críticas de ingredientes */}
+            {/* Alertas de ingredientes: un botón; al tocarlo se abre la lista para reabastecer. */}
             {(ingStats.bajoStock > 0 || ingStats.agotados > 0) && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setVerAlertas((v) => !v)}
+                  className="h-11 px-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold inline-flex items-center gap-2 shadow-lg"
+                >
+                  <AlertCircle className="w-5 h-5 animate-pulse" />
+                  Alertas de ingredientes ({ingredientes.filter(i => Number(i.stockActual) <= Number(i.stockMinimo) || Number(i.stockActual) <= 0).length})
+                  <span className="text-xs opacity-80">{verAlertas ? 'ocultar' : 'ver'}</span>
+                </button>
+              </div>
+            )}
+            {verAlertas && (ingStats.bajoStock > 0 || ingStats.agotados > 0) && (
               <Card className={`border-2 border-red-500/50 ${darkMode ? 'bg-red-500/10' : 'bg-red-50'} rounded-3xl`}>
                 <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <AlertCircle className="w-5 h-5 text-red-500 animate-pulse" />
-                    <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                      Ingredientes con stock crítico — hay que reabastecerlos
-                    </h3>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+                  <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Toca un ingrediente para reabastecerlo.</p>
+                  <div className="flex flex-wrap gap-2 max-h-[40vh] overflow-y-auto">
                     {ingredientes
                       .filter(i => Number(i.stockActual) <= Number(i.stockMinimo) || Number(i.stockActual) <= 0)
                       .map(i => (
@@ -920,20 +930,27 @@ export default function ProductosPage() {
           </div>
         )}
 
-        {/* ========== ALERTAS CRÍTICAS ========== */}
+        {/* ========== ALERTAS: un botón que abre la lista ========== */}
         {productosAlerta.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setVerAlertas((v) => !v)}
+              className="h-11 px-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold inline-flex items-center gap-2 shadow-lg"
+            >
+              <AlertCircle className="w-5 h-5 animate-pulse" />
+              Alertas ({productosAlerta.length})
+              <span className="text-xs opacity-80">{verAlertas ? 'ocultar' : 'ver'}</span>
+            </button>
+          </div>
+        )}
+        {verAlertas && productosAlerta.length > 0 && (
           <Card className={`border-2 border-red-500/50 ${
             darkMode ? 'bg-red-500/10' : 'bg-red-50'
           } rounded-3xl`}>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <AlertCircle className="w-6 h-6 text-red-500 animate-pulse" />
-                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  Alertas Críticas ({productosAlerta.length})
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {productosAlerta.slice(0, 6).map(p => {
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[50vh] overflow-y-auto">
+                {productosAlerta.map(p => {
                   const dias = diasHastaVencimiento(p.fechaVencimiento);
                   return (
                     <div

@@ -6,7 +6,7 @@ import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
 import { Label } from '../ui/label';
 import { toast } from 'sonner';
-import { TIPOS_NEGOCIO, obtenerCategoriasPorTipo, obtenerAtributosPorTipo, obtenerSugerenciaIVA } from '../../../data/tipos-negocio';
+import { TIPOS_NEGOCIO, categoriasParaProducto, obtenerAtributosPorTipo, obtenerSugerenciaIVA } from '../../../data/tipos-negocio';
 import { useBusinessContext } from '../../contexts/BusinessContext';
 import { getTiendaActivaId, listarTiendas, getStockEnTienda, setStockEnTienda } from '../../lib/multitiendaService';
 import { ajustarStockSedeEnNube, multitiendaEnNube } from '../../lib/syncService';
@@ -48,7 +48,7 @@ export function EditProductModal({ darkMode, isOpen, product, onClose, onProduct
       setFormData(product);
       const tipo = product.tipoNegocio || tipoNegocioGlobal;
       setTipoNegocio(tipo);
-      setCategorias(obtenerCategoriasPorTipo(tipo));
+      setCategorias(categoriasParaProducto(tipo, product.categoria));
       setAtributos(obtenerAtributosPorTipo(tipo));
     }
   }, [product, tipoNegocioGlobal]);
@@ -123,7 +123,7 @@ export function EditProductModal({ darkMode, isOpen, product, onClose, onProduct
 
   const handleTipoNegocioChange = (tipo: string) => {
     setTipoNegocio(tipo);
-    setCategorias(obtenerCategoriasPorTipo(tipo));
+    setCategorias(categoriasParaProducto(tipo, formData?.categoria));
     setAtributos(obtenerAtributosPorTipo(tipo));
     handleChange('tipoNegocio', tipo);
     handleChange('aplicaIVA', obtenerSugerenciaIVA(tipo));
@@ -244,19 +244,22 @@ export function EditProductModal({ darkMode, isOpen, product, onClose, onProduct
                 }`}>
                   Categoría *
                 </label>
-                <select
-                  value={formData.categoria}
+                {/* Se elige de la lista o se escribe una nueva (Bebidas, Lácteos…). */}
+                <input
+                  list="lista-categorias-editar"
+                  value={formData.categoria || ''}
                   onChange={(e) => handleChange('categoria', e.target.value)}
                   required
+                  placeholder="Elige o escribe la categoría"
                   className={`w-full rounded-xl border px-3 py-2 ${
                     darkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300'
                   }`}
-                >
-                  <option value="">Selecciona categoría</option>
+                />
+                <datalist id="lista-categorias-editar">
                   {categorias.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
+                    <option key={cat} value={cat} />
                   ))}
-                </select>
+                </datalist>
               </div>
 
               {/* Stock */}

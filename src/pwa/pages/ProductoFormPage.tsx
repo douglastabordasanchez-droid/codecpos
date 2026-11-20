@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { soloAgregar } from '../lib/restriccionesEmpleado';
-import { obtenerCategoriasPorTipo, obtenerAtributosPorTipo, normalizarTipoNegocio } from '../../data/tipos-negocio';
+import { obtenerCategoriasPorTipo, CATEGORIAS_GENERALES, obtenerAtributosPorTipo, normalizarTipoNegocio } from '../../data/tipos-negocio';
 import { leerConfigIva } from '../../app/lib/dian/configIva';
 import { getSucursalActiva } from '../lib/sucursalActiva';
 import { obtenerInventarioUniversal, inventarioUniversalGuardado, sedeParaProductoNuevo } from '../../app/lib/inventarioSede';
@@ -217,7 +217,8 @@ export default function ProductoFormPage() {
       setAtributosNegocio(obtenerAtributosPorTipo(tipoNegocio));
       const delCatalogo = obtenerCategoriasPorTipo(tipoNegocio);
       const propias = ((productosData || []) as { categoria: string }[]).map((r) => r.categoria).filter(Boolean);
-      const combinadas = [...new Set([...delCatalogo, ...propias])];
+      // Las generales (Bebidas, Lácteos, Snacks…) sirven en cualquier negocio.
+      const combinadas = [...new Set([...delCatalogo, ...CATEGORIAS_GENERALES, ...propias])];
       combinadas.sort((a, b) => a.localeCompare(b));
       setCategoriasExistentes(combinadas);
     });

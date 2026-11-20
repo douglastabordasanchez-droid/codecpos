@@ -104,7 +104,8 @@ export function BotonAlmuerzoDelDia({ empleado, flotante = false }: {
     obtenerMenuDelDia(empleado.cliente_id).then((m) => { setMenu(m); setCargado(true); }).catch(() => setCargado(true));
   }, [empleado?.cliente_id]);
   useEffect(() => { traer(); }, [traer]);
-  if (!empleado || !cargado || !puedePublicarAlmuerzo(menu, empleado)) return null;
+  // Sin menú = el negocio no tiene activado el almuerzo del día: no se muestra.
+  if (!empleado || !cargado || !menu || !puedePublicarAlmuerzo(menu, empleado)) return null;
   return (
     <>
       {flotante ? (

@@ -31,7 +31,7 @@ import { Label } from '../ui/label';
 import { usePOS } from '../../contexts/POSContext';
 import { useBusinessContext } from '../../contexts/BusinessContext';
 import { toast } from 'sonner';
-import { TIPOS_NEGOCIO, obtenerCategoriasPorTipo, obtenerAtributosPorTipo, obtenerSugerenciaIVA } from '../../../data/tipos-negocio';
+import { TIPOS_NEGOCIO, categoriasParaProducto, obtenerAtributosPorTipo, obtenerSugerenciaIVA } from '../../../data/tipos-negocio';
 import { getCached } from '../../lib/cachedLocalStorage';
 
 /** Con el IVA del negocio «a todos los productos», el producto nuevo nace con IVA. */
@@ -86,9 +86,10 @@ export function ModalNuevoProducto({ isOpen, onClose, onProductCreated }: ModalN
 
   // 🔄 Actualizar categorías cuando cambia el tipo de negocio
   useEffect(() => {
-    const nuevasCategorias = obtenerCategoriasPorTipo(tipoNegocio);
+    // Las del tipo de negocio + generales (Bebidas, Lácteos…) + las que ya usa el negocio.
+    const nuevasCategorias = categoriasParaProducto(tipoNegocio);
     setCategorias(nuevasCategorias);
-    setCategoria(nuevasCategorias[0] || '');
+    setCategoria('');
     
     // Actualizar atributos específicos
     const nuevosAtributos = obtenerAtributosPorTipo(tipoNegocio);
@@ -347,22 +348,23 @@ export function ModalNuevoProducto({ isOpen, onClose, onProductCreated }: ModalN
                     <Tag className="w-4 h-4 inline mr-2" />
                     Categoría *
                   </Label>
-                  <select
+                  <input
+                    list="lista-categorias-nuevo"
                     value={categoria}
                     onChange={(e) => setCategoria(e.target.value)}
+                    placeholder="Elige o escribe la categoría (ej: Bebidas)"
                     className={`w-full px-4 py-3 rounded-xl border-2 text-base ${
                       darkMode 
                         ? 'bg-slate-800 border-slate-600 text-white' 
                         : 'bg-white border-gray-300 text-gray-900'
                     }`}
                     required
-                  >
+                  />
+                  <datalist id="lista-categorias-nuevo">
                     {categorias.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
+                      <option key={cat} value={cat} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
 
                 {/* Sugerencia de IVA */}

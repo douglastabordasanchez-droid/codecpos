@@ -131,12 +131,16 @@ export function puedePublicarAlmuerzo(menu: MenuDelDia | null, empleado: { id: s
 export async function obtenerMenuDelDia(clienteId: string): Promise<MenuDelDia | null> {
   const client = getSupabaseClient();
   if (!client) return null;
-  const [menu, producto] = await Promise.all([
+  const [negocio, menu, producto] = await Promise.all([
+    client.from('clientes_pos').select('almuerzo_activo').eq('id', clienteId).maybeSingle(),
     client.from('menu_del_dia').select('fecha, grupos, adicionales, editores, por_dia').eq('cliente_id', clienteId).maybeSingle(),
     client.from('panaderia_productos').select('precio').eq('cliente_id', clienteId).eq('local_id', ALMUERZO_PRODUCTO_ID).maybeSingle(),
   ]);
-  if (menu.error || !menu.data) return null;
-  const fila = menu.data as any;
+  // Solo en los negocios donde Codec Studio activó el almuerzo del día (0165).
+  if (!(negocio.data as { almuerzo_activo?: boolean } | null)?.almuerzo_activo) return null;
+  if (menu.error) return null;
+  // Activado pero sin publicar todavía: menú vacío para que el administrador lo publique.
+  const fila = (menu.data || { fecha: '', grupos: [], adicionales: [], editores: [], por_dia: {} }) as any;
   return {
     fecha: String(fila.fecha || ''),
     grupos: limpiarGrupos(fila.grupos),

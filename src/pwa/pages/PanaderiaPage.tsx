@@ -580,7 +580,7 @@ export default function PanaderiaPage() {
           </button>
         </div>
       )}
-      {!cargando && empleado && (
+      {!cargando && empleado && menuDia && (
         <TarjetaAlmuerzo menu={menuDia} puedeEditar={puedePublicarAlmuerzo(menuDia, empleado)} onEditar={() => setEditorAlmuerzo(true)} />
       )}
 
@@ -728,7 +728,7 @@ export default function PanaderiaPage() {
         )}
       </AnimatePresence>
 
-      {empleado && puedePublicarAlmuerzo(menuDia, empleado) && (
+      {empleado && menuDia && puedePublicarAlmuerzo(menuDia, empleado) && (
         <EditorAlmuerzo
           abierto={editorAlmuerzo}
           clienteId={empleado.cliente_id}

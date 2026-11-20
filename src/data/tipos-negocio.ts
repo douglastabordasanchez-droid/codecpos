@@ -410,6 +410,42 @@ export const CATEGORIAS_MINIMERCADO = TIPOS_NEGOCIO.minimercado.categorias;
 /**
  * Obtener categorías según el tipo de negocio
  */
+/** Categorías que sirven en casi cualquier negocio (una panadería también vende gaseosa y yogur). */
+export const CATEGORIAS_GENERALES = [
+  'Bebidas', 'Gaseosas', 'Jugos', 'Agua', 'Bebidas calientes', 'Lácteos', 'Leches', 'Yogures', 'Quesos',
+  'Snacks y paquetes', 'Dulces y chocolates', 'Galletas', 'Abarrotes', 'Granos', 'Enlatados', 'Embutidos',
+  'Huevos', 'Frutas y verduras', 'Panadería', 'Repostería', 'Congelados', 'Aseo', 'Cuidado personal', 'Otros',
+];
+
+/** Categorías que ya usan los productos de este equipo (las que el negocio creó). */
+function categoriasEnUso(): string[] {
+  try {
+    const lista = JSON.parse(localStorage.getItem('pos-productos') || '[]');
+    return (Array.isArray(lista) ? lista : []).map((p: { categoria?: string }) => String(p?.categoria || '').trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Lista para crear o editar un producto: las del tipo de negocio + las generales + las que
+ * ya usa el negocio + la actual del producto (que nunca desaparece). Sin repetidas y en orden.
+ */
+export function categoriasParaProducto(tipoNegocio: string, categoriaActual?: string): string[] {
+  const vistas = new Map<string, string>();
+  const sumar = (c?: string) => {
+    const limpio = String(c || '').trim();
+    if (!limpio) return;
+    const clave = limpio.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+    if (!vistas.has(clave)) vistas.set(clave, limpio);
+  };
+  sumar(categoriaActual);
+  obtenerCategoriasPorTipo(tipoNegocio).forEach(sumar);
+  CATEGORIAS_GENERALES.forEach(sumar);
+  categoriasEnUso().forEach(sumar);
+  return [...vistas.values()].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+}
+
 export function obtenerCategoriasPorTipo(tipoNegocio: string): string[] {
   return TIPOS_NEGOCIO[tipoNegocio]?.categorias || CATEGORIAS_MINIMERCADO;
 }
