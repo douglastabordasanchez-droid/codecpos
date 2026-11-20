@@ -1388,6 +1388,24 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         }
       } catch { /* no es cliente — continuar */ }
 
+      // Texto que no es un código de barras (p. ej. «pan»): se toma la primera sugerencia
+      // en vez de abrir «producto nuevo» buscando en bases de datos.
+      if (!/^\d{6,14}$/.test(codigo.trim())) {
+        const t = codigo.toLowerCase().trim();
+        const primera = productosSugeridos[0]
+          || [...productos].filter((p) => p.nombre.toLowerCase().includes(t))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true, sensitivity: 'base' }))[0];
+        setCodigoBarras('');
+        setShowSugerencias(false);
+        if (primera) {
+          if (primera.pesable) setProductoPesable(primera);
+          else agregarAlCarrito(primera);
+        } else {
+          toast.error(`No hay un producto «${codigo.trim()}»`);
+        }
+        return;
+      }
+
       // ❌ PRODUCTO NO ENCONTRADO - Abrir modal de creación automática
       setCodigoNoEncontrado(codigo);
       setShowProductoNuevoModal(true);
@@ -1595,7 +1613,36 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     toast.success(`${producto.nombre} agregado al carrito`);
   };
 
+  // ⚡ Productos recientes: botoncitos con lo último que se vendió en este equipo.
+  const CLAVE_RECIENTES = 'codecpos_pos_recientes';
+  const [recientesIds, setRecientesIds] = useState<string[]>(() => {
+    try { const v = JSON.parse(localStorage.getItem(CLAVE_RECIENTES) || '[]'); return Array.isArray(v) ? v.map(String) : []; } catch { return []; }
+  });
+  const recordarReciente = (producto: Producto) => {
+    const id = String(producto.id || '');
+    if (!id || /^(encargo-|manual-|temp-)/.test(id)) return;
+    setRecientesIds((prev) => {
+      const nuevo = [id, ...prev.filter((x) => x !== id)].slice(0, 12);
+      try { localStorage.setItem(CLAVE_RECIENTES, JSON.stringify(nuevo)); } catch { /* sin espacio */ }
+      return nuevo;
+    });
+  };
+  // Se puede apagar en Configuración (por equipo); se aplica al instante.
+  const leerRecientesActivo = () => { try { return localStorage.getItem('codecpos_pos_recientes_activo') !== 'false'; } catch { return true; } };
+  const [recientesActivo, setRecientesActivo] = useState<boolean>(leerRecientesActivo);
+  useEffect(() => {
+    const alCambiar = () => setRecientesActivo(leerRecientesActivo());
+    window.addEventListener('codecpos:recientes-config', alCambiar);
+    window.addEventListener('storage', alCambiar);
+    return () => { window.removeEventListener('codecpos:recientes-config', alCambiar); window.removeEventListener('storage', alCambiar); };
+  }, []);
+  const productosRecientes = useMemo(() => {
+    const porId = new Map(productos.map((p) => [String(p.id), p]));
+    return recientesIds.map((id) => porId.get(id)).filter((p): p is Producto => !!p).slice(0, 10);
+  }, [recientesIds, productos]);
+
   const agregarAlCarrito = (producto: Producto) => {
+    recordarReciente(producto);
     if ((producto.modifiersConfig || []).length > 0) {
       setProductoPendienteModifiers(producto);
       setModifiersSeleccionTemp((producto.modifiersConfig || []).map(m => ({ ...m, precioVenta: Number(m.precioVenta) || 0 })));
@@ -3505,6 +3552,24 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     </p>
                   </div>
                 </div>
+                {recientesActivo && productosRecientes.length > 0 && (
+                  <div className="flex items-center gap-1.5 mb-2 overflow-x-auto [scrollbar-width:none]">
+                    <span className={`text-[10px] font-bold uppercase tracking-wide shrink-0 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Recientes</span>
+                    {productosRecientes.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => { if (p.pesable) setProductoPesable(p); else agregarAlCarrito(p); }}
+                        className={`shrink-0 h-8 px-3 rounded-full text-xs font-bold border transition-colors max-w-[180px] truncate ${
+                          darkMode ? 'bg-slate-800 border-slate-600 text-gray-200 hover:bg-slate-700' : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
+                        }`}
+                        title={`${p.nombre} · $${Number(p.precio || 0).toLocaleString('es-CO')}`}
+                      >
+                        {p.nombre}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="relative">
                   <div className="flex items-center gap-2">
                     <Input

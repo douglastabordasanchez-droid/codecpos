@@ -329,33 +329,15 @@ export async function buscarProductoConCache(
   // 1. Buscar en caché primero
   const cached = buscarEnCache(codigoBarras);
   if (cached) {
-    toast.info('Producto encontrado en caché local', {
-      icon: '💾',
-      duration: 2000,
-    });
     return cached;
   }
-  
-  // 2. Buscar en APIs externas
-  toast.loading('Buscando producto en bases de datos...', {
-    icon: '🔍',
-    duration: 1000,
-  });
+  // 2. Catálogo de Codec y bases públicas (sin letreros: la ventana ya dice qué pasa).
   
   const info = await buscarProductoPorCodigoBarras(codigoBarras);
   
   // 3. Guardar en caché si se encontró
   if (info) {
     guardarEnCache(info);
-    toast.success('Producto encontrado en base de datos', {
-      icon: '✅',
-      duration: 2000,
-    });
-  } else {
-    toast.info('Producto no encontrado, completa manualmente', {
-      icon: '✏️',
-      duration: 3000,
-    });
   }
   
   return info;

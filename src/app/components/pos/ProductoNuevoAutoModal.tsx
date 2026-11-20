@@ -94,11 +94,7 @@ export default function ProductoNuevoAutoModal({
           duration: 3000,
         });
       } else {
-        toast.info('Producto no encontrado en bases de datos', {
-          icon: '✏️',
-          description: 'Completa la información manualmente',
-          duration: 3000,
-        });
+        // Sin letrero: el formulario queda listo para escribir el nombre y el precio.
       }
     } catch (error) {
       console.error('Error buscando información:', error);
@@ -209,7 +205,7 @@ export default function ProductoNuevoAutoModal({
                     Buscando información del producto...
                   </p>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Consultando bases de datos internacionales
+                    Un momento…
                   </p>
                 </div>
               ) : (

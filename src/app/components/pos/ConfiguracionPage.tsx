@@ -402,6 +402,18 @@ export default function ConfiguracionPage() {
     event.target.value = '';
   };
 
+  // ⚡ Botones de productos recientes en el punto de venta (se pueden apagar en este equipo).
+  const [recientesActivos, setRecientesActivos] = useState<boolean>(() => {
+    try { return localStorage.getItem('codecpos_pos_recientes_activo') !== 'false'; } catch { return true; }
+  });
+  const cambiarRecientes = () => {
+    const nuevo = !recientesActivos;
+    setRecientesActivos(nuevo);
+    try { localStorage.setItem('codecpos_pos_recientes_activo', String(nuevo)); } catch { /* sin espacio */ }
+    window.dispatchEvent(new Event('codecpos:recientes-config'));
+    toast.success(nuevo ? 'Productos recientes activados' : 'Productos recientes desactivados');
+  };
+
   const toggleSection = (section: keyof typeof sectionsOpen) => {
     setSectionsOpen(prev => ({ ...prev, [section]: !prev[section] }));
   };
@@ -1439,6 +1451,25 @@ export default function ConfiguracionPage() {
             </div>
           </div>
         </AccordionSection>
+
+        {/* ⚡ PRODUCTOS RECIENTES EN EL PUNTO DE VENTA */}
+        <div className={`p-4 rounded-2xl border-2 flex items-center gap-4 ${darkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-white border-gray-200'}`}>
+          <div className="w-11 h-11 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0"><Zap className="w-6 h-6 text-amber-500" /></div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Productos recientes en el punto de venta</p>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Botones con lo último que se vendió en este equipo, encima del buscador, para facturar más rápido.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={cambiarRecientes}
+            aria-label={recientesActivos ? 'Desactivar productos recientes' : 'Activar productos recientes'}
+            className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${recientesActivos ? 'bg-emerald-600' : darkMode ? 'bg-slate-600' : 'bg-gray-300'}`}
+          >
+            <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg transition duration-200 ${recientesActivos ? 'translate-x-6' : 'translate-x-0'}`} />
+          </button>
+        </div>
 
         {/* 5️⃣ MARGEN DE GANANCIA AUTOMÁTICO */}
         <AccordionSection
