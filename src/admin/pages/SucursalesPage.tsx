@@ -59,7 +59,7 @@ export function SucursalesPage() {
 /**
  * Sedes que crean los clientes desde la app (tabla tiendas). Una sede adicional
  * nueva entra en prueba de 14 días; al cobrar instalación (50.000) y
- * mensualidad (49.990) se marca como pagada aquí.
+ * mensualidad (Básico 29.990, Premium 49.990) se marca como pagada aquí.
  */
 function SedesCobro() {
   const [sedes, setSedes] = useState<SedeCobro[] | null>(null);
@@ -84,7 +84,7 @@ function SedesCobro() {
 
   return (
     <div className="mb-8">
-      <PageHeader title="Sedes de los negocios" subtitle="Sede adicional: $49.990 al mes + $50.000 de instalación · 14 días de prueba" />
+      <PageHeader title="Sedes de los negocios" subtitle="Sede adicional: Básico $29.990 o Premium $49.990 al mes + $50.000 de instalación · 14 días de prueba" />
       {error && <ErrorState mensaje={error} />}
       {!sedes ? <LoadingState /> : sedes.length === 0 ? <EmptyState mensaje="Ningún negocio ha creado sedes." /> : (
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">

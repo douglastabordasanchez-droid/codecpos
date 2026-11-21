@@ -1,6 +1,7 @@
 /**
  * Aviso de cobro de sedes (migración 0150): una sede adicional nueva tiene 14
- * días de prueba gratis; después cuesta 49.990 mensuales + 50.000 de
+ * días de prueba gratis; después cuesta 29.990 (Básico) o 49.990 (Premium)
+ * mensuales + 50.000 de
  * instalación y la activa Codec Studio. Se muestra al dueño y a los
  * administradores en el inicio (web, celular y caja de escritorio).
  */
@@ -50,14 +51,14 @@ export function AvisoSedesCobro({ oscuro = true, className = '' }: { oscuro?: bo
         const texto = vencida
           ? `Terminó la prueba gratis de la sede «${s.nombre}». Para seguir vendiendo en ella, actívala con Codec Studio.`
           : `La sede «${s.nombre}» está en prueba gratis: ${s.dias_restantes === 1 ? 'queda 1 día' : `quedan ${s.dias_restantes} días`}.`;
-        const mensaje = encodeURIComponent(`Hola Codec Studio, quiero activar la sede «${s.nombre}» (49.990 mensuales + 50.000 de instalación).`);
+        const mensaje = encodeURIComponent(`Hola Codec Studio, quiero activar la sede «${s.nombre}».`);
         return (
           <div key={s.local_id} className={`rounded-2xl border p-3 flex flex-wrap items-center gap-3 ${
             vencida ? 'border-red-500/50 bg-red-500/10' : 'border-amber-500/50 bg-amber-500/10'}`}>
             <Store className={`w-5 h-5 shrink-0 ${vencida ? 'text-red-500' : 'text-amber-500'}`} />
             <div className="flex-1 min-w-[180px]">
               <p className={`text-sm font-bold ${oscuro ? 'text-white' : 'text-slate-900'}`}>{texto}</p>
-              <p className={`text-xs ${oscuro ? 'text-slate-400' : 'text-slate-600'}`}>Sede adicional: $49.990 al mes + $50.000 de instalación. Incluye un administrador para esa sede.</p>
+              <p className={`text-xs ${oscuro ? 'text-slate-400' : 'text-slate-600'}`}>Sede adicional: Básico $29.990 o Premium $49.990 al mes, más $50.000 de instalación. Incluye un administrador para esa sede.</p>
             </div>
             <a
               href={`https://wa.me/${WHATSAPP_CODEC}?text=${mensaje}`}
