@@ -218,6 +218,7 @@ async function guardar(admin: SupabaseClient, fila: Record<string, unknown>) {
 }
 
 // ── Vía 1: acuses ───────────────────────────────────────────────────────
+const ARREGLO_ACUSES = '2026-11-22T00:00:00Z';
 async function procesarAcuses(admin: SupabaseClient, c: Contexto, limite: number) {
   const { status, datos } = await llamarCodecDocument('pos-acuses', { accion: 'pendientes' }, c.token);
   if (status !== 200) return;
@@ -231,7 +232,11 @@ async function procesarAcuses(admin: SupabaseClient, c: Contexto, limite: number
   for (const e of eventos) {
     if (Date.now() > limite) break;
     const { data: previo } = await admin.from('dian_firmas_encargo').select('*').eq('id', e.id).maybeSingle();
-    if (previo && (previo.estado === 'validado_dian' || previo.estado === 'rechazado_dian')) {
+    // Los rechazados antes del arreglo del 22 nov (reglas AAF20, AAG23, AAB36,
+    // AAH19 y AAB22b) se vuelven a armar con el XML corregido; los demás
+    // rechazos se respetan para no gastar intentos en lo mismo.
+    const rechazoViejo = previo?.estado === 'rechazado_dian' && String(previo.updated_at ?? '') < ARREGLO_ACUSES;
+    if (previo && !rechazoViejo && (previo.estado === 'validado_dian' || previo.estado === 'rechazado_dian')) {
       resultados.push(resultadoDe(previo, 'acuse'));
       if (previo.estado !== 'validado_dian') facturasConFalla.add(e.factura?.cufe);
       continue;

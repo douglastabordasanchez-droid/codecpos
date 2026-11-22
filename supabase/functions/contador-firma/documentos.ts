@@ -24,10 +24,18 @@ const qr = (ambiente: '1' | '2', clave: string) =>
 
 // ── B6: acuses de una factura de compra ─────────────────────────────────
 
-export interface ParteFactura { nit: string; dv?: string | null; nombre: string }
+export interface ParteFactura {
+  nit: string; dv?: string | null; nombre: string;
+  /** Código DIAN del documento (31 NIT, 13 cédula…). Codec Document manda "31". */
+  tipo_doc?: string | null;
+  /** 1 jurídica, 2 natural (regla AAF20 y AAG23). */
+  tipo_persona?: string | null;
+}
 export interface EventoAcuse {
   id: string;
   codigo: '030' | '031' | '032' | '033';
+  /** URL exacta para sts:QRCode (con el CUFE de la factura), la manda Codec Document. */
+  qr?: string | null;
   motivo_reclamo?: string | null;
   nota?: string | null;
   recibio?: { nombres: string; apellidos: string; tipo_doc: string; numero_doc: string; cargo?: string | null } | null;
@@ -52,6 +60,42 @@ const MOTIVO_RECLAMO: Record<string, string> = {
 
 const soloDigitos = (v: unknown) => String(v ?? '').split('-')[0].replace(/\D/g, '');
 
+/** Dígito de verificación de un NIT (módulo 11 de la DIAN). */
+export function digitoVerificacion(nit: string): string {
+  const pesos = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+  const digitos = soloDigitos(nit).split('').reverse();
+  const suma = digitos.reduce((s, d, i) => s + Number(d) * (pesos[i] ?? 0), 0);
+  const r = suma % 11;
+  return String(r > 1 ? 11 - r : r);
+}
+
+const dvDe = (p: { nit: string; dv?: string | null }) => {
+  const dv = String(p.dv ?? '').replace(/\D/g, '');
+  return dv || digitoVerificacion(p.nit);
+};
+
+/** Código DIAN del tipo de documento de una persona (regla AAH19): nunca "CC". */
+export function codigoDocumentoDian(tipo: unknown): string {
+  const t = String(tipo ?? '').trim().toUpperCase().replace(/\./g, '');
+  if (/^\d{2}$/.test(t)) return t;
+  const mapa: Record<string, string> = {
+    CC: '13', CEDULA: '13', 'CÉDULA': '13', CE: '22', PA: '41', PAS: '41', PASAPORTE: '41',
+    NIT: '31', TI: '12', RC: '11', TE: '21', NUIP: '91', PEP: '47', PPT: '48', DIE: '50',
+  };
+  return mapa[t] ?? '13';
+}
+
+/**
+ * Tipo de persona (1 jurídica, 2 natural). Si no viene, un NIT de 9 dígitos
+ * que empieza por 8 o 9 es de empresa; lo demás (cédulas) es persona natural.
+ */
+export function tipoPersona(p: { nit: string; tipo_persona?: string | null }): string {
+  const t = String(p.tipo_persona ?? '').trim();
+  if (t === '1' || t === '2') return t;
+  const n = soloDigitos(p.nit);
+  return n.length === 9 && /^[89]/.test(n) ? '1' : '2';
+}
+
 /**
  * CUDE del evento (Anexo Técnico de Factura Electrónica, eventos del
  * ApplicationResponse): SHA-384 de NumDE + FecEmi + HorEmi + NitFE (quien
@@ -68,7 +112,7 @@ export function cudeEvento(p: {
 const parte = (etiqueta: 'SenderParty' | 'ReceiverParty', p: ParteFactura) =>
   `<cac:${etiqueta}><cac:PartyTaxScheme>` +
   `<cbc:RegistrationName>${escapar(p.nombre)}</cbc:RegistrationName>` +
-  `<cbc:CompanyID schemeAgencyID="195" schemeAgencyName="${DIAN}" schemeID="${escapar(p.dv ?? '')}" schemeName="31">${escapar(soloDigitos(p.nit))}</cbc:CompanyID>` +
+  `<cbc:CompanyID schemeAgencyID="195" schemeAgencyName="${DIAN}" schemeID="${escapar(dvDe(p))}" schemeName="${escapar(p.tipo_doc || '31')}" schemeVersionID="${tipoPersona(p)}">${escapar(soloDigitos(p.nit))}</cbc:CompanyID>` +
   `<cac:TaxScheme><cbc:ID>01</cbc:ID><cbc:Name>IVA</cbc:Name></cac:TaxScheme>` +
   `</cac:PartyTaxScheme></cac:${etiqueta}>`;
 
@@ -97,7 +141,9 @@ export function construirApplicationResponse(
   // 030 y 032 dicen quién recibió (la persona del negocio).
   const quienRecibio = (e.codigo === '030' || e.codigo === '032') && e.recibio
     ? `<cac:IssuerParty><cac:Person>` +
-      `<cbc:ID schemeID="${escapar(e.recibio.tipo_doc)}" schemeName="${escapar(e.recibio.tipo_doc)}">${escapar(soloDigitos(e.recibio.numero_doc))}</cbc:ID>` +
+      (codigoDocumentoDian(e.recibio.tipo_doc) === '31'
+        ? `<cbc:ID schemeAgencyID="195" schemeAgencyName="${DIAN}" schemeID="${digitoVerificacion(e.recibio.numero_doc)}" schemeName="31">${escapar(soloDigitos(e.recibio.numero_doc))}</cbc:ID>`
+        : `<cbc:ID schemeAgencyID="195" schemeAgencyName="${DIAN}" schemeName="${codigoDocumentoDian(e.recibio.tipo_doc)}">${escapar(soloDigitos(e.recibio.numero_doc))}</cbc:ID>`) +
       `<cbc:FirstName>${escapar(e.recibio.nombres)}</cbc:FirstName>` +
       `<cbc:FamilyName>${escapar(e.recibio.apellidos)}</cbc:FamilyName>` +
       `<cbc:JobTitle>${escapar(e.recibio.cargo || 'Recibe')}</cbc:JobTitle>` +
@@ -118,12 +164,13 @@ export function construirApplicationResponse(
     `<ext:UBLExtensions><ext:UBLExtension><ext:ExtensionContent><sts:DianExtensions>` +
     `<sts:InvoiceSource><cbc:IdentificationCode listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listSchemeURI="urn:oasis:names:specification:ubl:codelist:gc:CountryIdentificationCode-2.1">CO</cbc:IdentificationCode></sts:InvoiceSource>` +
     `<sts:SoftwareProvider>` +
-    `<sts:ProviderID schemeAgencyID="195" schemeAgencyName="${DIAN}" schemeID="${escapar(comprador.dv ?? '')}" schemeName="31">${escapar(soloDigitos(comprador.nit))}</sts:ProviderID>` +
+    `<sts:ProviderID schemeAgencyID="195" schemeAgencyName="${DIAN}" schemeID="${escapar(dvDe(comprador))}" schemeName="31">${escapar(soloDigitos(comprador.nit))}</sts:ProviderID>` +
     `<sts:SoftwareID schemeAgencyID="195" schemeAgencyName="${DIAN}">${escapar(o.softwareId)}</sts:SoftwareID>` +
     `</sts:SoftwareProvider>` +
     `<sts:SoftwareSecurityCode schemeAgencyID="195" schemeAgencyName="${DIAN}">${ssc}</sts:SoftwareSecurityCode>` +
     `<sts:AuthorizationProvider><sts:AuthorizationProviderID schemeAgencyID="195" schemeAgencyName="${DIAN}" schemeID="4" schemeName="31">800197268</sts:AuthorizationProviderID></sts:AuthorizationProvider>` +
-    `<sts:QRCode>${qr(o.ambiente, cude)}</sts:QRCode>` +
+    // Regla AAB36: el QR lleva la URL con el CUFE de la FACTURA, no el CUDE del evento.
+    `<sts:QRCode>${escapar(e.qr || qr(o.ambiente, e.factura.cufe))}</sts:QRCode>` +
     `</sts:DianExtensions></ext:ExtensionContent></ext:UBLExtension></ext:UBLExtensions>` +
     `<cbc:UBLVersionID>UBL 2.1</cbc:UBLVersionID>` +
     `<cbc:CustomizationID>1</cbc:CustomizationID>` +

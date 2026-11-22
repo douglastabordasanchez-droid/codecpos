@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import forge from 'node-forge';
 import { DOMParser } from '@xmldom/xmldom';
 import {
-  ahoraColombia, calcularCune, construirApplicationResponse, cudeEvento, prepararNomina, quitarExtensionVacia, sha384Hex,
+  ahoraColombia, calcularCune, codigoDocumentoDian, construirApplicationResponse, cudeEvento, digitoVerificacion, prepararNomina, quitarExtensionVacia, sha384Hex, tipoPersona,
 } from './documentos';
 import { abrirP12, firmarXades, verificarFirma } from '../dian-emision/xades';
 
@@ -50,7 +50,8 @@ describe('acuses (B6)', () => {
     expect(doc.documentElement!.localName).toBe('ApplicationResponse');
     expect(xml).toContain('<cbc:ResponseCode>030</cbc:ResponseCode>');
     expect(xml).toContain('<cbc:ProfileExecutionID>2</cbc:ProfileExecutionID>');
-    expect(xml).toContain('catalogo-vpfe-hab.dian.gov.co/document/searchqr?documentkey=' + cude);
+    expect(xml).toContain('<sts:QRCode>https://catalogo-vpfe-hab.dian.gov.co/document/searchqr?documentkey=' + 'f'.repeat(96) + '</sts:QRCode>');
+    expect(xml).not.toContain('documentkey=' + cude);
     expect(xml).toContain(`<sts:SoftwareSecurityCode schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)">${sha384Hex('sw12345EV00000001')}</sts:SoftwareSecurityCode>`);
     expect(xml).toMatch(/<cac:SenderParty>.*1049796031.*<\/cac:SenderParty><cac:ReceiverParty>.*800020706/);
     expect(xml).toContain('<cbc:FirstName>Luis Carlos</cbc:FirstName>');
@@ -69,6 +70,44 @@ describe('acuses (B6)', () => {
     const firmado = firmarXades(xml, credencialesDePrueba(), ahora, 'third party');
     expect(firmado).toContain('<xades:ClaimedRole>third party</xades:ClaimedRole>');
     expect(() => verificarFirma(firmado)).not.toThrow();
+  });
+});
+
+describe('acuses: reglas RADIAN del rechazo del 21 nov', () => {
+  const armar = (e: any) => construirApplicationResponse(e, { numero: 'EV9', softwareId: 'sw', softwarePin: 'p', ambiente: '1', ahora }).xml;
+
+  it('AAF20 y AAG23: CompanyID de emisor y receptor lleva schemeVersionID (tipo de persona)', () => {
+    const xml = armar(evento);
+    expect(xml).toMatch(/<cac:SenderParty>.*schemeName="31" schemeVersionID="2">1049796031<\/cbc:CompanyID>/);
+    expect(xml).toMatch(/<cac:ReceiverParty>.*schemeName="31" schemeVersionID="1">800020706<\/cbc:CompanyID>/);
+    const conTipo = armar({ ...evento, factura: { ...evento.factura, vendedor: { ...evento.factura.vendedor, tipo_persona: '2' } } });
+    expect(conTipo).toMatch(/<cac:ReceiverParty>.*schemeVersionID="2">800020706/);
+    expect(tipoPersona({ nit: '900123456' })).toBe('1');
+    expect(tipoPersona({ nit: '1049796031' })).toBe('2');
+  });
+
+  it('AAB36: el QR usa el campo qr de Codec Document o el CUFE de la factura', () => {
+    expect(armar({ ...evento, qr: 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=abc' }))
+      .toContain('<sts:QRCode>https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=abc</sts:QRCode>');
+    expect(armar(evento)).toContain(`documentkey=${'f'.repeat(96)}</sts:QRCode>`);
+  });
+
+  it('AAH19: la persona que recibe va con el código DIAN, nunca CC', () => {
+    const xml = armar({ ...evento, recibio: { ...evento.recibio, tipo_doc: 'CC' } });
+    expect(xml).toContain('schemeName="13">1049796031</cbc:ID>');
+    expect(xml).not.toContain('"CC"');
+    expect(codigoDocumentoDian('CE')).toBe('22');
+    expect(codigoDocumentoDian('PA')).toBe('41');
+    expect(codigoDocumentoDian('31')).toBe('31');
+  });
+
+  it('AAB22b: ProviderID y CompanyID llevan DV aunque la factura no lo traiga', () => {
+    expect(digitoVerificacion('1049796031')).toBe('3');
+    expect(digitoVerificacion('800197268')).toBe('4');
+    const sinDv = { ...evento, factura: { ...evento.factura, comprador: { nit: '1049796031', nombre: 'LUIS' }, vendedor: { nit: '800197268', nombre: 'DIAN' } } };
+    const xml = armar(sinDv);
+    expect(xml).toMatch(/<sts:ProviderID [^>]*schemeID="3" schemeName="31">1049796031<\/sts:ProviderID>/);
+    expect(xml).toMatch(/<cac:ReceiverParty>.*schemeID="4" schemeName="31"/);
   });
 });
 
