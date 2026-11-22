@@ -228,6 +228,16 @@ async function procesarAcuses(admin: SupabaseClient, c: Contexto, limite: number
   const resultados: Resultado[] = [];
   const facturasConFalla = new Set<string>();
   const ambiente = ambienteDian(c.perfil.ambiente);
+  // Mientras la DIAN no valide un acuse armado con el arreglo, solo se
+  // reintenta UN rechazo viejo por vuelta: se prueba con uno antes de mandar todos.
+  const { count: validadosTrasArreglo } = await admin.from('dian_firmas_encargo')
+    .select('id', { count: 'exact', head: true })
+    .eq('cliente_id', c.clienteId).eq('clase', 'acuse').eq('estado', 'validado_dian').gte('updated_at', ARREGLO_ACUSES);
+  const { count: rechazadosTrasArreglo } = await admin.from('dian_firmas_encargo')
+    .select('id', { count: 'exact', head: true })
+    .eq('cliente_id', c.clienteId).eq('clase', 'acuse').eq('estado', 'rechazado_dian').gte('updated_at', ARREGLO_ACUSES);
+  // Si la prueba salió rechazada otra vez, no se gastan los demás hasta revisar.
+  let reintentosViejos = (validadosTrasArreglo ?? 0) > 0 ? Infinity : (rechazadosTrasArreglo ?? 0) > 0 ? 0 : 1;
 
   for (const e of eventos) {
     if (Date.now() > limite) break;
@@ -236,6 +246,8 @@ async function procesarAcuses(admin: SupabaseClient, c: Contexto, limite: number
     // AAH19 y AAB22b) se vuelven a armar con el XML corregido; los demás
     // rechazos se respetan para no gastar intentos en lo mismo.
     const rechazoViejo = previo?.estado === 'rechazado_dian' && String(previo.updated_at ?? '') < ARREGLO_ACUSES;
+    if (rechazoViejo && reintentosViejos <= 0) continue; // espera a que el primero salga bien
+    if (rechazoViejo) reintentosViejos--;
     if (previo && !rechazoViejo && (previo.estado === 'validado_dian' || previo.estado === 'rechazado_dian')) {
       resultados.push(resultadoDe(previo, 'acuse'));
       if (previo.estado !== 'validado_dian') facturasConFalla.add(e.factura?.cufe);
