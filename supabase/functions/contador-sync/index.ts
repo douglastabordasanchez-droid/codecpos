@@ -36,6 +36,8 @@ const CRON_SECRET = Deno.env.get('CONTADOR_CRON_SECRET') ?? '';
 const CODEC_DOCUMENT = (Deno.env.get('CODEC_DOCUMENT_FUNCTIONS_URL') ?? 'https://yxzchnldmfsgdtbjurey.supabase.co/functions/v1').replace(/\/$/, '');
 
 const LOTE = 200;
+/** Un evento más pesado que esto se manda solo (pedido de Codec Document). */
+const MAX_EVENTO_EN_LOTE = 1_000_000;
 const PRESUPUESTO_MS = 45_000;
 
 const corsHeaders = {
@@ -133,10 +135,16 @@ async function vincular(admin: SupabaseClient, clienteId: string, userId: string
   });
   if (errorGuardar) throw new ErrorHttp(`Se conectó, pero no se pudo guardar la conexión: ${errorGuardar.message}`, 500);
 
-  // Al reconectar se reenvía todo: la conexión nueva puede ser de otra cuenta
-  // de contador que no tiene nada, y Codec Document deduplica por id_origen.
-  await admin.from('contador_eventos').update({ estado: 'pendiente', intentos: 0, proximo_intento_en: new Date().toISOString(), motivo: null, enviado_en: null })
+  // Al reconectar con OTRO contador o empresa se reenvía todo (esa cuenta no
+  // tiene nada). Con el mismo contador y la misma empresa NO se reenvía en
+  // bloque lo que ya le llegó (pedido de Codec Document, 2026-11-22): solo
+  // vuelve a la cola lo que no se entregó.
+  const mismoDestino = !!actual?.contador && actual.contador === (datos.contador ?? null)
+    && (actual.empresa ?? null) === (datos.empresa ?? null);
+  let reenviar = admin.from('contador_eventos').update({ estado: 'pendiente', intentos: 0, proximo_intento_en: new Date().toISOString(), motivo: null, enviado_en: null })
     .eq('cliente_id', clienteId).neq('estado', 'pendiente');
+  if (mismoDestino) reenviar = reenviar.not('estado', 'in', '(enviado,duplicado)');
+  await reenviar;
   await admin.rpc('contador_encolar_historial', { p_cliente_id: clienteId });
   // Abonos de cartera, ingresos extra y facturas de compra (0138).
   const { data: encolados } = await admin.rpc('contador_encolar_historial_fase3', { p_cliente_id: clienteId });
@@ -179,6 +187,13 @@ async function verificar(admin: SupabaseClient, clienteId: string): Promise<{ es
   if (status === 401 && /conexion_revocada|token_invalido|revocado/.test(motivo)) {
     await marcarRevocado(admin, clienteId);
     return { estado: 'revocado' };
+  }
+  // Codec Document devuelve el nombre actual del contador: se muestra en «Mi contador».
+  if (status === 200 && (datos?.contador || datos?.empresa)) {
+    const cambios: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (datos.contador) cambios.contador = String(datos.contador);
+    if (datos.empresa) cambios.empresa = String(datos.empresa);
+    await admin.from('contador_vinculos').update(cambios).eq('cliente_id', clienteId);
   }
   return { estado: 'activo' };
 }
@@ -479,10 +494,17 @@ async function enviarLote(admin: SupabaseClient, clienteId: string, token: strin
 
   const { eventos, rechazosLocales } = await armarLote(admin, clienteId, cola);
   for (const r of rechazosLocales) await marcar(admin, [r.id], { estado: 'rechazado', motivo: r.motivo });
-  const enviables = cola.filter((e) => !rechazosLocales.some((r) => r.id === e.id));
   if (!eventos.length) return true;
 
-  const { status, datos } = await llamarCodecDocument('pos-ingesta', { eventos }, token);
+  // Un evento de más de 1 MB (XML grande) viaja solo, nunca en el lote de 200.
+  // Si el primero es grande va solo; si no, los grandes esperan al siguiente
+  // lote, donde quedan de primeros por fecha.
+  const grande = (ev: unknown) => new TextEncoder().encode(JSON.stringify(ev)).length > MAX_EVENTO_EN_LOTE;
+  const aEnviar = grande(eventos[0]) ? [eventos[0]] : eventos.filter((ev) => !grande(ev));
+  const origenesEnviados = new Set(aEnviar.map((ev: any) => String(ev.id_origen)));
+  const enviables = cola.filter((e) => !rechazosLocales.some((r) => r.id === e.id) && origenesEnviados.has(String(e.id_origen)));
+
+  const { status, datos } = await llamarCodecDocument('pos-ingesta', { eventos: aEnviar }, token);
   const ahora = new Date().toISOString();
 
   if (status === 401 && /conexion_revocada|token_invalido/.test(codigoError(datos) || JSON.stringify(datos ?? ''))) {
