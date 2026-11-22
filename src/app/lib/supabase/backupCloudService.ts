@@ -29,7 +29,7 @@ export interface RespaldoNube {
 }
 
 /** Comprime a gzip si el entorno lo soporta (Electron/Chromium moderno sí); si no, sube el JSON sin comprimir. */
-async function comprimirJson(texto: string): Promise<{ blob: Blob; extension: string }> {
+export async function comprimirJson(texto: string): Promise<{ blob: Blob; extension: string }> {
   if (typeof CompressionStream === 'undefined') {
     return { blob: new Blob([texto], { type: 'application/json' }), extension: 'json' };
   }
@@ -42,7 +42,7 @@ async function comprimirJson(texto: string): Promise<{ blob: Blob; extension: st
   }
 }
 
-async function descomprimirBlob(blob: Blob, nombreArchivo: string): Promise<string> {
+export async function descomprimirBlob(blob: Blob, nombreArchivo: string): Promise<string> {
   if (!nombreArchivo.endsWith('.gz') || typeof DecompressionStream === 'undefined') {
     return blob.text();
   }

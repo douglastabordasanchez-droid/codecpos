@@ -16,9 +16,12 @@ import { instalarImpresionAndroid } from './app/lib/impresionHtmlAndroid';
 import { instalarVozAndroid } from './app/lib/vozAndroid';
 import { instalarTecladoAndroid } from './app/lib/tecladoAndroid';
 import { instalarDialogosSinTrabar } from './app/lib/dialogosSinTrabar';
+import { iniciarSoporteRemoto } from './app/lib/soporteRemoto';
 
 recargarSiFaltaPantalla();
 instalarDialogosSinTrabar();
+// 🛠️ Conexión remota de soporte: solo en Electron (migración 0167).
+iniciarSoporteRemoto();
 
 // ⚡ Modo liviano de la caja (Electron): sin vidrio esmerilado, animaciones decorativas
 // limitadas y transiciones instantáneas. Las animaciones infinitas obligaban a redibujar

@@ -9,6 +9,7 @@ import {
 } from '../components/ui';
 import { GestionEmpleadosCliente } from '../components/GestionEmpleadosCliente';
 import { CredencialesLicenciaModal } from '../components/CredencialesLicenciaModal';
+import { SoporteRemotoCliente } from '../components/SoporteRemotoCliente';
 import { MODULOS_CATALOGO, MODULOS_VENTA_APARTE, modulosDeLicencia } from '../../app/lib/permissions';
 import { resumenVencimiento } from '../../app/lib/bloqueoLicencia';
 
@@ -591,6 +592,8 @@ export function ClienteDetallePage() {
       )}
 
       {id && <GestionEmpleadosCliente clienteId={id} onCambio={cargar} />}
+
+      {id && <SoporteRemotoCliente clienteId={id} />}
 
       {detalle.addons_activos.length > 0 && (
         <SectionCard title="Add-ons activos" className="mb-6">
