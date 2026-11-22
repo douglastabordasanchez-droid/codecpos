@@ -380,7 +380,11 @@ async function despachar(admin: SupabaseClient) {
     .select('cliente_id, token_cifrado, firma_capacidad, firma_capacidad_en, certificado_compartido, certificado_compartido_en')
     .eq('estado', 'activo');
   let negocios = 0;
-  for (const v of vinculos ?? []) {
+  // Orden al azar en cada vuelta: con muchos contadores y negocios, uno con
+  // muchos acuses no deja esperando a los demás cuando se acaba el tiempo.
+  const lista = [...(vinculos ?? [])];
+  for (let i = lista.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [lista[i], lista[j]] = [lista[j], lista[i]]; }
+  for (const v of lista) {
     if (Date.now() > limite) break;
     if (!v.token_cifrado) continue;
     try {
