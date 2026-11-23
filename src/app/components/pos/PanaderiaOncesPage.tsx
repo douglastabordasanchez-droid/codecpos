@@ -33,7 +33,9 @@ import { type Estacion, listarEstaciones, suscribirEstaciones } from '../../lib/
 import { createPortal } from 'react-dom';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { EncargosPanel } from '../../../pwa/components/EncargosPanel';
-import { rearmarMenuAlimentos } from '../../lib/menuAlimentosDesdeInventario';
+import { rearmarMenuAlimentos, iconoParaCategoria } from '../../lib/menuAlimentosDesdeInventario';
+import { productoEnSede, inventarioUniversalGuardado } from '../../lib/inventarioSede';
+import { getTiendaActivaId } from '../../lib/multitiendaService';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from 'sonner';
@@ -1404,10 +1406,60 @@ export default function PanaderiaOncesPage() {
     try { localStorage.setItem('codecpos_alimentos_modo_facil', activo ? '1' : '0'); } catch { /* sin almacenamiento */ }
     if (!activo) setMesaSeleccionada(null);
   };
+  // 🛒 Modo fácil con TODO el catálogo: además del menú de Alimentos y Bebidas, los productos
+  // creados en Inventario o en el punto de venta (gaseosas, yogures, tortas, adicionales…).
+  // Se agrupan por su categoría del inventario; los sueltos («Manuales», «General») van a
+  // «Más productos». Al cobrar viajan con su ficha completa, así descuentan su propio stock.
+  const inventarioFacil = useMemo(() => {
+    const norm = (t: string) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+    const idsMenu = new Set(productosPos.map((x) => x.id));
+    const nombresMenu = new Set(productosPos.map((x) => norm(x.nombre)));
+    const catsMenu = new Map(categoriasPos.map((c) => [norm(c.nombre), c.id] as const));
+    const sede = getTiendaActivaId();
+    const universal = inventarioUniversalGuardado();
+    const vistos = new Set<string>();
+    const porId = new Map<string, any>();
+    const categorias = new Map<string, { id: string; nombre: string; color: string; icono: string }>();
+    const lista: ProductoFacil[] = [];
+    for (const prod of (productos as any[]) || []) {
+      if (!prod || prod.activo === false || prod.esComboOnces) continue;
+      const id = String(prod.id || '');
+      const nombre = String(prod.nombre || '').trim();
+      const precio = Number(prod.precio) || 0;
+      if (!id || !nombre || precio <= 0 || id.startsWith('pprod-') || id.startsWith('almuerzo-')) continue;
+      if (idsMenu.has(id) || nombresMenu.has(norm(nombre)) || norm(nombre) === 'prueba') continue;
+      if (!productoEnSede(prod.sedeDuena, sede, universal)) continue;
+      const clave = `${norm(nombre)}|${precio}`;
+      if (vistos.has(clave)) continue; // el mismo producto creado dos veces se muestra una
+      vistos.add(clave);
+      const cat = String(prod.categoria || '').trim();
+      const suelto = !cat || /^(manuales?|general|sin categor[ií]a)$/i.test(cat);
+      const nombreCat = suelto ? 'Más productos' : cat.charAt(0).toUpperCase() + cat.slice(1);
+      const catMenu = catsMenu.get(norm(nombreCat));
+      const idCat = catMenu ?? `inv-${norm(nombreCat).replace(/[^a-z0-9]+/g, '-')}`;
+      if (!catMenu && !categorias.has(idCat)) categorias.set(idCat, { id: idCat, nombre: nombreCat, color: suelto ? '#475569' : '#0f766e', icono: iconoParaCategoria(nombreCat) });
+      porId.set(id, prod);
+      lista.push({ id, categoriaId: idCat, nombre, precio, color: '#0f766e', icono: '' });
+    }
+    const cats = [...categorias.values()].sort((a, b) => (a.nombre === 'Más productos' ? 1 : b.nombre === 'Más productos' ? -1 : a.nombre.localeCompare(b.nombre, 'es')));
+    return { categorias: cats, productos: lista, porId };
+  }, [productos, productosPos, categoriasPos]);
+
   const ajustarEnCuentaFacil = (productoId: string, delta: 1 | -1) => {
     const actual = mesaSeleccionada ? (Array.isArray(cuentasMesas[mesaSeleccionada.id]) ? cuentasMesas[mesaSeleccionada.id] : []) : cuentaLibre;
     let nuevos: ItemMesa[];
     if (delta > 0) {
+      const deInventario = inventarioFacil.porId.get(productoId);
+      if (deInventario) {
+        // Producto del inventario: va con su ficha completa (código, stock, IVA) como en el POS.
+        const existeInv = actual.some((it) => it.producto.id === productoId);
+        nuevos = existeInv
+          ? actual.map((it) => it.producto.id === productoId ? { ...it, cantidad: it.cantidad + 1 } : it)
+          : [...actual, { producto: { ...deInventario, precio: Number(deInventario.precio) || 0 } as ProductoMesa, cantidad: 1 }];
+        if (mesaSeleccionada) persistirCuentas({ ...cuentasMesas, [mesaSeleccionada.id]: nuevos }, mesaSeleccionada.id);
+        else persistirCuentaLibre(nuevos);
+        return;
+      }
       const prod = productosPos.find((x) => x.id === productoId);
       if (!prod) return;
       const existe = actual.some((it) => it.producto.id === prod.id);
@@ -2726,8 +2778,8 @@ export default function PanaderiaOncesPage() {
       )}
       {modoFacil && (
         <ModoFacilAlimentos
-          categorias={categoriasPos.map((c) => ({ id: c.id, nombre: c.nombre, color: c.color, icono: c.icono }))}
-          productos={productosPos as ProductoFacil[]}
+          categorias={[...categoriasPos.map((c) => ({ id: c.id, nombre: c.nombre, color: c.color, icono: c.icono })), ...inventarioFacil.categorias]}
+          productos={[...(productosPos as ProductoFacil[]), ...inventarioFacil.productos]}
           mesas={mesasVisibles}
           cuentaMostrador={cuentaLibre}
           cuentasMesas={cuentasMesas}
