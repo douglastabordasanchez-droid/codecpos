@@ -908,9 +908,64 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     try {
       const origen = localStorage.getItem('codecpos_panaderia_origen');
       if (!origen) return;
+      // 👥 Cuenta dividida: se cobró solo la parte de una persona. Se quita lo suyo
+      // y la mesa sigue abierta (aquí y en la nube) con lo de las demás.
+      let parcial: { mesaId: string; persona: number; items: Array<{ id: string; cantidad: number }> } | null = null;
+      try { parcial = JSON.parse(localStorage.getItem('codecpos_cobro_parcial') || 'null'); } catch { parcial = null; }
+      localStorage.removeItem('codecpos_cobro_parcial');
+      if (parcial && parcial.mesaId === origen && origen !== 'libre') {
+        const cuentas = JSON.parse(localStorage.getItem('codecpos_mesas_cuentas') || '{}');
+        const porQuitar = new Map<string, number>();
+        for (const it of parcial.items || []) porQuitar.set(String(it.id), (porQuitar.get(String(it.id)) || 0) + (Number(it.cantidad) || 0));
+        const quedan = (Array.isArray(cuentas[origen]) ? cuentas[origen] : [])
+          .map((it: any) => {
+            const id = String(it?.producto?.id);
+            const quitar = Math.min(porQuitar.get(id) || 0, Number(it.cantidad) || 0);
+            if (quitar > 0) porQuitar.set(id, (porQuitar.get(id) || 0) - quitar);
+            return { ...it, cantidad: (Number(it.cantidad) || 0) - quitar };
+          })
+          .filter((it: any) => it.cantidad > 0);
+        // Quien ya pagó sale del reparto guardado (así no se queda con lo de otra persona).
+        try {
+          const claveDiv = `codecpos_division_${origen}`;
+          const div = JSON.parse(localStorage.getItem(claveDiv) || 'null');
+          if (div?.reparto) { delete div.reparto[parcial.persona]; localStorage.setItem(claveDiv, JSON.stringify(div)); }
+          if (quedan.length === 0) localStorage.removeItem(claveDiv);
+        } catch { /* ignorar */ }
+        if (quedan.length > 0) {
+          cuentas[origen] = quedan;
+          localStorage.setItem('codecpos_mesas_cuentas', JSON.stringify(cuentas));
+          marcarCambioLocalMesa(origen);
+          setVersionCuentasMesas((version) => version + 1);
+          Promise.all([
+            import('../../lib/supabase/tenantLink'),
+            import('../../lib/supabase/panaderiaSyncService'),
+          ]).then(async ([{ getLinkedClienteId }, { guardarCuentaMesa }]) => {
+            const clienteId = getLinkedClienteId();
+            if (!clienteId) return;
+            let tiendaId: string | null = null;
+            try {
+              const mesasConfig = JSON.parse(localStorage.getItem('codecpos_mesas_config') || '[]');
+              tiendaId = (Array.isArray(mesasConfig) ? mesasConfig : []).find((m: any) => m.id === origen)?.tiendaId || null;
+            } catch {}
+            let mesero: string | undefined;
+            try { mesero = JSON.parse(localStorage.getItem('codecpos_mesas_mesero') || '{}')[origen] || undefined; } catch {}
+            return guardarCuentaMesa(clienteId, origen, quedan.map((it: any) => ({
+              producto: { id: it.producto.id, nombre: it.producto.nombre, precio: Number(it.producto.precio) || 0, codigo: it.producto.codigo },
+              cantidad: Number(it.cantidad) || 0,
+              ...(Array.isArray(it.detalles) && it.detalles.length ? { detalles: it.detalles } : {}),
+            })), 'electron', typeof mesero === 'string' ? mesero : undefined, tiendaId);
+          }).catch(() => {});
+          localStorage.removeItem('codecpos_panaderia_origen');
+          localStorage.removeItem('codecpos_referencia_mesa');
+          return;
+        }
+        // Era la última persona: la mesa se libera como un cobro normal (sigue abajo).
+      }
       if (origen === 'libre') {
         localStorage.removeItem('codecpos_panaderia_cuenta_libre');
       } else {
+        try { localStorage.removeItem(`codecpos_division_${origen}`); } catch { /* ignorar */ }
         const cuentas = JSON.parse(localStorage.getItem('codecpos_mesas_cuentas') || '{}');
         delete cuentas[origen];
         localStorage.setItem('codecpos_mesas_cuentas', JSON.stringify(cuentas));
@@ -3538,6 +3593,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   // Vaciar es a propósito: la cuenta de la mesa también se libera en la
                   // nube y se marca como cambio de esta caja, para que la recuperación
                   // automática (useSyncModulosNube › pullCuentas) no la vuelva a traer.
+                  // Cobro de una sola persona de una cuenta dividida: vaciar el carrito
+                  // solo cancela ese cobro; la mesa queda igual, con lo de todos.
+                  if (localStorage.getItem('codecpos_cobro_parcial')) {
+                    localStorage.removeItem('codecpos_cobro_parcial');
+                    localStorage.removeItem('codecpos_panaderia_origen');
+                    localStorage.removeItem('codecpos_referencia_mesa');
+                    setCarrito([]);
+                    toast.success('Cobro de la persona cancelado; la mesa sigue igual');
+                    return;
+                  }
                   const origen = localStorage.getItem('codecpos_panaderia_origen')
                     || (mesaActivaId && mesaActivaId !== 'general' ? mesaActivaId : null);
                   if (origen) {

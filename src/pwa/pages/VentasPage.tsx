@@ -255,7 +255,12 @@ export default function VentasPage() {
         {!busqueda.trim() && pagosSinVenta.map((p) => (
           <div key={`pago-${p.id}`} className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300">Sin factura</span>
+              <button
+                onClick={() => { guardarPagoPorRegistrar(p); navigate('/vender'); }}
+                className="text-[11px] font-black uppercase px-2.5 py-1 rounded-md bg-amber-500 text-slate-900"
+              >
+                Sin registro
+              </button>
               <span className="text-white font-black text-sm">${Math.round(p.monto).toLocaleString('es-CO')}</span>
             </div>
             <p className="text-slate-500 text-xs mb-2">

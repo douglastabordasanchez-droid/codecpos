@@ -9,7 +9,7 @@ import {
   UsersRound, GlassWater, CirclePlus, PackageOpen, Drumstick, Wheat, Salad, CookingPot,
   Martini, Milk, Donut, CakeSlice, Sandwich, Popcorn, Beef, Shrimp, Shell, ChefHat, PackageCheck, PackagePlus,
   GripVertical, ChevronDown, ChevronLeft, ChevronRight, AlertTriangle, ShoppingCart, BarChart3, TrendingUp,
-  Maximize2, Printer, Pencil, Search, Minus,
+  Maximize2, Printer, Pencil, Search, Minus, Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePOS } from '../../contexts/POSContext';
@@ -27,6 +27,7 @@ import { PantallaEstaciones } from '../estaciones/PantallaEstaciones';
 import { DialogoEnvioEstaciones, type ItemEnvio } from '../estaciones/DialogoEnvioEstaciones';
 import { OrdenarCategoriasModal } from './OrdenarCategoriasModal';
 import { ModoFacilAlimentos, type MesaFacil, type ProductoFacil } from './ModoFacilAlimentos';
+import { DividirCuentaModal } from './DividirCuentaModal';
 import { esEmoji } from '../../lib/estiloMenu';
 import type { PlanImportacionMenu } from '../../lib/importarMenuAlimentos';
 import { type Estacion, listarEstaciones, suscribirEstaciones } from '../../lib/supabase/estacionesService';
@@ -906,8 +907,37 @@ export default function PanaderiaOncesPage() {
     [mesas, tiendaActivaId]
   );
 
+  // 👥 Dividir la cuenta: cada persona se cobra aparte y la mesa sigue abierta con lo demás.
+  const [mesaDividiendo, setMesaDividiendo] = useState<MesaConfig | null>(null);
+  const cobrarParteDeMesa = (mesa: MesaConfig, persona: number, partes: Array<{ producto: { id: string }; cantidad: number }>) => {
+    try {
+      const cuenta = cuentasMesas[mesa.id] || [];
+      // Con la ficha completa de cada producto (código, costo, receta) para que descuente bien.
+      const transferir = partes
+        .map((pt) => {
+          const linea = cuenta.find((it) => String(it.producto.id) === String(pt.producto.id));
+          return linea ? { ...linea, cantidad: pt.cantidad } : null;
+        })
+        .filter(Boolean);
+      if (transferir.length === 0) { toast.error('Esa persona no tiene productos'); return; }
+      localStorage.setItem(STORAGE_TRANSFER_CART, JSON.stringify(transferir));
+      localStorage.setItem('codecpos_cobro_parcial', JSON.stringify({
+        mesaId: mesa.id, persona, items: partes.map((pt) => ({ id: String(pt.producto.id), cantidad: pt.cantidad })),
+      }));
+      localStorage.setItem('codecpos_volver_a_alimentos', '1');
+      // En el carrito general, NO en el de la mesa: el punto de venta guarda su carrito en
+      // la mesa activa y pisaría la cuenta de todos con lo de esta persona.
+      localStorage.setItem('codecpos_mesa_activa', 'general');
+      localStorage.setItem('codecpos_panaderia_origen', mesa.id);
+      localStorage.setItem('codecpos_referencia_mesa', `${mesa.nombre} · Persona ${persona}`);
+      setMesaDividiendo(null);
+      navigate('/pos');
+    } catch (error) { console.error('Error cobrando parte de la mesa:', error); toast.error('No se pudo pasar al cobro. Intenta de nuevo.'); }
+  };
+
   const abrirMesaEnPOS = (mesa?: MesaConfig | null) => {
     try {
+      localStorage.removeItem('codecpos_cobro_parcial'); // cobro de la mesa completa
       const cuentaTransferir = mesa ? (cuentasMesas[mesa.id] || []) : cuentaLibre;
       if (cuentaTransferir.length === 0) { toast.error('No hay productos en la cuenta para transferir a POS'); return; }
       localStorage.setItem(STORAGE_TRANSFER_CART, JSON.stringify(cuentaTransferir));
@@ -2249,6 +2279,11 @@ export default function PanaderiaOncesPage() {
                       <Button className="flex-1 h-11 bg-amber-600 hover:bg-amber-700 font-bold text-white shadow-lg" onClick={() => abrirMesaEnPOS(mesaSeleccionada)}>
                         Pagar en POS — ${totalCuentaActiva.toLocaleString('es-CO')}
                       </Button>
+                      {mesaSeleccionada && (
+                        <Button className="h-11 px-4 font-bold text-white shadow-lg bg-violet-600 hover:bg-violet-700" onClick={() => setMesaDividiendo(mesaSeleccionada)} title="Dividir la cuenta entre varias personas">
+                          <Users className="w-4 h-4 mr-1" />Dividir
+                        </Button>
+                      )}
                       {!mesaSeleccionada && mesasVisibles.length > 0 && (
                         <div className="relative">
                           <Button
@@ -2776,6 +2811,16 @@ export default function PanaderiaOncesPage() {
         </div>,
         document.body,
       )}
+      {mesaDividiendo && (
+        <DividirCuentaModal
+          mesaId={mesaDividiendo.id}
+          mesaNombre={mesaDividiendo.nombre}
+          items={(cuentasMesas[mesaDividiendo.id] || []).map((it) => ({ producto: { id: String(it.producto.id), nombre: it.producto.nombre, precio: Number(it.producto.precio) || 0 }, cantidad: Number(it.cantidad) || 0 }))}
+          oscuro={darkMode}
+          onCobrar={(persona, partes) => cobrarParteDeMesa(mesaDividiendo, persona, partes)}
+          onCerrar={() => setMesaDividiendo(null)}
+        />
+      )}
       {modoFacil && (
         <ModoFacilAlimentos
           categorias={[...categoriasPos.map((c) => ({ id: c.id, nombre: c.nombre, color: c.color, icono: c.icono })), ...inventarioFacil.categorias]}
@@ -2792,6 +2837,7 @@ export default function PanaderiaOncesPage() {
           onPasarAMesa={(m) => { transferirCarritoAuxiliarAMesa(m.id, m.nombre); setMesaSeleccionada(mesaPorId(m)); }}
           onEnviarCocina={(m) => { const mesa = mesaPorId(m); if (mesa) void enviarMesaACocina(mesa); }}
           onCobrar={(m) => abrirMesaEnPOS(mesaPorId(m))}
+          onDividir={(m) => { const mesa = mesaPorId(m); if (mesa) setMesaDividiendo(mesa); }}
           onSalir={() => cambiarModoFacil(false)}
         />
       )}
@@ -2993,6 +3039,9 @@ export default function PanaderiaOncesPage() {
                 </Button>
                 <Button variant="outline" className="h-11 font-bold px-5 border-sky-400 text-sky-600 hover:bg-sky-50" onClick={() => void imprimirCuentaMesa(mesaSeleccionada)}>
                   <Printer className="w-4 h-4 mr-2" />{cuentasImpresas[mesaSeleccionada.id] ? 'Reimprimir cuenta' : 'Imprimir cuenta'}
+                </Button>
+                <Button variant="outline" className="h-11 font-bold px-5 border-violet-400 text-violet-600 hover:bg-violet-50" onClick={() => setMesaDividiendo(mesaSeleccionada)} disabled={(cuentasMesas[mesaSeleccionada.id] || []).length === 0}>
+                  <Users className="w-4 h-4 mr-2" />Dividir cuenta
                 </Button>
                 <Button className="h-11 bg-amber-600 hover:bg-amber-700 font-bold px-6" onClick={() => abrirMesaEnPOS(mesaSeleccionada)}>
                   Cobrar

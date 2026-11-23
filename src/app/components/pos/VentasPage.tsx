@@ -1052,7 +1052,14 @@ export default function VentasPage() {
                       className={darkMode ? 'bg-amber-500/10' : 'bg-amber-50'}
                     >
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-md text-xs font-bold ${darkMode ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>Sin factura</span>
+                        <button
+                          type="button"
+                          onClick={() => { guardarPagoPorRegistrar(p); navigate('/pos'); }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-black bg-amber-500 hover:bg-amber-600 text-slate-900"
+                          title="Este pago no tiene factura: toca para registrarlo en el punto de venta"
+                        >
+                          Sin registro
+                        </button>
                       </td>
                       <td className="px-6 py-4">
                         <div className={darkMode ? 'text-slate-300' : 'text-slate-600'}>

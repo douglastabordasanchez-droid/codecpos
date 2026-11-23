@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Armchair, ArrowLeft, ChefHat, LogOut, Minus, Plus, Search, ShoppingCart, Star, Store, X } from 'lucide-react';
+import { Armchair, ArrowLeft, ChefHat, LogOut, Minus, Plus, Search, ShoppingCart, Star, Store, Users, X } from 'lucide-react';
 import { dbManager } from '../../lib/indexedDB';
 import { emojiParaProducto, urlTwemoji } from '../../lib/imagenProducto';
 import { esEmoji } from '../../lib/estiloMenu';
@@ -34,6 +34,8 @@ interface Props {
   onPasarAMesa: (mesa: MesaFacil) => void;
   onEnviarCocina: (mesa: MesaFacil) => void;
   onCobrar: (mesa: MesaFacil | null) => void;
+  /** Dividir la cuenta de la mesa entre varias personas. */
+  onDividir?: (mesa: MesaFacil) => void;
   onSalir: () => void;
 }
 
@@ -363,6 +365,11 @@ export function ModoFacilAlimentos(p: Props) {
         {cuenta.length > 0 && p.mesaActiva && p.hayCocina && (
           <button type="button" onClick={() => p.onEnviarCocina(p.mesaActiva!)} className="flex-shrink-0 h-16 px-5 rounded-2xl bg-sky-600 text-[#fff] text-lg font-black flex items-center gap-2 active:scale-95">
             <ChefHat className="w-6 h-6" />Enviar a cocina
+          </button>
+        )}
+        {cuenta.length > 1 && p.mesaActiva && p.onDividir && (
+          <button type="button" onClick={() => p.onDividir!(p.mesaActiva!)} className="flex-shrink-0 h-16 px-5 rounded-2xl bg-violet-600 text-[#fff] text-lg font-black flex items-center gap-2 active:scale-95">
+            <Users className="w-6 h-6" />Dividir
           </button>
         )}
         <button
