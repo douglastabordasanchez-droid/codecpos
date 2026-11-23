@@ -25,6 +25,7 @@ import { getSupabaseClient } from '../../app/lib/supabase/config';
 import {
   guardarCuentaMesa,
   obtenerCatalogoPanaderia,
+  completarCatalogoConInventario,
   obtenerCuentasMesa,
   suscribirCuentasMesa,
   enviarComanda,
@@ -198,7 +199,8 @@ export default function PanaderiaPage() {
     setError(null);
     try {
       const [catalogo, listaCuentas] = await Promise.all([
-        obtenerCatalogoPanaderia(empleado.cliente_id, tiendaEfectiva),
+        obtenerCatalogoPanaderia(empleado.cliente_id, tiendaEfectiva)
+          .then((cat) => completarCatalogoConInventario(empleado.cliente_id, tiendaEfectiva, cat).catch(() => cat)),
         obtenerCuentasMesa(empleado.cliente_id, tiendaEfectiva),
       ]);
       setCategorias(catalogo.categorias);
@@ -237,8 +239,29 @@ export default function PanaderiaPage() {
       obtenerMenuDelDia(empleado.cliente_id).then(setMenuDia).catch(() => {});
     } catch { /* sin conexión: se reintenta en el próximo turno */ }
   }, [empleado?.cliente_id, tiendaEfectiva]);
+  // 🥐 Productos al día: lo que la caja o la terminal crean (pan de bono, gaseosas…)
+  // aparece en el celular sin cerrar la app. Cada 90 s y al volver a la app, sin
+  // tocar el pedido que se está armando (solo cambia la lista de productos).
+  const ultimoCatalogoRef = useRef(Date.now());
+  const refrescarCatalogo = useCallback(async () => {
+    if (!empleado || document.visibilityState !== 'visible' || !navigator.onLine) return;
+    if (Date.now() - ultimoCatalogoRef.current < 60000) return;
+    ultimoCatalogoRef.current = Date.now();
+    try {
+      const base = await obtenerCatalogoPanaderia(empleado.cliente_id, tiendaEfectiva);
+      const catalogo = await completarCatalogoConInventario(empleado.cliente_id, tiendaEfectiva, base).catch(() => base);
+      if (catalogo.productos.length === 0) return; // respuesta vacía por un corte: se deja lo que hay
+      setCategorias(catalogo.categorias);
+      setProductos(catalogo.productos);
+    } catch { /* sin conexión: en el próximo turno */ }
+  }, [empleado?.cliente_id, tiendaEfectiva]);
   useEffect(() => {
-    const alVolver = () => { if (document.visibilityState === 'visible') void refrescarMesas(); };
+    const t = window.setInterval(() => { void refrescarCatalogo(); }, 90000);
+    return () => window.clearInterval(t);
+  }, [refrescarCatalogo]);
+
+  useEffect(() => {
+    const alVolver = () => { if (document.visibilityState === 'visible') { void refrescarMesas(); void refrescarCatalogo(); } };
     document.addEventListener('visibilitychange', alVolver);
     window.addEventListener('online', alVolver);
     window.addEventListener('focus', alVolver);
@@ -251,7 +274,7 @@ export default function PanaderiaPage() {
       window.removeEventListener('pageshow', alVolver);
       window.clearInterval(turno);
     };
-  }, [refrescarMesas]);
+  }, [refrescarMesas, refrescarCatalogo]);
 
   // Realtime: si la caja cobra una mesa, el mesero la ve liberarse al momento.
   // 🏪 Filtrado por sucursal — sin esto, el celular de una sucursal recibía

@@ -286,6 +286,63 @@ export async function obtenerCatalogoPanaderia(clienteId: string, tiendaId?: str
   };
 }
 
+/**
+ * Celular de la mesera: el menú de Alimentos y Bebidas más los productos de
+ * Inventario que no están en el menú (los que la caja o la terminal crean en el
+ * punto de venta: pan de bono, gaseosas, yogures, tortas…). Se agrupan por su
+ * categoría del inventario (o en la del menú que se llame igual); los sueltos
+ * («Manuales», «General») van a «Más productos». Mismo criterio que el modo
+ * fácil de la terminal. No lo usa la caja: allá el inventario ya es local.
+ */
+export async function completarCatalogoConInventario(
+  clienteId: string,
+  tiendaId: string | null | undefined,
+  catalogo: { categorias: PanaderiaCategoria[]; productos: PanaderiaProducto[]; mesas: PanaderiaMesa[] },
+): Promise<{ categorias: PanaderiaCategoria[]; productos: PanaderiaProducto[]; mesas: PanaderiaMesa[] }> {
+  const client = getSupabaseClient();
+  if (!client) return catalogo;
+  let query = client
+    .from('productos')
+    .select('local_id, nombre, categoria, precio_venta, costo, stock, activo, tienda_id')
+    .eq('cliente_id', clienteId)
+    .eq('activo', true)
+    .gt('precio_venta', 0)
+    .limit(5000);
+  if (tiendaId && tiendaId !== 'tienda_principal') query = query.or(`tienda_id.is.null,tienda_id.eq.${tiendaId}`);
+  const { data, error } = await query;
+  if (error || !data?.length) return catalogo;
+
+  const norm = (t: string) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  const idsMenu = new Set(catalogo.productos.map((x) => x.id));
+  const nombresMenu = new Set(catalogo.productos.map((x) => norm(x.nombre)));
+  const catsMenu = new Map(catalogo.categorias.map((c) => [norm(c.nombre), c.id] as const));
+  const nuevasCats = new Map<string, PanaderiaCategoria>();
+  const vistos = new Set<string>();
+  const extra: PanaderiaProducto[] = [];
+  for (const r of data as any[]) {
+    const id = String(r.local_id || '');
+    const nombre = String(r.nombre || '').trim();
+    const precio = Number(r.precio_venta) || 0;
+    if (!id || !nombre || id.startsWith('pprod-') || id.startsWith('almuerzo-')) continue;
+    if (idsMenu.has(id) || nombresMenu.has(norm(nombre)) || norm(nombre) === 'prueba') continue;
+    const clave = `${norm(nombre)}|${precio}`;
+    if (vistos.has(clave)) continue; // el mismo producto creado dos veces se muestra una
+    vistos.add(clave);
+    const cat = String(r.categoria || '').trim();
+    const suelto = !cat || /^(manuales?|general|sin categor[ií]a)$/i.test(cat);
+    const nombreCat = suelto ? 'Más productos' : cat.charAt(0).toUpperCase() + cat.slice(1);
+    let idCat = catsMenu.get(norm(nombreCat));
+    if (!idCat) {
+      idCat = `inv-${norm(nombreCat).replace(/[^a-z0-9]+/g, '-')}`;
+      if (!nuevasCats.has(idCat)) nuevasCats.set(idCat, { id: idCat, nombre: nombreCat, icono: suelto ? '🛒' : '📦', color: suelto ? '#475569' : '#0f766e' });
+    }
+    extra.push({ id, categoriaId: idCat, nombre, precio, costo: Number(r.costo) || 0, stock: Number(r.stock) || 0, tipoInventario: 'directo' });
+  }
+  if (extra.length === 0) return catalogo;
+  const cats = [...nuevasCats.values()].sort((a, b) => (a.nombre === 'Más productos' ? 1 : b.nombre === 'Más productos' ? -1 : a.nombre.localeCompare(b.nombre, 'es')));
+  return { ...catalogo, categorias: [...catalogo.categorias, ...cats], productos: [...catalogo.productos, ...extra] };
+}
+
 // ── Cuentas de mesa: bidireccional ───────────────────────────────────────────
 
 function mapCuenta(r: any): CuentaMesa {
