@@ -20,6 +20,7 @@ import {
 import { isLinked } from '../../lib/supabase/tenantLink';
 import { anunciarPagoRecibido, nombreMedioPago } from '../../lib/voz';
 import { abrirPopupPago, esPantallaDeEstacion } from '../../../pwa/components/PopupPagoRecibido';
+import { obtenerAlertasPago, reproducirSonidoPago } from '../../../pwa/lib/alertaPagos';
 import { esperandoMonto, hayEsperaVisible } from '../../lib/codecVerifyEspera';
 
 export interface PagoEntrante {
@@ -203,7 +204,18 @@ export function useCodecVerify() {
 
     // 🔊 Anuncio de voz: se dice en voz alta apenas llega la confirmación de
     // pago al celular vinculado, sin importar si es manual o automático.
-    if (!callado) anunciarPagoRecibido(pago.monto, pago.banco);
+    // 🔔 Antes de la voz, los dos campanazos del celular (pago-recibido.wav). La voz entra
+    // cuando terminan (1,7 s). Así suena igual en la caja, la terminal y el celular.
+    if (!callado) {
+      const prefs = obtenerAlertasPago();
+      if (prefs.sonido) {
+        void reproducirSonidoPago(prefs.volumen).then((sono) => {
+          setTimeout(() => anunciarPagoRecibido(pago.monto, pago.banco), sono ? 1700 : 0);
+        });
+      } else {
+        anunciarPagoRecibido(pago.monto, pago.banco);
+      }
+    }
 
     // 🔗 Puente para consumidores existentes (p. ej. NequiVerifyModal en el
     // checkout), que ya escuchaban este evento esperando una infraestructura
