@@ -54,6 +54,7 @@ import DevolucionesPage from './DevolucionesPage';
 import { useAuth } from '../../contexts/AuthContext';
 import { ModuloPOS } from '../../lib/permissions';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
+import { PagosSinVenta } from '../../../pwa/components/PagosSinVenta';
 import { datosPdfFacturaDianDeVenta } from '../../lib/dian/representacionGrafica';
 
 type FiltroFecha = 'hoy' | 'ayer' | 'semana' | 'mes' | 'todos' | 'personalizado';
@@ -506,6 +507,26 @@ export default function VentasPage() {
     }
   };
 
+  // 💸 Pagos sin venta: rango igual al filtro de fechas (en «Todos», los últimos 30 días).
+  const rangoPagos = useMemo(() => {
+    const ahora = new Date();
+    const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    const dias = (n: number) => new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - n);
+    switch (filtroFecha) {
+      case 'hoy': return { desde: hoy, hasta: undefined as Date | undefined };
+      case 'ayer': return { desde: dias(1), hasta: hoy };
+      case 'semana': return { desde: dias(7), hasta: undefined };
+      case 'personalizado': return {
+        desde: fechaInicioPersonalizada ? new Date(`${fechaInicioPersonalizada}T00:00:00`) : hoy,
+        hasta: fechaFinPersonalizada ? new Date(`${fechaFinPersonalizada}T23:59:59`) : undefined,
+      };
+      default: return { desde: dias(30), hasta: undefined };
+    }
+  }, [filtroFecha, fechaInicioPersonalizada, fechaFinPersonalizada]);
+  const ventasLocalesCruce = useCallback(async () => ventas.map((v) => ({
+    numeroFactura: v.numeroFactura, fecha: v.fecha, total: v.total, propina: (v as any).propina, metodoPago: v.metodoPago, metodosMultiples: (v as any).metodosMultiples,
+  })), [ventas]);
+
   if (loading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${
@@ -580,6 +601,17 @@ export default function VentasPage() {
         </Button>
         </div>
       </motion.div>
+
+      <PagosSinVenta
+        className="mb-6"
+        clienteId={getLinkedClienteId()}
+        desde={rangoPagos.desde}
+        hasta={rangoPagos.hasta}
+        oscuro={darkMode}
+        cargarVentasLocales={ventasLocalesCruce}
+        puedeMarcar={esSuperUsuario || modoAdminTemporalActivo}
+        quien={usuarioActual?.nombreCompleto || usuarioActual?.username || 'Administrador'}
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">

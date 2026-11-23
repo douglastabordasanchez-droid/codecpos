@@ -11,6 +11,7 @@ import { compartirRecibo, obtenerDatosFactura } from '../lib/compartirFactura';
 import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactura';
 import { precargarVisorPdf } from '../../app/lib/pdfVista';
 import { SucursalFiltro } from '../components/SucursalFiltro';
+import { PagosSinVenta } from '../components/PagosSinVenta';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 import { traerTodo } from '../lib/nubeConsultas';
@@ -202,6 +203,14 @@ export default function VentasPage() {
           <p className="text-white text-base font-black">{stats.cantidad}</p>
         </div>
       </div>
+
+      <PagosSinVenta
+        className="mx-5 mb-4"
+        clienteId={empleado?.cliente_id}
+        desde={desdePeriodo(periodo)}
+        puedeMarcar={esAdmin}
+        quien={empleado?.nombre_completo || 'Administrador'}
+      />
 
       {esAdmin && !empleadoSel && resumen.length > 1 && !busqueda.trim() && (
         <div className="px-5 mb-5">

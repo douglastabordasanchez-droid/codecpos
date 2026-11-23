@@ -247,6 +247,9 @@ function NequiVerifyModalComponent({
   // espera el pago — ver suscribirPagoEsperado en codecVerifyService.ts.
   useEffect(() => {
     if (!visible || !codecActivo || estado !== 'esperando') return;
+    // Este efecto corre antes del que genera la clave al abrir: sin esto el pago se
+    // reclamaba con la clave vacía ('') y no quedaba de qué espera era.
+    if (!claveEsperaRef.current) claveEsperaRef.current = `VERIF-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
     const cancelar = suscribirPagoEsperado(monto, claveEsperaRef.current, (row) => {
       recibirPago({
@@ -297,7 +300,7 @@ function NequiVerifyModalComponent({
   // Reset al abrir
   useEffect(() => {
     if (visible) {
-      claveEsperaRef.current = `VERIF-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      if (!claveEsperaRef.current) claveEsperaRef.current = `VERIF-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       setEstado('esperando');
       setPagoConfirmado(null);
       setShowPagoRecibido(false);
@@ -308,6 +311,7 @@ function NequiVerifyModalComponent({
     } else {
       desuscribirRef.current?.();
       desuscribirRef.current = null;
+      claveEsperaRef.current = ''; // la próxima espera saca clave nueva
     }
   }, [visible]);
 
