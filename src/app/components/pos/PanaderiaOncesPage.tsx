@@ -26,6 +26,7 @@ import { TerminalPrincipalMesas } from './TerminalPrincipalMesas';
 import { PantallaEstaciones } from '../estaciones/PantallaEstaciones';
 import { DialogoEnvioEstaciones, type ItemEnvio } from '../estaciones/DialogoEnvioEstaciones';
 import { OrdenarCategoriasModal } from './OrdenarCategoriasModal';
+import { ModoFacilAlimentos, type MesaFacil, type ProductoFacil } from './ModoFacilAlimentos';
 import { esEmoji } from '../../lib/estiloMenu';
 import type { PlanImportacionMenu } from '../../lib/importarMenuAlimentos';
 import { type Estacion, listarEstaciones, suscribirEstaciones } from '../../lib/supabase/estacionesService';
@@ -908,6 +909,8 @@ export default function PanaderiaOncesPage() {
       const cuentaTransferir = mesa ? (cuentasMesas[mesa.id] || []) : cuentaLibre;
       if (cuentaTransferir.length === 0) { toast.error('No hay productos en la cuenta para transferir a POS'); return; }
       localStorage.setItem(STORAGE_TRANSFER_CART, JSON.stringify(cuentaTransferir));
+      // Después de cobrar y cerrar la factura, la caja regresa aquí sola.
+      localStorage.setItem('codecpos_volver_a_alimentos', '1');
       localStorage.setItem('codecpos_mesa_activa', mesa ? mesa.id : 'general');
       localStorage.setItem('codecpos_panaderia_origen', mesa ? mesa.id : 'libre');
       if (mesa) {
@@ -1391,6 +1394,34 @@ export default function PanaderiaOncesPage() {
     if (mesaSeleccionada) { persistirCuentas({ ...cuentasMesas, [mesaSeleccionada.id]: nuevos }); } else { persistirCuentaLibre(nuevos); }
     toast.success(`+1 ${prod.nombre} ${mesaSeleccionada ? `en ${mesaSeleccionada.nombre}` : ''}`);
   };
+
+  // ── Modo fácil: pantalla completa y botones grandes (se recuerda por equipo) ──
+  const [modoFacil, setModoFacil] = useState<boolean>(() => {
+    try { return localStorage.getItem('codecpos_alimentos_modo_facil') === '1'; } catch { return false; }
+  });
+  const cambiarModoFacil = (activo: boolean) => {
+    setModoFacil(activo);
+    try { localStorage.setItem('codecpos_alimentos_modo_facil', activo ? '1' : '0'); } catch { /* sin almacenamiento */ }
+    if (!activo) setMesaSeleccionada(null);
+  };
+  const ajustarEnCuentaFacil = (productoId: string, delta: 1 | -1) => {
+    const actual = mesaSeleccionada ? (Array.isArray(cuentasMesas[mesaSeleccionada.id]) ? cuentasMesas[mesaSeleccionada.id] : []) : cuentaLibre;
+    let nuevos: ItemMesa[];
+    if (delta > 0) {
+      const prod = productosPos.find((x) => x.id === productoId);
+      if (!prod) return;
+      const existe = actual.some((it) => it.producto.id === prod.id);
+      const normalizado: ProductoMesa = { id: prod.id, codigo: `TAC-${prod.nombre.substring(0, 3).toUpperCase()}`, nombre: prod.nombre, precio: prod.precio, stock: 999999, categoria: 'Alimentos y Bebidas', costo: prod.costo || 0, tipoInventario: prod.tipoInventario, recipeId: prod.recipeId };
+      nuevos = existe ? actual.map((it) => it.producto.id === prod.id ? { ...it, cantidad: it.cantidad + 1 } : it) : [...actual, { producto: normalizado, cantidad: 1 }];
+    } else {
+      nuevos = actual
+        .map((it) => it.producto.id === productoId ? { ...it, cantidad: it.cantidad - 1 } : it)
+        .filter((it) => it.cantidad > 0);
+    }
+    if (mesaSeleccionada) persistirCuentas({ ...cuentasMesas, [mesaSeleccionada.id]: nuevos }, mesaSeleccionada.id);
+    else persistirCuentaLibre(nuevos);
+  };
+  const mesaPorId = (m: MesaFacil | null) => (m ? mesas.find((x) => x.id === m.id) ?? null : null);
 
   const handleRemoveFromQuickCart = (productId: string) => {
     if (mesaSeleccionada) { const actuales = Array.isArray(cuentasMesas[mesaSeleccionada.id]) ? cuentasMesas[mesaSeleccionada.id] : []; persistirCuentas({ ...cuentasMesas, [mesaSeleccionada.id]: actuales.filter((it) => it.producto.id !== productId) }); }
@@ -2693,6 +2724,25 @@ export default function PanaderiaOncesPage() {
         </div>,
         document.body,
       )}
+      {modoFacil && (
+        <ModoFacilAlimentos
+          categorias={categoriasPos.map((c) => ({ id: c.id, nombre: c.nombre, color: c.color, icono: c.icono }))}
+          productos={productosPos as ProductoFacil[]}
+          mesas={mesasVisibles}
+          cuentaMostrador={cuentaLibre}
+          cuentasMesas={cuentasMesas}
+          mesaActiva={mesaSeleccionada}
+          hayCocina={!!getLinkedClienteId()}
+          icono={(k, clase) => renderIcon(k, clase)}
+          onAgregar={(prod) => ajustarEnCuentaFacil(prod.id, 1)}
+          onQuitarUno={(id) => ajustarEnCuentaFacil(id, -1)}
+          onElegirMesa={(m) => setMesaSeleccionada(mesaPorId(m))}
+          onPasarAMesa={(m) => { transferirCarritoAuxiliarAMesa(m.id, m.nombre); setMesaSeleccionada(mesaPorId(m)); }}
+          onEnviarCocina={(m) => { const mesa = mesaPorId(m); if (mesa) void enviarMesaACocina(mesa); }}
+          onCobrar={(m) => abrirMesaEnPOS(mesaPorId(m))}
+          onSalir={() => cambiarModoFacil(false)}
+        />
+      )}
       {envioEstaciones && getLinkedClienteId() && (
         <DialogoEnvioEstaciones
           clienteId={getLinkedClienteId()!}
@@ -2724,7 +2774,14 @@ export default function PanaderiaOncesPage() {
                 <span className={`w-2 h-2 rounded-full ${moduloPanaderiaOncesActivo ? 'bg-emerald-400' : 'bg-rose-400'}`} />
                 {moduloPanaderiaOncesActivo ? 'Activo' : 'Inactivo'}
               </div>
-              <p className="text-white/50 text-xs hidden md:block">Arrastra las secciones para reorganizar</p>
+              <button
+                type="button"
+                onClick={() => cambiarModoFacil(true)}
+                className="h-12 px-5 rounded-2xl bg-white text-orange-700 text-base font-black shadow-lg flex items-center gap-2 active:scale-95"
+                title="Pantalla completa con botones grandes"
+              >
+                <Maximize2 className="w-5 h-5" />Modo fácil
+              </button>
             </div>
           </div>
         </div>

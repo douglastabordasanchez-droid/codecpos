@@ -1043,6 +1043,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
           if (cartItems.length > 0) {
             transferLoadedRef.current = true;
+            // El render de este arranque aún tiene el carrito vacío: no se guarda.
+            saltarGuardadoRef.current = true;
             setCarrito(cartItems);
             setTransferLoaded(true);
             setMostrarPago(true);
@@ -1059,17 +1061,59 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }
   }, []);
 
+  // 🧾 Al cerrar la factura (tocando afuera o la X): si el pedido vino de
+  // Alimentos y Bebidas, la terminal vuelve sola a esa pantalla, lista para
+  // el siguiente pedido, sin más toques.
+  const cerrarTicketYVolver = () => {
+    setMostrarTicket(false);
+    try {
+      if (localStorage.getItem('codecpos_volver_a_alimentos') === '1') {
+        localStorage.removeItem('codecpos_volver_a_alimentos');
+        navigate('/panaderia-onces');
+      }
+    } catch { /* sin almacenamiento */ }
+  };
+
+  // 🛒 Carrito protegido (Tierra Colombiana, 2026-11-23): un carrito con
+  // productos solo se vacía al cobrar o cuando el cajero lo vacía o quita lo
+  // último. Ni la nube, ni otra caja, ni un reinicio de la terminal lo dejan
+  // vacío: hay una copia aparte que se repone si la cuenta de la mesa llega vacía.
+  const STORAGE_CARRITO_RESPALDO = 'codecpos_pos_carrito_respaldo';
+  const leerRespaldoCarrito = (mesaId: string): ItemCarrito[] => {
+    try {
+      const r = JSON.parse(localStorage.getItem(STORAGE_CARRITO_RESPALDO) || 'null');
+      return r && r.mesaId === mesaId && Array.isArray(r.items) ? r.items.filter((it: any) => it?.producto && Number(it.cantidad) > 0) : [];
+    } catch { return []; }
+  };
+  // Al cargar la cuenta de otra mesa, el carrito en pantalla todavía es el de
+  // la mesa anterior: ese render NO se guarda (antes escribía la cuenta vieja,
+  // o una vacía al abrir la caja, encima de la mesa nueva y la subía a la nube).
+  const saltarGuardadoRef = useRef(false);
+
   useEffect(() => {
     if (transferLoadedRef.current || transferLoaded) {
       return;
     }
 
-    const cartMesa = cargarCarritoMesa(mesaActivaId);
+    let cartMesa = cargarCarritoMesa(mesaActivaId);
+    if (cartMesa.length === 0) {
+      const respaldo = leerRespaldoCarrito(mesaActivaId);
+      if (respaldo.length > 0) cartMesa = respaldo;
+    }
+    saltarGuardadoRef.current = true;
     setCarrito(cartMesa);
   }, [mesaActivaId, cargarCarritoMesa, transferLoaded]);
 
   useEffect(() => {
+    if (saltarGuardadoRef.current) {
+      saltarGuardadoRef.current = false;
+      return;
+    }
     guardarCarritoMesa(mesaActivaId, carrito);
+    try {
+      if (carrito.length > 0) localStorage.setItem(STORAGE_CARRITO_RESPALDO, JSON.stringify({ mesaId: mesaActivaId, items: carrito, en: Date.now() }));
+      else localStorage.removeItem(STORAGE_CARRITO_RESPALDO);
+    } catch { /* sin almacenamiento */ }
   }, [carrito, mesaActivaId, guardarCarritoMesa]);
 
   // Cuando la comandera o cualquier otra caja actualiza una mesa, el POS
@@ -1079,12 +1123,21 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       const detalle = (evento as CustomEvent<{ mesaId?: string }>).detail;
       setVersionCuentasMesas((version) => version + 1);
       if (detalle?.mesaId === mesaActivaId && !transferLoadedRef.current) {
-        setCarrito(cargarCarritoMesa(mesaActivaId));
+        const llegada = cargarCarritoMesa(mesaActivaId);
+        // Si llega vacía y aquí hay productos sin cobrar, el carrito se queda
+        // como está (y su copia vuelve a la cuenta de la mesa al guardarse).
+        setCarrito((actual) => {
+          if (llegada.length === 0 && actual.length > 0) {
+            guardarCarritoMesa(mesaActivaId, actual);
+            return actual;
+          }
+          return llegada;
+        });
       }
     };
     window.addEventListener('codecpos:panaderia-cuentas-sincronizadas', alSincronizarCuentas);
     return () => window.removeEventListener('codecpos:panaderia-cuentas-sincronizadas', alSincronizarCuentas);
-  }, [cargarCarritoMesa, mesaActivaId]);
+  }, [cargarCarritoMesa, guardarCarritoMesa, mesaActivaId]);
 
   // Estado de Cocina/Bar para resaltar el carrito que ya puede facturarse.
   useEffect(() => {
@@ -1284,7 +1337,13 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }
   };
 
+  // El mismo Enter del lector lo reciben la casilla de búsqueda y el lector
+  // global: un mismo código que llega dos veces casi juntas cuenta una vez.
+  const ultimoCodigoRef = useRef<{ codigo: string; en: number }>({ codigo: '', en: 0 });
   const buscarYAgregarProducto = async (codigo: string) => {
+    const ahoraMs = Date.now();
+    if (ultimoCodigoRef.current.codigo === codigo && ahoraMs - ultimoCodigoRef.current.en < 250) return;
+    ultimoCodigoRef.current = { codigo, en: ahoraMs };
     console.log('📷 Código escaneado:', codigo);
     
     // Primero intenta buscar por código de barras exacto
@@ -1531,22 +1590,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       return;
     }
 
-    const itemExistente = carrito.find(item => item.producto.id === productoPesable.id);
-    
-    if (itemExistente) {
-      setCarrito(carrito.map(item =>
-        item.producto.id === productoPesable.id
-          ? { ...item, peso: (item.peso || 0) + pesoKg }
-          : item
-      ));
-    } else {
-      // 🆕 AGREGADO AL INICIO - Último producto aparece primero
-      setCarrito([{ 
-        producto: productoPesable, 
-        cantidad: 1,
-        peso: pesoKg 
-      }, ...carrito]);
-    }
+    // Siempre sobre el carrito real del momento (nunca una copia vieja): agregar no borra lo que hay.
+    setCarrito((prev) => prev.some(item => item.producto.id === productoPesable.id)
+      ? prev.map(item => item.producto.id === productoPesable.id ? { ...item, peso: (item.peso || 0) + pesoKg } : item)
+      : [{ producto: productoPesable, cantidad: 1, peso: pesoKg }, ...prev]);
 
     toast.success(`${productoPesable.nombre} - ${formatoPeso(pesoKg)} agregado`);
     setProductoPesable(null);
@@ -1589,26 +1636,17 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }
 
     const itemExistente = carrito.find(item => item.producto.id === producto.id);
-
-    if (itemExistente) {
-      const nuevaCantidad = itemExistente.cantidad + cantidadInicial;
-      if (nuevaCantidad > producto.stock && !permiteVenderSinStock(producto)) {
-        toast.error('No hay suficiente stock');
-        return;
-      }
-      setCarrito(carrito.map(item =>
-        item.producto.id === producto.id
-          ? { ...item, cantidad: nuevaCantidad }
-          : item
-      ));
-    } else {
-      if (cantidadInicial > producto.stock && !permiteVenderSinStock(producto)) {
-        toast.error('No hay suficiente stock');
-        return;
-      }
-      // 🆕 AGREGADO AL INICIO (unshift) - Último producto aparece primero
-      setCarrito([{ producto, cantidad: cantidadInicial, modifiersSeleccionados: modifiersElegidos || (producto.modifiersConfig || []).map(m => ({ ...m, precioVenta: Number(m.precioVenta) || 0 })) }, ...carrito]);
+    const cantidadFinal = (itemExistente?.cantidad || 0) + cantidadInicial;
+    if (cantidadFinal > producto.stock && !permiteVenderSinStock(producto)) {
+      toast.error('No hay suficiente stock');
+      return;
     }
+    // 🛒 Siempre sobre el carrito real del momento (nunca una copia vieja):
+    // escanear o tocar un producto SUMA a la cuenta, jamás la reemplaza.
+    // El nuevo queda arriba: el último producto aparece primero.
+    setCarrito((prev) => prev.some(item => item.producto.id === producto.id)
+      ? prev.map(item => item.producto.id === producto.id ? { ...item, cantidad: item.cantidad + cantidadInicial } : item)
+      : [{ producto, cantidad: cantidadInicial, modifiersSeleccionados: modifiersElegidos || (producto.modifiersConfig || []).map(m => ({ ...m, precioVenta: Number(m.precioVenta) || 0 })) }, ...prev]);
 
     toast.success(`${producto.nombre} agregado al carrito`);
   };
@@ -1661,26 +1699,15 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     }
 
     const itemExistente = carrito.find(item => item.producto.id === producto.id);
-
-    if (itemExistente) {
-      const nuevaCantidad = itemExistente.cantidad + cantidadSolicitada;
-      if (nuevaCantidad > producto.stock && !permiteVenderSinStock(producto)) {
-        toast.error('No hay suficiente stock');
-        return;
-      }
-
-      setCarrito(carrito.map(item =>
-        item.producto.id === producto.id
-          ? { ...item, cantidad: nuevaCantidad }
-          : item
-      ));
-    } else {
-      if (cantidadSolicitada > producto.stock && !permiteVenderSinStock(producto)) {
-        toast.error('No hay suficiente stock');
-        return;
-      }
-      setCarrito([{ producto, cantidad: cantidadSolicitada, modifiersSeleccionados: (producto.modifiersConfig || []).map(m => ({ ...m, precioVenta: Number(m.precioVenta) || 0 })) }, ...carrito]);
+    const cantidadFinal = (itemExistente?.cantidad || 0) + cantidadSolicitada;
+    if (cantidadFinal > producto.stock && !permiteVenderSinStock(producto)) {
+      toast.error('No hay suficiente stock');
+      return;
     }
+    // Siempre sobre el carrito real del momento: agregar nunca borra lo que hay.
+    setCarrito((prev) => prev.some(item => item.producto.id === producto.id)
+      ? prev.map(item => item.producto.id === producto.id ? { ...item, cantidad: item.cantidad + cantidadSolicitada } : item)
+      : [{ producto, cantidad: cantidadSolicitada, modifiersSeleccionados: (producto.modifiersConfig || []).map(m => ({ ...m, precioVenta: Number(m.precioVenta) || 0 })) }, ...prev]);
 
     toast.success(`${producto.nombre} agregado al carrito`);
   };
@@ -1755,7 +1782,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       return;
     }
 
-    setCarrito(carrito.map(item =>
+    setCarrito((prev) => prev.map(item =>
       item.producto.id === productoId
         ? { ...item, cantidad: item.cantidad + 1 }
         : item
@@ -1763,7 +1790,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   };
 
   const disminuirCantidad = (productoId: string) => {
-    setCarrito(carrito.map(item =>
+    setCarrito((prev) => prev.map(item =>
       item.producto.id === productoId && item.cantidad > 1
         ? { ...item, cantidad: item.cantidad - 1 }
         : item
@@ -1771,7 +1798,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   };
 
   const eliminarDelCarrito = (productoId: string) => {
-    setCarrito(carrito.filter(item => item.producto.id !== productoId));
+    setCarrito((prev) => prev.filter(item => item.producto.id !== productoId));
     toast.info('Producto eliminado del carrito');
   };
 
@@ -4625,7 +4652,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       {mostrarTicket && ventaActual && (
         <div
           className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setMostrarTicket(false)}
+          onClick={cerrarTicketYVolver}
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -4638,7 +4665,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 {feVisor?.venta === ventaActual.numeroFactura && feVisor.estado !== 'normal' ? 'Factura electrónica' : 'Factura de Venta'}
               </h2>
               <Button
-                onClick={() => setMostrarTicket(false)}
+                onClick={cerrarTicketYVolver}
                 size="icon"
                 variant="ghost"
                 className="rounded-xl"
