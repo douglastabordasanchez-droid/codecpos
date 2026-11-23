@@ -55,6 +55,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ModuloPOS } from '../../lib/permissions';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { PagosSinVenta } from '../../../pwa/components/PagosSinVenta';
+import { guardarPagoPorRegistrar } from '../../lib/supabase/pagosSinVenta';
+import { useNavigate } from 'react-router';
 import { datosPdfFacturaDianDeVenta } from '../../lib/dian/representacionGrafica';
 
 type FiltroFecha = 'hoy' | 'ayer' | 'semana' | 'mes' | 'todos' | 'personalizado';
@@ -64,6 +66,7 @@ const VENTAS_POR_PAGINA = 50;
 
 export default function VentasPage() {
   const { darkMode } = usePOS();
+  const navigate = useNavigate();
   const { usuarioActual, esSuperUsuario, modoAdminTemporalActivo } = useAuth();
   // Devolver es el mismo permiso que antes daba la sección Devoluciones.
   const modulosUsuario = (usuarioActual?.modulosActivos || []) as ModuloPOS[];
@@ -611,6 +614,7 @@ export default function VentasPage() {
         cargarVentasLocales={ventasLocalesCruce}
         puedeMarcar={esSuperUsuario || modoAdminTemporalActivo}
         quien={usuarioActual?.nombreCompleto || usuarioActual?.username || 'Administrador'}
+        onRegistrar={(p) => { guardarPagoPorRegistrar(p); navigate('/pos'); }}
       />
 
       {/* KPIs */}

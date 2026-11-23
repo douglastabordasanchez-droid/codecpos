@@ -12,6 +12,7 @@ import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactur
 import { precargarVisorPdf } from '../../app/lib/pdfVista';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { PagosSinVenta } from '../components/PagosSinVenta';
+import { guardarPagoPorRegistrar } from '../../app/lib/supabase/pagosSinVenta';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 import { traerTodo } from '../lib/nubeConsultas';
@@ -210,6 +211,7 @@ export default function VentasPage() {
         desde={desdePeriodo(periodo)}
         puedeMarcar={esAdmin}
         quien={empleado?.nombre_completo || 'Administrador'}
+        onRegistrar={(p) => { guardarPagoPorRegistrar(p); navigate('/vender'); }}
       />
 
       {esAdmin && !empleadoSel && resumen.length > 1 && !busqueda.trim() && (

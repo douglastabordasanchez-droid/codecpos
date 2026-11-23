@@ -188,15 +188,19 @@ export function suscribirPagoEsperado(
 
   const revisarCandidatas = async () => {
     if (resuelto) return;
-    const desde = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    // Predictivo: un pago que llegó y no se registró (hasta 12 horas atrás) se reconoce
+    // cuando luego se cobra una venta del mismo valor. Primero el más reciente.
+    const desde = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
     const { data, error } = await client
       .from('notificaciones_pago')
       .select('*')
       .eq('cliente_id', clienteId)
       .eq('estado', 'confirmado')
       .is('numero_factura_local', null)
+      .eq('monto', montoRedondeado)
       .gte('created_at', desde)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: false })
+      .limit(5);
     if (error || !data) return;
     for (const row of data as NotificacionPagoRow[]) {
       if (resuelto) return;

@@ -82,6 +82,7 @@ import { NotificacionesAntiFraude } from '../notifications/NotificacionesAntiFra
 import { MultiFacturasInline } from './MultiFacturasInline';
 import ProductoNuevoAutoModal from './ProductoNuevoAutoModal';
 import { onVentaCompletada } from '../../lib/integracionesService';
+import { AvisoPagoPorRegistrar } from '../../../pwa/components/AvisoPagoPorRegistrar';
 const NequiVerifyModal = lazy(() => import('../codecVerify/NequiVerifyModal').then(m => ({ default: m.NequiVerifyModal })));
 import type { EntidadPago } from '../codecVerify/NequiVerifyModal';
 import { cajaDiariaService } from '../../lib/cajaDiariaService';
@@ -3123,6 +3124,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
   return (
     <div className={`h-screen flex flex-col ${esTiendaRopa ? 'boutique-pos-mode' : ''}`}>
+      <AvisoPagoPorRegistrar className="fixed top-14 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-xl" />
       {/* Barra de Periféricos Compacta con Logo */}
       <div className={`px-3 py-2 border-b flex-shrink-0 ${
         darkMode ? 'bg-slate-800/30 border-slate-700' : 'bg-gray-50/50 border-gray-200'

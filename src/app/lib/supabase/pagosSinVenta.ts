@@ -124,3 +124,52 @@ export async function marcarPagoRevisado(id: string, quien: string, nota?: strin
     .select('id');
   return !error && Array.isArray(data) && data.length > 0;
 }
+
+/**
+ * Limpia pagos sin venta (solo administrador): salen de la lista pero no se borran,
+ * quedan con «LIMPIADO · nombre · fecha» para que haya control de quién lo hizo.
+ */
+export async function limpiarPagosSinVenta(ids: string[], quien: string): Promise<number> {
+  const client = getSupabaseClient();
+  if (!client || ids.length === 0) return 0;
+  const texto = ['LIMPIADO', quien || 'sin nombre', new Date().toLocaleString('es-CO')].join(' · ').slice(0, 200);
+  const { data, error } = await client
+    .from('notificaciones_pago')
+    .update({ numero_factura_local: texto })
+    .in('id', ids)
+    .is('numero_factura_local', null)
+    .select('id');
+  return error || !Array.isArray(data) ? 0 : data.length;
+}
+
+/** true si el pago ya quedó en una venta (o fue revisado o limpiado). */
+export async function pagoYaRegistrado(id: string): Promise<boolean | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data, error } = await client.from('notificaciones_pago').select('numero_factura_local').eq('id', id).maybeSingle();
+  if (error || !data) return null;
+  return data.numero_factura_local !== null;
+}
+
+// ── Pago que se está registrando desde Ventas ──────────────────────────────
+// Ventas › Registrar guarda el pago aquí y abre el punto de venta (o Vender en
+// el celular), que muestra el aviso hasta que una venta lo reclame.
+export const CLAVE_PAGO_POR_REGISTRAR = 'codecpos_pago_por_registrar';
+export const EVENTO_PAGO_POR_REGISTRAR = 'codecpos:pago-por-registrar';
+
+export function guardarPagoPorRegistrar(p: PagoSinVenta | null): void {
+  try {
+    if (p) localStorage.setItem(CLAVE_PAGO_POR_REGISTRAR, JSON.stringify({ ...p, guardado: Date.now() }));
+    else localStorage.removeItem(CLAVE_PAGO_POR_REGISTRAR);
+  } catch { /* sin almacenamiento */ }
+  window.dispatchEvent(new Event(EVENTO_PAGO_POR_REGISTRAR));
+}
+
+export function leerPagoPorRegistrar(): PagoSinVenta | null {
+  try {
+    const p = JSON.parse(localStorage.getItem(CLAVE_PAGO_POR_REGISTRAR) || 'null');
+    // Pasadas 12 horas ya no se reconoce solo (ver suscribirPagoEsperado): el aviso se quita.
+    if (!p?.id || Date.parse(p.created_at) < Date.now() - 12 * 60 * 60 * 1000) return null;
+    return p as PagoSinVenta;
+  } catch { return null; }
+}

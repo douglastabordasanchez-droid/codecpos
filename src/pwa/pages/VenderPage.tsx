@@ -15,6 +15,7 @@
  *    como Electron hace con `codecpos_carrito_transferido`.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AvisoPagoPorRegistrar } from '../components/AvisoPagoPorRegistrar';
 import { obtenerInventarioUniversal, productoEnSede } from '../../app/lib/inventarioSede';
 import { obtenerEstadoSedes, sedeVencida, type EstadoSede } from '../components/AvisoSedesCobro';
 import { billetesSugeridos } from '../../app/lib/billetesSugeridos';
@@ -1246,6 +1247,7 @@ export default function VenderPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-[calc(12rem+env(safe-area-inset-bottom))] lg:pb-28">
       <div className="max-w-6xl mx-auto">
+        <AvisoPagoPorRegistrar className="mx-4 lg:mx-6 mt-4" />
         <div className="px-4 lg:px-6 pt-6 pb-3 flex items-center justify-between gap-3">
           <div>
             <h1 className="text-white text-xl lg:text-2xl font-black">Vender</h1>

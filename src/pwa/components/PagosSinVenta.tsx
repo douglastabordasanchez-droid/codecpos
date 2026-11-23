@@ -1,12 +1,14 @@
 /**
  * «Pagos sin venta» en Ventas (caja, terminal, web y celular): transferencias que
- * llegaron por Codec Verify y no quedaron en ninguna venta. Solo el administrador
- * las marca como revisadas (queda su nombre), así la cajera no las puede esconder.
+ * llegaron por Codec Verify y no quedaron en ninguna venta. Cualquiera puede
+ * Registrar (abre el punto de venta y la venta del mismo valor lo reconoce sola);
+ * solo el administrador (o el modo administrador temporal) marca Revisado o
+ * Limpia, y queda su nombre, así la cajera no los puede esconder.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Receipt, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { listarPagosSinVenta, marcarPagoRevisado, type PagoSinVenta, type VentaLocalCruce } from '../../app/lib/supabase/pagosSinVenta';
+import { limpiarPagosSinVenta, listarPagosSinVenta, marcarPagoRevisado, type PagoSinVenta, type VentaLocalCruce } from '../../app/lib/supabase/pagosSinVenta';
 import { nombreMedioPago } from '../../app/lib/voz';
 
 interface Props {
@@ -18,6 +20,8 @@ interface Props {
   cargarVentasLocales?: () => Promise<VentaLocalCruce[]>;
   puedeMarcar: boolean;
   quien: string;
+  /** Abre el punto de venta para registrar este pago (Ventas › Registrar). */
+  onRegistrar?: (p: PagoSinVenta) => void;
   className?: string;
 }
 
@@ -28,10 +32,11 @@ function textoBanco(p: PagoSinVenta): string {
   return ref.length > 90 ? `${ref.slice(0, 90)}…` : ref;
 }
 
-export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVentasLocales, puedeMarcar, quien, className = '' }: Props) {
+export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVentasLocales, puedeMarcar, quien, onRegistrar, className = '' }: Props) {
   const [pagos, setPagos] = useState<PagoSinVenta[]>([]);
   const [cargando, setCargando] = useState(false);
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState(true);
+  const [limpiando, setLimpiando] = useState(false);
   const [marcando, setMarcando] = useState<string | null>(null);
   const desdeMs = desde.getTime();
   const hastaMs = hasta?.getTime();
@@ -41,8 +46,8 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
     setCargando(true);
     try {
       const locales = cargarVentasLocales ? await cargarVentasLocales().catch(() => []) : [];
-      // Los pagos de los últimos 3 minutos se dejan quietos: la venta puede estar guardándose.
-      const tope = Math.min(hastaMs ?? Date.now(), Date.now() - 3 * 60 * 1000);
+      // Los pagos del último minuto se dejan quietos: la venta puede estar guardándose.
+      const tope = Math.min(hastaMs ?? Date.now(), Date.now() - 60 * 1000);
       setPagos(await listarPagosSinVenta(clienteId, new Date(desdeMs), new Date(tope), locales));
     } catch { /* sin conexión: se intenta en la próxima vuelta */ }
     finally { setCargando(false); }
@@ -50,9 +55,22 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
 
   useEffect(() => {
     void cargar();
-    const t = window.setInterval(() => { void cargar(); }, 60_000);
-    return () => window.clearInterval(t);
+    const t = window.setInterval(() => { void cargar(); }, 30_000);
+    // Llegó un pago a esta caja: a los 65 s ya se sabe si quedó en una venta o no.
+    let espera: number | undefined;
+    const alLlegar = () => { window.clearTimeout(espera); espera = window.setTimeout(() => { void cargar(); }, 65_000); };
+    window.addEventListener('codecverify:pago_recibido', alLlegar);
+    return () => { window.clearInterval(t); window.clearTimeout(espera); window.removeEventListener('codecverify:pago_recibido', alLlegar); };
   }, [cargar]);
+
+  const limpiarTodos = async () => {
+    if (!window.confirm(`¿Limpiar los ${pagos.length} pagos sin venta de este periodo? Salen de la lista y queda tu nombre como quien los limpió.`)) return;
+    setLimpiando(true);
+    const n = await limpiarPagosSinVenta(pagos.map((p) => p.id), quien);
+    setLimpiando(false);
+    if (n > 0) { toast.success(`${n} ${n === 1 ? 'pago limpiado' : 'pagos limpiados'}`); void cargar(); }
+    else toast.error('No se pudo limpiar. Revisa la conexión.');
+  };
 
   const marcar = async (p: PagoSinVenta) => {
     setMarcando(p.id);
@@ -83,7 +101,7 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
           <p className={`font-black ${titulo}`}>
             {pagos.length} {pagos.length === 1 ? 'pago recibido sin venta' : 'pagos recibidos sin venta'} · {peso(total)}
           </p>
-          <p className={`text-xs ${suave}`}>Llegaron por transferencia y no aparecen en ninguna venta de este periodo.</p>
+          <p className={`text-xs ${suave}`}>Llegaron por transferencia y no tienen factura. Toca Registrar para crear la venta.</p>
         </div>
         {cargando && <Loader2 className={`w-4 h-4 animate-spin ${suave}`} />}
         <ChevronDown className={`w-5 h-5 shrink-0 transition ${titulo} ${abierto ? 'rotate-180' : ''}`} />
@@ -101,27 +119,46 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
                   {textoBanco(p) ? ` · ${textoBanco(p)}` : ''}
                 </p>
               </div>
-              {puedeMarcar && (
-                <button
-                  type="button"
-                  disabled={marcando === p.id}
-                  onClick={() => void marcar(p)}
-                  className="shrink-0 px-3 py-2 rounded-lg text-xs font-bold bg-emerald-600 text-[#fff] flex items-center gap-1 disabled:opacity-60"
-                  title="Ya se revisó: se registró a mano, era un abono o no es del negocio"
-                >
-                  {marcando === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                  Revisado
-                </button>
-              )}
+              <div className="shrink-0 flex flex-col sm:flex-row gap-1.5">
+                {onRegistrar && (
+                  <button
+                    type="button"
+                    onClick={() => onRegistrar(p)}
+                    className="px-3 py-2 rounded-lg text-xs font-bold bg-blue-600 text-[#fff] flex items-center justify-center gap-1"
+                    title="Abre el punto de venta: agrega los productos y cobra con el mismo medio; el pago se reconoce solo"
+                  >
+                    <Receipt className="w-3.5 h-3.5" /> Registrar
+                  </button>
+                )}
+                {puedeMarcar && (
+                  <button
+                    type="button"
+                    disabled={marcando === p.id}
+                    onClick={() => void marcar(p)}
+                    className="px-3 py-2 rounded-lg text-xs font-bold bg-emerald-600 text-[#fff] flex items-center justify-center gap-1 disabled:opacity-60"
+                    title="Ya se revisó: se registró a mano, era un abono o no es del negocio"
+                  >
+                    {marcando === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    Revisado
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           <div className="flex items-center justify-between pt-1">
             <p className={`text-[11px] ${suave}`}>
-              {puedeMarcar ? 'Marca «Revisado» cuando confirmes de dónde vino el pago; queda tu nombre.' : 'Solo el administrador puede marcarlos como revisados.'}
+              {puedeMarcar ? 'Revisado o Limpiar los saca de la lista; queda tu nombre.' : 'Solo el administrador puede marcarlos como revisados o limpiarlos.'}
             </p>
-            <button type="button" onClick={() => void cargar()} className={`text-xs font-bold flex items-center gap-1 ${titulo}`}>
-              <RefreshCw className="w-3.5 h-3.5" /> Actualizar
-            </button>
+            <div className="flex items-center gap-3 shrink-0">
+              {puedeMarcar && (
+                <button type="button" disabled={limpiando} onClick={() => void limpiarTodos()} className="text-xs font-bold flex items-center gap-1 text-red-500 disabled:opacity-60">
+                  {limpiando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Limpiar todos
+                </button>
+              )}
+              <button type="button" onClick={() => void cargar()} className={`text-xs font-bold flex items-center gap-1 ${titulo}`}>
+                <RefreshCw className="w-3.5 h-3.5" /> Actualizar
+              </button>
+            </div>
           </div>
         </div>
       )}
