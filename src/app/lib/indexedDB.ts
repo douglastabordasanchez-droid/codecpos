@@ -804,6 +804,18 @@ class IndexedDBManager {
     });
   }
 
+  /** Ventas desde una fecha (índice 'fecha'): sin cargar todo el historial. */
+  async getVentasDesde(desdeISO: string): Promise<Venta[]> {
+    const db = await this.ensureDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.VENTAS], 'readonly');
+      const store = transaction.objectStore(STORES.VENTAS);
+      const request = store.index('fecha').getAll(IDBKeyRange.lowerBound(desdeISO));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   /**
    * 🚀 Cuenta registros sin deserializarlos (IDBObjectStore.count). Para
    * estadísticas de sincronización que antes cargaban TODO el inventario y

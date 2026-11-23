@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Armchair, ArrowLeft, ChefHat, LogOut, Minus, Plus, ShoppingCart, Store, X } from 'lucide-react';
+import { Armchair, ArrowLeft, ChefHat, LogOut, Minus, Plus, Search, ShoppingCart, Star, Store, X } from 'lucide-react';
+import { dbManager } from '../../lib/indexedDB';
 import { emojiParaProducto, urlTwemoji } from '../../lib/imagenProducto';
 import { esEmoji } from '../../lib/estiloMenu';
 
@@ -37,6 +38,23 @@ interface Props {
 }
 
 const CLAVE_POSICION_BOTON = 'codecpos_modo_facil_boton_mesas';
+const CLAVE_PEDIDOS = 'codecpos_modo_facil_pedidos';
+const TOP = '__mas_pedidos';
+
+/** Franja del día: lo que se pide en la mañana no es lo mismo que al mediodía. */
+type Franja = 'manana' | 'mediodia' | 'tarde' | 'noche';
+const franjaDe = (fecha: Date): Franja => {
+  const h = fecha.getHours();
+  return h >= 5 && h < 11 ? 'manana' : h >= 11 && h < 15 ? 'mediodia' : h >= 15 && h < 19 ? 'tarde' : 'noche';
+};
+type Conteo = Record<string, { total: number; franjas: Partial<Record<Franja, number>> }>;
+const sumar = (c: Conteo, id: string, franja: Franja, n: number) => {
+  const x = c[id] || (c[id] = { total: 0, franjas: {} });
+  x.total += n;
+  x.franjas[franja] = (x.franjas[franja] || 0) + n;
+};
+const leerToques = (): Conteo => { try { return JSON.parse(localStorage.getItem(CLAVE_PEDIDOS) || '{}') || {}; } catch { return {}; } };
+const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const pesos = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
 const totalDe = (items: ItemFacil[]) => items.reduce((s, it) => s + (Number(it.producto.precio) || 0) * (Number(it.cantidad) || 0), 0);
 const unidadesDe = (items: ItemFacil[]) => items.reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
@@ -137,12 +155,58 @@ function BotonMesasFlotante({ onTocar, ocupadas }: { onTocar: () => void; ocupad
 }
 
 export function ModoFacilAlimentos(p: Props) {
-  const [categoria, setCategoria] = useState<string>(() => p.categorias[0]?.id ?? '');
+  const [categoria, setCategoria] = useState<string>(TOP);
   const [vistaMesas, setVistaMesas] = useState<null | 'elegir' | 'pasar'>(null);
+  const [busqueda, setBusqueda] = useState('');
+  // Lo que más se pide: ventas de los últimos 30 días en esta caja más los
+  // toques del modo fácil, pesando más lo que se pide a esta hora del día.
+  const [historial, setHistorial] = useState<Conteo>({});
+  const [toques, setToques] = useState<Conteo>(leerToques);
 
   useEffect(() => {
-    if (!p.categorias.some((c) => c.id === categoria)) setCategoria(p.categorias[0]?.id ?? '');
-  }, [p.categorias, categoria]);
+    let vivo = true;
+    const desde = new Date(Date.now() - 30 * 86400_000).toISOString();
+    dbManager.getVentasDesde(desde).then((ventas: any[]) => {
+      const c: Conteo = {};
+      for (const v of ventas || []) {
+        if (v?.estado === 'anulada') continue;
+        const franja = franjaDe(new Date(v.fecha));
+        for (const it of v.items || []) if (it?.id) sumar(c, String(it.id), franja, Number(it.cantidad) || 1);
+      }
+      if (vivo) setHistorial(c);
+    }).catch(() => { /* sin historial: se usa solo lo tocado aquí */ });
+    return () => { vivo = false; };
+  }, []);
+
+  const franjaActual = franjaDe(new Date());
+  const masPedidos = useMemo(() => {
+    const puntaje = (id: string) => {
+      const h = historial[id], t = toques[id];
+      return (h?.franjas[franjaActual] || 0) * 3 + (h?.total || 0) + (t?.franjas[franjaActual] || 0) * 3 + (t?.total || 0);
+    };
+    return p.productos
+      .map((x) => ({ x, n: puntaje(String(x.id)) }))
+      .filter((r) => r.n > 0)
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 21)
+      .map((r) => r.x);
+  }, [p.productos, historial, toques, franjaActual]);
+
+  // Sin historial todavía, se arranca en la primera categoría.
+  useEffect(() => {
+    if (categoria === TOP && masPedidos.length === 0 && p.categorias[0]) setCategoria(p.categorias[0].id);
+    else if (categoria !== TOP && !p.categorias.some((c) => c.id === categoria)) setCategoria(masPedidos.length ? TOP : p.categorias[0]?.id ?? '');
+  }, [p.categorias, categoria, masPedidos.length]);
+
+  const agregar = (prod: ProductoFacil) => {
+    p.onAgregar(prod);
+    setToques((prev) => {
+      const nuevo: Conteo = JSON.parse(JSON.stringify(prev));
+      sumar(nuevo, String(prod.id), franjaDe(new Date()), 1);
+      try { localStorage.setItem(CLAVE_PEDIDOS, JSON.stringify(nuevo)); } catch { /* sin almacenamiento */ }
+      return nuevo;
+    });
+  };
 
   // La pantalla de atrás no se mueve mientras el modo fácil está abierto.
   useEffect(() => {
@@ -158,7 +222,11 @@ export function ModoFacilAlimentos(p: Props) {
     for (const it of cuenta) m.set(String(it.producto.id), (m.get(String(it.producto.id)) || 0) + (Number(it.cantidad) || 0));
     return m;
   }, [cuenta]);
-  const productosVisibles = p.productos.filter((x) => x.categoriaId === categoria);
+  const textoBusqueda = sinTildes(busqueda.trim());
+  const productosVisibles = textoBusqueda
+    ? p.productos.filter((x) => sinTildes(x.nombre).includes(textoBusqueda))
+        .sort((a, b) => Number(!sinTildes(a.nombre).startsWith(textoBusqueda)) - Number(!sinTildes(b.nombre).startsWith(textoBusqueda)) || a.nombre.localeCompare(b.nombre, 'es', { numeric: true }))
+    : categoria === TOP ? masPedidos : p.productos.filter((x) => x.categoriaId === categoria);
   const nombreCategoria = useMemo(() => new Map(p.categorias.map((c) => [c.id, c.nombre])), [p.categorias]);
   const mesasOrdenadas = useMemo(
     () => [...p.mesas].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true, sensitivity: 'base' })),
@@ -188,50 +256,76 @@ export function ModoFacilAlimentos(p: Props) {
       </div>
 
       {/* Categorías grandes */}
-      <div className="flex gap-3 overflow-x-auto px-4 py-2 bg-white shadow-sm [&::-webkit-scrollbar]:hidden">
+      <div className="flex items-center gap-3 px-4 py-2 bg-white shadow-sm">
+      <div className="relative flex-shrink-0 w-[240px]">
+        <Search className="w-6 h-6 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar producto"
+          className="w-full h-12 pl-11 pr-11 rounded-2xl border-2 border-slate-300 bg-slate-50 text-lg font-bold text-slate-900 outline-none focus:border-orange-500"
+        />
+        {busqueda && (
+          <button type="button" onClick={() => setBusqueda('')} aria-label="Borrar búsqueda" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center active:scale-90">
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+      <div className="flex-1 min-w-0 flex gap-3 overflow-x-auto py-1 [&::-webkit-scrollbar]:hidden">
+        {masPedidos.length > 0 && (
+          <button
+            type="button"
+            onClick={() => { setCategoria(TOP); setBusqueda(''); }}
+            className={`flex-shrink-0 h-12 min-w-[150px] px-4 rounded-2xl flex items-center gap-2 text-lg font-black bg-amber-400 text-slate-900 transition ${categoria === TOP && !busqueda ? 'ring-4 ring-offset-2 ring-slate-900 scale-[1.03]' : 'opacity-75'}`}
+          >
+            <Star className="w-6 h-6 fill-current" />
+            <span className="truncate text-slate-900">Más pedidos</span>
+          </button>
+        )}
         {p.categorias.map((c) => {
-          const sel = c.id === categoria;
+          const sel = c.id === categoria && !busqueda;
           const claro = claroSobre(c.color);
           return (
             <button
               key={c.id}
               type="button"
-              onClick={() => setCategoria(c.id)}
-              className={`flex-shrink-0 h-14 min-w-[160px] px-5 rounded-2xl flex items-center gap-3 text-xl font-black transition ${claro ? 'text-slate-900' : 'text-[#fff]'} ${sel ? 'ring-4 ring-offset-2 ring-slate-900 scale-[1.03]' : 'opacity-75'}`}
+              onClick={() => { setCategoria(c.id); setBusqueda(''); }}
+              className={`flex-shrink-0 h-12 min-w-[145px] px-4 rounded-2xl flex items-center gap-2 text-lg font-black transition ${claro ? 'text-slate-900' : 'text-[#fff]'} ${sel ? 'ring-4 ring-offset-2 ring-slate-900 scale-[1.03]' : 'opacity-75'}`}
               style={{ backgroundColor: c.color }}
             >
-              {p.icono(c.icono, 'w-7 h-7')}
+              {p.icono(c.icono, 'w-6 h-6')}
               <span className={`truncate ${claro ? 'text-slate-900' : 'text-[#fff]'}`}>{c.nombre}</span>
             </button>
           );
         })}
       </div>
+      </div>
 
       {/* Productos: llenan toda la pantalla, columnas según el ancho */}
       <div className="flex-1 overflow-y-auto px-4 py-3 pb-28">
         {productosVisibles.length === 0 ? (
-          <p className="text-center text-2xl font-bold text-slate-400 mt-16">No hay productos en esta categoría</p>
+          <p className="text-center text-2xl font-bold text-slate-400 mt-16">{busqueda ? `No hay productos con «${busqueda}»` : 'No hay productos en esta categoría'}</p>
         ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))' }}>
             {productosVisibles.map((prod) => {
               const cant = cantidadPorProducto.get(String(prod.id)) || 0;
               return (
                 <button
                   key={prod.id}
                   type="button"
-                  onClick={() => p.onAgregar(prod)}
+                  onClick={() => agregar(prod)}
                   className={`relative rounded-3xl bg-white px-2 pt-2 pb-3 flex flex-col items-center gap-1 text-center shadow-md border-4 transition active:scale-95 ${cant > 0 ? 'border-emerald-500' : 'border-transparent'}`}
                 >
                   {cant > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-11 h-11 px-2 rounded-full bg-emerald-600 text-[#fff] text-xl font-black flex items-center justify-center border-4 border-white shadow">
+                    <span className="absolute -top-2 -right-2 min-w-10 h-10 px-2 rounded-full bg-emerald-600 text-[#fff] text-lg font-black flex items-center justify-center border-4 border-white shadow">
                       {cant}
                     </span>
                   )}
-                  <span className="w-20 h-20 rounded-full flex items-center justify-center" style={{ backgroundColor: `${prod.color}22` }}>
-                    <ImagenProducto producto={prod} categoria={nombreCategoria.get(prod.categoriaId)} tam={56} />
+                  <span className="w-[72px] h-[72px] rounded-full flex items-center justify-center" style={{ backgroundColor: `${prod.color}22` }}>
+                    <ImagenProducto producto={prod} categoria={nombreCategoria.get(prod.categoriaId)} tam={50} />
                   </span>
-                  <span className="text-base font-black leading-tight line-clamp-2 min-h-[2.5em] flex items-center">{prod.nombre}</span>
-                  <span className="px-3 py-1 rounded-full bg-blue-600 text-[#fff] text-lg font-black">{pesos(prod.precio)}</span>
+                  <span className="text-[15px] font-black leading-tight line-clamp-2 min-h-[2.5em] flex items-center">{prod.nombre}</span>
+                  <span className="px-3 py-0.5 rounded-full bg-blue-600 text-[#fff] text-base font-black">{pesos(prod.precio)}</span>
                 </button>
               );
             })}
