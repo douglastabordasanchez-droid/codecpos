@@ -6,7 +6,7 @@
  *
  * Un pago cuenta como "con venta" si:
  *  1) una venta lo reclamó mientras esperaba el pago (numero_factura_local no es null), o
- *  2) hay una venta no en efectivo del mismo valor 30 minutos antes o después
+ *  2) hay una venta no en efectivo del mismo valor 2 minutos antes o después
  *     (cada venta se usa una sola vez), o
  *  3) alguien lo marcó como revisado («REVISADO · …»).
  */
@@ -20,7 +20,12 @@ export interface PagoSinVenta {
   created_at: string;
 }
 
-const VENTANA_MS = 30 * 60 * 1000;
+// Venta del mismo valor hasta 2 minutos antes o después: se entiende que es ese pago.
+// Si pasó más tiempo (hubo otras ventas), queda sin venta y se registra con Añadir.
+const VENTANA_MS = 2 * 60 * 1000;
+
+/** Lo emite quien registra, revisa o elimina un pago, para que la lista se recargue. */
+export const EVENTO_PAGOS_SIN_VENTA = 'codecpos:pagos-sin-venta';
 
 interface VentaCruce { local_id?: string | null; total: number; propina?: number | null; metodo_pago: string | null; metodos_multiples: unknown; created_at: string; estado: string | null }
 

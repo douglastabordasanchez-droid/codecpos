@@ -34,6 +34,8 @@ import {
   Copy,
   Printer,
   RotateCcw,
+  AlertCircle,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -55,7 +57,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ModuloPOS } from '../../lib/permissions';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { PagosSinVenta } from '../../../pwa/components/PagosSinVenta';
-import { guardarPagoPorRegistrar } from '../../lib/supabase/pagosSinVenta';
+import { EVENTO_PAGOS_SIN_VENTA, guardarPagoPorRegistrar, limpiarPagosSinVenta, type PagoSinVenta } from '../../lib/supabase/pagosSinVenta';
+import { nombreMedioPago } from '../../lib/voz';
 import { useNavigate } from 'react-router';
 import { datosPdfFacturaDianDeVenta } from '../../lib/dian/representacionGrafica';
 
@@ -72,6 +75,9 @@ export default function VentasPage() {
   const modulosUsuario = (usuarioActual?.modulosActivos || []) as ModuloPOS[];
   const puedeDevolver = esSuperUsuario || modoAdminTemporalActivo || modulosUsuario.length === 0 || modulosUsuario.includes(ModuloPOS.DEVOLUCIONES);
   const [ventaParaDevolver, setVentaParaDevolver] = useState<Venta | null>(null);
+  // Pagos que llegaron por transferencia sin venta: van en la tabla sin número de factura.
+  const [pagosSinVenta, setPagosSinVenta] = useState<PagoSinVenta[]>([]);
+  const [eliminandoPago, setEliminandoPago] = useState<string | null>(null);
   const [verHistorialDevoluciones, setVerHistorialDevoluciones] = useState(false);
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -615,6 +621,7 @@ export default function VentasPage() {
         puedeMarcar={esSuperUsuario || modoAdminTemporalActivo}
         quien={usuarioActual?.nombreCompleto || usuarioActual?.username || 'Administrador'}
         onRegistrar={(p) => { guardarPagoPorRegistrar(p); navigate('/pos'); }}
+        onPagos={setPagosSinVenta}
       />
 
       {/* KPIs */}
@@ -1036,7 +1043,66 @@ export default function VentasPage() {
               </thead>
               <tbody className={`divide-y ${darkMode ? 'divide-slate-700' : 'divide-slate-100'}`}>
                 <AnimatePresence mode="popLayout">
-                  {ventasFiltradas.length === 0 ? (
+                  {pagosSinVenta.map((p) => (
+                    <motion.tr
+                      key={`pago-${p.id}`}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      className={darkMode ? 'bg-amber-500/10' : 'bg-amber-50'}
+                    >
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded-md text-xs font-bold ${darkMode ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>Sin factura</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={darkMode ? 'text-slate-300' : 'text-slate-600'}>
+                          <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-slate-400" />{format(new Date(p.created_at), 'dd/MM/yyyy', { locale: es })}</div>
+                          <div className="flex items-center gap-2 text-sm mt-1 text-slate-400"><Clock className="w-3 h-3" />{format(new Date(p.created_at), 'HH:mm:ss', { locale: es })}</div>
+                        </div>
+                      </td>
+                      <td className={`px-6 py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Sin registrar</td>
+                      <td className={`px-6 py-4 text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Pagó por transferencia</td>
+                      <td className="px-6 py-4">
+                        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-600">{(nombreMedioPago(p.entidad) || 'Transferencia').toUpperCase()}</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(p.monto)}</span>
+                      </td>
+                      <td className="px-6 py-4 text-center"><AlertCircle className="w-5 h-5 text-amber-500 mx-auto" /></td>
+                      <td className="px-4 py-4 text-center min-w-[180px]">
+                        <div className="flex gap-2 justify-center flex-nowrap">
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-[#fff]"
+                            title="Abre el punto de venta: agrega lo que pagó el cliente y cobra con el mismo medio; el pago se reconoce solo"
+                            onClick={() => { guardarPagoPorRegistrar(p); navigate('/pos'); }}
+                          >
+                            Añadir
+                          </Button>
+                          {(esSuperUsuario || modoAdminTemporalActivo) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={eliminandoPago === p.id}
+                              className="border-red-500 text-red-500 hover:bg-red-500/10"
+                              title="Eliminar este pago de Ventas (queda tu nombre)"
+                              onClick={async () => {
+                                if (!window.confirm(`¿Eliminar el pago de ${formatCurrency(p.monto)} de Ventas?`)) return;
+                                setEliminandoPago(p.id);
+                                const n = await limpiarPagosSinVenta([p.id], usuarioActual?.nombreCompleto || usuarioActual?.username || 'Administrador');
+                                setEliminandoPago(null);
+                                if (n > 0) { setPagosSinVenta((xs) => xs.filter((x) => x.id !== p.id)); window.dispatchEvent(new Event(EVENTO_PAGOS_SIN_VENTA)); toast.success('Pago eliminado de Ventas'); }
+                                else toast.error('No se pudo eliminar. Revisa la conexión.');
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </motion.tr>
+                  ))}
+                  {ventasFiltradas.length === 0 && pagosSinVenta.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center">
                         <Package className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
@@ -1046,7 +1112,7 @@ export default function VentasPage() {
                         </p>
                       </td>
                     </tr>
-                  ) : (
+                  ) : ventasFiltradas.length === 0 ? null : (
                     ventasPaginadas.map((venta, index) => (
                       <motion.tr
                         key={venta.id}

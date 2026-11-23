@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { suscribirNotificacionesPagoPwa, type NotificacionPagoRow } from '../lib/codecVerifyPwa';
 import { abrirPopupPago, esPantallaDeEstacion } from '../components/PopupPagoRecibido';
-import { esperandoMonto } from '../components/EsperandoPagoModal';
+import { seEsperaMonto } from '../../app/lib/codecVerifyEspera';
 import { desactivarPush, refrescarPush } from '../lib/pushPagos';
 import {
   alertarPago, alternarSonidoPagos, obtenerAlertasPago, guardarAlertasPago, EVENTO_ALERTAS_PAGO,
@@ -25,7 +25,7 @@ export async function avisarPago(row: NotificacionPagoRow, ejemplo = false) {
   const enSilencio = (() => { const p = obtenerAlertasPago(); return !p.sonido && !p.voz; })();
   if (!ejemplo && (enSilencio || esPantallaDeEstacion())) return;
   // Si Vender está esperando justo ese monto, su propia ventana lo muestra: aquí solo suena.
-  if (ejemplo || esperandoMonto() !== Math.round(Number(row.monto))) abrirPopupPago(row, ejemplo);
+  if (ejemplo || !seEsperaMonto(Number(row.monto))) abrirPopupPago(row, ejemplo);
   const { sono } = await alertarPago(row);
   const prefs = obtenerAlertasPago();
   if ((prefs.sonido || prefs.voz) && !sono) {

@@ -12,7 +12,7 @@ import { BellRing, Check, Loader2, X } from 'lucide-react';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { suscribirPagoEsperado, type NotificacionPagoRow } from '../../app/lib/supabase/codecVerifyService';
 import { nombreMedioPago } from '../../app/lib/voz';
-import { marcarMontoEsperado, colorMedioPago } from '../../app/lib/codecVerifyEspera';
+import { registrarEspera, colorMedioPago } from '../../app/lib/codecVerifyEspera';
 
 export const METODOS_TRANSFERENCIA = ['nequi', 'daviplata', 'bre_b', 'bancolombia', 'davivienda', 'transferencia'];
 
@@ -39,7 +39,7 @@ export function EsperandoPagoModal({ clienteId, monto, metodo, clave, onPagado, 
   const estilo = colorMedioPago(metodo);
 
   useEffect(() => {
-    marcarMontoEsperado(monto);
+    const quitarEspera = registrarEspera(monto);
     const cancelar = suscribirPagoEsperado(monto, clave, (row) => {
       if (terminado.current) return;
       terminado.current = true;
@@ -53,7 +53,7 @@ export function EsperandoPagoModal({ clienteId, monto, metodo, clave, onPagado, 
       })
       .subscribe();
     const reloj = window.setInterval(() => setSegundos((s) => s + 1), 1000);
-    return () => { cancelar?.(); if (canal) client?.removeChannel(canal); window.clearInterval(reloj); marcarMontoEsperado(null); };
+    return () => { cancelar?.(); if (canal) client?.removeChannel(canal); window.clearInterval(reloj); quitarEspera(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId, monto, clave]);
 

@@ -7,6 +7,7 @@
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient } from './config';
 import { getLinkedClienteId } from './tenantLink';
+import { seEsperaMonto } from '../codecVerifyEspera';
 
 export interface NotificacionPagoRow {
   id: string;
@@ -173,7 +174,7 @@ export function suscribirPagoEsperado(
     if (row.estado !== 'confirmado' || row.numero_factura_local) return;
     if (Math.round(Number(row.monto)) !== montoRedondeado) {
       // Solo pagos que llegaron mientras esta caja espera (no los viejos sin reclamar).
-      if (onOtroMonto && !avisados.has(row.id) && Date.parse(row.created_at) >= inicio) {
+      if (onOtroMonto && !avisados.has(row.id) && Date.parse(row.created_at) >= inicio && !seEsperaMonto(Number(row.monto))) {
         avisados.add(row.id);
         onOtroMonto(row);
       }

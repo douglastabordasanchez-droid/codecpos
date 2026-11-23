@@ -4,14 +4,30 @@
  * "Pago recibido" no se abre encima para ese mismo monto: la propia ventana de
  * la venta lo muestra. Lo comparten Electron y la web.
  */
-let montoEsperado: number | null = null;
+// Con varios carritos abiertos puede haber varias esperas a la vez: cada una se
+// registra aparte (antes la última pisaba a las demás y el pago de un carrito
+// le aparecía a otro como «llegó un pago»).
+const esperas = new Map<symbol, number>();
 
-export function marcarMontoEsperado(monto: number | null) {
-  montoEsperado = monto == null ? null : Math.round(monto);
+/** Registra el monto que espera una venta; devuelve la función para quitarlo. */
+export function registrarEspera(monto: number): () => void {
+  const clave = Symbol('espera');
+  esperas.set(clave, Math.round(monto));
+  return () => { esperas.delete(clave); };
 }
 
+/** true si alguna venta abierta (minimizada o no) espera exactamente ese monto. */
+export function seEsperaMonto(monto: number): boolean {
+  const m = Math.round(Number(monto) || 0);
+  for (const v of esperas.values()) if (v === m) return true;
+  return false;
+}
+
+/** Compatibilidad: el último monto esperado (null si no hay esperas). */
 export function esperandoMonto(): number | null {
-  return montoEsperado;
+  let ultimo: number | null = null;
+  for (const v of esperas.values()) ultimo = v;
+  return ultimo;
 }
 
 /** Hay una ventana «Esperando el pago» abierta en pantalla (no minimizada): ella muestra el pago. */

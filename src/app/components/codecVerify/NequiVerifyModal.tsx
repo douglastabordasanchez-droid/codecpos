@@ -22,7 +22,7 @@ import { es } from 'date-fns/locale';
 import { Button } from '../ui/button';
 import { ModalPagoRecibidoNequi, PagoConfirmado } from './ModalPagoRecibidoNequi';
 import { suscribirPagoEsperado, reclamarNotificacionPago, type NotificacionPagoRow } from '../../lib/supabase/codecVerifyService';
-import { marcarMontoEsperado, colorMedioPago } from '../../lib/codecVerifyEspera';
+import { registrarEspera, colorMedioPago } from '../../lib/codecVerifyEspera';
 import { createPortal } from 'react-dom';
 import { Check, Loader2, BellRing, Minimize2, Plus } from 'lucide-react';
 import { getSupabaseClient } from '../../lib/supabase/config';
@@ -359,8 +359,8 @@ function NequiVerifyModalComponent({
     });
   };
 
-  // Al llegar el pago, la ventana vuelve a mostrarse aunque estuviera minimizada.
-  useEffect(() => { if (estado === 'verificado') setMinimizado(false); }, [estado]);
+  // Al llegar el pago con la espera minimizada (la cajera atiende otro carrito), NO se abre
+  // ni se cobra sola: la burbuja se pone verde y espera a que la cajera vuelva a este carrito.
   useEffect(() => { if (!visible) { setMinimizado(false); setPagoOtro(null); } }, [visible]);
 
   /** Minimiza esta espera y abre otra caja para atender al siguiente cliente. */
@@ -376,20 +376,19 @@ function NequiVerifyModalComponent({
   // Mientras se espera este monto, el aviso general de "Pago recibido" no se abre encima.
   useEffect(() => {
     if (!visible || !codecActivo) return;
-    marcarMontoEsperado(monto);
-    return () => marcarMontoEsperado(null);
+    return registrarEspera(monto);
   }, [visible, codecActivo, monto]);
 
   // Igual que en la web: al llegar el pago se muestra "¡Pago recibido!" y la venta se confirma sola.
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || minimizado) return;
     if (estado === 'verificado') {
       const t = setTimeout(() => onConfirmar(), 1400);
       return () => clearTimeout(t);
     }
     if (estado === 'bypass') onConfirmar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estado, visible]);
+  }, [estado, visible, minimizado]);
 
   const confirmButtonHabilitado = !codecActivo || estado === 'verificado' || estado === 'bypass';
 
@@ -400,19 +399,23 @@ function NequiVerifyModalComponent({
   const tiempo = `${Math.floor(segundosEspera / 60)}:${String(segundosEspera % 60).padStart(2, '0')}`;
   const recibido = estado === 'verificado' && pagoConfirmado;
 
-  if (minimizado && !recibido) {
+  if (minimizado) {
     return createPortal(
       <button
         onClick={volverAEstaCaja}
-        className="pointer-events-auto flex items-center gap-2 rounded-full pl-2 pr-4 py-2 shadow-xl text-sm font-bold"
-        style={{ background: '#ffffff', border: `2px solid ${estilo.color}`, color: '#0f172a' }}
-        title="Volver a esta caja"
+        className={`pointer-events-auto flex items-center gap-2 rounded-full pl-2 pr-4 py-2 shadow-xl text-sm font-bold ${recibido ? 'animate-pulse' : ''}`}
+        style={recibido
+          ? { background: '#10b981', border: '2px solid #059669', color: '#fff' }
+          : { background: '#ffffff', border: `2px solid ${estilo.color}`, color: '#0f172a' }}
+        title={recibido ? 'Pago recibido: toca para abrir este carrito y cobrar' : 'Volver a esta caja'}
       >
-        <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: estilo.color }}>
-          <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#fff' }} />
+        <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: recibido ? '#047857' : estilo.color }}>
+          {recibido ? <Check className="w-4 h-4" style={{ color: '#fff' }} /> : <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#fff' }} />}
         </span>
-        Esperando ${Math.round(monto).toLocaleString('es-CO')} · {config.label}
-        {pagoOtro && <span className="ml-1 px-2 py-0.5 rounded-full text-[11px]" style={{ background: '#10b981', color: '#fff' }}>llegó un pago</span>}
+        {recibido
+          ? <>Pagó ${Math.round(monto).toLocaleString('es-CO')} · {config.label} · toca para cobrar</>
+          : <>Esperando ${Math.round(monto).toLocaleString('es-CO')} · {config.label}</>}
+        {!recibido && pagoOtro && <span className="ml-1 px-2 py-0.5 rounded-full text-[11px]" style={{ background: '#10b981', color: '#fff' }}>llegó un pago</span>}
       </button>,
       contenedorEsperas(),
     );

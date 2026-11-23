@@ -5,10 +5,10 @@
  * solo el administrador (o el modo administrador temporal) marca Revisado o
  * Limpia, y queda su nombre, así la cajera no los puede esconder.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Receipt, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { limpiarPagosSinVenta, listarPagosSinVenta, marcarPagoRevisado, type PagoSinVenta, type VentaLocalCruce } from '../../app/lib/supabase/pagosSinVenta';
+import { EVENTO_PAGOS_SIN_VENTA, limpiarPagosSinVenta, listarPagosSinVenta, marcarPagoRevisado, type PagoSinVenta, type VentaLocalCruce } from '../../app/lib/supabase/pagosSinVenta';
 import { nombreMedioPago } from '../../app/lib/voz';
 
 interface Props {
@@ -22,6 +22,8 @@ interface Props {
   quien: string;
   /** Abre el punto de venta para registrar este pago (Ventas › Registrar). */
   onRegistrar?: (p: PagoSinVenta) => void;
+  /** La lista de abajo (Ventas) muestra estos pagos como filas sin factura. */
+  onPagos?: (p: PagoSinVenta[]) => void;
   className?: string;
 }
 
@@ -32,13 +34,16 @@ function textoBanco(p: PagoSinVenta): string {
   return ref.length > 90 ? `${ref.slice(0, 90)}…` : ref;
 }
 
-export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVentasLocales, puedeMarcar, quien, onRegistrar, className = '' }: Props) {
+export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVentasLocales, puedeMarcar, quien, onRegistrar, onPagos, className = '' }: Props) {
   const [pagos, setPagos] = useState<PagoSinVenta[]>([]);
   const [cargando, setCargando] = useState(false);
-  const [abierto, setAbierto] = useState(true);
+  // Cerrado: se abre solo si la persona lo toca.
+  const [abierto, setAbierto] = useState(false);
   const [limpiando, setLimpiando] = useState(false);
   const [marcando, setMarcando] = useState<string | null>(null);
   const desdeMs = desde.getTime();
+  const onPagosRef = useRef(onPagos);
+  onPagosRef.current = onPagos;
   const hastaMs = hasta?.getTime();
 
   const cargar = useCallback(async () => {
@@ -48,7 +53,9 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
       const locales = cargarVentasLocales ? await cargarVentasLocales().catch(() => []) : [];
       // Los pagos del último minuto se dejan quietos: la venta puede estar guardándose.
       const tope = Math.min(hastaMs ?? Date.now(), Date.now() - 60 * 1000);
-      setPagos(await listarPagosSinVenta(clienteId, new Date(desdeMs), new Date(tope), locales));
+      const lista = await listarPagosSinVenta(clienteId, new Date(desdeMs), new Date(tope), locales);
+      setPagos(lista);
+      onPagosRef.current?.(lista);
     } catch { /* sin conexión: se intenta en la próxima vuelta */ }
     finally { setCargando(false); }
   }, [clienteId, desdeMs, hastaMs, cargarVentasLocales]);
@@ -59,17 +66,23 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
     // Llegó un pago a esta caja: a los 65 s ya se sabe si quedó en una venta o no.
     let espera: number | undefined;
     const alLlegar = () => { window.clearTimeout(espera); espera = window.setTimeout(() => { void cargar(); }, 65_000); };
+    const recargar = () => { void cargar(); };
     window.addEventListener('codecverify:pago_recibido', alLlegar);
-    return () => { window.clearInterval(t); window.clearTimeout(espera); window.removeEventListener('codecverify:pago_recibido', alLlegar); };
+    window.addEventListener(EVENTO_PAGOS_SIN_VENTA, recargar);
+    return () => {
+      window.clearInterval(t); window.clearTimeout(espera);
+      window.removeEventListener('codecverify:pago_recibido', alLlegar);
+      window.removeEventListener(EVENTO_PAGOS_SIN_VENTA, recargar);
+    };
   }, [cargar]);
 
   const limpiarTodos = async () => {
-    if (!window.confirm(`¿Limpiar los ${pagos.length} pagos sin venta de este periodo? Salen de la lista y queda tu nombre como quien los limpió.`)) return;
+    if (!window.confirm(`¿Eliminar los ${pagos.length} pagos sin venta de este periodo? Salen de Ventas y queda tu nombre como quien los eliminó.`)) return;
     setLimpiando(true);
     const n = await limpiarPagosSinVenta(pagos.map((p) => p.id), quien);
     setLimpiando(false);
-    if (n > 0) { toast.success(`${n} ${n === 1 ? 'pago limpiado' : 'pagos limpiados'}`); void cargar(); }
-    else toast.error('No se pudo limpiar. Revisa la conexión.');
+    if (n > 0) { toast.success(`${n} ${n === 1 ? 'pago eliminado' : 'pagos eliminados'}`); window.dispatchEvent(new Event(EVENTO_PAGOS_SIN_VENTA)); }
+    else toast.error('No se pudo eliminar. Revisa la conexión.');
   };
 
   const marcar = async (p: PagoSinVenta) => {
@@ -77,7 +90,7 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
     const ok = await marcarPagoRevisado(p.id, quien);
     setMarcando(null);
     if (ok) {
-      setPagos((xs) => xs.filter((x) => x.id !== p.id));
+      window.dispatchEvent(new Event(EVENTO_PAGOS_SIN_VENTA));
       toast.success(`Pago de ${peso(p.monto)} marcado como revisado`);
     } else {
       toast.error('No se pudo marcar. Revisa la conexión.');
@@ -101,7 +114,7 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
           <p className={`font-black ${titulo}`}>
             {pagos.length} {pagos.length === 1 ? 'pago recibido sin venta' : 'pagos recibidos sin venta'} · {peso(total)}
           </p>
-          <p className={`text-xs ${suave}`}>Llegaron por transferencia y no tienen factura. Toca Registrar para crear la venta.</p>
+          <p className={`text-xs ${suave}`}>Llegaron por transferencia y no tienen factura. Están abajo en la lista sin número de factura; toca Añadir para cargarles los productos.</p>
         </div>
         {cargando && <Loader2 className={`w-4 h-4 animate-spin ${suave}`} />}
         <ChevronDown className={`w-5 h-5 shrink-0 transition ${titulo} ${abierto ? 'rotate-180' : ''}`} />
@@ -127,7 +140,7 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
                     className="px-3 py-2 rounded-lg text-xs font-bold bg-blue-600 text-[#fff] flex items-center justify-center gap-1"
                     title="Abre el punto de venta: agrega los productos y cobra con el mismo medio; el pago se reconoce solo"
                   >
-                    <Receipt className="w-3.5 h-3.5" /> Registrar
+                    <Receipt className="w-3.5 h-3.5" /> Añadir
                   </button>
                 )}
                 {puedeMarcar && (
@@ -147,12 +160,12 @@ export function PagosSinVenta({ clienteId, desde, hasta, oscuro = true, cargarVe
           ))}
           <div className="flex items-center justify-between pt-1">
             <p className={`text-[11px] ${suave}`}>
-              {puedeMarcar ? 'Revisado o Limpiar los saca de la lista; queda tu nombre.' : 'Solo el administrador puede marcarlos como revisados o limpiarlos.'}
+              {puedeMarcar ? 'Revisado o Eliminar los saca de Ventas; queda tu nombre.' : 'Solo el administrador puede marcarlos como revisados o eliminarlos.'}
             </p>
             <div className="flex items-center gap-3 shrink-0">
               {puedeMarcar && (
                 <button type="button" disabled={limpiando} onClick={() => void limpiarTodos()} className="text-xs font-bold flex items-center gap-1 text-red-500 disabled:opacity-60">
-                  {limpiando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Limpiar todos
+                  {limpiando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Eliminar todos
                 </button>
               )}
               <button type="button" onClick={() => void cargar()} className={`text-xs font-bold flex items-center gap-1 ${titulo}`}>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, Share2, Loader2, Receipt, Eye, RotateCcw } from 'lucide-react';
+import { Search, Share2, Loader2, Receipt, Eye, RotateCcw, Trash2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { Input } from '../../app/components/ui/input';
@@ -12,7 +12,8 @@ import { ModalVistaFactura } from '../../app/components/factura/ModalVistaFactur
 import { precargarVisorPdf } from '../../app/lib/pdfVista';
 import { SucursalFiltro } from '../components/SucursalFiltro';
 import { PagosSinVenta } from '../components/PagosSinVenta';
-import { guardarPagoPorRegistrar } from '../../app/lib/supabase/pagosSinVenta';
+import { EVENTO_PAGOS_SIN_VENTA, guardarPagoPorRegistrar, limpiarPagosSinVenta, type PagoSinVenta } from '../../app/lib/supabase/pagosSinVenta';
+import { nombreMedioPago } from '../../app/lib/voz';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 import { traerTodo } from '../lib/nubeConsultas';
@@ -66,6 +67,8 @@ export default function VentasPage() {
   const tiendaEfectiva = esAdmin ? (sucursalActiva?.id ?? undefined) : (empleado?.tienda_id ?? null);
   const [ventas, setVentas] = useState<VentaFila[]>([]);
   const [busqueda, setBusqueda] = useState('');
+  const [pagosSinVenta, setPagosSinVenta] = useState<PagoSinVenta[]>([]);
+  const [eliminandoPago, setEliminandoPago] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [compartiendoId, setCompartiendoId] = useState<string | null>(null);
@@ -159,6 +162,20 @@ export default function VentasPage() {
     setCompartiendoId(null);
   };
 
+  const quitarPago = async (p: PagoSinVenta) => {
+    if (!window.confirm(`¿Eliminar el pago de $${Math.round(p.monto).toLocaleString('es-CO')} de Ventas?`)) return;
+    setEliminandoPago(p.id);
+    const n = await limpiarPagosSinVenta([p.id], empleado?.nombre_completo || 'Administrador');
+    setEliminandoPago(null);
+    if (n > 0) {
+      setPagosSinVenta((xs) => xs.filter((x) => x.id !== p.id));
+      window.dispatchEvent(new Event(EVENTO_PAGOS_SIN_VENTA));
+      toast.success('Pago eliminado de Ventas');
+    } else {
+      toast.error('No se pudo eliminar. Revisa la conexión.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-24">
       <div className="px-5 pt-8 pb-4">
@@ -212,6 +229,7 @@ export default function VentasPage() {
         puedeMarcar={esAdmin}
         quien={empleado?.nombre_completo || 'Administrador'}
         onRegistrar={(p) => { guardarPagoPorRegistrar(p); navigate('/vender'); }}
+        onPagos={setPagosSinVenta}
       />
 
       {esAdmin && !empleadoSel && resumen.length > 1 && !busqueda.trim() && (
@@ -234,7 +252,37 @@ export default function VentasPage() {
       <div className="px-5 space-y-2">
         {cargando && <p className="text-slate-500 text-sm text-center py-8">Cargando...</p>}
         {!cargando && errorCarga && <p className="text-red-400 text-sm text-center py-8">{errorCarga}</p>}
-        {!cargando && !errorCarga && filtradas.length === 0 && (
+        {!busqueda.trim() && pagosSinVenta.map((p) => (
+          <div key={`pago-${p.id}`} className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300">Sin factura</span>
+              <span className="text-white font-black text-sm">${Math.round(p.monto).toLocaleString('es-CO')}</span>
+            </div>
+            <p className="text-slate-500 text-xs mb-2">
+              {new Date(p.created_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · pagó por {nombreMedioPago(p.entidad) || 'transferencia'}, sin registrar
+            </p>
+            <div className="flex items-center justify-end gap-1.5">
+              {esAdmin && (
+                <button
+                  disabled={eliminandoPago === p.id}
+                  onClick={() => void quitarPago(p)}
+                  className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center text-red-400 disabled:opacity-50"
+                  aria-label="Eliminar pago"
+                  title="Eliminar este pago de Ventas (queda tu nombre)"
+                >
+                  {eliminandoPago === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </button>
+              )}
+              <button
+                onClick={() => { guardarPagoPorRegistrar(p); navigate('/vender'); }}
+                className="h-8 px-3 rounded-full bg-blue-600 text-[#fff] text-xs font-bold flex items-center gap-1"
+              >
+                <Receipt className="w-3.5 h-3.5" /> Añadir
+              </button>
+            </div>
+          </div>
+        ))}
+        {!cargando && !errorCarga && filtradas.length === 0 && pagosSinVenta.length === 0 && (
           <p className="text-slate-500 text-sm text-center py-8">Sin ventas registradas</p>
         )}
         {filtradas.slice(0, MOSTRAR).map((v, i) => (
