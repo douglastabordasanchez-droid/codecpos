@@ -67,6 +67,12 @@ class PagoNotificationListenerService : NotificationListenerService() {
         antes != null && ahora - antes < 20_000
     }
 
+    private fun esAvisoDeCodecPos(texto: String): Boolean {
+        val t = texto.lowercase()
+        return listOf("codecstudio", "codecpos", "codec pos", "codec verify").any { it in t } ||
+            Regex("^pago recibido \\$?[0-9.,]+ \\| has recibido un pago").containsMatchIn(t)
+    }
+
     private fun yaVisto(clave: String): Boolean = synchronized(vistos) {
         val ahora = System.currentTimeMillis()
         val antes = vistos[clave]
@@ -108,6 +114,9 @@ class PagoNotificationListenerService : NotificationListenerService() {
 
         val texto = extraerTexto(sbn.notification)
         if (texto.isBlank()) return
+        // El push "Pago recibido $50 | ... | pos.codecstudio.online" que muestra el navegador lo manda
+        // el propio Codec POS: leerlo como pago arma un bucle (KUBARA, 2026-11-24, 34 pagos falsos).
+        if (esAvisoDeCodecPos(texto)) return
         val habilitadas = prefs.entidadesHabilitadas
 
         // 2) ¿Entró dinero? Solo un aviso RECIBIDO puede volverse pago; lo que el propio negocio
