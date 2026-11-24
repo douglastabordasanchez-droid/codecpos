@@ -183,6 +183,27 @@ export function AlertaPagoEntrante({ pago, onVincular, onDescartar }: AlertaPago
   );
 }
 
+const pagosAnunciados = new Set<string>();
+
+/**
+ * Campanazos y voz de un pago, una sola vez por pago. Lo llaman el escucha general y la
+ * ventana de espera de la venta: en una caja donde el tiempo real no conecta (KUBARA,
+ * 2026-11-24) la venta se desbloqueaba por la consulta de respaldo pero no sonaba nada.
+ */
+export function anunciarPagoUnaVez(id: string, monto: number, banco: string): void {
+  if (pagosAnunciados.has(id)) return;
+  pagosAnunciados.add(id);
+  if (!isVozActiva() || esPantallaDeEstacion()) return;
+  const prefs = obtenerAlertasPago();
+  if (prefs.sonido) {
+    void reproducirSonidoPago(prefs.volumen).then((sono) => {
+      setTimeout(() => anunciarPagoRecibido(monto, banco), sono ? 1700 : 0);
+    });
+  } else {
+    anunciarPagoRecibido(monto, banco);
+  }
+}
+
 // Hook para usar Codec Verify — sobre Supabase Realtime (ver codecVerifyService.ts)
 export function useCodecVerify() {
   const [pagoEntrante, setPagoEntrante] = useState<PagoEntrante | null>(null);
@@ -206,16 +227,7 @@ export function useCodecVerify() {
     // pago al celular vinculado, sin importar si es manual o automático.
     // 🔔 Antes de la voz, los dos campanazos del celular (pago-recibido.wav). La voz entra
     // cuando terminan (1,7 s). Así suena igual en la caja, la terminal y el celular.
-    if (!callado) {
-      const prefs = obtenerAlertasPago();
-      if (prefs.sonido) {
-        void reproducirSonidoPago(prefs.volumen).then((sono) => {
-          setTimeout(() => anunciarPagoRecibido(pago.monto, pago.banco), sono ? 1700 : 0);
-        });
-      } else {
-        anunciarPagoRecibido(pago.monto, pago.banco);
-      }
-    }
+    if (!callado) anunciarPagoUnaVez(row.id, pago.monto, pago.banco);
 
     // 🔗 Puente para consumidores existentes (p. ej. NequiVerifyModal en el
     // checkout), que ya escuchaban este evento esperando una infraestructura

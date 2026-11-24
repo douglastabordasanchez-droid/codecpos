@@ -23,6 +23,8 @@ import { Button } from '../ui/button';
 import { ModalPagoRecibidoNequi, PagoConfirmado } from './ModalPagoRecibidoNequi';
 import { suscribirPagoEsperado, reclamarNotificacionPago, type NotificacionPagoRow } from '../../lib/supabase/codecVerifyService';
 import { registrarEspera, colorMedioPago } from '../../lib/codecVerifyEspera';
+import { anunciarPagoUnaVez } from './AlertaPagoEntrante';
+import { nombreMedioPago } from '../../lib/voz';
 import { createPortal } from 'react-dom';
 import { Check, Loader2, BellRing, Minimize2, Plus } from 'lucide-react';
 import { getSupabaseClient } from '../../lib/supabase/config';
@@ -252,6 +254,8 @@ function NequiVerifyModalComponent({
     if (!claveEsperaRef.current) claveEsperaRef.current = `VERIF-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
     const cancelar = suscribirPagoEsperado(monto, claveEsperaRef.current, (row) => {
+      // Suena aquí también: si el tiempo real no conecta en esta caja, el escucha general no se entera.
+      anunciarPagoUnaVez(row.id, Number(row.monto) || monto, nombreMedioPago(row.entidad) || config.label);
       recibirPago({
         monto: Number(row.monto) || monto,
         banco: config.label,
