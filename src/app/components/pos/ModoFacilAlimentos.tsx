@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Armchair, ArrowLeft, Calculator, ChefHat, Coffee, LogOut, Minus, Plus, Search, ShoppingCart, Star, Store, Users, X } from 'lucide-react';
+import { Armchair, ArrowLeft, Calculator, ChefHat, Coffee, LogOut, Minus, Plus, Maximize2, Minimize2, Search, ShoppingCart, Star, Store, Users, X, ZoomIn } from 'lucide-react';
 import { dbManager } from '../../lib/indexedDB';
 import { emojiParaProducto, urlFluent3D, urlTwemoji } from '../../lib/imagenProducto';
 import { esEmoji } from '../../lib/estiloMenu';
@@ -43,6 +43,12 @@ interface Props {
 
 const CLAVE_POSICION_BOTON = 'codecpos_modo_facil_boton_mesas';
 const CLAVE_PEDIDOS = 'codecpos_modo_facil_pedidos';
+const CLAVE_TAMANO = 'codecpos_modo_facil_tamano';
+/** Tamaños del modo fácil: más pequeño para ver más productos, más grande para ver mejor. */
+const TAMANOS = [0.75, 0.85, 1, 1.15, 1.3, 1.45];
+const leerTamano = () => {
+  try { const t = Number(localStorage.getItem(CLAVE_TAMANO)); return TAMANOS.includes(t) ? t : 1; } catch { return 1; }
+};
 const TOP = '__mas_pedidos';
 
 /** Franja del día: lo que se pide en la mañana no es lo mismo que al mediodía. */
@@ -164,6 +170,12 @@ export function ModoFacilAlimentos(p: Props) {
   const [categoria, setCategoria] = useState<string>(TOP);
   const [vistaMesas, setVistaMesas] = useState<null | 'elegir' | 'pasar'>(null);
   const [busqueda, setBusqueda] = useState('');
+  const [tamano, setTamano] = useState<number>(leerTamano);
+  const cambiarTamano = (paso: 1 | -1) => {
+    const i = Math.min(TAMANOS.length - 1, Math.max(0, TAMANOS.indexOf(tamano) + paso));
+    setTamano(TAMANOS[i]);
+    try { localStorage.setItem(CLAVE_TAMANO, String(TAMANOS[i])); } catch { /* sin almacenamiento */ }
+  };
   // Lo que más se pide: ventas de los últimos 30 días en esta caja más los
   // toques del modo fácil, pesando más lo que se pide a esta hora del día.
   const [historial, setHistorial] = useState<Conteo>({});
@@ -214,6 +226,27 @@ export function ModoFacilAlimentos(p: Props) {
     });
   };
 
+  // Pantalla completa: al entrar al modo fácil se pide (sin barra de Windows ni del
+  // navegador) y al salir se quita. Si el navegador no la deja (por ejemplo al abrir
+  // la caja ya en modo fácil, sin un toque), queda el botón del encabezado.
+  const [completa, setCompleta] = useState(() => !!document.fullscreenElement);
+  const pedirCompleta = () => {
+    try { void document.documentElement.requestFullscreen?.()?.catch(() => { /* sin permiso */ }); } catch { /* sin soporte */ }
+  };
+  const alternarCompleta = () => {
+    if (document.fullscreenElement) { try { void document.exitFullscreen?.()?.catch(() => {}); } catch { /* ignorar */ } }
+    else pedirCompleta();
+  };
+  useEffect(() => {
+    const alCambiar = () => setCompleta(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', alCambiar);
+    if (!document.fullscreenElement) pedirCompleta();
+    return () => {
+      document.removeEventListener('fullscreenchange', alCambiar);
+      if (document.fullscreenElement) { try { void document.exitFullscreen?.()?.catch(() => {}); } catch { /* ignorar */ } }
+    };
+  }, []);
+
   // La pantalla de atrás no se mueve mientras el modo fácil está abierto.
   useEffect(() => {
     const anterior = document.body.style.overflow;
@@ -245,7 +278,7 @@ export function ModoFacilAlimentos(p: Props) {
   const m = (claro: string, oscuro: string) => (d ? oscuro : claro);
 
   const contenido = (
-    <div className={`fixed inset-0 z-[70] flex flex-col gap-3 p-3 antialiased ${m('bg-slate-100 text-slate-900', 'bg-slate-950 text-slate-100')}`} style={{ colorScheme: d ? 'dark' : 'light' }}>
+    <div className={`fixed left-0 top-0 z-[70] flex flex-col gap-3 p-3 antialiased ${m('bg-slate-100 text-slate-900', 'bg-slate-950 text-slate-100')}`} style={{ colorScheme: d ? 'dark' : 'light', zoom: tamano, width: `${100 / tamano}vw`, height: `${100 / tamano}dvh` } as React.CSSProperties}>
       {/* Encabezado: dónde estoy y cómo salir */}
       <div className="flex items-center gap-4 px-4 py-3 rounded-2xl bg-gradient-to-r from-orange-500 via-orange-600 to-rose-600 text-[#fff] shadow-lg shadow-orange-600/20">
         <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -262,6 +295,25 @@ export function ModoFacilAlimentos(p: Props) {
             <Store className="w-4 h-4" />Mostrador
           </button>
         )}
+        <button type="button" onClick={alternarCompleta} title={completa ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          className="h-11 px-4 rounded-full bg-white/15 border border-white/40 text-[#fff] text-sm font-semibold flex items-center gap-2 hover:bg-white/25 transition active:scale-95">
+          {completa ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          {completa ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        </button>
+        {/* Tamaño de la pantalla: se recuerda en este equipo */}
+        <div className="h-11 flex items-center rounded-full bg-white/15 border border-white/40 text-[#fff]" title="Tamaño de la pantalla">
+          <button type="button" onClick={() => cambiarTamano(-1)} disabled={tamano === TAMANOS[0]} aria-label="Más pequeño"
+            className="w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/20 disabled:opacity-40 transition active:scale-90">
+            <Minus className="w-4 h-4" />
+          </button>
+          <span className="min-w-[56px] text-center text-sm font-bold tabular-nums text-[#fff] flex items-center justify-center gap-1">
+            <ZoomIn className="w-4 h-4 text-[#fff]" />{Math.round(tamano * 100)}%
+          </span>
+          <button type="button" onClick={() => cambiarTamano(1)} disabled={tamano === TAMANOS[TAMANOS.length - 1]} aria-label="Más grande"
+            className="w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/20 disabled:opacity-40 transition active:scale-90">
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
         <button type="button" onClick={p.onSalir} className="h-11 px-4 rounded-full bg-white/15 border border-white/40 text-[#fff] text-sm font-semibold flex items-center gap-2 hover:bg-white/25 transition">
           <LogOut className="w-4 h-4" />Salir del modo fácil
         </button>
@@ -397,7 +449,6 @@ export function ModoFacilAlimentos(p: Props) {
         </button>
       </div>
 
-      {!vistaMesas && <BotonMesasFlotante onTocar={() => setVistaMesas('elegir')} ocupadas={ocupadas} oscuro={d} />}
 
       {/* Mesas en pantalla completa */}
       {vistaMesas && (
@@ -468,5 +519,11 @@ export function ModoFacilAlimentos(p: Props) {
     </div>
   );
 
-  return createPortal(contenido, document.body);
+  return createPortal(
+    <>
+      {contenido}
+      {!vistaMesas && <BotonMesasFlotante onTocar={() => setVistaMesas('elegir')} ocupadas={ocupadas} oscuro={d} />}
+    </>,
+    document.body,
+  );
 }
