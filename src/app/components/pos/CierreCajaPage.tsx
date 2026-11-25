@@ -1934,78 +1934,53 @@ export default function CierreCajaPage() {
                     </div>
                   )}
 
-                  {/* Resumen del Cierre */}
+                  {/* Resumen del Cierre: tarjetas del mismo alto, título arriba y monto abajo,
+                      en una cuadrícula de 3 columnas que cuadra con la fila de otros medios. */}
                   <div className="space-y-4 mb-6">
-                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                      {/* Base Inicial */}
-                      {aperturaActual && (
-                        <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
-                          <p className={`${darkMode ? 'text-purple-300' : 'text-purple-600'} text-xs font-semibold mb-1`}>BASE INICIAL</p>
-                          <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>{formatCurrency(aperturaActual.baseInicial)}</p>
+                    {puedeVerFaltante && (
+                      <>
+                        <div>
+                          <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Efectivo en caja</p>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            <TarjetaCaja dm={darkMode} color="purple" titulo="Base inicial" valor={formatCurrency(aperturaActual?.baseInicial ?? 0)} />
+                            <TarjetaCaja dm={darkMode} color="blue" signo="+" titulo="Ventas en efectivo" valor={formatCurrency(desgloseSistema.efectivo)} />
+                            <TarjetaCaja dm={darkMode} color="orange" signo="+" titulo="Abonos de cartera" valor={formatCurrency(abonosCarteraEfectivoDia)} />
+                            <TarjetaCaja dm={darkMode} color="red" signo="−" titulo="Devoluciones en efectivo" valor={formatCurrency(salidasDevolucionEfectivoDia)} />
+                            <TarjetaCaja dm={darkMode} color="red" signo="−" titulo="Gastos en efectivo" valor={formatCurrency(gastosEfectivoDia)} />
+                            <TarjetaCaja dm={darkMode} color="amber" signo="=" titulo="Efectivo esperado" valor={formatCurrency(totalEsperado)} destacada />
+                          </div>
                         </div>
-                      )}
 
-                      {/* Ventas Efectivo */}
-                      <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
-                        <p className={`${darkMode ? 'text-blue-300' : 'text-blue-600'} text-xs font-semibold mb-1`}>+ VENTAS EFECTIVO</p>
-                        <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>{formatCurrency(desgloseSistema.efectivo)}</p>
-                      </div>
-
-                      {/* Devoluciones */}
-                      <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-                        <p className={`${darkMode ? 'text-red-300' : 'text-red-600'} text-xs font-semibold mb-1`}>- DEVOLUCIONES EFECTIVO</p>
-                        <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>{formatCurrency(salidasDevolucionEfectivoDia)}</p>
-                      </div>
-                      <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-                        <p className={`${darkMode ? 'text-red-300' : 'text-red-600'} text-xs font-semibold mb-1`}>- GASTOS EFECTIVO</p>
-                        <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>{formatCurrency(gastosEfectivoDia)}</p>
-                      </div>
-
-                      {/* Abonos de Cartera (crédito a clientes) recibidos hoy */}
-                      <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl">
-                        <p className={`${darkMode ? 'text-orange-300' : 'text-orange-600'} text-xs font-semibold mb-1`}>+ ABONOS CARTERA</p>
-                        <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>{formatCurrency(abonosCarteraEfectivoDia)}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className={`${darkMode ? 'text-amber-300' : 'text-amber-600'} text-xs font-semibold mb-1`}>= EFECTIVO ESPERADO</p>
-                        <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>{formatCurrency(totalEsperado)}</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-xl">
-                        <p className={`${darkMode ? 'text-indigo-300' : 'text-indigo-700'} text-xs font-semibold mb-1`}>
-                          TRANSFERENCIAS ESPERADAS (NETO EGRESOS)
-                        </p>
-                        <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>
-                          {formatCurrency(transferenciaEsperada)}
-                        </p>
-                      </div>
-                      <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl">
-                        <p className={`${darkMode ? 'text-cyan-300' : 'text-cyan-700'} text-xs font-semibold mb-1`}>
-                          TARJETA/BANCO ESPERADO (NETO EGRESOS)
-                        </p>
-                        <p className={`${darkMode ? 'text-white' : 'text-slate-900'} text-2xl font-bold`}>
-                          {formatCurrency(tarjetaBancoEsperado)}
-                        </p>
-                      </div>
-                      <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
-                        <p className={`${darkMode ? 'text-emerald-300' : 'text-emerald-700'} text-xs font-semibold mb-1`}>
-                          TOTAL ESPERADO ANALÍTICO
-                        </p>
-                        <p className={`${darkMode ? 'text-white' : 'text-emerald-900'} text-2xl font-bold`}>
-                          {formatCurrency(totalEsperadoAnalitico)}
-                        </p>
-                      </div>
-                    </div>
+                        <div>
+                          <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Otros medios</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <TarjetaCaja dm={darkMode} color="indigo" titulo="Transferencias esperadas" nota="Neto de egresos" valor={formatCurrency(transferenciaEsperada)} />
+                            <TarjetaCaja dm={darkMode} color="cyan" titulo="Tarjeta y banco esperado" nota="Neto de egresos" valor={formatCurrency(tarjetaBancoEsperado)} />
+                            <TarjetaCaja dm={darkMode} color="emerald" titulo="Total esperado" nota="Todos los medios" valor={formatCurrency(totalEsperadoAnalitico)} destacada />
+                          </div>
+                        </div>
+                      </>
+                    )}
 
                     {/* Total Físico */}
-                    <div className="p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-600/10 border border-emerald-500/30 rounded-xl">
-                      <p className={`${darkMode ? 'text-emerald-300' : 'text-emerald-700'} text-sm font-semibold mb-2`}>TOTAL FÍSICO CONTADO</p>
-                      <p className={`${darkMode ? 'text-white' : 'text-emerald-900'} text-5xl font-black`}>{formatCurrency(totalContado)}</p>
-                      <p className={`${darkMode ? 'text-slate-400' : 'text-gray-500'} text-sm mt-2`}>
-                        Esperado efectivo: {formatCurrency(totalEsperado)}
-                      </p>
+                    <div className="p-5 sm:p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-600/10 border border-emerald-500/30 rounded-xl flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className={`${darkMode ? 'text-emerald-300' : 'text-emerald-700'} text-sm font-semibold mb-1`}>Total físico contado</p>
+                        <p className={`${darkMode ? 'text-white' : 'text-emerald-900'} text-4xl sm:text-5xl font-black tabular-nums leading-tight`}>{formatCurrency(totalContado)}</p>
+                      </div>
+                      {puedeVerFaltante && (
+                        <div className="sm:text-right">
+                          <p className={`${darkMode ? 'text-slate-400' : 'text-gray-500'} text-sm`}>Esperado en efectivo: <b className="tabular-nums">{formatCurrency(totalEsperado)}</b></p>
+                          {totalContado > 0 && (
+                            <p className={`text-sm font-bold tabular-nums ${
+                              totalContado === totalEsperado ? 'text-green-500' : totalContado < totalEsperado ? 'text-red-500' : 'text-orange-500'
+                            }`}>
+                              {totalContado === totalEsperado ? 'Cuadra exacto'
+                                : `${totalContado < totalEsperado ? 'Faltan' : 'Sobran'} ${formatCurrency(Math.abs(totalContado - totalEsperado))}`}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2049,6 +2024,36 @@ export default function CierreCajaPage() {
           </div>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+const COLORES_TARJETA = {
+  purple: { caja: 'bg-purple-500/10 border-purple-500/30', claro: 'text-purple-600', oscuro: 'text-purple-300' },
+  blue: { caja: 'bg-blue-500/10 border-blue-500/30', claro: 'text-blue-600', oscuro: 'text-blue-300' },
+  orange: { caja: 'bg-orange-500/10 border-orange-500/30', claro: 'text-orange-600', oscuro: 'text-orange-300' },
+  red: { caja: 'bg-red-500/10 border-red-500/30', claro: 'text-red-600', oscuro: 'text-red-300' },
+  amber: { caja: 'bg-amber-500/15 border-amber-500/60', claro: 'text-amber-700', oscuro: 'text-amber-300' },
+  indigo: { caja: 'bg-indigo-500/10 border-indigo-500/30', claro: 'text-indigo-700', oscuro: 'text-indigo-300' },
+  cyan: { caja: 'bg-cyan-500/10 border-cyan-500/30', claro: 'text-cyan-700', oscuro: 'text-cyan-300' },
+  emerald: { caja: 'bg-emerald-500/15 border-emerald-500/60', claro: 'text-emerald-700', oscuro: 'text-emerald-300' },
+} as const;
+
+/** Tarjeta del resumen de caja: el monto siempre queda dentro, abajo y alineado con las vecinas. */
+export function TarjetaCaja({ dm, color, titulo, valor, signo, nota, destacada }: {
+  dm: boolean; color: keyof typeof COLORES_TARJETA; titulo: string; valor: string; signo?: string; nota?: string; destacada?: boolean;
+}) {
+  const c = COLORES_TARJETA[color];
+  return (
+    <div className={`min-w-0 p-3 sm:p-4 rounded-xl ${destacada ? 'border-2' : 'border'} ${c.caja} flex flex-col justify-between gap-2 min-h-[96px]`}>
+      <div className="flex items-start gap-1.5 min-w-0">
+        {signo && <span className={`shrink-0 text-sm font-black leading-5 ${dm ? c.oscuro : c.claro}`}>{signo}</span>}
+        <div className="min-w-0">
+          <p className={`text-xs font-semibold leading-5 ${dm ? c.oscuro : c.claro}`}>{titulo}</p>
+          {nota && <p className={`text-[11px] leading-4 ${dm ? 'text-slate-400' : 'text-slate-500'}`}>{nota}</p>}
+        </div>
+      </div>
+      <p className={`${dm ? 'text-white' : 'text-slate-900'} ${destacada ? 'font-black' : 'font-bold'} text-lg sm:text-xl 2xl:text-2xl tabular-nums leading-tight whitespace-nowrap`}>{valor}</p>
     </div>
   );
 }

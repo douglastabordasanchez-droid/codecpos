@@ -23,6 +23,8 @@ import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { SelectorCargo } from './SelectorCargo';
+import { abrirEnlaceExterno } from '../../lib/externalLink';
+import { WHATSAPP_CODEC_STUDIO } from '../../lib/bloqueoLicencia';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePOS } from '../../contexts/POSContext';
 import { electronStore, type Venta } from '../../lib/electronStore';
@@ -1416,13 +1418,6 @@ export function UsuariosPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className={dm ? 'text-gray-300' : ''}>
-                      <Briefcase className="w-3.5 h-3.5 inline mr-1" />
-                      Cargo
-                    </Label>
-                    <SelectorCargo valor={form.cargo} onCambio={(cargo) => setForm(f => ({ ...f, cargo }))} oscuro={dm} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className={dm ? 'text-gray-300' : ''}>
                       <Phone className="w-3.5 h-3.5 inline mr-1" />
                       Teléfono
                     </Label>
@@ -1432,6 +1427,62 @@ export function UsuariosPage() {
                       placeholder="311 555 0000"
                       className={`h-11 ${dm ? 'bg-slate-800 border-slate-600 text-white' : ''}`}
                     />
+                  </div>
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className={dm ? 'text-gray-300' : ''}>
+                      <Briefcase className="w-3.5 h-3.5 inline mr-1" />
+                      Cargo
+                    </Label>
+                    <SelectorCargo
+                      valor={form.cargo}
+                      onCambio={(cargo, rol) => { setForm(f => ({ ...f, cargo })); if (!modoEdicion) setRolFormulario(rol); }}
+                      oscuro={dm}
+                    />
+                    {!modoEdicion && (
+                      <div className="pt-1 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-semibold ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <Wrench className="w-3 h-3 inline mr-1" />Acceso en el sistema:
+                          </span>
+                          <div className={`inline-flex p-0.5 rounded-lg ${dm ? 'bg-slate-800' : 'bg-gray-100'}`}>
+                            {([
+                              { value: 'cajero', label: 'Ventas y caja', on: 'bg-indigo-600 text-[#fff]' },
+                              { value: 'tecnico', label: 'Taller', on: 'bg-cyan-600 text-[#fff]' },
+                              { value: 'admin_nube', label: 'Administrador', on: 'bg-amber-500 text-[#fff]' },
+                            ] as const).map(r => (
+                              <button
+                                key={r.value}
+                                type="button"
+                                onClick={() => setRolFormulario(r.value)}
+                                className={`h-8 px-3 rounded-md text-xs font-bold transition-colors ${
+                                  rolFormulario === r.value ? r.on : dm ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                              >
+                                {r.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <p className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {rolFormulario === 'cajero' && 'Vende, cobra y usa la caja con los permisos que le des en la pestaña Permisos.'}
+                          {rolFormulario === 'tecnico' && 'Trabaja en el taller de reparaciones con los permisos que le des en la pestaña Permisos.'}
+                          {rolFormulario === 'admin_nube' && 'Permisos totales. Entra con correo y contraseña en la caja, el celular y la web.'}
+                        </p>
+                        {rolFormulario === 'admin_nube' && (
+                          <div className={`text-xs rounded-lg p-2.5 border ${dm ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                            Tu plan incluye <b>1 administrador</b> (y 1 más por cada sede adicional). Si necesitas otro,{' '}
+                            <button
+                              type="button"
+                              onClick={() => abrirEnlaceExterno(`https://wa.me/${WHATSAPP_CODEC_STUDIO}?text=${encodeURIComponent('Hola, quiero agregar otro administrador en CODEC POS')}`)}
+                              className="font-bold underline"
+                            >
+                              escríbenos por WhatsApp
+                            </button>{' '}
+                            y te lo activamos.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label className={dm ? 'text-gray-300' : ''}>
@@ -1458,59 +1509,6 @@ export function UsuariosPage() {
                     />
                   </div>
 
-                  {!modoEdicion && (
-                    <div className="col-span-2 space-y-1.5">
-                      <Label className={dm ? 'text-gray-300' : ''}>
-                        <Wrench className="w-3.5 h-3.5 inline mr-1" />
-                        Rol del sistema *
-                      </Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {([
-                          { value: 'cajero', label: 'Cajero / Operario', desc: 'Ventas y caja', color: 'indigo' },
-                          { value: 'tecnico', label: 'Técnico', desc: 'Taller de reparaciones', color: 'cyan' },
-                        ] as const).map(r => (
-                          <button
-                            key={r.value}
-                            type="button"
-                            onClick={() => setRolFormulario(r.value)}
-                            className={`p-3 rounded-xl border-2 text-left transition-all ${
-                              rolFormulario === r.value
-                                ? r.value === 'tecnico'
-                                  ? 'border-cyan-500 bg-cyan-500/10'
-                                  : 'border-indigo-500 bg-indigo-500/10'
-                                : dm
-                                ? 'border-slate-600 bg-slate-800 hover:border-slate-500'
-                                : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                            }`}
-                          >
-                            <p className={`text-sm font-bold ${
-                              rolFormulario === r.value
-                                ? r.value === 'tecnico' ? 'text-cyan-400' : 'text-indigo-400'
-                                : dm ? 'text-white' : 'text-gray-900'
-                            }`}>{r.label}</p>
-                            <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{r.desc}</p>
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => setRolFormulario('admin_nube')}
-                          className={`col-span-2 p-3 rounded-xl border-2 text-left transition-all flex items-center gap-2 ${
-                            rolFormulario === 'admin_nube'
-                              ? 'border-amber-500 bg-amber-500/10'
-                              : dm
-                              ? 'border-slate-600 bg-slate-800 hover:border-slate-500'
-                              : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                          }`}
-                        >
-                          <Cloud className={`w-4 h-4 shrink-0 ${rolFormulario === 'admin_nube' ? 'text-amber-400' : dm ? 'text-gray-400' : 'text-gray-500'}`} />
-                          <span>
-                            <p className={`text-sm font-bold ${rolFormulario === 'admin_nube' ? 'text-amber-400' : dm ? 'text-white' : 'text-gray-900'}`}>Administrador</p>
-                            <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Permisos totales — también puede entrar por PWA/Android/web</p>
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
