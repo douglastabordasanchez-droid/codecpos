@@ -6,7 +6,8 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CakeSlice, Plus, X, Loader2, Check, Phone, Clock, Pencil, Wallet, PackageCheck } from 'lucide-react';
+import { CakeSlice, Plus, X, Loader2, Check, Phone, Clock, Pencil, Wallet, PackageCheck, Printer, MessageCircle, Download } from 'lucide-react';
+import { descargarOrdenTorta, enviarOrdenTortaWhatsApp, imprimirOrdenTorta } from '../../app/lib/ordenTorta';
 import { toast } from 'sonner';
 import '../themeClaro.css';
 import {
@@ -146,6 +147,19 @@ export function EncargosPanel({ clienteId, nombreUsuario, oscuro = true, onCobra
                   <div className="rounded-xl bg-slate-950/60 py-2"><p className="text-slate-500 text-[10px] font-bold uppercase">Total</p><p className="text-white font-black">{money(e.total)}</p></div>
                   <div className="rounded-xl bg-slate-950/60 py-2"><p className="text-slate-500 text-[10px] font-bold uppercase">Abonado</p><p className="text-emerald-400 font-black">{money(abonado(e))}</p></div>
                   <div className="rounded-xl bg-slate-950/60 py-2"><p className="text-slate-500 text-[10px] font-bold uppercase">Saldo</p><p className={`font-black ${falta > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>{money(falta)}</p></div>
+                </div>
+                {/* Orden para el panadero */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => imprimirOrdenTorta(e)} className="h-10 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-slate-700 transition">
+                    <Printer className="w-4 h-4" /> Imprimir
+                  </button>
+                  <button onClick={() => enviarOrdenTortaWhatsApp(e)} className="h-10 rounded-xl bg-[#25D366] text-[#fff] text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110 transition">
+                    <MessageCircle className="w-4 h-4" /> WhatsApp
+                  </button>
+                  <button onClick={() => { descargarOrdenTorta(e).catch((err) => toast.error('No se pudo descargar', { description: (err as Error).message })); }}
+                    className="h-10 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-slate-700 transition">
+                    <Download className="w-4 h-4" /> Descargar
+                  </button>
                 </div>
                 {activo && (
                   <>
