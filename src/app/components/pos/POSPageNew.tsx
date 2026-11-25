@@ -2343,6 +2343,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
+      // La ventana «Procesar Pago» se cierra con la venta hecha: si no, quedaba abierta
+      // detrás de la factura (cobro en efectivo o bonos) y aparecía vacía al cerrarla.
+      setShowPagoModal(false);
+      setShowPagoConfig(false);
 
       // 🚀 FIX rendimiento (freeze de "Confirmar Pago"): ceder el hilo aquí
       // para que el navegador pinte el ticket de éxito ANTES de que corra
@@ -3023,6 +3027,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       try { limpiarCuentaPanaderia(); } catch { /* panadería no crítica */ }
       try { if ((window as any).__eliminarFacturaActual) (window as any).__eliminarFacturaActual(); } catch {}
       setMostrarPago(false);
+      // La ventana «Procesar Pago» se cierra con la venta hecha: si no, quedaba abierta
+      // detrás de la factura (cobro en efectivo o bonos) y aparecía vacía al cerrarla.
+      setShowPagoModal(false);
+      setShowPagoConfig(false);
 
       // 🚀 FIX rendimiento (freeze de "Confirmar Pago"): ceder el hilo aquí
       // para que el navegador pinte el ticket de éxito ANTES de que corra
