@@ -27,6 +27,7 @@ import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 import { toast } from 'sonner';
 import { getSupabaseClient } from '../../app/lib/supabase/config';
 import { traerTodo } from '../lib/nubeConsultas';
+import { anotarElegido, buscarPredictivo, crearPuntaje, normalizar } from '../../app/lib/busquedaPredictiva';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { crearVentaMovil, ItemCarritoMovil, MetodosMultiplesMovil, type CompradorFactura } from '../lib/ventaMovilService';
 import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiva';
@@ -319,19 +320,20 @@ export default function VenderPage() {
     [productos, modoRopa],
   );
 
-  const filtrados = productos.filter((p) => {
-    if (categoria && p.categoria !== categoria) return false;
-    if (tallaFiltro && p.talla !== tallaFiltro) return false;
-    const q = busqueda.toLowerCase();
-    return !q || p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q) || (p.codigo_barras || '').includes(busqueda);
-  });
-  // Al buscar: primero los que empiezan por lo escrito y en orden alfabético natural (COMBO 2 antes de COMBO 10).
-  if (busqueda.trim()) {
-    const q = busqueda.toLowerCase().trim();
-    filtrados.sort((a, b) =>
-      Number(b.nombre.toLowerCase().startsWith(q)) - Number(a.nombre.toLowerCase().startsWith(q))
-      || a.nombre.localeCompare(b.nombre, 'es', { numeric: true, sensitivity: 'base' }));
-  }
+  // 🔮 Búsqueda predictiva: sin tildes, varias palabras en cualquier orden, y primero lo
+  // que más se elige en este equipo (más aún a esta hora). Ver lib/busquedaPredictiva.
+  const textosBusqueda = useMemo(
+    () => productos.map((p) => normalizar([p.codigo_barras, p.nombre, p.categoria, p.talla, p.color].filter(Boolean).join(' '))),
+    [productos],
+  );
+  const filtrados = useMemo(() => {
+    const pasa = (p: ProductoFila) => (!categoria || p.categoria === categoria) && (!tallaFiltro || p.talla === tallaFiltro);
+    if (!busqueda.trim()) return productos.filter(pasa);
+    const pool: ProductoFila[] = [];
+    const textos: string[] = [];
+    productos.forEach((p, i) => { if (pasa(p)) { pool.push(p); textos.push(textosBusqueda[i]); } });
+    return buscarPredictivo(pool, textos, busqueda, crearPuntaje({}), 400, (p) => String(p.codigo_barras ?? ''));
+  }, [productos, textosBusqueda, busqueda, categoria, tallaFiltro]);
 
   const itemsCarrito = Object.values(carrito);
   /** Tarifa de IVA de un ítem; lo que no es producto del inventario (servicios de Veterinaria) lleva la del negocio. */
@@ -374,6 +376,7 @@ export default function VenderPage() {
   );
 
   const agregarAlCarrito = (p: ProductoFila) => {
+    anotarElegido(p.id);
     if (esGranel(p)) {
       setReemplazarPeso(false);
       setPesando(p);

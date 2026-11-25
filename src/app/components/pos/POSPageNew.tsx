@@ -73,6 +73,8 @@ const ModalVentaCartera = lazy(() => import('./ModalVentaCartera').then(m => ({ 
 import type { DatosVentaCartera } from './ModalVentaCartera';
 import { crearCuentaCartera } from '../../lib/carteraService';
 import { electronStore, PagoMixtoDetalle, permiteVenderSinStock } from '../../lib/electronStore';
+import { dbManager } from '../../lib/indexedDB';
+import { anotarElegido, buscarPredictivo, conteoDeVentas, crearPuntaje, masVendidos, normalizar, type Conteo } from '../../lib/busquedaPredictiva';
 import { getCached } from '../../lib/cachedLocalStorage';
 import { logger } from '../../lib/logger';
 import { useAuth } from '../../contexts/AuthContext';
@@ -400,6 +402,11 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
   useEffect(() => { if (!showPagoModal) setMostrarEfectivo(false); }, [showPagoModal]);
   const [showSugerencias, setShowSugerencias] = useState(false);
   const [productosSugeridos, setProductosSugeridos] = useState<Producto[]>([]);
+  // 🔮 Búsqueda predictiva: sugerencia marcada con las flechas y si la lista son
+  // los más vendidos (buscador vacío) en vez de resultados de lo escrito.
+  const [sugerenciaActiva, setSugerenciaActiva] = useState(-1);
+  const [sugerenciasPopulares, setSugerenciasPopulares] = useState(false);
+  const historialVentasRef = useRef<Conteo>({});
   const [pagoMixtoDetalles, setPagoMixtoDetalles] = useState<PagoMixtoDetalle[]>([]);
   const [pagoMixtoTotal, setPagoMixtoTotal] = useState(0);
   const [showPagoMixtoModal, setShowPagoMixtoModal] = useState(false);
@@ -1511,13 +1518,13 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
       // Texto que no es un código de barras (p. ej. «pan»): se toma la primera sugerencia
       // en vez de abrir «producto nuevo» buscando en bases de datos.
       if (!/^\d{6,14}$/.test(codigo.trim())) {
-        const t = codigo.toLowerCase().trim();
-        const primera = productosSugeridos[0]
-          || [...productos].filter((p) => p.nombre.toLowerCase().includes(t))
-            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true, sensitivity: 'base' }))[0];
+        if (busquedaTimeoutRef.current) clearTimeout(busquedaTimeoutRef.current);
+        const primera = calcularSugerencias(codigo)[0];
         setCodigoBarras('');
         setShowSugerencias(false);
+        setSugerenciaActiva(-1);
         if (primera) {
+          anotarElegido(primera.id);
           if (primera.pesable) setProductoPesable(primera);
           else agregarAlCarrito(primera);
         } else {
@@ -1558,6 +1565,40 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return () => window.removeEventListener('codecpos:productos-sincronizados', onProductosSincronizados);
   }, []);
 
+  // 🔮 Lo que se vendió en esta caja los últimos 60 días: ordena las sugerencias.
+  useEffect(() => {
+    let vivo = true;
+    dbManager.getVentasDesde(new Date(Date.now() - 60 * 86400_000).toISOString())
+      .then((ventas) => { if (vivo) historialVentasRef.current = conteoDeVentas(ventas as any[]); })
+      .catch(() => { /* sin historial: cuenta solo lo elegido en el buscador */ });
+    return () => { vivo = false; };
+  }, []);
+
+  /** Sugerencias para lo escrito, en orden predictivo (ver lib/busquedaPredictiva). */
+  const calcularSugerencias = (texto: string): Producto[] => {
+    // Índice de texto armado una vez por catálogo (con 20.000 referencias antes se pasaban
+    // a minúsculas 7 campos de cada producto en cada búsqueda).
+    const indice = indiceBusquedaRef.current.productos === productos
+      ? indiceBusquedaRef.current.textos
+      : (indiceBusquedaRef.current = {
+          productos,
+          textos: productos.map(p => normalizar([p.codigo, p.nombre, p.keyword, p.categoria, p.marca, p.talla, p.color]
+            .filter(Boolean).join(' '))),
+        }).textos;
+    return buscarPredictivo(productos, indice, texto, crearPuntaje(historialVentasRef.current), 12);
+  };
+
+  /** Buscador vacío: los más vendidos a esta hora, para tocarlos sin escribir. */
+  const mostrarMasVendidos = () => {
+    if (codigoBarras.trim()) return;
+    const lista = masVendidos(productos, crearPuntaje(historialVentasRef.current), 8);
+    if (lista.length === 0) return;
+    setProductosSugeridos(lista);
+    setSugerenciasPopulares(true);
+    setSugerenciaActiva(-1);
+    setShowSugerencias(true);
+  };
+
   // Buscar productos mientras el usuario escribe
   const handleBuscarProducto = (texto: string) => {
     setCodigoBarras(texto); // el input sigue respondiendo al instante
@@ -1567,54 +1608,25 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     if (texto.trim().length === 0) {
       setShowSugerencias(false);
       setProductosSugeridos([]);
+      setSugerenciaActiva(-1);
       return;
     }
 
     // 🚀 El filtro sobre el catálogo completo se debounce ~120ms — imperceptible
     // al escribir, pero evita repetir el escaneo completo en cada tecla.
     busquedaTimeoutRef.current = setTimeout(() => {
-      // Índice de texto en minúsculas armado una vez por catálogo (con 20.000 referencias
-      // antes se pasaban a minúsculas 7 campos de cada producto en cada búsqueda) y se
-      // deja de buscar al tener 8; el código exacto (lector de barras) va primero.
-      const t = texto.toLowerCase().trim();
-      const indice = indiceBusquedaRef.current.productos === productos
-        ? indiceBusquedaRef.current.textos
-        : (indiceBusquedaRef.current = {
-            productos,
-            textos: productos.map(p => [p.codigo, p.nombre, p.keyword, p.categoria, p.marca, p.talla, p.color]
-              .map(v => String(v || '').toLowerCase()).join('')),
-          }).textos;
-      const exacto = productos.find(p => String(p.codigo || '').toLowerCase() === t);
-      // Orden alfabético siempre (y natural: COMBO 2 antes de COMBO 10). Primero los que
-      // empiezan por lo escrito, luego los que lo tienen en otra parte. Se ordena sobre
-      // todas las coincidencias, no sobre las primeras del catálogo.
-      const encontrados: Array<{ p: Producto; empieza: boolean; nombre: string }> = [];
-      for (let i = 0; i < productos.length && encontrados.length < 500; i++) {
-        const p = productos[i];
-        if (p === exacto || !indice[i].includes(t)) continue;
-        const nombre = String(p.nombre || '').toLowerCase();
-        encontrados.push({ p, empieza: nombre.startsWith(t), nombre });
-      }
-      encontrados.sort((a, b) =>
-        Number(b.empieza) - Number(a.empieza)
-        || a.nombre.localeCompare(b.nombre, 'es', { numeric: true, sensitivity: 'base' }));
-      const coincidencias: typeof productos = [
-        ...(exacto ? [exacto] : []),
-        ...encontrados.slice(0, exacto ? 11 : 12).map(x => x.p),
-      ];
-
-      if (coincidencias.length > 0) {
-        setProductosSugeridos(coincidencias);
-        setShowSugerencias(true);
-      } else {
-        setProductosSugeridos([]);
-        setShowSugerencias(false);
-      }
+      const coincidencias = calcularSugerencias(texto);
+      setSugerenciasPopulares(false);
+      setSugerenciaActiva(coincidencias.length > 0 ? 0 : -1);
+      setProductosSugeridos(coincidencias);
+      setShowSugerencias(coincidencias.length > 0);
     }, 120);
   };
 
   // Seleccionar producto de las sugerencias
   const seleccionarProductoSugerido = (producto: Producto) => {
+    anotarElegido(producto.id);
+    setSugerenciaActiva(-1);
     if (producto.pesable) {
       setProductoPesable(producto);
       toast.info(`Coloca ${producto.nombre} en la báscula...`);
@@ -3676,15 +3688,30 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                       ref={barcodeInputRef}
                       value={codigoBarras}
                       onChange={(e) => handleBuscarProducto(e.target.value)}
+                      onFocus={mostrarMasVendidos}
+                      onClick={mostrarMasVendidos}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && codigoBarras.trim()) {
+                        // Flechas para elegir la sugerencia y Enter para agregarla. Con un
+                        // código escrito y la primera marcada, Enter sigue buscando el código
+                        // (lector de barras y clientes de fidelización).
+                        const hayLista = showSugerencias && productosSugeridos.length > 0;
+                        if (e.key === 'Enter' && hayLista && sugerenciaActiva >= 0 && (sugerenciasPopulares || sugerenciaActiva > 0)) {
+                          e.preventDefault();
+                          const elegido = productosSugeridos[sugerenciaActiva];
+                          if (elegido) seleccionarProductoSugerido(elegido);
+                        } else if (e.key === 'Enter' && codigoBarras.trim()) {
                           buscarYAgregarProducto(codigoBarras);
                         } else if (e.key === 'Escape') {
                           setShowSugerencias(false);
                           setCodigoBarras('');
+                          setSugerenciaActiva(-1);
                         } else if (e.key === 'ArrowDown' && productosSugeridos.length > 0) {
                           e.preventDefault();
                           setShowSugerencias(true);
+                          setSugerenciaActiva((i) => Math.min(productosSugeridos.length - 1, i + 1));
+                        } else if (e.key === 'ArrowUp' && productosSugeridos.length > 0) {
+                          e.preventDefault();
+                          setSugerenciaActiva((i) => Math.max(0, i - 1));
                         }
                       }}
                       placeholder="Busca por código, nombre o categoría..."
@@ -3725,14 +3752,18 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                           <p className={`text-[10px] font-semibold px-2 py-0.5 ${
                             darkMode ? 'text-gray-400' : 'text-gray-600'
                           }`}>
-                            {productosSugeridos.length} {productosSugeridos.length === 1 ? 'resultado encontrado' : 'resultados encontrados'}
+                            {sugerenciasPopulares
+                              ? 'Lo más vendido a esta hora · usa ↑ ↓ y Enter'
+                              : `${productosSugeridos.length} ${productosSugeridos.length === 1 ? 'resultado' : 'resultados'}, lo más vendido primero · usa ↑ ↓ y Enter`}
                           </p>
                         </div>
                         
                         <div className="p-1 space-y-0.5">
-                          {productosSugeridos.map((producto) => (
+                          {productosSugeridos.map((producto, indiceSugerencia) => (
                             <motion.button
                               key={producto.id}
+                              ref={indiceSugerencia === sugerenciaActiva ? (el: HTMLButtonElement | null) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+                              onMouseEnter={() => setSugerenciaActiva(indiceSugerencia)}
                               initial={{ opacity: 0, x: -10 }}
                               animate={{ opacity: 1, x: 0 }}
                               // 🚀 FIX rendimiento: el delay escalonado por índice hacía que,
@@ -3740,11 +3771,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                               // "cascada" de animación en los resultados nuevos — se sentía
                               // como parpadeo. Se quita el escalonado, no la animación en sí.
                               onClick={() => seleccionarProductoSugerido(producto)}
-                              className={`w-full text-left p-2 rounded-lg transition-all ${
-                                darkMode 
-                                  ? 'hover:bg-blue-500/20 border border-transparent hover:border-blue-500/50' 
-                                  : 'hover:bg-blue-50 border border-transparent hover:border-blue-200'
-                              }`}
+                              className={`w-full text-left p-2 rounded-lg transition-all border ${indiceSugerencia === sugerenciaActiva ? (darkMode ? 'bg-blue-500/20 border-blue-500/50' : 'bg-blue-50 border-blue-200') : 'border-transparent'}`}
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex-1 min-w-0">
