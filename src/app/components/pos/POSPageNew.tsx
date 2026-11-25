@@ -929,7 +929,12 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
         try {
           const claveDiv = `codecpos_division_${origen}`;
           const div = JSON.parse(localStorage.getItem(claveDiv) || 'null');
-          if (div?.reparto) { delete div.reparto[parcial.persona]; localStorage.setItem(claveDiv, JSON.stringify(div)); }
+          if (div?.reparto) {
+            delete div.reparto[parcial.persona];
+            // Queda anotado quién ya pagó, para mostrarlo al volver al reparto.
+            div.pagadas = Array.from(new Set([...(Array.isArray(div.pagadas) ? div.pagadas : []), parcial.persona]));
+            localStorage.setItem(claveDiv, JSON.stringify(div));
+          }
           if (quedan.length === 0) localStorage.removeItem(claveDiv);
         } catch { /* ignorar */ }
         if (quedan.length > 0) {
@@ -3597,6 +3602,7 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                   // solo cancela ese cobro; la mesa queda igual, con lo de todos.
                   if (localStorage.getItem('codecpos_cobro_parcial')) {
                     localStorage.removeItem('codecpos_cobro_parcial');
+                    localStorage.removeItem('codecpos_volver_a_division');
                     localStorage.removeItem('codecpos_panaderia_origen');
                     localStorage.removeItem('codecpos_referencia_mesa');
                     setCarrito([]);
@@ -4471,8 +4477,10 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                     value={efectivoRecibido ? Number(efectivoRecibido).toLocaleString('es-CO') : ''}
                     onChange={(e) => setEfectivoRecibido(e.target.value.replace(/\D/g, '').slice(0, 9))}
                     placeholder="0"
-                    className={`text-3xl font-black text-right h-16 rounded-2xl ${
-                      darkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white'
+                    // Enmarcado con una línea verde fina que se ilumina al pasar el
+                    // mouse o al estar escribiendo, para que se vea dónde va el efectivo.
+                    className={`text-3xl font-black text-right h-16 rounded-2xl border-2 shadow-sm transition-all duration-200 outline-none focus-visible:ring-4 hover:border-emerald-500 hover:shadow-[0_0_0_4px_rgba(16,185,129,0.15),0_8px_24px_-6px_rgba(16,185,129,0.45)] focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20 focus-visible:shadow-[0_8px_24px_-6px_rgba(16,185,129,0.45)] ${
+                      darkMode ? 'bg-slate-800 border-emerald-500/40 text-white placeholder:text-slate-500' : 'bg-white border-emerald-300 text-slate-900 placeholder:text-slate-300'
                     }`}
                   />
                   {/* ⚡ Billetes con los que el cliente puede pagar: un toque y queda el

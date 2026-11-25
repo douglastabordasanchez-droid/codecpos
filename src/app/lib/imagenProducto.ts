@@ -82,3 +82,14 @@ export function urlTwemoji(emoji: string): string {
   const sinVariacion = puntos.includes('200d') ? puntos : puntos.filter((p) => p !== 'fe0f');
   return `https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/${sinVariacion.join('-')}.svg`;
 }
+
+/**
+ * Dirección del ícono 3D de Microsoft Fluent Emoji (licencia MIT, unos 4 KB
+ * por imagen, servido por jsDelivr: no ocupa espacio en la nube). Unos vienen
+ * con el selector de variación en el nombre y otros sin él, por eso hay dos.
+ */
+export function urlFluent3D(emoji: string, conVariacion = false): string {
+  const puntos = Array.from(emoji).map((c) => c.codePointAt(0)!.toString(16));
+  const lista = conVariacion || puntos.includes('200d') ? puntos : puntos.filter((p) => p !== 'fe0f');
+  return `https://cdn.jsdelivr.net/npm/@lobehub/fluent-emoji-3d@1.1.0/assets/${lista.join('-')}.webp`;
+}

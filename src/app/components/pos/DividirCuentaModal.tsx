@@ -10,7 +10,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Minus, Users, X } from 'lucide-react';
+import { CheckCircle2, Minus, Users, X } from 'lucide-react';
 
 export interface ItemDivision { producto: { id: string; nombre: string; precio: number }; cantidad: number }
 
@@ -21,10 +21,12 @@ const COLORES = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2
 const clave = (mesaId: string) => `codecpos_division_${mesaId}`;
 const pesos = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
 
-export function leerDivision(mesaId: string): { personas: number; reparto: Reparto } | null {
+export interface Division { personas: number; reparto: Reparto; pagadas?: number[] }
+
+export function leerDivision(mesaId: string): Division | null {
   try { return JSON.parse(localStorage.getItem(clave(mesaId)) || 'null'); } catch { return null; }
 }
-export function guardarDivision(mesaId: string, d: { personas: number; reparto: Reparto } | null) {
+export function guardarDivision(mesaId: string, d: Division | null) {
   try {
     if (d) localStorage.setItem(clave(mesaId), JSON.stringify(d));
     else localStorage.removeItem(clave(mesaId));
@@ -43,8 +45,18 @@ interface Props {
 export function DividirCuentaModal({ mesaId, mesaNombre, items, oscuro = false, onCobrar, onCerrar }: Props) {
   const guardada = leerDivision(mesaId);
   const [personas, setPersonas] = useState<number>(guardada?.personas || 4);
-  const [activa, setActiva] = useState(1);
   const [reparto, setReparto] = useState<Reparto>(() => guardada?.reparto || {});
+  // Personas que ya pagaron (se anotan al cerrar su factura en el punto de venta).
+  const [pagadas] = useState<number[]>(() => (Array.isArray(guardada?.pagadas) ? guardada!.pagadas : []));
+  const yaPago = (n: number) => pagadas.includes(n);
+  // Al volver de cobrar a alguien, queda elegida la siguiente persona que falta.
+  const [activa, setActiva] = useState(() => {
+    for (let n = 1; n <= (guardada?.personas || 4); n++) {
+      if (!pagadas.includes(n) && Object.keys(guardada?.reparto?.[n] || {}).length) return n;
+    }
+    for (let n = 1; n <= (guardada?.personas || 4); n++) if (!pagadas.includes(n)) return n;
+    return 1;
+  });
 
   // Unidades por producto en la cuenta (se suman si el mismo producto está en varias líneas).
   const enCuenta = useMemo(() => {
@@ -72,7 +84,7 @@ export function DividirCuentaModal({ mesaId, mesaNombre, items, oscuro = false, 
     return r;
   }, [reparto, enCuenta, personas]);
 
-  useEffect(() => { guardarDivision(mesaId, { personas, reparto: repartoValido }); }, [mesaId, personas, repartoValido]);
+  useEffect(() => { guardarDivision(mesaId, { personas, reparto: repartoValido, pagadas }); }, [mesaId, personas, repartoValido, pagadas]);
 
   const asignadas = (id: string) => Object.values(repartoValido).reduce((s, x) => s + (x[id] || 0), 0);
   const sinAsignar = [...enCuenta.values()].map((it) => ({ ...it, cantidad: it.cantidad - asignadas(String(it.producto.id)) })).filter((it) => it.cantidad > 0);
@@ -81,6 +93,7 @@ export function DividirCuentaModal({ mesaId, mesaNombre, items, oscuro = false, 
     .filter((it) => it.producto && it.cantidad > 0);
   const totalDe = (p: number) => itemsDe(p).reduce((s, it) => s + it.producto.precio * it.cantidad, 0);
   const totalSinAsignar = sinAsignar.reduce((s, it) => s + it.producto.precio * it.cantidad, 0);
+  const totalMesa = [...enCuenta.values()].reduce((s, it) => s + it.producto.precio * it.cantidad, 0);
 
   const asignar = (id: string, delta: 1 | -1, p = activa) => setReparto(() => {
     const r: Reparto = JSON.parse(JSON.stringify(repartoValido));
@@ -108,11 +121,15 @@ export function DividirCuentaModal({ mesaId, mesaNombre, items, oscuro = false, 
           <Users className="w-6 h-6 text-amber-500" />
           <div className="flex-1 min-w-0">
             <p className="text-xl font-black">Dividir la cuenta · {mesaNombre}</p>
-            <p className={`text-sm ${suave}`}>Toca una persona y luego los productos que pagó. Cada una se cobra por separado.</p>
+            <p className={`text-sm ${suave}`}>
+              {pagadas.length > 0
+                ? <>Ya {pagadas.length === 1 ? 'pagó 1 persona' : `pagaron ${pagadas.length} personas`}. Falta por cobrar <b className={oscuro ? 'text-white' : 'text-slate-900'}>{pesos(totalMesa)}</b>.</>
+                : 'Toca una persona y luego los productos que pagó. Cada una se cobra por separado.'}
+            </p>
           </div>
           <div className="flex items-center gap-1">
             <span className={`text-sm mr-1 ${suave}`}>Personas</span>
-            {[2, 3, 4, 5, 6, 8].map((n) => (
+            {[2, 3, 4, 5, 6, 8].filter((n) => n >= Math.max(0, ...pagadas)).map((n) => (
               <button key={n} type="button" onClick={() => { setPersonas(n); if (activa > n) setActiva(1); }}
                 className={`w-9 h-9 rounded-xl text-sm font-black ${personas === n ? 'bg-amber-500 text-slate-900' : oscuro ? 'bg-slate-800' : 'bg-slate-100'}`}>{n}</button>
             ))}
@@ -153,6 +170,17 @@ export function DividirCuentaModal({ mesaId, mesaNombre, items, oscuro = false, 
               const suyos = itemsDe(p);
               const total = totalDe(p);
               const sel = p === activa;
+              if (yaPago(p)) {
+                return (
+                  <div key={p} className={`rounded-2xl border-2 p-3 flex items-center gap-3 ${oscuro ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <CheckCircle2 className="w-7 h-7 text-emerald-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black">Persona {p}</p>
+                      <p className={`text-sm font-semibold ${oscuro ? 'text-emerald-300' : 'text-emerald-700'}`}>Ya pagó, factura entregada</p>
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div key={p} onClick={() => setActiva(p)} role="button" tabIndex={0}
                   className={`rounded-2xl border-2 p-3 cursor-pointer transition ${tarjeta}`}

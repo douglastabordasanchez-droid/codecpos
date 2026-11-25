@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Armchair, ArrowLeft, ChefHat, LogOut, Minus, Plus, Search, ShoppingCart, Star, Store, Users, X } from 'lucide-react';
+import { Armchair, ArrowLeft, Calculator, ChefHat, Coffee, LogOut, Minus, Plus, Search, ShoppingCart, Star, Store, Users, X } from 'lucide-react';
 import { dbManager } from '../../lib/indexedDB';
-import { emojiParaProducto, urlTwemoji } from '../../lib/imagenProducto';
+import { emojiParaProducto, urlFluent3D, urlTwemoji } from '../../lib/imagenProducto';
 import { esEmoji } from '../../lib/estiloMenu';
 
 /**
@@ -37,6 +37,8 @@ interface Props {
   /** Dividir la cuenta de la mesa entre varias personas. */
   onDividir?: (mesa: MesaFacil) => void;
   onSalir: () => void;
+  /** Sigue el modo oscuro de la caja. */
+  oscuro?: boolean;
 }
 
 const CLAVE_POSICION_BOTON = 'codecpos_modo_facil_boton_mesas';
@@ -69,44 +71,46 @@ const claroSobre = (hex: string) => {
 
 /**
  * Imagen del producto: su emoji si ya tiene uno, o el que corresponde a su
- * nombre. Se dibuja con Twemoji (1 a 2 KB, queda guardado); sin internet se
- * muestra el emoji del sistema.
+ * nombre, dibujado en 3D (Fluent Emoji de Microsoft, unos 4 KB, queda en
+ * caché). Si no existe en 3D se usa Twemoji y sin internet el emoji del sistema.
  */
 function ImagenProducto({ producto, categoria, tam }: { producto: ProductoFacil; categoria?: string; tam: number }) {
   const emoji = esEmoji(producto.icono) ? producto.icono : emojiParaProducto(producto.nombre, categoria);
-  const [fallo, setFallo] = useState(false);
-  if (fallo) return <span className="leading-none select-none" style={{ fontSize: Math.round(tam * 0.8) }} aria-hidden>{emoji}</span>;
+  const fuentes = useMemo(() => [urlFluent3D(emoji), urlFluent3D(emoji, true), urlTwemoji(emoji)], [emoji]);
+  const [intento, setIntento] = useState(0);
+  useEffect(() => { setIntento(0); }, [emoji]);
+  if (intento >= fuentes.length) return <span className="leading-none select-none" style={{ fontSize: Math.round(tam * 0.8) }} aria-hidden>{emoji}</span>;
   return (
     <img
-      src={urlTwemoji(emoji)}
+      src={fuentes[intento]}
       alt=""
       width={tam}
       height={tam}
       loading="lazy"
       draggable={false}
-      onError={() => setFallo(true)}
-      style={{ width: tam, height: tam }}
+      onError={() => setIntento((i) => i + 1)}
+      style={{ width: tam, height: tam, objectFit: 'contain', filter: 'drop-shadow(0 6px 8px rgba(15,23,42,0.18))' }}
       className="select-none pointer-events-none"
     />
   );
 }
 
 /** Botón de Mesas flotante: se arrastra con el dedo y recuerda dónde quedó. */
-function BotonMesasFlotante({ onTocar, ocupadas }: { onTocar: () => void; ocupadas: number }) {
+function BotonMesasFlotante({ onTocar, ocupadas, oscuro }: { onTocar: () => void; ocupadas: number; oscuro?: boolean }) {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
       const p = JSON.parse(localStorage.getItem(CLAVE_POSICION_BOTON) || 'null');
       if (p && typeof p.x === 'number' && typeof p.y === 'number') return p;
     } catch { /* sin almacenamiento */ }
-    return { x: window.innerWidth - 132, y: Math.max(8, window.innerHeight - 250) };
+    return { x: window.innerWidth - 170, y: Math.max(8, window.innerHeight - 170) };
   });
   const arrastre = useRef<{ dx: number; dy: number; inicioX: number; inicioY: number; movio: boolean } | null>(null);
 
   // Si la pantalla cambia de tamaño, el botón no se queda por fuera.
   useEffect(() => {
     const ajustar = () => setPos((p) => ({
-      x: Math.min(Math.max(8, p.x), window.innerWidth - 120),
-      y: Math.min(Math.max(8, p.y), window.innerHeight - 120),
+      x: Math.min(Math.max(8, p.x), window.innerWidth - 160),
+      y: Math.min(Math.max(8, p.y), window.innerHeight - 80),
     }));
     ajustar();
     window.addEventListener('resize', ajustar);
@@ -126,8 +130,8 @@ function BotonMesasFlotante({ onTocar, ocupadas }: { onTocar: () => void; ocupad
         if (!a.movio && Math.hypot(e.clientX - a.inicioX, e.clientY - a.inicioY) < 10) return;
         a.movio = true;
         setPos({
-          x: Math.min(Math.max(8, e.clientX - a.dx), window.innerWidth - 120),
-          y: Math.min(Math.max(8, e.clientY - a.dy), window.innerHeight - 120),
+          x: Math.min(Math.max(8, e.clientX - a.dx), window.innerWidth - 160),
+          y: Math.min(Math.max(8, e.clientY - a.dy), window.innerHeight - 80),
         });
       }}
       onPointerUp={() => {
@@ -142,13 +146,13 @@ function BotonMesasFlotante({ onTocar, ocupadas }: { onTocar: () => void; ocupad
       }}
       onPointerCancel={() => { arrastre.current = null; }}
       style={{ left: pos.x, top: pos.y, touchAction: 'none' }}
-      className="fixed z-[75] w-28 h-28 rounded-full bg-emerald-600 text-[#fff] shadow-2xl border-4 border-white flex flex-col items-center justify-center gap-1 select-none active:scale-95"
+      className={`fixed z-[75] h-16 px-6 rounded-full bg-emerald-600 hover:bg-emerald-700 text-[#fff] border-4 ${oscuro ? 'border-slate-950' : 'border-white'} shadow-xl shadow-emerald-700/30 flex items-center gap-2 select-none transition active:scale-95`}
       aria-label="Ver mesas"
     >
-      <Armchair className="w-9 h-9" />
-      <span className="text-lg font-black leading-none text-[#fff]">Mesas</span>
+      <Armchair className="w-6 h-6" />
+      <span className="text-lg font-bold leading-none text-[#fff]">Mesas</span>
       {ocupadas > 0 && (
-        <span className="absolute -top-1 -right-1 min-w-9 h-9 px-2 rounded-full bg-red-600 text-[#fff] text-lg font-black flex items-center justify-center border-2 border-white">
+        <span className="min-w-6 h-6 px-1.5 rounded-full bg-rose-500 text-[#fff] text-xs font-semibold flex items-center justify-center">
           {ocupadas}
         </span>
       )}
@@ -236,79 +240,88 @@ export function ModoFacilAlimentos(p: Props) {
   );
   const ocupadas = mesasOrdenadas.filter((m) => (p.cuentasMesas[m.id] || []).length > 0).length;
   const destino = p.mesaActiva ? p.mesaActiva.nombre : 'Mostrador';
+  const d = !!p.oscuro;
+  /** Clase según el modo: clara u oscura. */
+  const m = (claro: string, oscuro: string) => (d ? oscuro : claro);
 
   const contenido = (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-slate-100 text-slate-900" style={{ colorScheme: 'light' }}>
+    <div className={`fixed inset-0 z-[70] flex flex-col gap-3 p-3 antialiased ${m('bg-slate-100 text-slate-900', 'bg-slate-950 text-slate-100')}`} style={{ colorScheme: d ? 'dark' : 'light' }}>
       {/* Encabezado: dónde estoy y cómo salir */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 text-[#fff] shadow-lg">
+      <div className="flex items-center gap-4 px-4 py-3 rounded-2xl bg-gradient-to-r from-orange-500 via-orange-600 to-rose-600 text-[#fff] shadow-lg shadow-orange-600/20">
+        <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+          <Coffee className="w-7 h-7 text-[#fff]" />
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="text-2xl font-black leading-tight truncate text-[#fff]">Alimentos y Bebidas</p>
-          <p className="text-base font-bold text-[#fff] truncate">
-            Pedido para: <span className="underline decoration-2 underline-offset-4">{destino}</span>
+          <p className="text-2xl font-bold tracking-tight leading-tight truncate text-[#fff]">Alimentos y Bebidas</p>
+          <p className="text-sm font-medium text-[#fff]/90 truncate">
+            Pedido para: <span className="font-semibold text-[#fff]">{destino}</span>
           </p>
         </div>
         {p.mesaActiva && (
-          <button type="button" onClick={() => p.onElegirMesa(null)} className="h-14 px-4 rounded-2xl bg-white/20 border-2 border-white/60 text-lg font-black flex items-center gap-2 active:scale-95">
-            <Store className="w-6 h-6" />Mostrador
+          <button type="button" onClick={() => p.onElegirMesa(null)} className="h-11 px-4 rounded-full bg-white/15 border border-white/40 text-[#fff] text-sm font-semibold flex items-center gap-2 hover:bg-white/25 transition">
+            <Store className="w-4 h-4" />Mostrador
           </button>
         )}
-        <button type="button" onClick={p.onSalir} className="h-14 px-5 rounded-2xl bg-white text-rose-700 text-lg font-black flex items-center gap-2 shadow-lg active:scale-95">
-          <LogOut className="w-6 h-6" />Salir del modo fácil
+        <button type="button" onClick={p.onSalir} className="h-11 px-4 rounded-full bg-white/15 border border-white/40 text-[#fff] text-sm font-semibold flex items-center gap-2 hover:bg-white/25 transition">
+          <LogOut className="w-4 h-4" />Salir del modo fácil
         </button>
       </div>
 
-      {/* Categorías grandes */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-white shadow-sm">
-      <div className="relative flex-shrink-0 w-[240px]">
-        <Search className="w-6 h-6 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-        <input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar producto"
-          className="w-full h-12 pl-11 pr-11 rounded-2xl border-2 border-slate-300 bg-slate-50 text-lg font-bold text-slate-900 outline-none focus:border-orange-500"
-        />
-        {busqueda && (
-          <button type="button" onClick={() => setBusqueda('')} aria-label="Borrar búsqueda" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center active:scale-90">
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
-      <div className="flex-1 min-w-0 flex gap-3 overflow-x-auto py-1 [&::-webkit-scrollbar]:hidden">
-        {masPedidos.length > 0 && (
-          <button
-            type="button"
-            onClick={() => { setCategoria(TOP); setBusqueda(''); }}
-            className={`flex-shrink-0 h-12 min-w-[150px] px-4 rounded-2xl flex items-center gap-2 text-lg font-black bg-amber-400 text-slate-900 transition ${categoria === TOP && !busqueda ? 'ring-4 ring-offset-2 ring-slate-900 scale-[1.03]' : 'opacity-75'}`}
-          >
-            <Star className="w-6 h-6 fill-current" />
-            <span className="truncate text-slate-900">Más pedidos</span>
-          </button>
-        )}
-        {p.categorias.map((c) => {
-          const sel = c.id === categoria && !busqueda;
-          const claro = claroSobre(c.color);
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => { setCategoria(c.id); setBusqueda(''); }}
-              className={`flex-shrink-0 h-12 min-w-[145px] px-4 rounded-2xl flex items-center gap-2 text-lg font-black transition ${claro ? 'text-slate-900' : 'text-[#fff]'} ${sel ? 'ring-4 ring-offset-2 ring-slate-900 scale-[1.03]' : 'opacity-75'}`}
-              style={{ backgroundColor: c.color }}
-            >
-              {p.icono(c.icono, 'w-6 h-6')}
-              <span className={`truncate ${claro ? 'text-slate-900' : 'text-[#fff]'}`}>{c.nombre}</span>
+      {/* Búsqueda y categorías */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-shrink-0 w-[240px]">
+          <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar producto"
+            className={`w-full h-14 pl-11 pr-11 rounded-2xl border ${m('border-slate-200 bg-white text-slate-900', 'border-slate-700 bg-slate-900 text-white')} text-base font-medium placeholder:text-slate-400 shadow-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 transition`}
+          />
+          {busqueda && (
+            <button type="button" onClick={() => setBusqueda('')} aria-label="Borrar búsqueda" className={`absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl ${m('bg-slate-100 text-slate-600', 'bg-slate-800 text-slate-300')} flex items-center justify-center active:scale-90`}>
+              <X className="w-4 h-4" />
             </button>
-          );
-        })}
-      </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0 flex gap-3 overflow-x-auto py-1 px-1 [&::-webkit-scrollbar]:hidden">
+          {masPedidos.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setCategoria(TOP); setBusqueda(''); }}
+              className={`flex-shrink-0 h-14 min-w-[180px] pl-2 pr-5 rounded-2xl flex items-center gap-3 text-base font-bold transition ${categoria === TOP && !busqueda ? `bg-amber-400 text-slate-900 shadow-lg shadow-amber-500/30 ring-2 ring-offset-2 ring-amber-500 ${m('', 'ring-offset-slate-950')}` : m('bg-white text-slate-700 border border-slate-200 hover:bg-amber-50', 'bg-slate-900 text-slate-200 border border-slate-700 hover:bg-slate-800')}`}
+            >
+              <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${categoria === TOP && !busqueda ? 'bg-white/40' : m('bg-amber-100', 'bg-amber-500/20')}`}>
+                <Star className="w-5 h-5 text-amber-600 fill-amber-500" />
+              </span>
+              <span className={`truncate ${categoria === TOP && !busqueda ? 'text-slate-900' : m('text-slate-700', 'text-slate-200')}`}>Más pedidos</span>
+            </button>
+          )}
+          {p.categorias.map((c) => {
+            const sel = c.id === categoria && !busqueda;
+            const claro = claroSobre(c.color);
+            const texto = claro ? 'text-slate-900' : 'text-[#fff]';
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => { setCategoria(c.id); setBusqueda(''); }}
+                className={`flex-shrink-0 h-14 min-w-[180px] pl-2 pr-5 rounded-2xl flex items-center gap-3 text-base font-bold transition ${texto} ${sel ? `shadow-lg ring-2 ring-offset-2 ${m('', 'ring-offset-slate-950')}` : 'opacity-80 hover:opacity-100'}`}
+                style={{ backgroundColor: c.color, ...(sel ? { ['--tw-ring-color' as any]: c.color, boxShadow: `0 10px 20px -8px ${c.color}` } : {}) }}
+              >
+                <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">{p.icono(c.icono, `w-5 h-5 ${texto}`)}</span>
+                <span className={`truncate ${texto}`}>{c.nombre}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Productos: llenan toda la pantalla, columnas según el ancho */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 pb-28">
+      <div className={`flex-1 overflow-y-auto rounded-2xl border p-3 pb-24 ${m('bg-white border-slate-200', 'bg-slate-900 border-slate-800')}`}>
         {productosVisibles.length === 0 ? (
-          <p className="text-center text-2xl font-bold text-slate-400 mt-16">{busqueda ? `No hay productos con «${busqueda}»` : 'No hay productos en esta categoría'}</p>
+          <p className="text-center text-lg font-medium text-slate-400 mt-16">{busqueda ? `No hay productos con «${busqueda}»` : 'No hay productos en esta categoría'}</p>
         ) : (
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))' }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 1fr))' }}>
             {productosVisibles.map((prod) => {
               const cant = cantidadPorProducto.get(String(prod.id)) || 0;
               return (
@@ -316,18 +329,18 @@ export function ModoFacilAlimentos(p: Props) {
                   key={prod.id}
                   type="button"
                   onClick={() => agregar(prod)}
-                  className={`relative rounded-3xl bg-white px-2 pt-2 pb-3 flex flex-col items-center gap-1 text-center shadow-md border-4 transition active:scale-95 ${cant > 0 ? 'border-emerald-500' : 'border-transparent'}`}
+                  className={`relative rounded-2xl ${m('bg-white', 'bg-slate-800')} px-3 pt-4 pb-3 flex flex-col items-center gap-2 text-center border-2 transition hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.97] ${cant > 0 ? 'border-emerald-500 shadow-md shadow-emerald-500/20' : m('border-slate-200 hover:border-blue-200', 'border-slate-700 hover:border-blue-500/60')}`}
                 >
                   {cant > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-10 h-10 px-2 rounded-full bg-emerald-600 text-[#fff] text-lg font-black flex items-center justify-center border-4 border-white shadow">
+                    <span className="absolute top-2 right-2 min-w-8 h-8 px-2 rounded-full bg-emerald-600 text-[#fff] text-base font-bold flex items-center justify-center shadow">
                       {cant}
                     </span>
                   )}
-                  <span className="w-[72px] h-[72px] rounded-full flex items-center justify-center" style={{ backgroundColor: `${prod.color}22` }}>
-                    <ImagenProducto producto={prod} categoria={nombreCategoria.get(prod.categoriaId)} tam={50} />
+                  <span className="h-[92px] flex items-center justify-center">
+                    <ImagenProducto producto={prod} categoria={nombreCategoria.get(prod.categoriaId)} tam={84} />
                   </span>
-                  <span className="text-[15px] font-black leading-tight line-clamp-2 min-h-[2.5em] flex items-center">{prod.nombre}</span>
-                  <span className="px-3 py-0.5 rounded-full bg-blue-600 text-[#fff] text-base font-black">{pesos(prod.precio)}</span>
+                  <span className={`text-[15px] font-semibold ${m('text-slate-900', 'text-white')} leading-tight line-clamp-2 min-h-[2.5em] flex items-center`}>{prod.nombre}</span>
+                  <span className="min-w-[110px] px-4 py-1.5 rounded-xl bg-blue-600 text-[#fff] text-lg font-bold tabular-nums shadow-sm shadow-blue-600/30">{pesos(prod.precio)}</span>
                 </button>
               );
             })}
@@ -336,79 +349,85 @@ export function ModoFacilAlimentos(p: Props) {
       </div>
 
       {/* Pedido y cobro, siempre abajo */}
-      <div className="border-t-4 border-amber-300 bg-amber-50 px-4 py-3 flex items-center gap-3">
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <ShoppingCart className="w-8 h-8 text-amber-700" />
-          <div>
-            <p className="text-lg font-black leading-tight">Tu pedido</p>
-            <p className="text-sm font-bold text-slate-600">{unidadesDe(cuenta)} producto(s)</p>
+      <div className="flex items-stretch gap-3">
+        <div className={`flex-1 min-w-0 flex items-center gap-3 px-4 py-2 rounded-2xl border ${m('bg-amber-50 border-amber-200', 'bg-slate-900 border-amber-500/30')}`}>
+          <div className={`flex items-center gap-3 flex-shrink-0 pr-4 border-r ${m('border-amber-200', 'border-amber-500/30')}`}>
+            <ShoppingCart className={`w-7 h-7 ${m('text-slate-800', 'text-amber-300')}`} />
+            <div>
+              <p className={`text-base font-bold leading-tight ${m('text-slate-900', 'text-white')}`}>Tu pedido</p>
+              <p className={`text-xs font-medium ${m('text-slate-500', 'text-slate-400')}`}>{unidadesDe(cuenta)} producto(s)</p>
+            </div>
+          </div>
+          <div className="flex-1 min-w-0 flex gap-2 overflow-x-auto py-1 [&::-webkit-scrollbar]:hidden">
+            {cuenta.length === 0 ? (
+              <p className={`flex-1 text-center text-base ${m('text-slate-500', 'text-slate-400')} self-center`}>Toca un producto para agregarlo a la cuenta</p>
+            ) : cuenta.map((it) => (
+              <div key={it.producto.id} className={`flex-shrink-0 flex items-center gap-2 h-12 pl-4 pr-1 rounded-xl border shadow-sm ${m('bg-white border-amber-200', 'bg-slate-800 border-slate-700')}`}>
+                <span className={`text-sm font-semibold max-w-[160px] truncate ${m('text-slate-900', 'text-white')}`}>{it.producto.nombre}</span>
+                <span className={`text-sm font-bold ${m('text-emerald-700', 'text-emerald-400')} tabular-nums`}>×{it.cantidad}</span>
+                <button type="button" onClick={() => p.onQuitarUno(String(it.producto.id))} aria-label={`Quitar un ${it.producto.nombre}`} className={`w-10 h-10 rounded-lg ${m('bg-rose-50 text-rose-600 hover:bg-rose-100', 'bg-rose-500/15 text-rose-400 hover:bg-rose-500/25')} flex items-center justify-center active:scale-90 transition`}>
+                  <Minus className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="flex-1 min-w-0 flex gap-2 overflow-x-auto py-1 [&::-webkit-scrollbar]:hidden">
-          {cuenta.length === 0 ? (
-            <p className="text-lg font-semibold text-slate-500 self-center">Toca un producto para agregarlo</p>
-          ) : cuenta.map((it) => (
-            <div key={it.producto.id} className="flex-shrink-0 flex items-center gap-2 h-14 pl-4 pr-1 rounded-2xl bg-white border-2 border-amber-200 shadow-sm">
-              <span className="text-base font-black max-w-[160px] truncate">{it.producto.nombre}</span>
-              <span className="text-base font-black text-emerald-700">×{it.cantidad}</span>
-              <button type="button" onClick={() => p.onQuitarUno(String(it.producto.id))} aria-label={`Quitar un ${it.producto.nombre}`} className="w-11 h-11 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center active:scale-90">
-                <Minus className="w-6 h-6" />
-              </button>
-            </div>
-          ))}
-        </div>
         {cuenta.length > 0 && !p.mesaActiva && mesasOrdenadas.length > 0 && (
-          <button type="button" onClick={() => setVistaMesas('pasar')} className="flex-shrink-0 h-16 px-5 rounded-2xl bg-white border-2 border-emerald-600 text-emerald-700 text-lg font-black flex items-center gap-2 active:scale-95">
-            <Armchair className="w-6 h-6" />A una mesa
+          <button type="button" onClick={() => setVistaMesas('pasar')} className={`flex-shrink-0 px-5 rounded-2xl border-2 border-emerald-600 text-base font-bold flex items-center gap-2 active:scale-95 transition ${m('bg-white text-emerald-700 hover:bg-emerald-50', 'bg-slate-900 text-emerald-400 hover:bg-emerald-500/10')}`}>
+            <Armchair className="w-5 h-5" />A una mesa
           </button>
         )}
         {cuenta.length > 0 && p.mesaActiva && p.hayCocina && (
-          <button type="button" onClick={() => p.onEnviarCocina(p.mesaActiva!)} className="flex-shrink-0 h-16 px-5 rounded-2xl bg-sky-600 text-[#fff] text-lg font-black flex items-center gap-2 active:scale-95">
-            <ChefHat className="w-6 h-6" />Enviar a cocina
+          <button type="button" onClick={() => p.onEnviarCocina(p.mesaActiva!)} className="flex-shrink-0 px-5 rounded-2xl bg-sky-600 hover:bg-sky-700 text-[#fff] text-base font-bold flex items-center gap-2 active:scale-95 transition">
+            <ChefHat className="w-5 h-5" />Enviar a cocina
           </button>
         )}
         {cuenta.length > 1 && p.mesaActiva && p.onDividir && (
-          <button type="button" onClick={() => p.onDividir!(p.mesaActiva!)} className="flex-shrink-0 h-16 px-5 rounded-2xl bg-violet-600 text-[#fff] text-lg font-black flex items-center gap-2 active:scale-95">
-            <Users className="w-6 h-6" />Dividir
+          <button type="button" onClick={() => p.onDividir!(p.mesaActiva!)} className="flex-shrink-0 px-5 rounded-2xl bg-violet-600 hover:bg-violet-700 text-[#fff] text-base font-bold flex items-center gap-2 active:scale-95 transition">
+            <Users className="w-5 h-5" />Dividir
           </button>
         )}
         <button
           type="button"
           disabled={cuenta.length === 0}
           onClick={() => p.onCobrar(p.mesaActiva)}
-          className="flex-shrink-0 h-16 px-6 rounded-2xl bg-emerald-600 text-[#fff] text-2xl font-black shadow-lg disabled:opacity-40 active:scale-95"
+          className="flex-shrink-0 min-w-[230px] h-16 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-[#fff] text-xl font-bold tabular-nums flex items-center justify-center gap-3 shadow-lg shadow-emerald-600/25 transition active:scale-95 disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed"
         >
-          Cobrar {pesos(total)}
+          <Calculator className="w-6 h-6" />Cobrar {pesos(total)}
         </button>
       </div>
 
-      {!vistaMesas && <BotonMesasFlotante onTocar={() => setVistaMesas('elegir')} ocupadas={ocupadas} />}
+      {!vistaMesas && <BotonMesasFlotante onTocar={() => setVistaMesas('elegir')} ocupadas={ocupadas} oscuro={d} />}
 
       {/* Mesas en pantalla completa */}
       {vistaMesas && (
-        <div className="absolute inset-0 z-[76] flex flex-col bg-slate-100">
-          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-700 text-[#fff] shadow-lg">
-            <button type="button" onClick={() => setVistaMesas(null)} className="h-14 px-5 rounded-2xl bg-white text-emerald-800 text-lg font-black flex items-center gap-2 active:scale-95">
-              <ArrowLeft className="w-6 h-6" />Volver a productos
+        <div className={`absolute inset-0 z-[76] flex flex-col gap-3 p-3 ${m('bg-slate-100', 'bg-slate-950')}`}>
+          <div className="flex items-center gap-4 px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-[#fff] shadow-lg shadow-emerald-600/20">
+            <button type="button" onClick={() => setVistaMesas(null)} className="h-11 px-4 rounded-full bg-white text-emerald-800 text-sm font-semibold flex items-center gap-2 active:scale-95">
+              <ArrowLeft className="w-4 h-4" />Volver a productos
             </button>
-            <p className="flex-1 text-2xl font-black text-center truncate text-[#fff]">
+            <p className="flex-1 text-2xl font-bold tracking-tight text-center truncate text-[#fff]">
               {vistaMesas === 'pasar' ? '¿A qué mesa va este pedido?' : 'Elige una mesa'}
             </p>
-            <button type="button" onClick={() => setVistaMesas(null)} aria-label="Cerrar" className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center active:scale-95">
-              <X className="w-8 h-8" />
+            <div className="hidden sm:flex items-center gap-4 text-sm font-medium text-[#fff]">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-300" />Libre</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-rose-300" />Ocupada</span>
+            </div>
+            <button type="button" onClick={() => setVistaMesas(null)} aria-label="Cerrar" className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition">
+              <X className="w-6 h-6" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
+          <div className={`flex-1 overflow-y-auto rounded-2xl border p-4 ${m('bg-white border-slate-200', 'bg-slate-900 border-slate-800')}`}>
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(185px, 1fr))' }}>
               {vistaMesas === 'elegir' && (
                 <button
                   type="button"
                   onClick={() => { p.onElegirMesa(null); setVistaMesas(null); }}
-                  className={`h-40 rounded-3xl border-4 flex flex-col items-center justify-center gap-2 shadow-md active:scale-95 ${!p.mesaActiva ? 'border-slate-900 bg-white' : 'border-transparent bg-white'}`}
+                  className={`h-36 rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition hover:shadow-lg active:scale-95 ${m('bg-white', 'bg-slate-800')} ${!p.mesaActiva ? m('border-slate-900', 'border-white') : m('border-slate-200', 'border-slate-700')}`}
                 >
-                  <Store className="w-12 h-12 text-amber-600" />
-                  <span className="text-2xl font-black text-slate-900">Mostrador</span>
-                  <span className="text-base font-bold text-slate-500">{p.cuentaMostrador.length > 0 ? pesos(totalDe(p.cuentaMostrador)) : 'Sin mesa'}</span>
+                  <span className={`w-12 h-12 rounded-xl ${m('bg-amber-100', 'bg-amber-500/20')} flex items-center justify-center`}><Store className="w-7 h-7 text-amber-500" /></span>
+                  <span className={`text-lg font-bold ${m('text-slate-900', 'text-white')}`}>Mostrador</span>
+                  <span className={`text-sm font-medium ${m('text-slate-500', 'text-slate-400')} tabular-nums`}>{p.cuentaMostrador.length > 0 ? pesos(totalDe(p.cuentaMostrador)) : 'Sin mesa'}</span>
                 </button>
               )}
               {mesasOrdenadas.map((m) => {
@@ -424,11 +443,11 @@ export function ModoFacilAlimentos(p: Props) {
                       else p.onElegirMesa(m);
                       setVistaMesas(null);
                     }}
-                    className={`h-40 rounded-3xl border-4 flex flex-col items-center justify-center gap-1 shadow-md text-[#fff] active:scale-95 ${actual ? 'border-slate-900' : 'border-transparent'} ${ocupada ? 'bg-rose-600' : 'bg-emerald-600'}`}
+                    className={`h-36 rounded-2xl flex flex-col items-center justify-center gap-1 text-[#fff] shadow-md transition hover:shadow-lg active:scale-95 ${actual ? (d ? 'ring-4 ring-offset-2 ring-white ring-offset-slate-900' : 'ring-4 ring-offset-2 ring-slate-900') : ''} ${ocupada ? 'bg-gradient-to-br from-rose-500 to-rose-600' : 'bg-gradient-to-br from-emerald-500 to-emerald-600'}`}
                   >
-                    <Armchair className="w-11 h-11" />
-                    <span className="text-2xl font-black leading-tight text-[#fff]">{m.nombre}</span>
-                    <span className="text-lg font-black text-[#fff]">
+                    <Armchair className="w-9 h-9 text-[#fff]" />
+                    <span className="text-xl font-bold leading-tight text-[#fff]">{m.nombre}</span>
+                    <span className="text-sm font-semibold text-[#fff]/90 tabular-nums">
                       {ocupada ? `${unidadesDe(items)} prod. · ${pesos(totalDe(items))}` : 'Libre'}
                     </span>
                   </button>
@@ -436,11 +455,11 @@ export function ModoFacilAlimentos(p: Props) {
               })}
             </div>
             {mesasOrdenadas.length === 0 && (
-              <p className="text-center text-2xl font-bold text-slate-400 mt-16">Todavía no hay mesas. Créalas fuera del modo fácil, en la sección Mesas.</p>
+              <p className="text-center text-lg font-medium text-slate-400 mt-16">Todavía no hay mesas. Créalas fuera del modo fácil, en la sección Mesas.</p>
             )}
-            {vistaMesas === 'elegir' && (
-              <p className="text-center text-lg font-bold text-slate-500 mt-6 flex items-center justify-center gap-2">
-                <Plus className="w-5 h-5" />Toca una mesa para tomarle el pedido. Roja = ocupada, verde = libre.
+            {vistaMesas === 'elegir' && mesasOrdenadas.length > 0 && (
+              <p className={`text-center text-sm font-medium ${m('text-slate-500', 'text-slate-400')} mt-6 flex items-center justify-center gap-2`}>
+                <Plus className="w-4 h-4" />Toca una mesa para tomarle el pedido.
               </p>
             )}
           </div>

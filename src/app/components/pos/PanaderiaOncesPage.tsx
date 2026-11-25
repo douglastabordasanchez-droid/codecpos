@@ -27,7 +27,7 @@ import { PantallaEstaciones } from '../estaciones/PantallaEstaciones';
 import { DialogoEnvioEstaciones, type ItemEnvio } from '../estaciones/DialogoEnvioEstaciones';
 import { OrdenarCategoriasModal } from './OrdenarCategoriasModal';
 import { ModoFacilAlimentos, type MesaFacil, type ProductoFacil } from './ModoFacilAlimentos';
-import { DividirCuentaModal } from './DividirCuentaModal';
+import { DividirCuentaModal, leerDivision } from './DividirCuentaModal';
 import { esEmoji } from '../../lib/estiloMenu';
 import type { PlanImportacionMenu } from '../../lib/importarMenuAlimentos';
 import { type Estacion, listarEstaciones, suscribirEstaciones } from '../../lib/supabase/estacionesService';
@@ -930,14 +930,36 @@ export default function PanaderiaOncesPage() {
       localStorage.setItem('codecpos_mesa_activa', 'general');
       localStorage.setItem('codecpos_panaderia_origen', mesa.id);
       localStorage.setItem('codecpos_referencia_mesa', `${mesa.nombre} · Persona ${persona}`);
+      // Al cerrar la factura de esta persona, la caja vuelve aquí y abre otra vez el reparto.
+      localStorage.setItem('codecpos_volver_a_division', mesa.id);
       setMesaDividiendo(null);
       navigate('/pos');
     } catch (error) { console.error('Error cobrando parte de la mesa:', error); toast.error('No se pudo pasar al cobro. Intenta de nuevo.'); }
   };
 
+  // Vuelta del cobro de una persona: se abre otra vez el reparto con las que faltan,
+  // hasta que la mesa quede en cero. Espera a que carguen las mesas y sus cuentas.
+  useEffect(() => {
+    const mesaId = localStorage.getItem('codecpos_volver_a_division');
+    if (!mesaId) return;
+    const mesa = mesas.find((x) => x.id === mesaId);
+    if (!mesa) return;
+    if (!leerDivision(mesaId)) {
+      // Pagó la última persona: la mesa quedó libre.
+      localStorage.removeItem('codecpos_volver_a_division');
+      toast.success(`${mesa.nombre} quedó saldada`, { description: 'Todas las personas pagaron.' });
+      return;
+    }
+    if (!(cuentasMesas[mesaId] || []).length) return;
+    localStorage.removeItem('codecpos_volver_a_division');
+    setMesaSeleccionada(mesa);
+    setMesaDividiendo(mesa);
+  }, [mesas, cuentasMesas]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const abrirMesaEnPOS = (mesa?: MesaConfig | null) => {
     try {
       localStorage.removeItem('codecpos_cobro_parcial'); // cobro de la mesa completa
+      localStorage.removeItem('codecpos_volver_a_division');
       const cuentaTransferir = mesa ? (cuentasMesas[mesa.id] || []) : cuentaLibre;
       if (cuentaTransferir.length === 0) { toast.error('No hay productos en la cuenta para transferir a POS'); return; }
       localStorage.setItem(STORAGE_TRANSFER_CART, JSON.stringify(cuentaTransferir));
@@ -2839,6 +2861,7 @@ export default function PanaderiaOncesPage() {
           onCobrar={(m) => abrirMesaEnPOS(mesaPorId(m))}
           onDividir={(m) => { const mesa = mesaPorId(m); if (mesa) setMesaDividiendo(mesa); }}
           onSalir={() => cambiarModoFacil(false)}
+          oscuro={darkMode}
         />
       )}
       {envioEstaciones && getLinkedClienteId() && (
