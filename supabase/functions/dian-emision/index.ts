@@ -37,6 +37,11 @@ class ErrorHttp extends Error {
   constructor(mensaje: string, readonly status: number) { super(mensaje); }
 }
 
+// ⚡ Certificado ya abierto, por perfil fiscal, mientras esta instancia siga
+// viva: descifrar y abrir el .p12 en cada factura tomaba buena parte de la
+// firma. Se reconoce por su fecha de subida: si suben otro, se abre de nuevo.
+const credencialesAbiertas = new Map<string, { subidoEl: string; credenciales: Credenciales }>();
+
 const deBase64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const textoDe = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
@@ -52,13 +57,15 @@ Deno.serve(async (req: Request) => {
     // Cliente con el JWT de quien llama: resuelve identidad y negocio con las
     // mismas reglas que el resto del sistema.
     const comoUsuario = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: `Bearer ${token}` } } });
-    const { data: { user }, error: errorUsuario } = await comoUsuario.auth.getUser(token);
+    // ⚡ Las tres a la vez (antes una tras otra); se revisan en el mismo orden.
+    const [{ data: { user }, error: errorUsuario }, { data: clienteId }, cuerpo] = await Promise.all([
+      comoUsuario.auth.getUser(token),
+      comoUsuario.rpc('current_cliente_id'),
+      req.json().catch(() => ({})),
+    ]);
     if (errorUsuario || !user) throw new ErrorHttp('Sesión inválida o vencida', 401);
-
-    const { data: clienteId } = await comoUsuario.rpc('current_cliente_id');
     if (!clienteId) throw new ErrorHttp('Esta sesión no pertenece a ningún negocio', 403);
 
-    const cuerpo = await req.json().catch(() => ({}));
     const { accion, perfilFiscalId } = cuerpo as { accion?: string; perfilFiscalId?: string };
     if (!accion || !perfilFiscalId) throw new ErrorHttp('Faltan accion o perfilFiscalId', 400);
 
@@ -88,13 +95,22 @@ Deno.serve(async (req: Request) => {
 
     const cargarCredenciales = async (): Promise<Credenciales> => {
       const { data } = await admin.from('dian_certificados_nube')
-        .select('p12_cifrado, pin_cifrado').eq('perfil_fiscal_id', perfilFiscalId).maybeSingle();
+        .select('p12_cifrado, pin_cifrado, subido_el').eq('perfil_fiscal_id', perfilFiscalId).maybeSingle();
       if (!data) {
+        credencialesAbiertas.delete(perfilFiscalId);
         throw new ErrorHttp('Este perfil fiscal no tiene certificado digital en el servidor. Súbelo en Facturación → Certificado digital.', 409);
       }
-      const p12 = await descifrar(data.p12_cifrado, DIAN_CERT_KEY, `p12:${perfilFiscalId}`);
-      const pin = textoDe(await descifrar(data.pin_cifrado, DIAN_CERT_KEY, `pin:${perfilFiscalId}`));
-      const credenciales = abrirP12(p12, pin);
+      const marca = `${data.subido_el ?? ''}|${String(data.p12_cifrado).length}`;
+      const abierto = credencialesAbiertas.get(perfilFiscalId);
+      let credenciales: Credenciales;
+      if (abierto && abierto.subidoEl === marca) {
+        credenciales = abierto.credenciales;
+      } else {
+        const p12 = await descifrar(data.p12_cifrado, DIAN_CERT_KEY, `p12:${perfilFiscalId}`);
+        const pin = textoDe(await descifrar(data.pin_cifrado, DIAN_CERT_KEY, `pin:${perfilFiscalId}`));
+        credenciales = abrirP12(p12, pin);
+        credencialesAbiertas.set(perfilFiscalId, { subidoEl: marca, credenciales });
+      }
       if (credenciales.certificado.validity.notAfter.getTime() < Date.now()) {
         throw new ErrorHttp('El certificado digital está vencido. Sube el certificado renovado.', 409);
       }

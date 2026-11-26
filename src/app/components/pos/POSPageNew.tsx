@@ -42,6 +42,7 @@ import {
   Loader2,
   AlertTriangle,
 } from 'lucide-react';
+import { ModoFacilTienda } from './ModoFacilTienda';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
@@ -102,7 +103,7 @@ import {
 import { buscarPorCodigoBarras } from '../../lib/promocionesService';
 import { suscribirCodigosEscaneados } from '../../lib/supabase/scanBroadcast';
 import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
-import { emitirFacturaDianDirecto } from '../../lib/dian/emitirFacturaDian';
+import { emitirFacturaDianDirecto, precalentarEmisionDian } from '../../lib/dian/emitirFacturaDian';
 import { modoFacturacionEfectivo } from '../../lib/dian/modoFacturacion';
 import { ModalPesaje } from '../../../pwa/components/ModalPesaje';
 import { formatoPeso } from '../../../pwa/lib/basculaWeb';
@@ -625,6 +626,14 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     } catch { return METODOS_PAGO_DEFAULT; }
   });
   const [showPagoConfig, setShowPagoConfig] = useState(false);
+  // 🛍️ Modo fácil de la tienda (papelería, piñatería): se recuerda en este equipo.
+  const [modoFacilTienda, setModoFacilTienda] = useState<boolean>(() => {
+    try { return localStorage.getItem('codecpos_modo_facil_tienda') === '1'; } catch { return false; }
+  });
+  const cambiarModoFacilTienda = (activo: boolean) => {
+    setModoFacilTienda(activo);
+    try { localStorage.setItem('codecpos_modo_facil_tienda', activo ? '1' : '0'); } catch { /* sin almacenamiento */ }
+  };
 
   const guardarMetodosPago = (lista: MetodoPagoConfig[]) => {
     setMetodosPago(lista);
@@ -1565,6 +1574,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
     return () => window.removeEventListener('codecpos:productos-sincronizados', onProductosSincronizados);
   }, []);
 
+  // ⚡ Factura electrónica: perfil fiscal y numeración listos desde que se abre
+  // la caja (y cada 2 minutos), así la factura no los espera al cobrar.
+  useEffect(() => {
+    if (modoFacturacionEfectivo(leerConfigEmpresaCacheada()) !== 'dian_directo') return;
+    const calentar = () => precalentarEmisionDian(getLinkedClienteId());
+    calentar();
+    const intervalo = setInterval(calentar, 2 * 60_000);
+    return () => clearInterval(intervalo);
+  }, []);
+
   // 🔮 Lo que se vendió en esta caja los últimos 60 días: ordena las sugerencias.
   useEffect(() => {
     let vivo = true;
@@ -2493,7 +2512,8 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
                 retenciones: clienteFE.nitCedula.trim() ? retencionesParaEmitir(retencionesFE) : {},
               }).then(async (r) => {
                 if (r.estado === 'accepted') {
-                  const factura = await obtenerFacturaPorVenta(clienteIdVinculado, numeroFacturaCompleto).catch(() => null);
+                  // ⚡ La emisión ya trae el documento aprobado: no se vuelve a pedir a la nube.
+                  const factura = r.factura ?? await obtenerFacturaPorVenta(clienteIdVinculado, numeroFacturaCompleto).catch(() => null);
                   const visor = feVisorRef.current;
                   if (factura && visor?.venta === numeroFacturaCompleto && (visor.estado === 'esperando' || visor.estado === 'demorada')) {
                     setFacturaDianVista(factura);
@@ -3202,8 +3222,40 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
 
   const total = calcularTotal();
 
+  // 🛍️ Datos para el modo fácil de la tienda (mismo carrito y mismo cobro).
+  const productosModoFacil = useMemo(
+    () => (modoFacilTienda ? productos.filter((x: any) => x && x.activo !== false && String(x.nombre || '').trim()) : []),
+    [modoFacilTienda, productos],
+  );
+  const carritoModoFacil = modoFacilTienda
+    ? carrito.map((it) => {
+      const precioLinea = it.precioEditado ?? precioCatalogoConMods(it);
+      return { producto: it.producto, cantidad: it.cantidad, subtotal: it.peso ? precioLinea * it.peso : precioLinea * it.cantidad };
+    })
+    : [];
+  const ventanaDeCajaAbierta = showPagoModal || !!metodoPagoSimple || mostrarTicket || showModifiersModal
+    || showFidelBusqueda || showVerificacionPagoModal || showPagoConfig || showProductoManualModal;
+
   return (
     <div className={`h-screen flex flex-col ${esTiendaRopa ? 'boutique-pos-mode' : ''}`}>
+      {modoFacilTienda && (
+        <ModoFacilTienda
+          productos={productosModoFacil as any}
+          carrito={carritoModoFacil as any}
+          total={total}
+          historial={historialVentasRef.current}
+          puedeVender={(x: any) => Number(x.stock) > 0 || permiteVenderSinStock(x)}
+          onAgregar={(x: any) => { anotarElegido(x.id); agregarAlCarrito(x as Producto); }}
+          onMas={aumentarCantidad}
+          onMenos={disminuirCantidad}
+          onQuitar={eliminarDelCarrito}
+          onCobrar={() => { setMetodoPagoSimple(null); setShowPagoModal(true); }}
+          onSalir={() => cambiarModoFacilTienda(false)}
+          oscuro={darkMode}
+          oculto={ventanaDeCajaAbierta}
+          nombreTienda={tiendaActual?.nombre}
+        />
+      )}
       <AvisoPagoPorRegistrar className="fixed top-14 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-xl" />
       {/* Barra de Periféricos Compacta con Logo */}
       <div className={`px-3 py-2 border-b flex-shrink-0 ${
@@ -3310,6 +3362,16 @@ export default function POSPageNew({ facturaId, numeroFactura, onUpdateInfo }: P
           >
             <QrCode className="w-3 h-3 mr-1" />
             QR
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => cambiarModoFacilTienda(true)}
+            className="rounded-lg text-[10px] h-7 px-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white border-0"
+            title="Pantalla completa con imágenes y botones grandes para vender más rápido"
+          >
+            <ShoppingBag className="w-3 h-3 mr-1" />
+            Modo fácil
           </Button>
 
           <Button

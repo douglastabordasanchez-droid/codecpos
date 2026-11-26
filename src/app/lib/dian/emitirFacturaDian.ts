@@ -32,7 +32,7 @@ import { calcularDocumentoFiscal, fechaColombia, impuestosParaHash } from './doc
 import { identificarAdquirente, ubicacionDelEmisor } from './ublComun';
 import { obtenerTransporteDian, ErrorDeTransmision } from './transporteDian';
 import {
-  obtenerPerfilFiscalActivo, listarResolucionesPerfil, siguienteConsecutivoDian,
+  obtenerPerfilFiscalActivo, listarResolucionesPerfil, siguienteConsecutivoDian, versionDatosFiscales,
 } from '../supabase/fiscalProfileService';
 import { crearFacturaDian, actualizarEstadoFactura } from '../supabase/facturaElectronicaDianService';
 import { encolarEmisionPendiente } from './colaEmisionesLocal';
@@ -60,6 +60,31 @@ export interface ResultadoEmision {
   numero?: string;
   /** Por qué no se emitió o por qué quedó pendiente, en palabras para el usuario. */
   motivo?: string;
+  /** El documento ya aprobado, para mostrarlo sin volver a pedirlo a la nube. */
+  factura?: FacturaElectronicaDian;
+}
+
+// ⚡ Perfil fiscal y numeraciones del negocio en memoria: cambian muy poco y
+// antes se pedían a la nube en cada venta (dos viajes antes de empezar). Se
+// renuevan a los 3 minutos o apenas se cambian en Configuración, y si con lo guardado algo no cuadra (falta un
+// dato, no hay numeración activa, falla el consecutivo) se piden de nuevo.
+const VIGENCIA_DATOS_FISCALES_MS = 3 * 60_000;
+type DatosFiscales = { perfil: Awaited<ReturnType<typeof obtenerPerfilFiscalActivo>>; resoluciones: Awaited<ReturnType<typeof listarResolucionesPerfil>> };
+const cacheFiscal = new Map<string, { datos: DatosFiscales; hasta: number; version: number }>();
+async function datosFiscales(clienteId: string, fresco = false): Promise<DatosFiscales & { deMemoria: boolean }> {
+  const guardado = cacheFiscal.get(clienteId);
+  if (!fresco && guardado && guardado.hasta > Date.now() && guardado.version === versionDatosFiscales) return { ...guardado.datos, deMemoria: true };
+  const version = versionDatosFiscales;
+  const perfil = await obtenerPerfilFiscalActivo(clienteId, { lanzarSiFalla: true });
+  const resoluciones = perfil?.id ? await listarResolucionesPerfil(perfil.id, { lanzarSiFalla: true }) : [];
+  if (perfil?.id) cacheFiscal.set(clienteId, { datos: { perfil, resoluciones }, hasta: Date.now() + VIGENCIA_DATOS_FISCALES_MS, version });
+  else cacheFiscal.delete(clienteId);
+  return { perfil, resoluciones, deMemoria: false };
+}
+/** Se llama al abrir la caja y luego de vez en cuando: la primera factura del día no espera. */
+export function precalentarEmisionDian(clienteId: string | null | undefined) {
+  if (!clienteId) return;
+  void datosFiscales(clienteId, true).catch(() => undefined);
 }
 
 /** Errores del fetch cuando no hay red (Chromium/Electron y Node). */
@@ -98,24 +123,33 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
 
   let facturaId: string | undefined;
   try {
-    const perfil = await obtenerPerfilFiscalActivo(datos.clienteId, { lanzarSiFalla: true });
-    if (!perfil?.id) return noEmitido(datos.ventaReferencia, 'El negocio no tiene un perfil fiscal activo.');
-    if (!perfil.nit) return noEmitido(datos.ventaReferencia, 'El perfil fiscal no tiene NIT.');
-    if (!perfil.identificadorSoftware || !perfil.softwarePin) {
-      return noEmitido(datos.ventaReferencia, 'Al perfil fiscal le falta el identificador del software o el PIN del software.');
+    // Con lo que está en memoria; si algo no cuadra se revisa con datos frescos
+    // antes de decir que no se puede (pudieron cambiarlo en Configuración).
+    const prepararNumeracion = (perfil: DatosFiscales['perfil'], resoluciones: DatosFiscales['resoluciones']) => {
+      if (!perfil?.id) return { motivo: 'El negocio no tiene un perfil fiscal activo.' } as const;
+      if (!perfil.nit) return { motivo: 'El perfil fiscal no tiene NIT.' } as const;
+      if (!perfil.identificadorSoftware || !perfil.softwarePin) {
+        return { motivo: 'Al perfil fiscal le falta el identificador del software o el PIN del software.' } as const;
+      }
+      const activas = resoluciones.filter((r) => r.estado === 'activa');
+      const tipoDocumento = decidirTipoDocumentoDian(datos.adquirente, activas.map((r) => r.tipoDocumento));
+      if (tipoDocumento === 'factura' && !perfil.claveTecnica) {
+        return { motivo: 'Al perfil fiscal le falta la clave técnica de la numeración.' } as const;
+      }
+      const resolucion = activas.find((r) => r.tipoDocumento === tipoDocumento);
+      if (!resolucion?.id) {
+        return { motivo: `No hay una numeración activa para ${tipoDocumento === 'factura' ? 'factura electrónica' : 'documento equivalente POS'}.` } as const;
+      }
+      return { perfil, tipoDocumento, resolucion } as const;
+    };
+    let fiscales = await datosFiscales(datos.clienteId);
+    let preparado = prepararNumeracion(fiscales.perfil, fiscales.resoluciones);
+    if ('motivo' in preparado && fiscales.deMemoria) {
+      fiscales = await datosFiscales(datos.clienteId, true);
+      preparado = prepararNumeracion(fiscales.perfil, fiscales.resoluciones);
     }
-
-    const resoluciones = await listarResolucionesPerfil(perfil.id, { lanzarSiFalla: true });
-    const activas = resoluciones.filter((r) => r.estado === 'activa');
-    const tipoDocumento = decidirTipoDocumentoDian(datos.adquirente, activas.map((r) => r.tipoDocumento));
-    if (tipoDocumento === 'factura' && !perfil.claveTecnica) {
-      return noEmitido(datos.ventaReferencia, 'Al perfil fiscal le falta la clave técnica de la numeración.');
-    }
-
-    const resolucion = activas.find((r) => r.tipoDocumento === tipoDocumento);
-    if (!resolucion?.id) {
-      return noEmitido(datos.ventaReferencia, `No hay una numeración activa para ${tipoDocumento === 'factura' ? 'factura electrónica' : 'documento equivalente POS'}.`);
-    }
+    if ('motivo' in preparado) return noEmitido(datos.ventaReferencia, preparado.motivo!);
+    const { perfil, tipoDocumento, resolucion } = preparado;
 
     const emisor: EmisorSnapshot = {
       nit: perfil.nit,
@@ -152,6 +186,14 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
     // El cliente de la base de clientes completa lo que el cajero no escribió
     // (tipo de documento, DV, correo) y dice si es agente de retención.
     const adquirenteId0 = identificarAdquirente(datos.adquirente);
+    // ⚡ El cliente y el consecutivo se piden a la vez (antes uno tras otro).
+    // Buscar el cliente nunca falla (sin él se usa lo que escribió el cajero),
+    // así que no hay riesgo de quemar un número por esperarlo en paralelo.
+    const pedirConsecutivo = siguienteConsecutivoDian(resolucion.id!).catch((e) => {
+      cacheFiscal.delete(datos.clienteId); // ¿numeración cambiada o agotada? La próxima venta la lee de nuevo.
+      throw e;
+    });
+    pedirConsecutivo.catch(() => undefined); // se espera más abajo; evita el aviso de promesa sin atender
     const clienteBase = adquirenteId0.esConsumidorFinal
       ? null
       : await buscarClienteFacturacion(datos.clienteId, adquirenteId0.numero).catch(() => null);
@@ -173,7 +215,7 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
       : datos.retenciones ? calcularRetencionesElegidas(datos.retenciones, fiscal.brutoLineas)
         : calcularRetenciones(perfil.retenciones, clienteBase, fiscal.brutoLineas);
 
-    const consecutivo = await siguienteConsecutivoDian(resolucion.id);
+    const consecutivo = await pedirConsecutivo;
     // Prefijo + consecutivo, sin ceros de relleno: así lo compara la DIAN contra el rango autorizado.
     const numero = `${resolucion.prefijo}${consecutivo}`;
 
@@ -199,7 +241,10 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
       numeroFactura: numero,
       prefijo: resolucion.prefijo,
       cufe,
-      estado: 'pending',
+      // ⚡ Nace en 'signing': antes se creaba en 'pending' y enseguida otro viaje
+      // la pasaba a 'signing'. Si la app se cierra aquí, la cola la recoge igual
+      // (busca las que quedaron en 'signing' o 'sent' hace rato).
+      estado: 'signing',
       intentosTransmision: 0,
       contingencia: false,
       emisor,
@@ -229,7 +274,6 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
     facturaId = (await crearFacturaDian(documento)).id!;
 
     try {
-      await actualizarEstadoFactura(facturaId, 'signing');
       const transporte = await obtenerTransporteDian(perfil.id);
       const paraEnviar = { perfilFiscalId: perfil.id, ambiente: perfil.ambiente, numero, xml: documento.xml };
       let xmlFirmado: string;
@@ -259,7 +303,21 @@ export async function emitirFacturaDianDirecto(datos: DatosVentaParaDian, opcion
       } else if (respuesta.estado !== 'accepted') {
         console.warn(`[DIAN] ${numero} (venta ${datos.ventaReferencia}) fue ${respuesta.estado} por la DIAN: ${respuesta.mensajes?.join('; ')}`);
       }
-      return { estado: respuesta.estado, numero, motivo: respuesta.estado === 'accepted' ? undefined : respuesta.mensajes?.join('; ') };
+      return {
+        estado: respuesta.estado,
+        numero,
+        motivo: respuesta.estado === 'accepted' ? undefined : respuesta.mensajes?.join('; '),
+        factura: respuesta.estado === 'accepted'
+          ? {
+            ...documento,
+            id: facturaId,
+            estado: 'accepted',
+            xml: xmlFirmado,
+            respuestaDian: respuesta.crudo as Record<string, unknown>,
+            fechaValidacion: new Date().toISOString(),
+          }
+          : undefined,
+      };
     } catch (procesoError) {
       // Contingencia: el documento ya existe con su número y su CUFE; falló
       // la firma o el envío y la cola lo reintenta. Si alcanzó a firmarse, se

@@ -93,6 +93,14 @@ function filaAPerfil(fila: FiscalProfileRow): FiscalProfile {
 
 /** Todos los perfiles fiscales del negocio (histórico + activo), más
  * recientes primero. */
+/**
+ * Sube cada vez que se cambia un perfil fiscal o una numeración desde esta
+ * app: la emisión (emitirFacturaDian) guarda esos datos en memoria para no
+ * pedirlos en cada venta y con esto sabe que debe leerlos de nuevo.
+ */
+export let versionDatosFiscales = 0;
+export function cambioDatosFiscales() { versionDatosFiscales++; }
+
 export async function listarPerfilesFiscales(clienteId?: string): Promise<FiscalProfile[]> {
   const cid = clienteId || getLinkedClienteId();
   if (!cid) return [];
@@ -133,6 +141,7 @@ export type DatosPerfilFiscalForm = Partial<Omit<FiscalProfile, 'id' | 'clienteI
  * persona natural a SAS se crea otro perfil, nunca se edita el NIT de uno
  * ya usado en facturas). */
 export async function crearPerfilFiscal(clienteId: string, datos: DatosPerfilFiscalForm): Promise<FiscalProfile> {
+  cambioDatosFiscales();
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
   if (!datos.tipoPersona || !datos.nombreORazonSocial) {
@@ -178,6 +187,7 @@ export async function crearPerfilFiscal(clienteId: string, datos: DatosPerfilFis
  * snapshot — pero por seguridad, evita editar NIT/razón social de un
  * perfil que ya facturó: mejor crear uno nuevo (crearPerfilFiscal). */
 export async function actualizarPerfilFiscal(id: string, datos: DatosPerfilFiscalForm): Promise<FiscalProfile> {
+  cambioDatosFiscales();
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
 
@@ -219,6 +229,7 @@ export async function actualizarPerfilFiscal(id: string, datos: DatosPerfilFisca
 }
 
 export async function actualizarEstadoPerfilFiscal(id: string, estado: EstadoPerfilFiscal): Promise<void> {
+  cambioDatosFiscales();
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.from('perfiles_fiscales').update({ estado, updated_at: new Date().toISOString() }).eq('id', id);
@@ -228,6 +239,7 @@ export async function actualizarEstadoPerfilFiscal(id: string, estado: EstadoPer
 /** Marca este perfil como el ACTIVO del negocio y desactiva cualquier otro
  * (vía RPC transaccional — nunca quedan dos activos a la vez). */
 export async function activarPerfilFiscal(perfilId: string): Promise<void> {
+  cambioDatosFiscales();
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.rpc('activar_perfil_fiscal', { p_perfil_id: perfilId });
@@ -235,6 +247,7 @@ export async function activarPerfilFiscal(perfilId: string): Promise<void> {
 }
 
 export async function marcarPinConfigurado(perfilId: string): Promise<void> {
+  cambioDatosFiscales();
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
   const { error } = await client.from('perfiles_fiscales').update({ pin_configurado: true, updated_at: new Date().toISOString() }).eq('id', perfilId);
@@ -293,6 +306,7 @@ export async function crearResolucionDian(
   perfilFiscalId: string,
   datos: { tipoDocumento: ResolucionDian['tipoDocumento']; prefijo: string; resolucionNumero: string; resolucionFecha?: string; rangoDesde: number; rangoHasta: number; vigenciaHasta?: string }
 ): Promise<ResolucionDian> {
+  cambioDatosFiscales();
   const client = getSupabaseClient();
   if (!client) throw new Error('nuestra base de datos no está configurada');
   const { data, error } = await client
@@ -324,6 +338,7 @@ export async function asegurarNumeracionNota(
   perfilFiscalId: string,
   tipo: 'nota_credito' | 'nota_debito',
 ): Promise<ResolucionDian> {
+  cambioDatosFiscales();
   const activa = (await listarResolucionesPerfil(perfilFiscalId, { lanzarSiFalla: true }))
     .find((r) => r.estado === 'activa' && r.tipoDocumento === tipo);
   if (activa?.id) return activa;

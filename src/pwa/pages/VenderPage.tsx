@@ -39,7 +39,7 @@ import { TirillaFacturaElectronica } from '../../app/components/factura/TirillaF
 import { obtenerFacturaPorVenta } from '../../app/lib/supabase/facturaElectronicaDianService';
 import { datosPdfFacturaDianCompletos } from '../../app/lib/dian/representacionGrafica';
 import type { FacturaElectronicaDian } from '../../app/lib/dian/types';
-import { emitirFacturaDianDirecto } from '../../app/lib/dian/emitirFacturaDian';
+import { emitirFacturaDianDirecto, precalentarEmisionDian } from '../../app/lib/dian/emitirFacturaDian';
 import { NUMERO_DOCUMENTO_CONSUMIDOR_FINAL } from '../../app/lib/dian/types';
 import { avisoAgenteRetencion, recordarClienteFactura, type ClienteFacturaGuardado } from '../../app/lib/dian/clientesFactura';
 import { registrarClienteDesdeCobro } from '../../app/lib/supabase/clientesFacturacionService';
@@ -188,6 +188,14 @@ export default function VenderPage() {
     || (conVeterinaria && seVendeSinStock({ nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipo_producto }));
   const areaVet = (p: ProductoFila) => (conVeterinaria ? areaDeItem({ nombre: p.nombre, categoria: p.categoria, tipoProducto: p.tipo_producto }) : undefined);
   const facturacionDisponible = tieneModuloDePago(ModuloPOS.FACTURACION_DIAN);
+  // ⚡ Perfil fiscal y numeración listos antes de cobrar (y cada 2 minutos).
+  useEffect(() => {
+    if (!facturacionDisponible || !empleado?.cliente_id) return;
+    const calentar = () => precalentarEmisionDian(empleado.cliente_id);
+    calentar();
+    const intervalo = setInterval(calentar, 2 * 60_000);
+    return () => clearInterval(intervalo);
+  }, [facturacionDisponible, empleado?.cliente_id]);
   const [avisoRetencionFE, setAvisoRetencionFE] = useState('');
   const [retencionesFE, setRetencionesFE] = useState(retencionesIniciales);
 
@@ -629,7 +637,7 @@ export default function VenderPage() {
       }).then(async (r) => {
         if (r.estado === 'accepted') {
           toast.success(`Factura electrónica ${r.numero} aceptada por la DIAN`, { description: 'Imprímala o envíela al cliente desde el recibo.' });
-          const factura = await obtenerFacturaPorVenta(empleado.cliente_id, ventaId).catch(() => null);
+          const factura = r.factura ?? await obtenerFacturaPorVenta(empleado.cliente_id, ventaId).catch(() => null);
           if (factura) actualizarFE({ estado: 'lista', factura });
           else actualizarFE({ estado: 'fallida', aviso: `La factura ${r.numero} quedó aprobada, pero no se pudo abrir aquí. Búscala en Facturación.` });
         } else if (r.estado === 'contingency' || r.estado === 'sent' || r.estado === 'en_cola') {
