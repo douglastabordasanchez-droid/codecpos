@@ -48,7 +48,7 @@ export function PwaLayout() {
     if (!client) return;
     const avisar = async () => {
       const { data } = await client.from('avisos_licencia')
-        .select('id, tipo, programado_para')
+        .select('id, tipo, programado_para, mensaje')
         .eq('cliente_id', empleado.cliente_id)
         .is('enviado_en', null)
         .lte('programado_para', new Date().toISOString())
@@ -56,7 +56,7 @@ export function PwaLayout() {
       const aviso = data?.[0];
       if (!aviso) return;
       toast.warning(tituloAvisoLicencia(aviso.tipo), {
-        description: 'Renueva tu plan de Codec POS. Si no se recibe el pago, el sistema se pausa el día que vence.',
+        description: aviso.mensaje || 'Renueva tu plan de Codec POS. Si no se recibe el pago, el sistema se pausa el día que vence.',
         duration: 20000,
         action: { label: 'Pagar ahora', onClick: () => navigate('/planes') },
       });
