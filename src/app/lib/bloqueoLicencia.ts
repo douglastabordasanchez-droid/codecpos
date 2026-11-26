@@ -55,6 +55,6 @@ export function resumenVencimiento(estado: string | null | undefined, duracion: 
 export function tituloAvisoLicencia(tipo: string | null | undefined): string {
   if (tipo === 'VENCE_EN_2_DIAS') return 'Tu licencia vence en 2 días';
   if (tipo === 'VENCE_EN_1_DIA') return 'Tu licencia vence mañana';
-  if (tipo === 'PAGO_PENDIENTE_HOY') return 'Tienes un pago pendiente hoy';
+  if (tipo === 'PAGO_PENDIENTE_HOY') return 'Tienes un pago pendiente';
   return 'Tu licencia está por vencer';
 }
