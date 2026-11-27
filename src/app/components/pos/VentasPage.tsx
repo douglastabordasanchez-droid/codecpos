@@ -59,6 +59,7 @@ import { getLinkedClienteId } from '../../lib/supabase/tenantLink';
 import { PagosSinVenta } from '../../../pwa/components/PagosSinVenta';
 import { EVENTO_PAGOS_SIN_VENTA, guardarPagoPorRegistrar, limpiarPagosSinVenta, type PagoSinVenta } from '../../lib/supabase/pagosSinVenta';
 import { nombreMedioPago } from '../../lib/voz';
+import { etiquetaOrigenVenta } from '../../lib/origenVenta';
 import { useNavigate } from 'react-router';
 import { datosPdfFacturaDianDeVenta } from '../../lib/dian/representacionGrafica';
 
@@ -1163,6 +1164,11 @@ export default function VentasPage() {
                             <User className="w-4 h-4 text-slate-400" />
                             <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{venta.cajero}</span>
                           </div>
+                          {etiquetaOrigenVenta(venta.puntoVentaId, venta.origen) && (
+                            <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${darkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-100 text-sky-700'}`}>
+                              📱 {etiquetaOrigenVenta(venta.puntoVentaId, venta.origen)}
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{venta.items.length} productos</span>

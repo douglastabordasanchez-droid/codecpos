@@ -194,6 +194,8 @@ export interface Venta {
   /** Mesera o mesero que atendió la mesa (sale en la tirilla y va a la nube, 0154). */
   mesero?: string;
   puntoVentaId: string;
+  /** Venta bajada de la nube: 'celular' o 'web' (0170). */
+  origen?: 'celular' | 'web';
   createdAt: number;
   syncStatus?: 'synced' | 'pending' | 'conflict';
   sincronizado?: boolean;

@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from './useModulosActivos';
+import { useAccesoFinanzas } from './useAccesoFinanzas';
 import { NAV_TODOS, GRUPOS_NAV, type GrupoNav, type ItemNavSidebar } from '../lib/sidebarNav';
 import {
   obtenerPreferenciasMenu, sincronizarPreferenciasMenu, EVENTO_PREFERENCIAS_MENU, type PreferenciasMenu,
@@ -27,6 +28,7 @@ export interface GrupoMenu {
 export function useMenuPersonalizado(opciones: { movil: boolean }) {
   const { empleado } = usePwaAuth();
   const { tieneModulo, tieneModuloDePago } = useModulosActivos();
+  const accesoFinanzas = useAccesoFinanzas();
   const [prefs, setPrefs] = useState<PreferenciasMenu>(obtenerPreferenciasMenu);
 
   useEffect(() => {
@@ -46,7 +48,8 @@ export function useMenuPersonalizado(opciones: { movil: boolean }) {
       (opciones.movil || !it.soloMovil) &&
       (!it.modulo || (it.dePago ? tieneModuloDePago(it.modulo) : tieneModulo(it.modulo))) &&
       (!it.soloAdmin || esAdmin) &&
-      (!it.soloStaff || !!empleado?.es_staff_codec);
+      (!it.soloStaff || !!empleado?.es_staff_codec) &&
+      (!it.soloFinanzas || accesoFinanzas);
 
     const posicion = (path: string) => {
       const i = prefs.orden.indexOf(path);
@@ -62,7 +65,7 @@ export function useMenuPersonalizado(opciones: { movil: boolean }) {
         .sort((a, b) => (posicion(a.it.path) - posicion(b.it.path)) || (a.i - b.i))
         .map(({ it }) => ({ ...it, nombre: prefs.nombres[it.path] || it.label, oculto: !it.fijo && prefs.ocultos.includes(it.path) })),
     }));
-  }, [prefs, opciones.movil, tieneModulo, tieneModuloDePago, esAdmin, empleado?.es_staff_codec]);
+  }, [prefs, opciones.movil, tieneModulo, tieneModuloDePago, esAdmin, empleado?.es_staff_codec, accesoFinanzas]);
 
   const ocultos = grupos.flatMap((g) => g.items.filter((it) => it.oculto));
 

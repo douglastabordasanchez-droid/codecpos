@@ -9,6 +9,7 @@
  * adición apurada. Ver memoria de proyecto para el detalle.
  */
 import { getSupabaseClient } from '../../app/lib/supabase/config';
+import { esDispositivoMovil } from './restriccionesEmpleado';
 
 export interface ItemCarritoMovil {
   productoId: string;
@@ -111,6 +112,7 @@ export async function crearVentaMovil(
     .insert({
       cliente_id: clienteId,
       terminal_id: 'PWA',
+      origen: esDispositivoMovil() ? 'celular' : 'web',
       empleado_id: empleadoId,
       numero,
       cajero_nombre: cajeroNombre,

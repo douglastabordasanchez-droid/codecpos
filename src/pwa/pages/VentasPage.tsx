@@ -18,6 +18,7 @@ import { getSucursalActiva, suscribirSucursalActiva } from '../lib/sucursalActiv
 import { numeroVisibleVenta } from '../../app/lib/numeracionCaja';
 import { traerTodo } from '../lib/nubeConsultas';
 import { ventaSinPropina } from '../../app/lib/propinas';
+import { etiquetaOrigenVenta } from '../../app/lib/origenVenta';
 import { EmpleadoSelector, ResumenEmpleados, useEmpleadosNube } from '../components/EmpleadoFiltro';
 import { FILTRO_TIENDA_PRINCIPAL, claveEmpleado, completarConEmpleados, empleadoEnTienda, filtrarPorEmpleado, resumirPorEmpleado } from '../lib/ventasPorEmpleado';
 
@@ -25,6 +26,8 @@ interface VentaFila {
   id: string;
   numero: number | null;
   local_id: string | null;
+  terminal_id: string | null;
+  origen: string | null;
   total: number;
   metodo_pago: string | null;
   cajero_nombre: string | null;
@@ -102,7 +105,7 @@ export default function VentasPage() {
     traerTodo<VentaFila>((a, b) => {
       let query = client
         .from('ventas')
-        .select('id, numero, local_id, total, propina, metodo_pago, cajero_nombre, created_at')
+        .select('id, numero, local_id, terminal_id, origen, total, propina, metodo_pago, cajero_nombre, created_at')
         .eq('cliente_id', empleado.cliente_id)
         .eq('estado', 'completada')
         .gte('created_at', desde);
@@ -312,6 +315,9 @@ export default function VentasPage() {
                   {v.metodo_pago || 'N/A'}
                 </span>
                 {v.cajero_nombre && <span className="text-slate-500 text-xs">{v.cajero_nombre}</span>}
+                {etiquetaOrigenVenta(v.terminal_id, v.origen) && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400">📱 {etiquetaOrigenVenta(v.terminal_id, v.origen)}</span>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <button

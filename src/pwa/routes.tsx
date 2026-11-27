@@ -63,6 +63,7 @@ const ProveedoresPage = lazyConReintento(() => import('./pages/ProveedoresPage')
 const PersonalPage = lazyConReintento(() => import('./pages/PersonalPage'));
 const FidelizacionPage = lazyConReintento(() => import('./pages/FidelizacionPage'));
 const ContabilidadPage = lazyConReintento(() => import('./pages/ContabilidadPage'));
+const FinanzasPage = lazyConReintento(() => import('./pages/FinanzasPage'));
 const MultitiendaPage = lazyConReintento(() => import('./pages/MultitiendaPage'));
 const ArtesGraficasPage = lazyConReintento(() => import('./pages/ArtesGraficasPage'));
 const PapeleriaPinateriaPage = lazyConReintento(() => import('./pages/PapeleriaPinateriaPage'));
@@ -122,6 +123,8 @@ export const router = createBrowserRouter([
       { path: 'personal', element: <ConSuspense><ModuloGate modulo={ModuloPOS.USUARIOS}><PersonalPage /></ModuloGate></ConSuspense> },
       { path: 'fidelizacion', element: <ConSuspense><ModuloGate modulo={ModuloPOS.FIDELIZACION}><FidelizacionPage /></ModuloGate></ConSuspense> },
       { path: 'contabilidad', element: <ConSuspense><ModuloGate modulo={ModuloPOS.CONTABILIDAD}><ContabilidadPage /></ModuloGate></ConSuspense> },
+      // Sin ModuloGate: lo decide el libro privado (0171); sin acceso, la página vuelve al inicio.
+      { path: 'finanzas', element: <ConSuspense><FinanzasPage /></ConSuspense> },
       { path: 'multitienda', element: <ConSuspense><ModuloGate modulo={ModuloPOS.MULTITIENDA}><MultitiendaPage /></ModuloGate></ConSuspense> },
       { path: 'artes-graficas', element: <ConSuspense><ModuloGate modulo={ModuloPOS.ARTES_GRAFICAS}><ArtesGraficasPage /></ModuloGate></ConSuspense> },
       { path: 'papeleria-pinateria', element: <ConSuspense><ModuloGate modulo={ModuloPOS.PAPELERIA_PINATERIA}><PapeleriaPinateriaPage /></ModuloGate></ConSuspense> },

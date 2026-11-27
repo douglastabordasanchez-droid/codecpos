@@ -1068,7 +1068,7 @@ class SyncService {
 
     let query = client
       .from('ventas')
-      .select('id, numero, terminal_id, cajero_nombre, total, propina, porcentaje_propina_sugerido, propina_modificada, metodo_pago, created_at')
+      .select('id, numero, terminal_id, origen, cajero_nombre, total, propina, porcentaje_propina_sugerido, propina_modificada, metodo_pago, created_at')
       .eq('cliente_id', clienteId)
       .eq('estado', 'completada')
       .is('local_id', null); // ventas creadas por Electron siempre traen local_id — solo interesan las que no
@@ -1127,6 +1127,7 @@ class SyncService {
         metodoPago: r.metodo_pago || 'efectivo',
         cajero: r.cajero_nombre || 'Venta móvil',
         puntoVentaId: r.terminal_id || 'PWA',
+        origen: r.origen === 'celular' || r.origen === 'web' ? r.origen : undefined,
         createdAt: new Date(r.created_at).getTime(),
         syncStatus: 'pending',
         supabaseId: r.id,

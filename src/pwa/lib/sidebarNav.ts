@@ -10,7 +10,7 @@
 import {
   Home, ShoppingCart, Receipt, Package, Lock, Wallet, RotateCcw, ScanLine,
   DollarSign, Bell, Settings, ShieldAlert, Wrench, Coffee, Palette, PartyPopper, CreditCard,
-  FileBarChart, ReceiptText, LayoutDashboard, Calculator, Barcode, Tag, Truck, Users, Award, Store, PawPrint, User, Printer, ChefHat,
+  FileBarChart, ReceiptText, LayoutDashboard, Calculator, Barcode, Tag, Truck, Users, Award, Store, PawPrint, User, Printer, ChefHat, PiggyBank,
 } from 'lucide-react';
 import { ModuloPOS } from '../../app/lib/permissions';
 
@@ -27,6 +27,8 @@ export interface ItemNavSidebar {
   dePago?: boolean;
   soloAdmin?: boolean;
   soloStaff?: boolean;
+  /** Solo quien tiene un libro de Mis finanzas, propio o invitado (useAccesoFinanzas). */
+  soloFinanzas?: boolean;
   end?: boolean;
   /** No se puede ocultar (sin él la persona se quedaría sin salida). */
   fijo?: boolean;
@@ -64,6 +66,7 @@ export const NAV_TODOS: ItemNavSidebar[] = [
   { grupo: 'analisis', icon: LayoutDashboard, label: 'Dashboard', subtitulo: 'Ventas, utilidad y tendencia', path: '/dashboard', modulo: ModuloPOS.DASHBOARD },
   { grupo: 'analisis', icon: FileBarChart, label: 'Reportes', subtitulo: 'Ventas, cajeros, inventario, gastos y financiero', path: '/reportes', modulo: ModuloPOS.REPORTES },
   { grupo: 'analisis', icon: Calculator, label: 'Contabilidad', subtitulo: 'Resumen, cartera, rentabilidad y flujo de caja', path: '/contabilidad', modulo: ModuloPOS.CONTABILIDAD },
+  { grupo: 'analisis', icon: PiggyBank, label: 'Mis finanzas', subtitulo: 'Tus finanzas personales y la utilidad de la empresa', path: '/finanzas', soloFinanzas: true },
   { grupo: 'analisis', icon: ReceiptText, label: 'Facturación', subtitulo: 'Facturas electrónicas y causación de XML', path: '/facturacion', modulo: ModuloPOS.FACTURACION_DIAN, dePago: true, soloAdmin: true },
 
   { grupo: 'herramientas', icon: Lock, label: 'Caja', subtitulo: 'Apertura, arqueo, movimientos y cierre', path: '/caja', modulo: ModuloPOS.CIERRE_CAJA },

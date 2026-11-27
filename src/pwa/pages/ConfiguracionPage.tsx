@@ -9,6 +9,7 @@ import { getSupabaseClient, getSupabasePublicConfig } from '../../app/lib/supaba
 import { MODULOS_CATALOGO, ModuloPOS } from '../../app/lib/permissions';
 import { usePwaAuth } from '../contexts/PwaAuthContext';
 import { useModulosActivos } from '../hooks/useModulosActivos';
+import { useAccesoFinanzas } from '../hooks/useAccesoFinanzas';
 import { NAV_TODOS } from '../lib/sidebarNav';
 import { obtenerPreferenciasMenu, alternarOculto } from '../lib/preferenciasMenu';
 import { estaEnAppAndroid, abrirAjustesNotificacionesAndroid } from '../lib/androidBridge';
@@ -36,6 +37,7 @@ interface NegocioForm {
 export default function ConfiguracionPage() {
   const { empleado } = usePwaAuth();
   const { tieneModulo, tieneModuloDePago, cargando: cargandoModulos } = useModulosActivos();
+  const accesoFinanzas = useAccesoFinanzas();
   const [form, setForm] = useState<NegocioForm | null>(null);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -170,7 +172,8 @@ export default function ConfiguracionPage() {
     !it.fijo &&
     (!it.modulo || (it.dePago ? tieneModuloDePago(it.modulo) : tieneModulo(it.modulo))) &&
     (!it.soloAdmin || esAdmin) &&
-    (!it.soloStaff || empleado.es_staff_codec)
+    (!it.soloStaff || empleado.es_staff_codec) &&
+    (!it.soloFinanzas || accesoFinanzas)
   );
 
   const handleToggleSidebar = (path: string) => {

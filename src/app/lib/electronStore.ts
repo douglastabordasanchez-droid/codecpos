@@ -59,6 +59,8 @@ export interface Venta {
   cliente?: string;
   sincronizado: boolean;
   puntoVentaId: string;
+  /** Venta bajada de la nube: 'celular' o 'web' (0170). */
+  origen?: 'celular' | 'web';
   tiendaId?: string | null;
   createdAt: number;
   syncStatus: 'pending' | 'synced';
